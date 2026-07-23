@@ -20,3 +20,4 @@ plotly
 jupyter
 ipykernel
 pytest            # 검증 게이트 등 단위 테스트
+koreanize-matplotlib   # matplotlib 한글 폰트(향후용)
