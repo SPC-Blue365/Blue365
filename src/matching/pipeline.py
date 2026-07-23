@@ -82,6 +82,8 @@ def aggregate_osp_hourly(osp_exp: pd.DataFrame, freq: str = "1h") -> pd.DataFram
 def aggregate_yard_hourly(yard: pd.DataFrame, freq: str = "1h") -> pd.DataFrame:
     """야드 CNA를 시간창으로 집계 — 평균/표준편차 CaO (목표)."""
     df = yard.dropna(subset=["datetime"]).copy()
+    if "load" not in df.columns:
+        df["load"] = df["tph"] if "tph" in df.columns else np.nan
     df["tbin"] = df["datetime"].dt.floor(freq)
     out = (
         df.groupby("tbin")
@@ -89,7 +91,7 @@ def aggregate_yard_hourly(yard: pd.DataFrame, freq: str = "1h") -> pd.DataFrame:
             yard_cao=("cao", "mean"),
             yard_cao_std=("cao", "std"),
             yard_mgo=("mgo", "mean"),
-            yard_tph=("tph", "mean"),
+            yard_load=("load", "mean"),
             yard_n=("cao", "size"),
         )
         .reset_index()
@@ -146,6 +148,53 @@ def build_matched_dataset(
     osp_shift = osp_h.copy()
     osp_shift["datetime"] = osp_shift["datetime"] + pd.Timedelta(hours=lag_hours)
     merged = yard_h.merge(osp_shift, on="datetime", how="inner")
+    merged["lag_hours"] = lag_hours
+    return merged.sort_values("datetime").reset_index(drop=True)
+
+
+def assign_expected_cao_timeaware(
+    osp: pd.DataFrame, mine_long: pd.DataFrame
+) -> pd.DataFrame:
+    """OSP 인출(라인·지점·시각)에 '인출시각 이전 최근 적재 품위'를 매칭 (시간인지).
+
+    P/W 지점은 위치 식별자이며 품위는 시간에 따라 변하므로, 정적 평균이 아니라
+    해당 (line, 지점)에 가장 최근 적재된 광산 품위를 쓴다. 없으면 라인 전역 평균 fallback.
+    """
+    mine = mine_long[mine_long["line"].isin([S.LINE_OLD, S.LINE_NEW])].dropna(
+        subset=["zone", "cao", "date"]
+    )
+    mine_daily = (
+        mine.groupby(["line", "zone", "date"], as_index=False)["cao"].mean().sort_values("date")
+    )
+    line_glob = mine.groupby("line")["cao"].mean()
+
+    o = osp.dropna(subset=["datetime", "zone"]).copy()
+    o["date"] = o["datetime"].dt.floor("D")
+    parts = []
+    for (ln, zn), g in o.groupby(["line", "zone"]):
+        mm = mine_daily[(mine_daily["line"] == ln) & (mine_daily["zone"] == zn)][["date", "cao"]]
+        g = g.sort_values("date")
+        if mm.empty:
+            g = g.assign(expected_cao=np.nan)
+        else:
+            g = pd.merge_asof(g, mm, on="date", direction="backward").rename(
+                columns={"cao": "expected_cao"}
+            )
+        parts.append(g)
+    out = pd.concat(parts, ignore_index=True)
+    out["expected_cao"] = out["expected_cao"].fillna(out["line"].map(line_glob))
+    return out
+
+
+def build_line_dataset(
+    osp_exp: pd.DataFrame, yard: pd.DataFrame, line: str, lag_hours: int, freq: str = "1h"
+) -> pd.DataFrame:
+    """한 라인(기존/신설)의 OSP 피처를 해당 야드(목표)와 lag 정렬한 통합셋."""
+    osp_h = aggregate_osp_hourly(osp_exp[osp_exp["line"] == line], freq=freq)
+    yard_h = aggregate_yard_hourly(yard, freq=freq)
+    osp_h["datetime"] = osp_h["datetime"] + pd.Timedelta(hours=lag_hours)
+    merged = yard_h.merge(osp_h, on="datetime", how="inner")
+    merged["line"] = line
     merged["lag_hours"] = lag_hours
     return merged.sort_values("datetime").reset_index(drop=True)
 

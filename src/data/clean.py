@@ -174,11 +174,25 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # ③ 야드 CNA — 최종 목표 기준
 # --------------------------------------------------------------------------- #
-def clean_yard_cna(df: pd.DataFrame) -> pd.DataFrame:
-    """CNA data → (datetime, CaO, MgO, TPH). 시각+일자 결합."""
+def clean_yard(df: pd.DataFrame, load_col: Optional[str] = None) -> pd.DataFrame:
+    """야드 연속측정 → (datetime, cao, mgo, load). 시각+일자 결합.
+
+    CNA data(적재물량(TPH))·45Q 감마레이(적재물량(B/S)) 등 구조가 같은 야드 스트림에 공용.
+    load_col 미지정 시 '적재물량'을 포함하는 컬럼을 자동 탐색.
+    """
+    if load_col is None:
+        cand = [c for c in df.columns if "적재물량" in str(c)]
+        load_col = cand[0] if cand else None
     out = pd.DataFrame()
     out["datetime"] = _combine_datetime(df["일자"], df["시간"])
     out["cao"] = pd.to_numeric(df["CaO"], errors="coerce")
     out["mgo"] = pd.to_numeric(df["MgO"], errors="coerce")
-    out["tph"] = pd.to_numeric(df["적재물량(TPH)"], errors="coerce")
+    out["load"] = pd.to_numeric(df[load_col], errors="coerce") if load_col else np.nan
     return out.dropna(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
+
+
+def clean_yard_cna(df: pd.DataFrame) -> pd.DataFrame:
+    """호환용 래퍼 (CNA). 반환 컬럼의 load 를 tph 로 별칭 제공."""
+    out = clean_yard(df, load_col="적재물량(TPH)")
+    out["tph"] = out["load"]
+    return out
