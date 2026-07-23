@@ -1,2 +1,21 @@
-streamlit
-openai
+# === 데이터 처리 ===
+pandas
+numpy
+openpyxl          # 엑셀(.xlsx) 읽기/쓰기
+
+# === 머신러닝 (예측) ===
+scikit-learn
+xgboost
+lightgbm
+
+# === 최적화 (배합 역산 솔버) ===
+scipy             # 선형계획법/제약 최적화 (linprog, minimize)
+
+# === 시각화 ===
+matplotlib
+seaborn
+plotly
+
+# === 노트북/개발 ===
+jupyter
+ipykernel
