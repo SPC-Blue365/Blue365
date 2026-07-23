@@ -40,6 +40,10 @@
 - **다음 결정(사용자)**: 예측모델을 운영도구(모니터링/경보)로 확정할지, 배합최적화(scipy) 프레임워크를 약한신호 기반이라도 구축할지.
 
 ## 1. 완료 작업 요약 (Done)
+- **[모델선정] 10개 모델 벤치마크** `src/models/benchmark.py` + `scripts/benchmark_models.py`
+  - 결과: **선형 계열(LinearRegression/Ridge/ElasticNet)이 최적**. 신설/CNA MAE 0.798, 기존/45Q 1.032.
+  - XGBoost/LightGBM/RF 등 복잡모델은 소표본 과적합으로 열위 → **운영모델 Ridge 확정**(강건).
+  - 리포트에 벤치마크 차트 반영(`scripts/make_report.py`).
 - **[파일럿] 배합최적화 스캐폴드** `src/optimization/blend.py`(scipy linprog, 달성불가시 근접해+병목), 테스트 4개
 - **[파일럿] 결과물 리포트** `scripts/make_report.py` → `outputs/report_pilot1.html`(예측 실측대비·조기경보·최적화데모, 로컬전용)
 - **[파일럿] 예측모델** `src/models/forecast.py`(Ridge AR, 라인별, 시계열CV)

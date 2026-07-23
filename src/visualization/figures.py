@@ -77,6 +77,29 @@ def stage_cao_bar(stages) -> go.Figure:
     return fig
 
 
+def model_benchmark_bar(bench_df, title: str) -> go.Figure:
+    """모델별 CV MAE 가로 막대. 최적=초록, 기준선=회색, 나머지=파랑. 목표(0.5)·persist 표시."""
+    d = bench_df.sort_values("MAE", ascending=False)
+    best_name = bench_df[~bench_df["is_baseline"]].sort_values("MAE").iloc[0]["model"]
+    colors = []
+    for _, r in d.iterrows():
+        if r["model"] == best_name:
+            colors.append(GREEN)
+        elif r["is_baseline"]:
+            colors.append("#9aa0a6")
+        else:
+            colors.append(BLUE)
+    fig = go.Figure(go.Bar(
+        x=d["MAE"], y=d["model"], orientation="h", marker_color=colors,
+        text=[f"{v:.3f}" for v in d["MAE"]], textposition="outside",
+    ))
+    fig.add_vline(x=0.5, line=dict(color=GREEN, dash="dash"),
+                  annotation_text="목표 0.5", annotation_position="top")
+    fig.update_layout(title=title, height=430, font=dict(size=11),
+                      margin=dict(l=10, r=10, t=44, b=10), xaxis_title="MAE (낮을수록 좋음)")
+    return fig
+
+
 def assemble_html(title: str, sections: list[tuple[str, object]], tail_html: str = "") -> str:
     """섹션(제목, Figure 또는 HTML문자열)들을 자기완결 HTML 로 조립. plotly.js 1회 인라인."""
     import plotly.io as pio

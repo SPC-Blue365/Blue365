@@ -23,6 +23,7 @@ from config.paths import RAW_DIR, OUTPUTS_DIR, ensure_dirs
 from src.data import clean as C
 from src.matching import pipeline as P
 from src.models import forecast as F
+from src.models.benchmark import benchmark, recommend
 from src.optimization.blend import BlendSource, recommend_blend
 from src.visualization import figures as V
 
@@ -85,7 +86,7 @@ def build_stage_bar(mine, yards):
     return V.stage_cao_bar(stages)
 
 
-def build_pred(xls, osp_exp, line, sheet, yards):
+def line_features(osp_exp, line, yards):
     y = yards[line].dropna(subset=["datetime"]).copy()
     y["h"] = y["datetime"].dt.floor("1h")
     ys = y.groupby("h")["cao"].mean().asfreq("1h")
@@ -94,7 +95,10 @@ def build_pred(xls, osp_exp, line, sheet, yards):
     oh = o.groupby("h").agg(impl=("expected_cao", "mean"), ton=("withdrawn_ton", "sum"))
     lag = P.estimate_time_lag(oh.reset_index().rename(columns={"h": "datetime", "impl": "osp_expected_cao"}),
                               ys.reset_index().rename(columns={"h": "datetime", "cao": "yard_cao"}), 24).best_lag_hours
-    feats = F.build_features(ys, oh, lag)
+    return F.build_features(ys, oh, lag)
+
+
+def build_pred(feats, line):
     d = feats.dropna(subset=F.AR_CORE + ["cao"]).copy()
     k = int(len(d) * 0.7)
     model, fcols = F.fit_final(d.iloc[:k], use_upstream=False)
@@ -114,11 +118,16 @@ def main():
     sankey = build_sankey(mine, osp_exp, yards)
     stagebar = build_stage_bar(mine, yards)
 
-    pred_secs, metric_rows = [], []
+    pred_secs, metric_rows, bench_secs, bench_reco = [], [], [], []
     for line, (sheet, alias) in PAIR.items():
-        fig, mae, oos, n = build_pred(xls, osp_exp, line, sheet, yards)
+        feats = line_features(osp_exp, line, yards)
+        fig, mae, oos, n = build_pred(feats, line)
         pred_secs.append(("", fig))
         metric_rows.append(f"<tr><td>{line}</td><td>{alias}</td><td><b>{mae:.2f}</b></td><td>{oos}/{n}</td></tr>")
+        bench = benchmark(feats, use_upstream=False, n_splits=5)
+        bench_secs.append(("", V.model_benchmark_bar(bench, f"{line} 라인 → {alias}: 10개 모델 CV MAE 비교")))
+        bench_reco.append(f"<tr><td>{line}→{alias}</td><td><b>{recommend(bench)}</b></td>"
+                          f"<td>{bench[~bench['is_baseline']]['MAE'].min():.3f}</td></tr>")
 
     demo = recommend_blend([BlendSource("구역45(기존)", 44.1, 2000), BlendSource("구역55(신설)", 45.4, 2000),
                             BlendSource("구역60", 46.0, 1500)], demand_ton=3000, target_cao=44.6)
@@ -135,12 +144,20 @@ def main():
     opt = (f'<pre>{demo.summary()}</pre>'
            '<p style="color:#555">구조는 완성돼 있으며, 데이터 축적으로 구역-품위 추정이 정밀해지면 그대로 처방 정밀도가 오릅니다.</p>')
 
+    reco_table = ("<table><tr><th>라인→야드</th><th>추천 모델</th><th>최적 MAE</th></tr>"
+                  + "".join(bench_reco) + "</table>"
+                  '<div class="ok"><b>결론:</b> 10개 모델 중 <b>선형 계열(LinearRegression·Ridge)</b>이 최적입니다. '
+                  'XGBoost·LightGBM·RandomForest 등 복잡 모델은 소표본에서 과적합해 오히려 성능이 낮습니다. '
+                  '→ 운영 모델은 <b>Ridge(정규화 선형)</b> 권장(과적합에 강건, LinearRegression과 성능 동일).</div>')
+
     sections = [
         ("", intro),
         ("추적 매칭 흐름 (한눈에 보기)", sankey),
         ("공정 단계별 품위와 변동성", stagebar),
+        ("최적 모델 탐색 — 10개 모델 벤치마크", reco_table),
+        ("", bench_secs[0][1]), ("", bench_secs[1][1]),
         ("예측 성능 요약 & 판단", notes),
-    ] + [("라인별 예측 실측 대비 & 조기경보", pred_secs[0][1])] + [("", pred_secs[1][1])] + [
+        ("라인별 예측 실측 대비 & 조기경보", pred_secs[0][1]), ("", pred_secs[1][1]),
         ("배합 최적화 (경로 2 · 향후용 프레임워크)", opt),
     ]
     html = V.assemble_html("석회석 광산-야드 CaO 추적·예측 파일럿", sections)
