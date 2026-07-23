@@ -42,7 +42,7 @@
 2. **불확실하면 질문 (Ask, Don't Assume)**: 분석에 필요한 추가 데이터, 식별 기준(Join Key), Time-Lag 규칙, 단위 등이 불명확하면 **추측하지 말고 즉시 사용자에게 질문**한 뒤 다음 단계로 넘어간다.
 3. **검증 가능성 (Traceability)**: 모든 수치·결론은 근거가 되는 원본 데이터/코드 경로를 명시한다. "어느 파일 어느 컬럼에서 나왔는지" 추적 가능해야 한다.
 4. **재현성 (Reproducibility)**: 분석은 노트북 실행 또는 스크립트로 재현 가능해야 한다. 손으로 만든 일회성 숫자를 결과로 쓰지 않는다.
-5. **데이터 기밀 (Confidentiality)**: 광산 품위 데이터는 민감정보다. **저장소가 Public이면 실데이터를 절대 커밋하지 않는다.** 데이터를 GitHub에 보관하려면 저장소가 **Private**여야 하며, Private 확인 후에만 `data/` 실데이터 커밋을 허용한다(그 시점에 `.gitignore`의 데이터 제외 규칙을 조정). 방침: 저장소 Private 전환 후 데이터 커밋 보관.
+5. **데이터 기밀 & 로컬 전용 보관 (Confidentiality / Local-Only)**: 광산 품위 데이터는 민감정보다. **원본·가공 데이터는 로컬에만 보관하고, GitHub(원격)에는 저장소의 Public/Private 여부와 무관하게 절대 커밋하지 않는다.** `data/`·`models/`·`outputs/predictions/` 하위 실파일은 항상 `.gitignore`로 제외하며(폴더 구조는 `.gitkeep`만 커밋), git에 올리는 것은 **코드·문서·스키마 정의뿐**이다. 데이터를 저장소 바깥 로컬 경로에 두려면 `BLUE365_DATA_DIR` 환경변수로 지정한다(§6.1 라우팅). 커밋 전 `git status`로 데이터 파일이 스테이징되지 않았는지 반드시 확인한다.
 
 ---
 
@@ -166,9 +166,27 @@ Blue365/
 ├── outputs/                   # 결과물
 │   ├── figures/               #   생성된 차트/그림
 │   └── predictions/           #   예측·추천 결과 파일
-├── config/                    # 설정 파일 (파라미터, 경로 등)
+├── config/                    # 설정 파일 (paths·schema 등)
 └── tests/                     # 테스트 코드
 ```
+
+### 6.1 데이터 보관 정책 & 라우팅 (Local-Only Data Routing) ⭐️
+
+**데이터는 로컬 전용이며 GitHub(원격)에 절대 커밋하지 않는다.** git에는 코드·문서·스키마만 올린다.
+
+| 대상 | 로컬 경로 (기본) | 환경변수 오버라이드 | git 커밋 |
+|------|------------------|---------------------|:--------:|
+| 원본 데이터 | `data/raw/` | `BLUE365_DATA_DIR` | ❌ (`.gitignore`) |
+| 중간/통합 데이터 | `data/interim/`, `data/processed/` | `BLUE365_DATA_DIR` | ❌ |
+| 예측·추천 결과 | `outputs/predictions/` | `BLUE365_OUTPUTS_DIR` | ❌ |
+| 학습된 모델 | `models/` | `BLUE365_MODELS_DIR` | ❌ |
+| 그림/차트 | `outputs/figures/` | `BLUE365_OUTPUTS_DIR` | ❌ (선택) |
+| **코드·문서·스키마·핸드오프** | 저장소 내 | — | ✅ |
+
+- 경로는 항상 `config/paths.py`를 통해 참조한다(하드코딩 금지). 데이터를 저장소 **바깥** 로컬 폴더에 두려면 `BLUE365_DATA_DIR`를 지정하면 git 트리와 완전히 분리된다.
+- **데이터 반입 방식**: 사용자가 로컬 `data/raw/`에 파일을 두거나, 원격 세션에서는 채팅에 첨부 → Main-Agent가 `data/raw/`에 배치. 어느 경우든 원격 커밋하지 않는다.
+- **세션/머신 간 지속성**: 코드·문서·스키마·핸드오프는 git으로 이어지지만, **원본 데이터는 git에 없으므로 각 로컬 환경에 사용자가 직접 보유**해야 한다(원격 임시 세션은 종료 시 데이터 소멸).
+- **커밋 전 안전 점검**: 항상 `git status`로 `data/`·`models/`·`outputs/` 실파일이 스테이징되지 않았는지 확인한다.
 
 ---
 
@@ -178,7 +196,8 @@ Blue365/
 - **핵심 스택**: Python 3.11 · pandas/numpy · openpyxl(엑셀) · scikit-learn · XGBoost/LightGBM · scipy(최적화) · matplotlib/seaborn/plotly
 - **코드 스타일**: 주변 코드 관례를 따른다. 새 의존성 추가 시 `requirements.txt`에 반영.
 - **데이터 무결성**: 파일을 덮어쓰기 전 항상 원본을 확인한다. `data/raw/`는 읽기 전용으로 취급하고, 가공물은 `interim/`·`processed/`에 저장한다.
-- **경로**: 하드코딩 대신 `config/`의 설정을 참조하도록 지향한다.
+- **데이터 보관**: **로컬 전용(§6.1)**. `data/`·`models/`·`outputs/predictions/` 실파일은 원격(git)에 커밋하지 않는다. 필요 시 `BLUE365_DATA_DIR` 등 환경변수로 저장소 바깥 로컬 경로 사용.
+- **경로**: 하드코딩 대신 `config/paths.py`의 설정을 참조한다.
 
 ---
 

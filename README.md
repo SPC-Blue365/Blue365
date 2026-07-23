@@ -23,7 +23,15 @@
 pip install -r requirements.txt
 ```
 
-이후 분석할 엑셀 데이터를 `data/raw/` 폴더에 업로드하면 병합(Merge) 및 EDA를 시작합니다.
+이후 분석할 엑셀 데이터를 로컬 `data/raw/` 폴더에 두면 병합(Merge) 및 EDA를 시작합니다.
+
+> **데이터 보관 = 로컬 전용.** 광산 품위 데이터는 민감정보이므로 GitHub(원격)에는 **절대 커밋하지 않습니다.**
+> `data/`·`models/`·`outputs/predictions/` 는 `.gitignore`로 제외되고, git에는 코드·문서·스키마만 올라갑니다.
+> 데이터를 저장소 바깥 로컬 경로에 두려면 환경변수로 지정하세요:
+> ```bash
+> export BLUE365_DATA_DIR="/path/to/local/data"
+> ```
+> 자세한 라우팅 규칙은 [`CLAUDE.md` §6.1](./CLAUDE.md)을 참조하세요.
 
 ## 디렉토리 구조
 

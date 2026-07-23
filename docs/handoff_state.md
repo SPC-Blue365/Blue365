@@ -3,9 +3,10 @@
 > ⭐️ 새 세션 시작 시 Main-Agent가 **가장 먼저** 읽는 파일입니다. (CLAUDE.md §0 / §5)
 > 주요 단계 완료 시, 또는 사용자가 "handoff / 핸드오프 / 저장해줘" 요청 시 갱신합니다.
 
-- **최종 업데이트**: 2026-07-23 (로더·검증게이트 뼈대 완료)
+- **최종 업데이트**: 2026-07-23 (데이터 로컬 전용 정책 반영 + 로더·검증게이트 뼈대 완료)
 - **현재 파이프라인 단계**: `1. Data-Analyst 준비` (코드 뼈대 완료, 데이터 업로드 대기)
 - **현재 활성 Agent**: `[Data-Analyst]`
+- **데이터 보관 정책**: 🔒 **로컬 전용** — GitHub 커밋 금지 (`.gitignore`), 필요 시 `BLUE365_DATA_DIR` 환경변수
 
 ---
 
@@ -30,12 +31,12 @@
   - [ ] 물량 단위(Ton), 품위 단위(%)
 
 ## 3. 현재 직면한 문제점 / 미해결 이슈 (Open Issues)
-- 실데이터 미업로드 상태. `data/raw/`에 엑셀 업로드 필요.
-- **저장소가 아직 Public**. 데이터 커밋 보관은 사용자가 저장소를 Private 전환한 뒤에만 진행(방침 확정됨). Private 확인 전까지 `.gitignore`의 데이터 제외 규칙 유지.
+- 실데이터 미업로드 상태. 로컬 `data/raw/`에 엑셀 필요.
+- **데이터 보관 정책 확정: 로컬 전용(Local-Only).** 저장소는 Public 유지하되 `data/`·`models/`·`outputs/predictions/` 실파일은 GitHub에 절대 커밋하지 않는다(`.gitignore`). git에는 코드·문서·스키마만. (Private 전환/데이터 커밋 방식은 폐기)
 - `config/schema.py`의 MINE/OSP/YARD 컬럼이 전부 미확정(None). EDA 후 채워야 로더·검증이 실제 컬럼에 작동.
 
 ## 4. 다음 행동 (Next Action) ⭐️
 - **담당 Agent**: `[Data-Analyst]`
-- **행동**: 사용자가 데이터를 첨부/업로드하면 → ① `inspect_raw_dir()`로 파일·시트·컬럼·dtype·결측 파악 → ② `config/schema.py`의 SourceSpec + `docs/data_schema.md` 채우기(Join Key·Time-Lag 규칙 포함) → ③ `validate_source()`로 검증 게이트 실행 → ④ 초기 EDA/트렌드 시각화.
-- **병행**: 저장소 Private 전환(사용자) 완료 확인 후 `.gitignore` 데이터 규칙 조정 → 데이터 커밋 보관.
+- **행동**: 사용자가 데이터를 로컬 `data/raw/`에 두거나 채팅에 첨부하면 → ① `inspect_raw_dir()`로 파일·시트·컬럼·dtype·결측 파악 → ② `config/schema.py`의 SourceSpec + `docs/data_schema.md` 채우기(Join Key·Time-Lag 규칙 포함) → ③ `validate_source()`로 검증 게이트 실행 → ④ 초기 EDA/트렌드 시각화.
+- **주의**: 데이터·모델·예측결과 파일은 **원격 커밋 금지**. 커밋 전 `git status`로 확인.
 - **선행 조건**: 광산(XRF/감마레이)·OSP(적재/물량)·야드(CNA) 3종 데이터. 없으면 사용자에게 요청.
