@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore")
 
 from config.paths import OUTPUTS_DIR, ensure_dirs
 from src.models.dataset import all_lines
-from src.monitoring import monitor_all
+from src.monitoring import log_statuses, monitor_all
 from src.monitoring.alerts import Level
 from src.visualization import figures as V
 
@@ -29,6 +29,7 @@ def main() -> None:
     ensure_dirs()
     lines = all_lines()
     statuses = monitor_all(lines)
+    added = log_statuses(statuses)  # 경보 이력 누적
 
     print("=" * 60)
     print("운영 모니터 — 라인별 야드 CaO 상태")

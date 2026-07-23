@@ -77,6 +77,80 @@ def stage_cao_bar(stages) -> go.Figure:
     return fig
 
 
+def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
+    """광산→라인→야드 추적 Sankey (원시 정제 데이터에서 흐름 계산)."""
+    import pandas as pd
+
+    from config import schema as S
+
+    labels = ["49Q 광산(XRF)", "47Q 광산(감마)", "기존 라인", "신설 라인", "45Q 야드(4-5K)", "CNA 야드(6-7K)"]
+    node_colors = ["#6baed6", "#9ecae1", "#f4a582", "#fdae61", "#74c476", "#31a354"]
+    src, tgt, val, lc, hov = [], [], [], [], []
+    smap, lmap, ymap = {"49Q": 0, "47Q": 1}, {S.LINE_OLD: 2, S.LINE_NEW: 3}, {S.LINE_OLD: 4, S.LINE_NEW: 5}
+    mm = mine[mine["line"].isin([S.LINE_OLD, S.LINE_NEW])]
+    for (so, ln), g in mm.groupby(["source", "line"]):
+        ton, cao = g["tonnage"].sum(min_count=1), g["cao"].mean()
+        if pd.isna(ton) or ton <= 0:
+            continue
+        src.append(smap[so]); tgt.append(lmap[ln]); val.append(float(ton)); lc.append(grade_color(cao))
+        hov.append(f"{labels[smap[so]]} → {labels[lmap[ln]]}<br>이송 {ton:,.0f}톤 · 평균 CaO {cao:.2f}%")
+    for ln in [S.LINE_OLD, S.LINE_NEW]:
+        ton = osp_exp.loc[osp_exp["line"] == ln, "withdrawn_ton"].sum(min_count=1)
+        ycao = yards[ln]["cao"].mean()
+        if pd.isna(ton) or ton <= 0:
+            continue
+        src.append(lmap[ln]); tgt.append(ymap[ln]); val.append(float(ton)); lc.append(grade_color(ycao))
+        hov.append(f"{labels[lmap[ln]]} → {labels[ymap[ln]]}<br>인출 {ton:,.0f}톤 · 야드 CaO {ycao:.2f}%")
+    return sankey_tracking(labels, node_colors, src, tgt, val, lc, hov)
+
+
+def control_chart(times, values, lo, hi, title) -> go.Figure:
+    """관리도: 최근 CaO + 규격밴드 + 통계 관리상/하한(평균±3σ) + 이탈점 강조."""
+    v = np.asarray(values, dtype=float)
+    fin = v[np.isfinite(v)]
+    mean = float(fin.mean()) if len(fin) else TARGET
+    sd = float(fin.std()) if len(fin) else 0.0
+    ucl, lcl = mean + 3 * sd, mean - 3 * sd
+    fig = go.Figure()
+    fig.add_hrect(y0=lo, y1=hi, fillcolor=GREEN, opacity=0.10, line_width=0,
+                  annotation_text="규격", annotation_position="top left")
+    fig.add_hline(y=mean, line=dict(color="#555", width=1), annotation_text=f"평균 {mean:.2f}")
+    for y, nm in [(ucl, "UCL"), (lcl, "LCL")]:
+        fig.add_hline(y=y, line=dict(color=RED, dash="dot", width=1), annotation_text=nm)
+    fig.add_trace(go.Scatter(x=times, y=v, mode="lines+markers", name="CaO",
+                             line=dict(color=BLUE, width=1.3), marker=dict(size=4)))
+    oos = (v < lo) | (v > hi)
+    if np.any(oos):
+        fig.add_trace(go.Scatter(x=np.asarray(times)[oos], y=v[oos], mode="markers",
+                      name="규격이탈", marker=dict(color=ORANGE, size=8, symbol="x")))
+    fig.update_layout(title=title, height=340, font=dict(size=12), yaxis_title="CaO (%)",
+                      margin=dict(l=10, r=10, t=44, b=10),
+                      legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
+    return fig
+
+
+def alert_history_timeline(hist) -> go.Figure:
+    """경보 이력 타임라인 (수준별 색·라인별)."""
+    import pandas as pd
+
+    fig = go.Figure()
+    cmap = {"경고": RED, "주의": ORANGE, "정상": GREEN}
+    if hist is None or len(hist) == 0:
+        fig.update_layout(title="경보 이력 없음", height=280)
+        return fig
+    h = hist.copy()
+    h["dt"] = pd.to_datetime(h["data_time"], errors="coerce")
+    for lvl, c in cmap.items():
+        sub = h[h["level"] == lvl]
+        if len(sub):
+            fig.add_trace(go.Scatter(x=sub["dt"], y=sub["line"], mode="markers", name=lvl,
+                          marker=dict(color=c, size=9, symbol="square"),
+                          text=sub["message"], hovertemplate="%{x}<br>%{y}<br>%{text}<extra></extra>"))
+    fig.update_layout(title="경보 이력 타임라인", height=300, font=dict(size=12),
+                      margin=dict(l=10, r=10, t=44, b=10))
+    return fig
+
+
 def model_benchmark_bar(bench_df, title: str) -> go.Figure:
     """모델별 CV MAE 가로 막대. 최적=초록, 기준선=회색, 나머지=파랑. 목표(0.5)·persist 표시."""
     d = bench_df.sort_values("MAE", ascending=False)

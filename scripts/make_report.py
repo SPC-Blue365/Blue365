@@ -115,7 +115,7 @@ def main():
     ensure_dirs()
     xls, mine, osp_exp, yards = _load()
 
-    sankey = build_sankey(mine, osp_exp, yards)
+    sankey = V.build_tracking_sankey(mine, osp_exp, yards)
     stagebar = build_stage_bar(mine, yards)
 
     pred_secs, metric_rows, bench_secs, bench_reco = [], [], [], []
