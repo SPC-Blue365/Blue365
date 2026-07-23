@@ -15,9 +15,10 @@ models/*
 *.joblib
 *.h5
 
-# 산출물 (예측 결과·그림)
-outputs/figures/*
-outputs/predictions/*
+# 산출물 (예측 결과·그림·리포트) — 데이터 포함 가능하므로 실파일 전부 로컬 전용
+outputs/**
+!outputs/
+!outputs/**/
 !outputs/**/.gitkeep
 
 # 엑셀/데이터 파일 (어느 위치든)

@@ -3,10 +3,26 @@
 > ⭐️ 새 세션 시작 시 Main-Agent가 **가장 먼저** 읽는 파일입니다. (CLAUDE.md §0 / §5)
 > 주요 단계 완료 시, 또는 사용자가 "handoff / 핸드오프 / 저장해줘" 요청 시 갱신합니다.
 
-- **최종 업데이트**: 2026-07-23 (데이터 로컬 전용 정책 반영 + 로더·검증게이트 뼈대 완료)
-- **현재 파이프라인 단계**: `1. Data-Analyst 준비` (코드 뼈대 완료, 데이터 업로드 대기)
-- **현재 활성 Agent**: `[Data-Analyst]`
+- **최종 업데이트**: 2026-07-23 (파일럿 예측모델 + 배합최적화 스캐폴드 + 리포트 완성)
+- **현재 파이프라인 단계**: `3. ML 파일럿 완료` (예측모델·최적화 스캐폴드 완성)
+- **현재 활성 Agent**: `[ML-Engineer]`
 - **데이터 보관 정책**: 🔒 **로컬 전용** — GitHub 커밋 금지 (`.gitignore`), 필요 시 `BLUE365_DATA_DIR` 환경변수
+
+---
+
+## 🔖 복원 지점 — CHECKPOINT ①: "파일럿 예측모델 완성" (2026-07-23)
+> 사용자가 **"아까 저장해 놓은 지점으로 돌아가줘"** 라고 하면 **이 체크포인트**로 복귀해 이어서 진행한다.
+
+**이 지점의 상태 = 아래 전부 완료·커밋됨:**
+- 추적 파이프라인(정제→매칭→Time-Lag) + 라인별 하이브리드 예측(Ridge AR) + 배합최적화 스캐폴드(scipy) + 파일럿 HTML 리포트.
+- 방침 확정: **경로1(예측·모니터링)=메인**, **경로2(배합최적화)=향후 데이터 축적 시 정밀화(항상 병행 유지)**.
+
+**이 지점에서 재개할 다음 작업 (사용자 요청):**
+1. **최적 모델 탐색(메인)**: 여러 알고리즘(XGBoost/LightGBM/RandomForest/ElasticNet 등) 비교 + 하이퍼파라미터 튜닝, 시계열 CV로 최적 예측모델 선정. (`notebooks/03_modeling/`, `src/models/`)
+2. 예측·모니터링 운영 도구화(경보 임계·대시보드).
+3. 경로2는 데이터 축적 대비 인터페이스 유지.
+
+**재개 방법**: 데이터 `data/raw/data_v1.xlsx` 로컬 배치 후 → `python scripts/build_matched_dataset.py`, `python scripts/train_forecast.py`, `python scripts/make_report.py` 로 현 상태 재현 가능.
 
 ---
 
@@ -24,6 +40,9 @@
 - **다음 결정(사용자)**: 예측모델을 운영도구(모니터링/경보)로 확정할지, 배합최적화(scipy) 프레임워크를 약한신호 기반이라도 구축할지.
 
 ## 1. 완료 작업 요약 (Done)
+- **[파일럿] 배합최적화 스캐폴드** `src/optimization/blend.py`(scipy linprog, 달성불가시 근접해+병목), 테스트 4개
+- **[파일럿] 결과물 리포트** `scripts/make_report.py` → `outputs/report_pilot1.html`(예측 실측대비·조기경보·최적화데모, 로컬전용)
+- **[파일럿] 예측모델** `src/models/forecast.py`(Ridge AR, 라인별, 시계열CV)
 - 프로젝트 저장소 초기 구조 생성 (data/ src/ notebooks/ docs/ 등)
 - 기존 Streamlit+OpenAI 챗봇 스캐폴드 제거
 - `CLAUDE.md` (프로젝트 헌법) 작성 + 운영규칙 보강 (성공기준·infeasibility·검증게이트·핸드오프 커밋)
