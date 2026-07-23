@@ -19,3 +19,4 @@ plotly
 # === 노트북/개발 ===
 jupyter
 ipykernel
+pytest            # 검증 게이트 등 단위 테스트
