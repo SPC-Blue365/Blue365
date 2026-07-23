@@ -48,6 +48,12 @@
 - **다음 결정(사용자)**: 예측모델을 운영도구(모니터링/경보)로 확정할지, 배합최적화(scipy) 프레임워크를 약한신호 기반이라도 구축할지.
 
 ## 1. 완료 작업 요약 (Done)
+- **[운영도구] 모니터링·경보 시스템** (2026-07-23):
+  - `src/models/dataset.py`(공용 로더), `src/models/persist`→`scripts/train_and_save.py`(Ridge 라인별 학습·저장 models/*.joblib)
+  - `src/monitoring/alerts.py`(규격이탈·지속·모델편차·추세 경보, 설정가능) + `src/monitoring/monitor.py`(최근구간 예측·상태)
+  - `scripts/monitor.py`(CLI → `outputs/monitor_status.html`), **`streamlit_app.py`(운영 대시보드, HTTP 200 기동 확인)**
+  - 경보 테스트 5개 포함 총 20개 통과. 현재 데이터 말미 기준 기존=🔴경고(21h 연속이탈), 신설=🟡주의.
+  - 새 데이터 오면 재실행/새로고침 = '실시간' 갱신 패턴.
 - **[모델선정] 10개 모델 벤치마크** `src/models/benchmark.py` + `scripts/benchmark_models.py`
   - 결과: **선형 계열(LinearRegression/Ridge/ElasticNet)이 최적**. 신설/CNA MAE 0.798, 기존/45Q 1.032.
   - XGBoost/LightGBM/RF 등 복잡모델은 소표본 과적합으로 열위 → **운영모델 Ridge 확정**(강건).

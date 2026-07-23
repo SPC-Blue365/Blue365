@@ -21,3 +21,5 @@ jupyter
 ipykernel
 pytest            # 검증 게이트 등 단위 테스트
 koreanize-matplotlib   # matplotlib 한글 폰트(향후용)
+streamlit         # 운영 모니터링 대시보드
+joblib

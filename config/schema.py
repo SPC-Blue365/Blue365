@@ -66,6 +66,12 @@ class SourceSpec:
 # 데이터파일 (로컬 전용)
 DATA_FILE = "data_v1.xlsx"
 
+# 라인 → (야드 시트, 별칭) 페어링 (사용자 확정: 기존↔45Q, 신설↔CNA)
+YARD_PAIR = {
+    LINE_OLD: (SHEET_MINE_45Q, "45Q·4-5K 킬른"),
+    LINE_NEW: (SHEET_YARD_CNA, "CNA·6-7K 킬른"),
+}
+
 # 검증용 스펙 (원시 시트 기준 역할 컬럼)
 MINE = SourceSpec(
     name="mine_49Q", filename=DATA_FILE, sheet=SHEET_MINE_49Q,
