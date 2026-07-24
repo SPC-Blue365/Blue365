@@ -65,3 +65,17 @@ def all_lines(raw_file: str | None = None) -> dict[str, LineData]:
     """모든 라인의 LineData 를 반환."""
     _, osp_exp, yards = load_sources(raw_file)
     return {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
+
+
+def load_yard_change(raw_file: str | None = None) -> pd.DataFrame:
+    """야드변경 시트(기존+신설) → tidy long (datetime,line,yard,cao,mgo,tonnage).
+
+    시트가 없으면 빈 DataFrame 반환(구 버전 데이터 호환).
+    """
+    xls = pd.ExcelFile(RAW_DIR / (raw_file or S.DATA_FILE))
+    frames = []
+    for sheet, line in [(S.SHEET_YC_OLD, S.LINE_OLD), (S.SHEET_YC_NEW, S.LINE_NEW)]:
+        if sheet in xls.sheet_names:
+            frames.append(C.clean_yard_change(pd.read_excel(xls, sheet), line))
+    cols = ["datetime", "line", "yard", "cao", "mgo", "tonnage"]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=cols)

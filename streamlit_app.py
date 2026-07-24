@@ -17,7 +17,7 @@ import numpy as np
 import streamlit as st
 
 from config import schema as S
-from src.models.dataset import build_line_data, load_sources
+from src.models.dataset import build_line_data, load_sources, load_yard_change
 from src.monitoring import load_history, log_statuses, monitor_line
 from src.monitoring.alerts import AlertConfig, Level
 from src.visualization import figures as V
@@ -33,7 +33,8 @@ BADGE = {Level.GREEN: ("🟢", "정상", "#2ca02c"),
 def _load():
     mine, osp_exp, yards = load_sources()
     lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
-    return mine, osp_exp, yards, lines
+    yc = load_yard_change()
+    return mine, osp_exp, yards, lines, yc
 
 
 st.title("⛏️ 석회석 광산-야드 CaO 운영 모니터")
@@ -50,7 +51,7 @@ if st.sidebar.button("🔄 새 데이터로 새로고침"):
 cfg = AlertConfig(lo=lo, hi=hi, sustain_hours=sustain, deviation_warn=dev)
 
 try:
-    mine, osp_exp, yards, lines = _load()
+    mine, osp_exp, yards, lines, yc = _load()
 except FileNotFoundError:
     st.error("data/raw/ 에 데이터가 없습니다. 엑셀을 배치한 뒤 새로고침하세요.")
     st.stop()
@@ -88,7 +89,21 @@ with tab1:
 
 # ── ② 추적 흐름 (Sankey) ──
 with tab2:
-    st.markdown("**광산 → OSP → 야드** 물류·품위 추적. 링크 두께=물량, 색=CaO(파랑 낮음/빨강 높음), 호버=상세.")
+    st.markdown("### 야드변경 기반 추적 (CaO/MgO)")
+    st.markdown("라인별 **야드변경일자**에 실제 적재한 물량·품위 기준. 링크 두께=야드물량, "
+                "**차트 상단 CaO/MgO 버튼**으로 성분 전환. 호버=상세.")
+    if len(yc):
+        st.plotly_chart(V.build_yardchange_sankey(yc, default="CaO"), use_container_width=True)
+        st.plotly_chart(V.yardchange_trend(yc), use_container_width=True)
+        with st.expander("변경일자별 상세 데이터"):
+            st.dataframe(yc.assign(datetime=yc["datetime"].dt.strftime("%Y/%m/%d %H:%M"))
+                         .rename(columns={"datetime": "변경일시", "line": "라인", "yard": "야드",
+                                          "cao": "CaO", "mgo": "MgO", "tonnage": "야드물량"}),
+                         use_container_width=True)
+    else:
+        st.info("야드변경 시트가 없습니다. (기존라인/신설라인 야드변경 시트를 추가하세요)")
+    st.divider()
+    st.markdown("### 물류 개요 (광산→OSP→야드, 누적)")
     st.plotly_chart(V.build_tracking_sankey(mine, osp_exp, yards), use_container_width=True)
 
 # ── ③ 관리도 (제어차트) ──

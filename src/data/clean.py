@@ -196,3 +196,18 @@ def clean_yard_cna(df: pd.DataFrame) -> pd.DataFrame:
     out = clean_yard(df, load_col="적재물량(TPH)")
     out["tph"] = out["load"]
     return out
+
+
+def clean_yard_change(df: pd.DataFrame, line: str) -> pd.DataFrame:
+    """야드변경 시트 → (datetime, line, yard, cao, mgo, tonnage) tidy.
+
+    각 행 = 야드 변경 이벤트(그 시점부터 해당 야드에 적재한 물량·품위).
+    """
+    out = pd.DataFrame()
+    out["datetime"] = _combine_datetime(df["변경일"], df["변경시간"])
+    out["line"] = line
+    out["yard"] = df["Yard"].astype(str).str.strip()
+    out["cao"] = pd.to_numeric(df["석회석CaO"], errors="coerce")
+    out["mgo"] = pd.to_numeric(df["석회석MgO"], errors="coerce")
+    out["tonnage"] = pd.to_numeric(df["야드물량"], errors="coerce")
+    return out.dropna(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)

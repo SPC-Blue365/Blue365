@@ -17,7 +17,7 @@ import numpy as np
 
 from config import schema as S
 from config.paths import OUTPUTS_DIR, ensure_dirs
-from src.models.dataset import build_line_data, load_sources
+from src.models.dataset import build_line_data, load_sources, load_yard_change
 from src.monitoring import load_history, monitor_line
 from src.monitoring.alerts import AlertConfig
 from src.visualization import figures as V
@@ -30,9 +30,14 @@ def main() -> None:
     cfg = AlertConfig()
     statuses = {ln: monitor_line(ld, cfg) for ln, ld in lines.items()}
 
-    secs = [("", "<p>대시보드에 새로 추가된 3개 탭의 내용입니다. 실제 앱: "
+    yc = load_yard_change()
+    secs = [("", "<p>대시보드 신규 기능 미리보기. 실제 앱: "
                  "<code>streamlit run streamlit_app.py</code></p>")]
-    secs.append(("① 추적 흐름 (Sankey 탭)", V.build_tracking_sankey(mine, osp_exp, yards)))
+    if len(yc):
+        secs.append(("★ 야드변경 기반 추적 Sankey (CaO/MgO 버튼 토글)",
+                     V.build_yardchange_sankey(yc, default="CaO")))
+        secs.append(("★ 변경일자별 CaO·MgO 추이", V.yardchange_trend(yc)))
+    secs.append(("① 물류 개요 Sankey (광산→OSP→야드, 누적)", V.build_tracking_sankey(mine, osp_exp, yards)))
     for ln, stt in statuses.items():
         act = stt.series["actual"].values
         fin = act[np.isfinite(act)]

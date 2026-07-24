@@ -16,6 +16,8 @@ SHEET_MINE_45Q = "45Q 감마레이 data"
 SHEET_OSP_OLD = "OSP인출_기존"       # 기존 라인
 SHEET_OSP_NEW = "OSP인출_신설"       # 신설 라인
 SHEET_YARD_CNA = "CNA data"          # ⭐️ 최종 목표 기준 (야드 실시간 분석기)
+SHEET_YC_OLD = "기존라인 야드변경"     # 야드변경별 물량·CaO·MgO (기존)
+SHEET_YC_NEW = "신설라인 야드변경"     # 야드변경별 물량·CaO·MgO (신설)
 
 # === 라인 구분 (공정구분) ===
 LINE_OLD = "기존"

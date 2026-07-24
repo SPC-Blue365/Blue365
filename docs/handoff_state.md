@@ -48,6 +48,7 @@
 - **다음 결정(사용자)**: 예측모델을 운영도구(모니터링/경보)로 확정할지, 배합최적화(scipy) 프레임워크를 약한신호 기반이라도 구축할지.
 
 ## 1. 완료 작업 요약 (Done)
+- **[야드변경 추적]** (2026-07-24): 신규 시트 `기존/신설라인 야드변경`(변경일·시간·Yard·석회석CaO·MgO·야드물량) 분석·정제(`clean.clean_yard_change`, `dataset.load_yard_change`). **야드변경 기반 Sankey + CaO/MgO 버튼 토글**(`figures.build_yardchange_sankey`, 라인→야드 Y1/Y2, 링크=야드물량, 색=성분품위) + **변경일자별 CaO·MgO 추이**(`figures.yardchange_trend`). 대시보드 '추적 흐름' 탭에 통합(+상세표). 차트 x축 날짜 슬래시 형식(2026/07/24)으로 수정.
 - **[대시보드 확장]** 3개 탭 추가(2026-07-23): ① Sankey 추적도(`figures.build_tracking_sankey`) ② 관리도/제어차트(`figures.control_chart`, 규격밴드+평균±3σ+규격내 KPI) ③ 경보 이력 로그(`src/monitoring/history.py`, 로컬 CSV 누적·중복제외, 타임라인). 이력 테스트 2개(총 22개 통과). 미리보기 `scripts/make_dashboard_preview.py`. 이메일 알림은 보류(기밀·SMTP).
 - **[운영도구] 모니터링·경보 시스템** (2026-07-23):
   - `src/models/dataset.py`(공용 로더), `src/models/persist`→`scripts/train_and_save.py`(Ridge 라인별 학습·저장 models/*.joblib)

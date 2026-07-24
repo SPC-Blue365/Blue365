@@ -12,12 +12,12 @@ TARGET = 44.6
 GREEN, BLUE, RED, ORANGE = "#2ca02c", "#1f77b4", "#d62728", "#ff7f0e"
 
 
-# 한글 날짜축 포맷 (확대 수준별): 시 단위 → 일 단위 → 월 단위
+# 날짜축 포맷 (확대 수준별): 시 단위 → 일 단위 → 월 단위 (예: 2026/07/24)
 KDATE_STOPS = [
-    dict(dtickrange=[None, 3600000], value="%m월 %d일 %H시"),           # 1시간 미만 간격
-    dict(dtickrange=[3600000, 86400000], value="%m월 %d일 %H시"),       # 시간 단위
-    dict(dtickrange=[86400000, 604800000], value="%Y년 %m월 %d일"),     # 일 단위
-    dict(dtickrange=[604800000, None], value="%Y년 %m월"),              # 주/월 단위
+    dict(dtickrange=[None, 3600000], value="%m/%d %H시"),               # 1시간 미만 간격
+    dict(dtickrange=[3600000, 86400000], value="%m/%d %H시"),           # 시간 단위
+    dict(dtickrange=[86400000, 604800000], value="%Y/%m/%d"),          # 일 단위
+    dict(dtickrange=[604800000, None], value="%Y/%m"),                 # 주/월 단위
 ]
 
 
@@ -119,6 +119,109 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
     return sankey_tracking(labels, node_colors, src, tgt, val, lc, hov)
 
 
+def _mgo_color(v: float, alpha: float = 0.6) -> str:
+    """MgO 색: 낮으면 초록(양호), 높으면 빨강(불리). 대략 2.5~4.5 범위."""
+    if v is None or np.isnan(v):
+        return f"rgba(150,150,150,{alpha})"
+    t = max(0.0, min(1.0, (v - 2.5) / (4.5 - 2.5)))
+    r, g, b = int(60 + 180 * t), int(160 - 90 * t), int(90 - 40 * t)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def build_yardchange_sankey(yc, default: str = "CaO") -> go.Figure:
+    """야드변경 기반 추적 Sankey — 라인→야드, 링크=야드물량, 색=CaO/MgO (버튼 토글).
+
+    yc: (datetime, line, yard, cao, mgo, tonnage) long. 링크 두께=총 야드물량,
+        색·호버는 CaO/MgO 버튼으로 전환. 값은 물량가중 평균.
+    """
+    import pandas as pd
+
+    if yc is None or len(yc) == 0:
+        f = go.Figure(); f.update_layout(title="야드변경 데이터 없음", height=300); return f
+
+    g = (yc.dropna(subset=["tonnage"]).groupby(["line", "yard"])
+         .apply(lambda d: pd.Series(dict(
+             ton=d["tonnage"].sum(),
+             cao=np.average(d["cao"], weights=d["tonnage"]) if d["tonnage"].sum() else np.nan,
+             mgo=np.average(d["mgo"], weights=d["tonnage"]) if d["tonnage"].sum() else np.nan,
+             n=len(d))), include_groups=False)
+         .reset_index())
+
+    lines = list(dict.fromkeys(g["line"]))
+    yards = list(dict.fromkeys(g["yard"]))
+    labels = [f"{l} 라인" for l in lines] + yards
+    lidx = {l: i for i, l in enumerate(lines)}
+    yidx = {y: len(lines) + i for i, y in enumerate(yards)}
+    node_colors = ["#f4a582"] * len(lines) + ["#74c476"] * len(yards)
+
+    src = [lidx[r.line] for r in g.itertuples()]
+    tgt = [yidx[r.yard] for r in g.itertuples()]
+    val = [float(r.ton) for r in g.itertuples()]
+    cao_c = [grade_color(r.cao) for r in g.itertuples()]
+    mgo_c = [_mgo_color(r.mgo) for r in g.itertuples()]
+    cao_h = [f"{r.line} → {r.yard}<br>물량 {r.ton:,.0f}톤 · 변경 {int(r.n)}회<br>"
+             f"<b>CaO {r.cao:.2f}%</b> · MgO {r.mgo:.2f}%" for r in g.itertuples()]
+    mgo_h = [f"{r.line} → {r.yard}<br>물량 {r.ton:,.0f}톤 · 변경 {int(r.n)}회<br>"
+             f"CaO {r.cao:.2f}% · <b>MgO {r.mgo:.2f}%</b>" for r in g.itertuples()]
+
+    start_c, start_h = (cao_c, cao_h) if default == "CaO" else (mgo_c, mgo_h)
+    fig = go.Figure(go.Sankey(
+        arrangement="snap",
+        node=dict(label=labels, color=node_colors, pad=24, thickness=26,
+                  line=dict(color="rgba(0,0,0,0.25)", width=1)),
+        link=dict(source=src, target=tgt, value=val, color=start_c, customdata=start_h,
+                  hovertemplate="%{customdata}<extra></extra>"),
+    ))
+    fig.update_layout(
+        title=f"야드변경 추적 · 성분={default}  (링크 두께=야드물량, 색=품위)",
+        font=dict(size=13), height=440, margin=dict(l=10, r=10, t=70, b=10),
+        updatemenus=[dict(
+            type="buttons", direction="right", x=1.0, y=1.18, xanchor="right",
+            showactive=True, active=(0 if default == "CaO" else 1),
+            pad=dict(r=4, t=2), bgcolor="#f0f4f8",
+            buttons=[
+                dict(label="CaO", method="update",
+                     args=[{"link.color": [cao_c], "link.customdata": [cao_h]},
+                           {"title.text": "야드변경 추적 · 성분=CaO  (링크 두께=야드물량, 색=품위)"}]),
+                dict(label="MgO", method="update",
+                     args=[{"link.color": [mgo_c], "link.customdata": [mgo_h]},
+                           {"title.text": "야드변경 추적 · 성분=MgO  (링크 두께=야드물량, 색=품위)"}]),
+            ])],
+    )
+    return fig
+
+
+def yardchange_trend(yc) -> go.Figure:
+    """변경일자별 CaO·MgO 추이 (라인별). CaO=좌축 실선, MgO=우축 점선, 마커=야드물량 비례."""
+    import pandas as pd
+
+    fig = go.Figure()
+    if yc is None or len(yc) == 0:
+        fig.update_layout(title="야드변경 데이터 없음", height=300); return fig
+    palette = {"기존": BLUE, "신설": "#7b3fbf"}
+    for line, d in yc.sort_values("datetime").groupby("line"):
+        c = palette.get(line, BLUE)
+        sizes = 8 + 14 * (d["tonnage"] / yc["tonnage"].max())
+        fig.add_trace(go.Scatter(x=d["datetime"], y=d["cao"], mode="lines+markers",
+                      name=f"{line} CaO", line=dict(color=c, width=1.6),
+                      marker=dict(size=sizes, color=c),
+                      customdata=np.stack([d["yard"], d["tonnage"], d["mgo"]], axis=-1),
+                      hovertemplate="%{x|%Y/%m/%d}<br>%{customdata[0]}<br>CaO %{y:.2f}% · MgO %{customdata[2]:.2f}%"
+                                    "<br>물량 %{customdata[1]:,.0f}톤<extra></extra>"))
+        fig.add_trace(go.Scatter(x=d["datetime"], y=d["mgo"], mode="lines+markers",
+                      name=f"{line} MgO", line=dict(color=c, width=1.1, dash="dot"),
+                      marker=dict(size=5, color=c, symbol="diamond"), yaxis="y2",
+                      hovertemplate="%{x|%Y/%m/%d}<br>MgO %{y:.2f}%<extra></extra>"))
+    fig.add_hrect(y0=TARGET - 0.5, y1=TARGET + 0.5, fillcolor=GREEN, opacity=0.10, line_width=0)
+    fig.add_hline(y=TARGET, line=dict(color=GREEN, dash="dash", width=1))
+    fig.update_layout(
+        title="변경일자별 야드 CaO·MgO 추이 (마커 크기=야드물량)", height=380, font=dict(size=12),
+        margin=dict(l=10, r=10, t=46, b=10),
+        yaxis=dict(title="CaO (%)"), yaxis2=dict(title="MgO (%)", overlaying="y", side="right", showgrid=False),
+        legend=dict(orientation="h", y=1.14, x=1, xanchor="right"))
+    return _korean_date_axis(fig)
+
+
 def control_chart(times, values, lo, hi, title) -> go.Figure:
     """관리도: 최근 CaO + 규격밴드 + 통계 관리상/하한(평균±3σ) + 이탈점 강조."""
     v = np.asarray(values, dtype=float)
@@ -199,7 +302,7 @@ def assemble_html(title: str, sections: list[tuple[str, object]], tail_html: str
             body.append(f"<h2>{heading}</h2>")
         if isinstance(obj, go.Figure):
             body.append(pio.to_html(obj, include_plotlyjs=(True if first else False),
-                                    full_html=False, config={"displModeBar": False}))
+                                    full_html=False, config={"displayModeBar": False}))
             first = False
         else:
             body.append(str(obj))
