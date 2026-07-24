@@ -67,6 +67,19 @@ def all_lines(raw_file: str | None = None) -> dict[str, LineData]:
     return {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
 
 
+def filter_period(df: pd.DataFrame, start=None, end=None, col: str = "datetime") -> pd.DataFrame:
+    """[start, end] 기간으로 필터. start/end None이면 무제한. 인덱스가 시간이면 col='index'."""
+    if df is None or len(df) == 0:
+        return df
+    s = pd.to_datetime(df.index if col == "index" else df[col], errors="coerce")
+    m = pd.Series(True, index=df.index)
+    if start is not None:
+        m &= s >= pd.Timestamp(start)
+    if end is not None:
+        m &= s <= pd.Timestamp(end)
+    return df[m.values]
+
+
 def load_yard_change(raw_file: str | None = None) -> pd.DataFrame:
     """야드변경 시트(기존+신설) → tidy long (datetime,line,yard,cao,mgo,tonnage).
 

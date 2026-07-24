@@ -291,37 +291,61 @@ def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
     return _korean_date_axis(fig)
 
 
-def yardchange_std_summary(yc) -> go.Figure:
-    """야드별 CaO·MgO 표준편차(변동성) 막대. 목표 표준편차 0.5 기준선 포함.
-
-    변동성 축소가 프로젝트 목표(std ≤ 0.5)이므로, 야드별 변경구간 간 표준편차를 비교한다.
-    """
-    import pandas as pd
-
-    if yc is None or len(yc) == 0:
-        f = go.Figure(); f.update_layout(title="야드변경 데이터 없음", height=300); return f
-
-    order = ["기존(Y1)", "기존(Y2)", "신설(Y1)", "신설(Y2)"]
-    g = (yc.groupby("yard").agg(cao_std=("cao", "std"), mgo_std=("mgo", "std"),
-                                cao_m=("cao", "mean"), mgo_m=("mgo", "mean"), n=("yard", "size"))
-         .reindex([y for y in order if y in yc["yard"].unique()]).reset_index())
-
+def _std_bar(g, title: str) -> go.Figure:
+    """공용 표준편차 그룹막대. g: DataFrame[name,cao_std,mgo_std,cao_m,mgo_m,n]."""
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=g["yard"], y=g["cao_std"], name="CaO 표준편차", marker_color="#1f77b4",
+    if g is None or len(g) == 0:
+        fig.update_layout(title="데이터 없음", height=300); return fig
+    fig.add_trace(go.Bar(x=g["name"], y=g["cao_std"], name="CaO 표준편차", marker_color="#1f77b4",
                          text=[f"{v:.2f}" for v in g["cao_std"]], textposition="outside",
                          customdata=np.stack([g["cao_m"], g["n"]], axis=-1),
                          hovertemplate="%{x}<br>CaO 표준편차 %{y:.3f}<br>평균 %{customdata[0]:.2f}% · n=%{customdata[1]}<extra></extra>"))
-    fig.add_trace(go.Bar(x=g["yard"], y=g["mgo_std"], name="MgO 표준편차", marker_color="#ff7f0e",
+    fig.add_trace(go.Bar(x=g["name"], y=g["mgo_std"], name="MgO 표준편차", marker_color="#ff7f0e",
                          text=[f"{v:.2f}" for v in g["mgo_std"]], textposition="outside",
                          customdata=np.stack([g["mgo_m"], g["n"]], axis=-1),
                          hovertemplate="%{x}<br>MgO 표준편차 %{y:.3f}<br>평균 %{customdata[0]:.2f}% · n=%{customdata[1]}<extra></extra>"))
     fig.add_hline(y=0.5, line=dict(color=GREEN, dash="dash"),
                   annotation_text="목표 CaO 표준편차 0.5", annotation_position="top right")
-    fig.update_layout(title="야드별 CaO·MgO 표준편차 (변동성 — 낮을수록 안정)",
-                      barmode="group", height=360, font=dict(size=12), yaxis_title="표준편차 (%p)",
-                      margin=dict(l=10, r=10, t=46, b=10),
+    fig.update_layout(title=title, barmode="group", height=360, font=dict(size=12),
+                      yaxis_title="표준편차 (%p)", margin=dict(l=10, r=10, t=46, b=10),
                       legend=dict(orientation="h", y=1.14, x=1, xanchor="right"))
     return fig
+
+
+def _agg_std(df, group_col):
+    import pandas as pd
+    g = (df.groupby(group_col).agg(cao_std=("cao", "std"), mgo_std=("mgo", "std"),
+                                   cao_m=("cao", "mean"), mgo_m=("mgo", "mean"), n=(group_col, "size"))
+         .reset_index().rename(columns={group_col: "name"}))
+    return g
+
+
+def yardchange_std_summary(yc, level: str = "yard") -> go.Figure:
+    """야드변경 데이터 기준 CaO·MgO 표준편차. level='yard'(Y1/Y2) 또는 'line'(기존/신설)."""
+    if yc is None or len(yc) == 0:
+        f = go.Figure(); f.update_layout(title="야드변경 데이터 없음", height=300); return f
+    col = "yard" if level == "yard" else "line"
+    order = (["기존(Y1)", "기존(Y2)", "신설(Y1)", "신설(Y2)"] if level == "yard" else ["기존", "신설"])
+    g = _agg_std(yc, col)
+    g = g.set_index("name").reindex([o for o in order if o in g["name"].values]).reset_index()
+    unit = "야드별" if level == "yard" else "라인별"
+    return _std_bar(g, f"{unit} CaO·MgO 표준편차 — 변경데이터 기준 (낮을수록 안정)")
+
+
+def continuous_std_summary(yards: dict) -> go.Figure:
+    """연속 야드데이터(CNA/45Q) 기준 라인별 CaO·MgO 표준편차 (실측 변동성)."""
+    import pandas as pd
+
+    rows = []
+    label = {"기존": "기존(45Q)", "신설": "신설(CNA)"}
+    for line in ["기존", "신설"]:
+        d = yards.get(line)
+        if d is None or len(d) == 0:
+            continue
+        rows.append(dict(name=label[line], cao_std=d["cao"].std(), mgo_std=d["mgo"].std(),
+                         cao_m=d["cao"].mean(), mgo_m=d["mgo"].mean(), n=len(d)))
+    g = pd.DataFrame(rows)
+    return _std_bar(g, "라인별 CaO·MgO 표준편차 — 연속 야드측정(CNA/45Q) 기준")
 
 
 def control_chart(times, values, lo, hi, title) -> go.Figure:

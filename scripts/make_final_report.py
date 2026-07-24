@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 import warnings
 from pathlib import Path
@@ -20,7 +21,7 @@ from config import schema as S
 from config.paths import OUTPUTS_DIR, ensure_dirs
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
-from src.models.dataset import build_line_data, load_sources, load_yard_change
+from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
 from src.monitoring import monitor_line
 from src.monitoring.alerts import AlertConfig, Level
 from src.optimization.blend import BlendSource, recommend_blend
@@ -34,10 +35,17 @@ def _line_feats(osp_exp, yards, line):
     return ld.features
 
 
-def main():
+def main(start=None, end=None):
     ensure_dirs()
     mine, osp_exp, yards = load_sources()
     yc = load_yard_change()
+    # 기간 필터 (--start/--end). 지정 시 해당 구간으로 모든 산출물 재계산.
+    if start or end:
+        yc = filter_period(yc, start, end, "datetime")
+        yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards.items()}
+    period_txt = ""
+    if start or end:
+        period_txt = f" · 기간 {start or '처음'}~{end or '끝'}"
     lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
     cfg = AlertConfig()
     statuses = {ln: monitor_line(ld, cfg) for ln, ld in lines.items()}
@@ -106,7 +114,9 @@ def main():
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
             ("변경일자별 야드 CaO·MgO 추이", V.yardchange_trend(yc)),
-            ("야드별 CaO·MgO 표준편차 (변동성)", V.yardchange_std_summary(yc)),
+            ("야드별 표준편차 (변경데이터)", V.yardchange_std_summary(yc, "yard")),
+            ("라인별 표준편차 (변경데이터)", V.yardchange_std_summary(yc, "line")),
+            ("라인별 표준편차 (연속 야드측정 CNA/45Q)", V.continuous_std_summary(yards)),
             ("변경일자별 상세", "<table><tr><th>변경일시</th><th>라인</th><th>야드</th><th>CaO</th><th>MgO</th><th>야드물량</th></tr>"
              + "".join(f"<tr><td>{r.datetime:%Y/%m/%d %H:%M}</td><td>{r.line}</td><td>{r.yard}</td>"
                       f"<td>{r.cao:.2f}</td><td>{r.mgo:.2f}</td><td>{r.tonnage:,.0f}</td></tr>"
@@ -130,11 +140,15 @@ def main():
              "<p>구조 완성. 데이터 축적으로 구역-품위 추정이 정밀해지면 처방 정밀도 상승.</p>")]},
     ]
 
-    html = V.assemble_tabbed_html("석회석 광산-야드 CaO 추적·예측 통합 리포트", tabs)
+    html = V.assemble_tabbed_html("석회석 광산-야드 CaO 추적·예측 통합 리포트" + period_txt, tabs)
     out = OUTPUTS_DIR / "final_report.html"
     out.write_text(html, encoding="utf-8")
-    print(f"[OK] 최종 통합 리포트: {out} ({out.stat().st_size // 1024} KB)")
+    print(f"[OK] 최종 통합 리포트: {out} ({out.stat().st_size // 1024} KB){period_txt}")
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description="최종 통합 리포트 생성 (기간 지정 가능)")
+    ap.add_argument("--start", help="시작일 YYYY-MM-DD (미지정=처음)")
+    ap.add_argument("--end", help="종료일 YYYY-MM-DD (미지정=끝)")
+    args = ap.parse_args()
+    main(args.start, args.end)

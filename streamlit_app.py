@@ -14,10 +14,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 
 from config import schema as S
-from src.models.dataset import build_line_data, load_sources, load_yard_change
+from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
 from src.monitoring import load_history, log_statuses, monitor_line
 from src.monitoring.alerts import AlertConfig, Level
 from src.visualization import figures as V
@@ -32,13 +33,26 @@ BADGE = {Level.GREEN: ("🟢", "정상", "#2ca02c"),
 @st.cache_data(show_spinner="데이터 로딩·매칭 중…")
 def _load():
     mine, osp_exp, yards = load_sources()
-    lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
     yc = load_yard_change()
-    return mine, osp_exp, yards, lines, yc
+    return mine, osp_exp, yards, yc
 
 
 st.title("⛏️ 석회석 광산-야드 CaO 운영 모니터")
 st.caption(f"목표 CaO {S.TARGET.cao_mean}±{S.TARGET.tol}% · 라인별 예측·경보·추적 · 로컬 전용")
+
+try:
+    mine, osp_exp, yards_full, yc_full = _load()
+except FileNotFoundError:
+    st.error("data/raw/ 에 데이터가 없습니다. 엑셀을 배치한 뒤 새로고침하세요.")
+    st.stop()
+
+# ── 사이드바: 기간 설정 (데이터가 늘어도 선택 구간만 표현) ──
+st.sidebar.header("📅 기간 설정")
+_alldt = pd.concat([yc_full["datetime"]] + [y["datetime"] for y in yards_full.values()])
+dmin, dmax = pd.to_datetime(_alldt.min()).date(), pd.to_datetime(_alldt.max()).date()
+rng = st.sidebar.date_input("분석 기간", value=(dmin, dmax), min_value=dmin, max_value=dmax)
+start = pd.Timestamp(rng[0]) if isinstance(rng, (list, tuple)) and len(rng) >= 1 else pd.Timestamp(dmin)
+end = pd.Timestamp(rng[1]) + pd.Timedelta(days=1) if isinstance(rng, (list, tuple)) and len(rng) >= 2 else pd.Timestamp(dmax) + pd.Timedelta(days=1)
 
 st.sidebar.header("⚙️ 경보 설정")
 lo = st.sidebar.number_input("규격 하한", value=float(S.TARGET.lower), step=0.1)
@@ -50,11 +64,11 @@ if st.sidebar.button("🔄 새 데이터로 새로고침"):
     st.rerun()
 cfg = AlertConfig(lo=lo, hi=hi, sustain_hours=sustain, deviation_warn=dev)
 
-try:
-    mine, osp_exp, yards, lines, yc = _load()
-except FileNotFoundError:
-    st.error("data/raw/ 에 데이터가 없습니다. 엑셀을 배치한 뒤 새로고침하세요.")
-    st.stop()
+# 기간 필터 적용 → 모든 차트가 선택 구간으로 재계산
+yc = filter_period(yc_full, start, end, "datetime")
+yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards_full.items()}
+lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
+st.caption(f"선택 기간: {start.date()} ~ {(end - pd.Timedelta(days=1)).date()}  ·  야드변경 {len(yc)}건")
 
 statuses = {ln: monitor_line(ld, cfg) for ln, ld in lines.items()}
 added = log_statuses(statuses)  # 경보 이력 누적(중복 제외)
@@ -95,7 +109,15 @@ with tab2:
     if len(yc):
         st.plotly_chart(V.build_yardchange_sankey(yc, default="CaO"), use_container_width=True)
         st.plotly_chart(V.yardchange_trend(yc), use_container_width=True)
-        st.plotly_chart(V.yardchange_std_summary(yc), use_container_width=True)
+        st.markdown("#### 표준편차(변동성)")
+        std_view = st.radio("기준", ["야드별(변경)", "라인별(변경)", "라인별(연속 CNA/45Q)"],
+                            horizontal=True, label_visibility="collapsed")
+        if std_view == "야드별(변경)":
+            st.plotly_chart(V.yardchange_std_summary(yc, "yard"), use_container_width=True)
+        elif std_view == "라인별(변경)":
+            st.plotly_chart(V.yardchange_std_summary(yc, "line"), use_container_width=True)
+        else:
+            st.plotly_chart(V.continuous_std_summary(yards), use_container_width=True)
         with st.expander("변경일자별 상세 데이터"):
             st.dataframe(yc.assign(datetime=yc["datetime"].dt.strftime("%Y/%m/%d %H:%M"))
                          .rename(columns={"datetime": "변경일시", "line": "라인", "yard": "야드",
