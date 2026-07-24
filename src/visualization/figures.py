@@ -12,6 +12,21 @@ TARGET = 44.6
 GREEN, BLUE, RED, ORANGE = "#2ca02c", "#1f77b4", "#d62728", "#ff7f0e"
 
 
+# 한글 날짜축 포맷 (확대 수준별): 시 단위 → 일 단위 → 월 단위
+KDATE_STOPS = [
+    dict(dtickrange=[None, 3600000], value="%m월 %d일 %H시"),           # 1시간 미만 간격
+    dict(dtickrange=[3600000, 86400000], value="%m월 %d일 %H시"),       # 시간 단위
+    dict(dtickrange=[86400000, 604800000], value="%Y년 %m월 %d일"),     # 일 단위
+    dict(dtickrange=[604800000, None], value="%Y년 %m월"),              # 주/월 단위
+]
+
+
+def _korean_date_axis(fig: go.Figure) -> go.Figure:
+    """x축(시간)을 한글 년/월/일 표기로 설정."""
+    fig.update_xaxes(tickformatstops=KDATE_STOPS)
+    return fig
+
+
 def grade_color(cao: float, alpha: float = 0.55) -> str:
     """CaO 를 목표(44.6) 기준 발산 색으로. 낮으면 파랑, 높으면 빨강."""
     if cao is None or np.isnan(cao):
@@ -55,7 +70,7 @@ def prediction_timeseries(index, actual, pred, oos, title) -> go.Figure:
     fig.update_layout(title=title, height=340, font=dict(size=12),
                       margin=dict(l=10, r=10, t=44, b=10),
                       yaxis_title="CaO (%)", legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
-    return fig
+    return _korean_date_axis(fig)
 
 
 def stage_cao_bar(stages) -> go.Figure:
@@ -126,7 +141,7 @@ def control_chart(times, values, lo, hi, title) -> go.Figure:
     fig.update_layout(title=title, height=340, font=dict(size=12), yaxis_title="CaO (%)",
                       margin=dict(l=10, r=10, t=44, b=10),
                       legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
-    return fig
+    return _korean_date_axis(fig)
 
 
 def alert_history_timeline(hist) -> go.Figure:
@@ -148,7 +163,7 @@ def alert_history_timeline(hist) -> go.Figure:
                           text=sub["message"], hovertemplate="%{x}<br>%{y}<br>%{text}<extra></extra>"))
     fig.update_layout(title="경보 이력 타임라인", height=300, font=dict(size=12),
                       margin=dict(l=10, r=10, t=44, b=10))
-    return fig
+    return _korean_date_axis(fig)
 
 
 def model_benchmark_bar(bench_df, title: str) -> go.Figure:
