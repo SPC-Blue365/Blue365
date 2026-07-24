@@ -225,9 +225,11 @@ def yardchange_trend(yc) -> go.Figure:
 def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
     """야드 변경 타임라인(Gantt) — 라인별로 '언제 어느 야드를 썼는지' 구간 표시.
 
-    각 구간 = [변경일 → 다음 변경일]. 막대 내부에 야드·변경일, 색=CaO/MgO(버튼 토글),
-    호버=변경일·야드·CaO·MgO·물량. '변경 5회'가 아니라 실제 변경일자로 흐름을 본다.
+    각 구간 = [변경일 → 다음 변경일]. 막대 내부=야드+함량값, 색=함량(colorbar 범례),
+    성분은 CaO/MgO 버튼 토글. 날짜는 x축이 담당(중복 라벨 제거로 가독성 개선).
     """
+    import re
+
     import pandas as pd
 
     if yc is None or len(yc) == 0:
@@ -240,39 +242,50 @@ def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
         for i in range(len(dd)):
             start = dd.loc[i, "datetime"]
             end = dd.loc[i + 1, "datetime"] if i + 1 < len(dd) else end_all
-            rows.append(dict(line=f"{line} 라인", yard=dd.loc[i, "yard"], start=start, end=end,
+            m = re.search(r"(Y\d)", str(dd.loc[i, "yard"]))
+            rows.append(dict(line=f"{line} 라인", yard=dd.loc[i, "yard"],
+                             short=m.group(1) if m else str(dd.loc[i, "yard"]),
+                             start=start, end=end,
                              cao=dd.loc[i, "cao"], mgo=dd.loc[i, "mgo"], ton=dd.loc[i, "tonnage"]))
     seg = pd.DataFrame(rows)
     dur = (seg["end"] - seg["start"]).dt.total_seconds() * 1000
-    cao_c = [grade_color(c, 0.85) for c in seg["cao"]]
-    mgo_c = [_mgo_color(m, 0.85) for m in seg["mgo"]]
+    cao_txt = [f"{s} · {c:.1f}" for s, c in zip(seg["short"], seg["cao"])]
+    mgo_txt = [f"{s} · {m:.2f}" for s, m in zip(seg["short"], seg["mgo"])]
     cdata = np.stack([seg["yard"], seg["cao"], seg["mgo"], seg["ton"],
                       [s.strftime("%Y/%m/%d") for s in seg["start"]]], axis=-1)
 
-    fig = go.Figure(go.Bar(
-        y=seg["line"], x=dur, base=seg["start"], orientation="h",
-        marker=dict(color=(cao_c if default == "CaO" else mgo_c), line=dict(color="white", width=1)),
-        text=[f"{y}·{s:%m/%d}" for y, s in zip(seg["yard"], seg["start"])],
-        textposition="inside", insidetextanchor="middle", textfont=dict(size=10),
-        customdata=cdata,
-        hovertemplate="%{customdata[4]} 변경 → %{customdata[0]}<br>"
-                      "CaO %{customdata[1]:.2f}% · MgO %{customdata[2]:.2f}%<br>"
-                      "야드물량 %{customdata[3]:,.0f}톤<extra></extra>",
-    ))
+    hover = ("<b>%{customdata[0]}</b> · %{customdata[4]} 변경<br>"
+             "CaO %{customdata[1]:.2f}% · MgO %{customdata[2]:.2f}%<br>"
+             "야드물량 %{customdata[3]:,.0f}톤<extra></extra>")
+    common = dict(y=seg["line"], x=dur, base=seg["start"], orientation="h",
+                  textposition="inside", insidetextanchor="middle",
+                  textfont=dict(size=11, color="#111"), constraintext="inside",
+                  cliponaxis=False, customdata=cdata, hovertemplate=hover)
+    is_cao = default == "CaO"
+    # 성분별 트레이스 2개(색=함량 연속 + colorbar). 버튼으로 표시 전환 → 컬러스케일 정확.
+    fig = go.Figure()
+    fig.add_trace(go.Bar(  # CaO: 목표기준 발산(RdBu 역), 낮음=파랑/높음=빨강
+        name="CaO", visible=is_cao, text=cao_txt,
+        marker=dict(color=seg["cao"], colorscale="RdBu", reversescale=True, cmin=43.0, cmax=46.2,
+                    colorbar=dict(title="CaO %", thickness=12, len=0.9), line=dict(color="white", width=1.2)),
+        **common))
+    fig.add_trace(go.Bar(  # MgO: 순차(OrRd), 낮음=연함/높음=진한 빨강
+        name="MgO", visible=not is_cao, text=mgo_txt,
+        marker=dict(color=seg["mgo"], colorscale="OrRd", cmin=2.5, cmax=4.5,
+                    colorbar=dict(title="MgO %", thickness=12, len=0.9), line=dict(color="white", width=1.2)),
+        **common))
+    ttl = "야드 변경 타임라인 — 막대 안=야드·{c} 함량, 색=함량(우측 범례)"
     fig.update_layout(
-        title=f"야드 변경 타임라인 · 색={default} (막대=야드 사용기간, 내부=야드·변경일)",
-        barmode="overlay", height=300, font=dict(size=12), xaxis_type="date",
-        margin=dict(l=10, r=10, t=64, b=10),
-        updatemenus=[dict(type="buttons", direction="right", x=1.0, y=1.22, xanchor="right",
-                          showactive=True, active=(0 if default == "CaO" else 1),
+        title=ttl.format(c=default), barmode="overlay", height=380, font=dict(size=12),
+        xaxis_type="date", bargap=0.35, margin=dict(l=10, r=10, t=66, b=10), showlegend=False,
+        updatemenus=[dict(type="buttons", direction="right", x=1.0, y=1.16, xanchor="right",
+                          showactive=True, active=(0 if is_cao else 1),
                           pad=dict(r=4, t=2), bgcolor="#f0f4f8",
                           buttons=[
                               dict(label="CaO", method="update",
-                                   args=[{"marker.color": [cao_c]},
-                                         {"title.text": "야드 변경 타임라인 · 색=CaO (막대=야드 사용기간, 내부=야드·변경일)"}]),
+                                   args=[{"visible": [True, False]}, {"title.text": ttl.format(c="CaO")}]),
                               dict(label="MgO", method="update",
-                                   args=[{"marker.color": [mgo_c]},
-                                         {"title.text": "야드 변경 타임라인 · 색=MgO (막대=야드 사용기간, 내부=야드·변경일)"}]),
+                                   args=[{"visible": [False, True]}, {"title.text": ttl.format(c="MgO")}]),
                           ])],
     )
     return _korean_date_axis(fig)

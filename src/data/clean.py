@@ -206,7 +206,8 @@ def clean_yard_change(df: pd.DataFrame, line: str) -> pd.DataFrame:
     out = pd.DataFrame()
     out["datetime"] = _combine_datetime(df["변경일"], df["변경시간"])
     out["line"] = line
-    out["yard"] = df["Yard"].astype(str).str.strip()
+    # 야드명 정규화: "-내수" 접미사 제거 (신설(Y1)-내수 → 신설(Y1))
+    out["yard"] = df["Yard"].astype(str).str.strip().str.replace("-내수", "", regex=False)
     out["cao"] = pd.to_numeric(df["석회석CaO"], errors="coerce")
     out["mgo"] = pd.to_numeric(df["석회석MgO"], errors="coerce")
     out["tonnage"] = pd.to_numeric(df["야드물량"], errors="coerce")
