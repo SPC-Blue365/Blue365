@@ -291,6 +291,39 @@ def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
     return _korean_date_axis(fig)
 
 
+def yardchange_std_summary(yc) -> go.Figure:
+    """야드별 CaO·MgO 표준편차(변동성) 막대. 목표 표준편차 0.5 기준선 포함.
+
+    변동성 축소가 프로젝트 목표(std ≤ 0.5)이므로, 야드별 변경구간 간 표준편차를 비교한다.
+    """
+    import pandas as pd
+
+    if yc is None or len(yc) == 0:
+        f = go.Figure(); f.update_layout(title="야드변경 데이터 없음", height=300); return f
+
+    order = ["기존(Y1)", "기존(Y2)", "신설(Y1)", "신설(Y2)"]
+    g = (yc.groupby("yard").agg(cao_std=("cao", "std"), mgo_std=("mgo", "std"),
+                                cao_m=("cao", "mean"), mgo_m=("mgo", "mean"), n=("yard", "size"))
+         .reindex([y for y in order if y in yc["yard"].unique()]).reset_index())
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=g["yard"], y=g["cao_std"], name="CaO 표준편차", marker_color="#1f77b4",
+                         text=[f"{v:.2f}" for v in g["cao_std"]], textposition="outside",
+                         customdata=np.stack([g["cao_m"], g["n"]], axis=-1),
+                         hovertemplate="%{x}<br>CaO 표준편차 %{y:.3f}<br>평균 %{customdata[0]:.2f}% · n=%{customdata[1]}<extra></extra>"))
+    fig.add_trace(go.Bar(x=g["yard"], y=g["mgo_std"], name="MgO 표준편차", marker_color="#ff7f0e",
+                         text=[f"{v:.2f}" for v in g["mgo_std"]], textposition="outside",
+                         customdata=np.stack([g["mgo_m"], g["n"]], axis=-1),
+                         hovertemplate="%{x}<br>MgO 표준편차 %{y:.3f}<br>평균 %{customdata[0]:.2f}% · n=%{customdata[1]}<extra></extra>"))
+    fig.add_hline(y=0.5, line=dict(color=GREEN, dash="dash"),
+                  annotation_text="목표 CaO 표준편차 0.5", annotation_position="top right")
+    fig.update_layout(title="야드별 CaO·MgO 표준편차 (변동성 — 낮을수록 안정)",
+                      barmode="group", height=360, font=dict(size=12), yaxis_title="표준편차 (%p)",
+                      margin=dict(l=10, r=10, t=46, b=10),
+                      legend=dict(orientation="h", y=1.14, x=1, xanchor="right"))
+    return fig
+
+
 def control_chart(times, values, lo, hi, title) -> go.Figure:
     """관리도: 최근 CaO + 규격밴드 + 통계 관리상/하한(평균±3σ) + 이탈점 강조."""
     v = np.asarray(values, dtype=float)

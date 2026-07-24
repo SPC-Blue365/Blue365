@@ -95,6 +95,7 @@ with tab2:
     if len(yc):
         st.plotly_chart(V.build_yardchange_sankey(yc, default="CaO"), use_container_width=True)
         st.plotly_chart(V.yardchange_trend(yc), use_container_width=True)
+        st.plotly_chart(V.yardchange_std_summary(yc), use_container_width=True)
         with st.expander("변경일자별 상세 데이터"):
             st.dataframe(yc.assign(datetime=yc["datetime"].dt.strftime("%Y/%m/%d %H:%M"))
                          .rename(columns={"datetime": "변경일시", "line": "라인", "yard": "야드",
