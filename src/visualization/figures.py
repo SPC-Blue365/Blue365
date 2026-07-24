@@ -222,6 +222,62 @@ def yardchange_trend(yc) -> go.Figure:
     return _korean_date_axis(fig)
 
 
+def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
+    """야드 변경 타임라인(Gantt) — 라인별로 '언제 어느 야드를 썼는지' 구간 표시.
+
+    각 구간 = [변경일 → 다음 변경일]. 막대 내부에 야드·변경일, 색=CaO/MgO(버튼 토글),
+    호버=변경일·야드·CaO·MgO·물량. '변경 5회'가 아니라 실제 변경일자로 흐름을 본다.
+    """
+    import pandas as pd
+
+    if yc is None or len(yc) == 0:
+        f = go.Figure(); f.update_layout(title="야드변경 데이터 없음", height=280); return f
+
+    end_all = yc["datetime"].max() + pd.Timedelta(days=2)
+    rows = []
+    for line, d in yc.sort_values("datetime").groupby("line"):
+        dd = d.reset_index(drop=True)
+        for i in range(len(dd)):
+            start = dd.loc[i, "datetime"]
+            end = dd.loc[i + 1, "datetime"] if i + 1 < len(dd) else end_all
+            rows.append(dict(line=f"{line} 라인", yard=dd.loc[i, "yard"], start=start, end=end,
+                             cao=dd.loc[i, "cao"], mgo=dd.loc[i, "mgo"], ton=dd.loc[i, "tonnage"]))
+    seg = pd.DataFrame(rows)
+    dur = (seg["end"] - seg["start"]).dt.total_seconds() * 1000
+    cao_c = [grade_color(c, 0.85) for c in seg["cao"]]
+    mgo_c = [_mgo_color(m, 0.85) for m in seg["mgo"]]
+    cdata = np.stack([seg["yard"], seg["cao"], seg["mgo"], seg["ton"],
+                      [s.strftime("%Y/%m/%d") for s in seg["start"]]], axis=-1)
+
+    fig = go.Figure(go.Bar(
+        y=seg["line"], x=dur, base=seg["start"], orientation="h",
+        marker=dict(color=(cao_c if default == "CaO" else mgo_c), line=dict(color="white", width=1)),
+        text=[f"{y}·{s:%m/%d}" for y, s in zip(seg["yard"], seg["start"])],
+        textposition="inside", insidetextanchor="middle", textfont=dict(size=10),
+        customdata=cdata,
+        hovertemplate="%{customdata[4]} 변경 → %{customdata[0]}<br>"
+                      "CaO %{customdata[1]:.2f}% · MgO %{customdata[2]:.2f}%<br>"
+                      "야드물량 %{customdata[3]:,.0f}톤<extra></extra>",
+    ))
+    fig.update_layout(
+        title=f"야드 변경 타임라인 · 색={default} (막대=야드 사용기간, 내부=야드·변경일)",
+        barmode="overlay", height=300, font=dict(size=12), xaxis_type="date",
+        margin=dict(l=10, r=10, t=64, b=10),
+        updatemenus=[dict(type="buttons", direction="right", x=1.0, y=1.22, xanchor="right",
+                          showactive=True, active=(0 if default == "CaO" else 1),
+                          pad=dict(r=4, t=2), bgcolor="#f0f4f8",
+                          buttons=[
+                              dict(label="CaO", method="update",
+                                   args=[{"marker.color": [cao_c]},
+                                         {"title.text": "야드 변경 타임라인 · 색=CaO (막대=야드 사용기간, 내부=야드·변경일)"}]),
+                              dict(label="MgO", method="update",
+                                   args=[{"marker.color": [mgo_c]},
+                                         {"title.text": "야드 변경 타임라인 · 색=MgO (막대=야드 사용기간, 내부=야드·변경일)"}]),
+                          ])],
+    )
+    return _korean_date_axis(fig)
+
+
 def control_chart(times, values, lo, hi, title) -> go.Figure:
     """관리도: 최근 CaO + 규격밴드 + 통계 관리상/하한(평균±3σ) + 이탈점 강조."""
     v = np.asarray(values, dtype=float)
@@ -290,6 +346,62 @@ def model_benchmark_bar(bench_df, title: str) -> go.Figure:
     fig.update_layout(title=title, height=430, font=dict(size=11),
                       margin=dict(l=10, r=10, t=44, b=10), xaxis_title="MAE (낮을수록 좋음)")
     return fig
+
+
+def assemble_tabbed_html(title: str, tabs: list[dict]) -> str:
+    """여러 탭을 가진 단일 통합 HTML. tabs=[{name, sections:[(heading, Figure|html)]}].
+
+    plotly.js 는 1회만 인라인. 탭 전환 시 숨겨진 차트를 Plotly.Plots.resize 로 재조정.
+    """
+    import plotly.io as pio
+
+    state = {"first": True}
+
+    def render(obj) -> str:
+        if isinstance(obj, go.Figure):
+            inc = state["first"]
+            state["first"] = False
+            return pio.to_html(obj, include_plotlyjs=(True if inc else False),
+                               full_html=False, config={"displayModeBar": False})
+        return str(obj)
+
+    nav, panels = [], []
+    for i, tab in enumerate(tabs):
+        act = " active" if i == 0 else ""
+        nav.append(f'<button class="tabbtn{act}" onclick="showTab({i})">{tab["name"]}</button>')
+        body = []
+        for heading, obj in tab["sections"]:
+            if heading:
+                body.append(f"<h2>{heading}</h2>")
+            body.append(render(obj))
+        panels.append(f'<div class="tabpanel{act}" id="tab{i}">{"".join(body)}</div>')
+
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
+<style>body{{font-family:system-ui,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;margin:0;color:#1a1a1a;background:#f7f9fb}}
+header{{background:#12395c;color:#fff;padding:16px 22px}}header h1{{margin:0;font-size:1.35rem}}
+nav{{position:sticky;top:0;background:#fff;border-bottom:2px solid #12395c;padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;z-index:9}}
+.tabbtn{{border:none;background:#eef2f6;color:#12395c;padding:9px 14px;border-radius:7px 7px 0 0;cursor:pointer;font-size:.92rem;font-weight:600}}
+.tabbtn.active{{background:#12395c;color:#fff}}
+.wrap{{max-width:1060px;margin:0 auto;padding:16px}}
+.tabpanel{{display:none}}.tabpanel.active{{display:block}}
+h2{{color:#12395c;margin-top:26px;border-left:5px solid #1f77b4;padding-left:10px}}
+table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:center}}th{{background:#eef2f6}}
+.ok{{background:#e8f5e9;border-left:4px solid #2ca02c;padding:10px 14px;margin:12px 0;border-radius:4px}}
+.note{{background:#fff8e1;border-left:4px solid #ffb300;padding:10px 14px;margin:12px 0;border-radius:4px}}
+pre{{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto}}code{{background:#f4f4f4;padding:1px 5px;border-radius:3px}}</style></head>
+<body><header><h1>{title}</h1></header>
+<nav>{"".join(nav)}</nav>
+<div class="wrap">{"".join(panels)}</div>
+<p style="color:#888;font-size:.82rem;text-align:center;padding:14px">※ 본 리포트·데이터는 로컬 전용입니다. 외부(원격)에 발행/커밋하지 않습니다.</p>
+<script>
+function showTab(i){{
+  document.querySelectorAll('.tabpanel').forEach((p,idx)=>p.classList.toggle('active',idx===i));
+  document.querySelectorAll('.tabbtn').forEach((b,idx)=>b.classList.toggle('active',idx===i));
+  document.querySelectorAll('#tab'+i+' .plotly-graph-div').forEach(d=>{{if(window.Plotly)Plotly.Plots.resize(d);}});
+}}
+window.addEventListener('load',()=>showTab(0));
+</script></body></html>"""
 
 
 def assemble_html(title: str, sections: list[tuple[str, object]], tail_html: str = "") -> str:
