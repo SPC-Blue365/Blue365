@@ -35,11 +35,13 @@ def _time_range_controls(fig: go.Figure, slider: bool = True) -> go.Figure:
                 dict(count=7, label="1주", step="day", stepmode="backward"),
                 dict(count=14, label="2주", step="day", stepmode="backward"),
                 dict(count=1, label="1개월", step="month", stepmode="backward"),
+                dict(count=1, label="1년", step="year", stepmode="backward"),
                 dict(step="all", label="전체"),
             ],
             x=1, xanchor="right", y=1.02, yanchor="bottom",
-            bgcolor="#eef2f6", activecolor="#12395c", bordercolor="#c3ccd6",
-            borderwidth=1, font=dict(size=11),
+            # 활성 버튼은 어둡게 채우지 않고 '밝은 강조 + 진한 테두리'로 (글씨 항상 보이게)
+            bgcolor="#f4f7fa", activecolor="#cfe0f2", bordercolor="#12395c",
+            borderwidth=1, font=dict(size=11, color="#12395c"),
         ),
         rangeslider=dict(visible=slider, thickness=0.07),
     )
