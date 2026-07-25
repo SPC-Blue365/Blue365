@@ -27,6 +27,25 @@ def _korean_date_axis(fig: go.Figure) -> go.Figure:
     return fig
 
 
+def _time_range_controls(fig: go.Figure, slider: bool = True) -> go.Figure:
+    """그래프 우측 상단에 기간 선택 버튼(1주/2주/1개월/전체) + 하단 기간 슬라이더."""
+    fig.update_xaxes(
+        rangeselector=dict(
+            buttons=[
+                dict(count=7, label="1주", step="day", stepmode="backward"),
+                dict(count=14, label="2주", step="day", stepmode="backward"),
+                dict(count=1, label="1개월", step="month", stepmode="backward"),
+                dict(step="all", label="전체"),
+            ],
+            x=1, xanchor="right", y=1.02, yanchor="bottom",
+            bgcolor="#eef2f6", activecolor="#12395c", bordercolor="#c3ccd6",
+            borderwidth=1, font=dict(size=11),
+        ),
+        rangeslider=dict(visible=slider, thickness=0.07),
+    )
+    return fig
+
+
 def grade_color(cao: float, alpha: float = 0.55) -> str:
     """CaO 를 목표(44.6) 기준 발산 색으로. 낮으면 파랑, 높으면 빨강."""
     if cao is None or np.isnan(cao):
@@ -70,7 +89,7 @@ def prediction_timeseries(index, actual, pred, oos, title) -> go.Figure:
     fig.update_layout(title=title, height=340, font=dict(size=12),
                       margin=dict(l=10, r=10, t=44, b=10),
                       yaxis_title="CaO (%)", legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
-    return _korean_date_axis(fig)
+    return _time_range_controls(_korean_date_axis(fig))
 
 
 def stage_cao_bar(stages) -> go.Figure:
@@ -219,7 +238,7 @@ def yardchange_trend(yc) -> go.Figure:
         margin=dict(l=10, r=10, t=46, b=10),
         yaxis=dict(title="CaO (%)"), yaxis2=dict(title="MgO (%)", overlaying="y", side="right", showgrid=False),
         legend=dict(orientation="h", y=1.14, x=1, xanchor="right"))
-    return _korean_date_axis(fig)
+    return _time_range_controls(_korean_date_axis(fig))
 
 
 def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
@@ -276,9 +295,10 @@ def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
         **common))
     ttl = "야드 변경 타임라인 — 막대 안=야드·{c} 함량, 색=함량(우측 범례)"
     fig.update_layout(
-        title=ttl.format(c=default), barmode="overlay", height=380, font=dict(size=12),
-        xaxis_type="date", bargap=0.35, margin=dict(l=10, r=10, t=66, b=10), showlegend=False,
-        updatemenus=[dict(type="buttons", direction="right", x=1.0, y=1.16, xanchor="right",
+        title=dict(text=ttl.format(c=default), x=0.5, xanchor="center"),
+        barmode="overlay", height=420, font=dict(size=12),
+        xaxis_type="date", bargap=0.35, margin=dict(l=10, r=10, t=76, b=10), showlegend=False,
+        updatemenus=[dict(type="buttons", direction="right", x=0.0, y=1.14, xanchor="left",
                           showactive=True, active=(0 if is_cao else 1),
                           pad=dict(r=4, t=2), bgcolor="#f0f4f8",
                           buttons=[
@@ -288,7 +308,7 @@ def yardchange_gantt(yc, default: str = "CaO") -> go.Figure:
                                    args=[{"visible": [False, True]}, {"title.text": ttl.format(c="MgO")}]),
                           ])],
     )
-    return _korean_date_axis(fig)
+    return _time_range_controls(_korean_date_axis(fig))
 
 
 def _std_bar(g, title: str) -> go.Figure:
@@ -370,7 +390,7 @@ def control_chart(times, values, lo, hi, title) -> go.Figure:
     fig.update_layout(title=title, height=340, font=dict(size=12), yaxis_title="CaO (%)",
                       margin=dict(l=10, r=10, t=44, b=10),
                       legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
-    return _korean_date_axis(fig)
+    return _time_range_controls(_korean_date_axis(fig))
 
 
 def alert_history_timeline(hist) -> go.Figure:
@@ -392,7 +412,7 @@ def alert_history_timeline(hist) -> go.Figure:
                           text=sub["message"], hovertemplate="%{x}<br>%{y}<br>%{text}<extra></extra>"))
     fig.update_layout(title="경보 이력 타임라인", height=300, font=dict(size=12),
                       margin=dict(l=10, r=10, t=44, b=10))
-    return _korean_date_axis(fig)
+    return _time_range_controls(_korean_date_axis(fig))
 
 
 def model_benchmark_bar(bench_df, title: str) -> go.Figure:
