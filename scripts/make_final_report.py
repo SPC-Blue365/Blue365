@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import warnings
 from pathlib import Path
@@ -115,18 +116,40 @@ def main(start=None, end=None):
     overall = max((st.level for st in statuses.values()), key=lambda x: int(x))
     ov_icon, ov_label = BADGE[overall]
     status_line = " · ".join(f"{BADGE[st.level][0]} {ln} {BADGE[st.level][1]}" for ln, st in statuses.items())
+
+    # 일별 CaO 집계(개수/합/제곱합) → HTML 내 JS가 기간별 평균·표준편차를 정확 재계산
+    def _daily_cao(df):
+        d = df.dropna(subset=["datetime", "cao"]).copy()
+        d["d"] = d["datetime"].dt.strftime("%Y-%m-%d")
+        rows = []
+        for dd, gg in d.groupby("d"):
+            c = gg["cao"].values.astype(float)
+            rows.append([dd, int(len(c)), float(c.sum()), float((c ** 2).sum())])
+        return rows
+    sumagg_json = json.dumps({"신설": _daily_cao(yards[S.LINE_NEW]), "기존": _daily_cao(yards[S.LINE_OLD])},
+                             ensure_ascii=False)
+    sum_script = (
+        "<script>window.SUMAGG=" + sumagg_json + ";"
+        "window.recomputeSummary=function(s,e){s=s||'0000';e=e||'9999';"
+        "[['신설','New'],['기존','Old']].forEach(function(p){var a=(window.SUMAGG[p[0]]||[]),n=0,su=0,ss=0;"
+        "a.forEach(function(r){if(r[0]>=s&&r[0]<=e){n+=r[1];su+=r[2];ss+=r[3];}});"
+        "var em=document.getElementById('sum'+p[1]+'Mean'),es=document.getElementById('sum'+p[1]+'Std');"
+        "if(n>0){var m=su/n,v=Math.max(0,ss/n-m*m),sd=Math.sqrt(v);"
+        "if(em)em.innerText=m.toFixed(1);if(es)es.innerText=sd.toFixed(1);}"
+        "else{if(em)em.innerText='-';if(es)es.innerText='-';}});};</script>"
+    )
     exec_summary = (
         '<div class="exec">'
         f'<h2 style="border:none;margin:10px 0 4px">📌 경영 요약</h2>'
         f'<p style="font-size:1.05rem"><b>현재 상태: {ov_icon} {ov_label}</b> &nbsp;({status_line})</p>'
-        f'<p style="color:#8a6d1a;background:#fff8e1;padding:6px 10px;border-radius:4px;font-size:.86rem;margin:6px 0">'
-        f'⚠️ 아래 요약 수치는 <b>리포트 기간({rmin}~{rmax}) 전체 기준</b>입니다. '
-        f'상단 날짜 버튼은 <b>차트 확대(줌)용</b>이며 요약 숫자는 바뀌지 않습니다 — '
-        f'특정 기간 요약이 필요하면 그 기간으로 리포트를 재생성하세요.</p>'
+        f'<p style="color:#245;background:#eef5ff;padding:6px 10px;border-radius:4px;font-size:.86rem;margin:6px 0">'
+        f'ℹ️ 상단 <b>기간 직접설정</b>을 적용하면 아래 <b>야드 평균·변동 수치가 그 기간으로 자동 갱신</b>됩니다 '
+        f'(기본: 전체 {rmin}~{rmax}). 현재 상태·예측 정확도는 최신/모델 기준이라 기간과 무관합니다. '
+        f'각 그래프의 버튼·슬라이더는 그 그래프만 확대합니다.</p>'
         '<div class="kpirow">'
         f'<div class="kpi"><div class="v">{S.TARGET.cao_mean}±{S.TARGET.tol}%</div><div class="l">품질 목표 (CaO 평균±표준편차)</div></div>'
-        f'<div class="kpi"><div class="v">{ycna.mean():.1f}%</div><div class="l">신설 야드 평균 (변동 ±{ycna.std():.1f})</div></div>'
-        f'<div class="kpi"><div class="v">{y45.mean():.1f}%</div><div class="l">기존 야드 평균 (변동 ±{y45.std():.1f})</div></div>'
+        f'<div class="kpi"><div class="v"><span id="sumNewMean">{ycna.mean():.1f}</span>%</div><div class="l">신설 야드 평균 (변동 ±<span id="sumNewStd">{ycna.std():.1f}</span>)</div></div>'
+        f'<div class="kpi"><div class="v"><span id="sumOldMean">{y45.mean():.1f}</span>%</div><div class="l">기존 야드 평균 (변동 ±<span id="sumOldStd">{y45.std():.1f}</span>)</div></div>'
         f'<div class="kpi"><div class="v">±{statuses["신설"].recent_mae:.1f}%p</div><div class="l">예측 정확도(오차, 낮을수록 정확)</div></div>'
         '</div>'
         '<p><b>핵심 진단:</b> 야드 품위 <b>평균은 목표에 근접</b>하나, 시점별 <b>변동성(표준편차)이 목표(0.5)보다 큼</b>. '
@@ -136,7 +159,7 @@ def main(start=None, end=None):
         '② <b>야드 변경·품위 추적</b>으로 원인(어느 야드·시점)을 규명 → '
         '③ 데이터가 쌓이면 <b>배합 최적화</b>로 목표 품위를 사전 제어. '
         '데이터가 축적될수록 예측·제어 정밀도는 계속 향상됩니다.</p>'
-        '</div>'
+        '</div>' + sum_script
     )
     guide = (
         '<h2>이 대시보드 읽는 법</h2>'

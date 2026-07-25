@@ -522,10 +522,12 @@ function applyRange(){{
   var s=document.getElementById('drS').value, e=document.getElementById('drE').value;
   if(!s||!e){{return;}}
   _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.range':[s+' 00:00:00', e+' 23:59:59']}});}});
+  if(window.recomputeSummary){{window.recomputeSummary(s,e);}}
 }}
 function resetRange(){{
   document.getElementById('drS').value=DR_MIN; document.getElementById('drE').value=DR_MAX;
   _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.autorange':true}});}});
+  if(window.recomputeSummary){{window.recomputeSummary(DR_MIN,DR_MAX);}}
 }}
 function showTab(i){{
   document.querySelectorAll('.tabpanel').forEach((p,idx)=>p.classList.toggle('active',idx===i));
