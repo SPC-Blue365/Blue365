@@ -109,6 +109,9 @@ def main(start=None, end=None):
         return f'<p class="cap">💬 {t}</p>'
 
     # ── 경영 요약 (Executive Summary) ──
+    _a = pd.concat([yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)])
+    rmin = pd.to_datetime(_a.min()).strftime("%Y/%m/%d")
+    rmax = pd.to_datetime(_a.max()).strftime("%Y/%m/%d")
     overall = max((st.level for st in statuses.values()), key=lambda x: int(x))
     ov_icon, ov_label = BADGE[overall]
     status_line = " · ".join(f"{BADGE[st.level][0]} {ln} {BADGE[st.level][1]}" for ln, st in statuses.items())
@@ -116,6 +119,10 @@ def main(start=None, end=None):
         '<div class="exec">'
         f'<h2 style="border:none;margin:10px 0 4px">📌 경영 요약</h2>'
         f'<p style="font-size:1.05rem"><b>현재 상태: {ov_icon} {ov_label}</b> &nbsp;({status_line})</p>'
+        f'<p style="color:#8a6d1a;background:#fff8e1;padding:6px 10px;border-radius:4px;font-size:.86rem;margin:6px 0">'
+        f'⚠️ 아래 요약 수치는 <b>리포트 기간({rmin}~{rmax}) 전체 기준</b>입니다. '
+        f'상단 날짜 버튼은 <b>차트 확대(줌)용</b>이며 요약 숫자는 바뀌지 않습니다 — '
+        f'특정 기간 요약이 필요하면 그 기간으로 리포트를 재생성하세요.</p>'
         '<div class="kpirow">'
         f'<div class="kpi"><div class="v">{S.TARGET.cao_mean}±{S.TARGET.tol}%</div><div class="l">품질 목표 (CaO 평균±표준편차)</div></div>'
         f'<div class="kpi"><div class="v">{ycna.mean():.1f}%</div><div class="l">신설 야드 평균 (변동 ±{ycna.std():.1f})</div></div>'
