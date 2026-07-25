@@ -438,10 +438,11 @@ def model_benchmark_bar(bench_df, title: str) -> go.Figure:
     return fig
 
 
-def assemble_tabbed_html(title: str, tabs: list[dict]) -> str:
+def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None = None) -> str:
     """여러 탭을 가진 단일 통합 HTML. tabs=[{name, sections:[(heading, Figure|html)]}].
 
     plotly.js 는 1회만 인라인. 탭 전환 시 숨겨진 차트를 Plotly.Plots.resize 로 재조정.
+    date_range=(min, max) 지정 시 상단에 년-월-일 직접 입력 컨트롤(모든 시간축 차트 확대) 추가.
     """
     import plotly.io as pio
 
@@ -466,6 +467,18 @@ def assemble_tabbed_html(title: str, tabs: list[dict]) -> str:
             body.append(render(obj))
         panels.append(f'<div class="tabpanel{act}" id="tab{i}">{"".join(body)}</div>')
 
+    dmin, dmax = (date_range or ("", ""))
+    daterow = ""
+    if date_range:
+        daterow = (
+            '<div class="daterow">📅 기간 직접설정: '
+            f'<input type="date" id="drS" value="{dmin}" min="{dmin}" max="{dmax}"> ~ '
+            f'<input type="date" id="drE" value="{dmax}" min="{dmin}" max="{dmax}"> '
+            '<button onclick="applyRange()">적용</button>'
+            '<button class="ghost" onclick="resetRange()">전체</button>'
+            '<span class="hint">모든 시간축 차트가 선택 기간으로 확대됩니다</span></div>'
+        )
+
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>body{{font-family:system-ui,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;margin:0;color:#1a1a1a;background:#f7f9fb}}
@@ -473,6 +486,11 @@ header{{background:#12395c;color:#fff;padding:16px 22px}}header h1{{margin:0;fon
 nav{{position:sticky;top:0;background:#fff;border-bottom:2px solid #12395c;padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;z-index:9}}
 .tabbtn{{border:none;background:#eef2f6;color:#12395c;padding:9px 14px;border-radius:7px 7px 0 0;cursor:pointer;font-size:.92rem;font-weight:600}}
 .tabbtn.active{{background:#12395c;color:#fff}}
+.daterow{{background:#eef2f6;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.9rem;border-bottom:1px solid #d5dde5}}
+.daterow input[type=date]{{padding:4px 6px;border:1px solid #b9c4cf;border-radius:5px;font-size:.88rem}}
+.daterow button{{background:#12395c;color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-weight:600}}
+.daterow button.ghost{{background:#fff;color:#12395c;border:1px solid #12395c}}
+.daterow .hint{{color:#667;font-size:.8rem;margin-left:6px}}
 .wrap{{max-width:1060px;margin:0 auto;padding:16px}}
 .tabpanel{{display:none}}.tabpanel.active{{display:block}}
 h2{{color:#12395c;margin-top:26px;border-left:5px solid #1f77b4;padding-left:10px}}
@@ -482,9 +500,25 @@ table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px soli
 pre{{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto}}code{{background:#f4f4f4;padding:1px 5px;border-radius:3px}}</style></head>
 <body><header><h1>{title}</h1></header>
 <nav>{"".join(nav)}</nav>
+{daterow}
 <div class="wrap">{"".join(panels)}</div>
 <p style="color:#888;font-size:.82rem;text-align:center;padding:14px">※ 본 리포트·데이터는 로컬 전용입니다. 외부(원격)에 발행/커밋하지 않습니다.</p>
 <script>
+var DR_MIN="{dmin}", DR_MAX="{dmax}";
+function _timeGraphs(){{
+  return [...document.querySelectorAll('.plotly-graph-div')].filter(function(g){{
+    return g._fullLayout && g._fullLayout.xaxis && g._fullLayout.xaxis.type==='date';
+  }});
+}}
+function applyRange(){{
+  var s=document.getElementById('drS').value, e=document.getElementById('drE').value;
+  if(!s||!e){{return;}}
+  _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.range':[s+' 00:00:00', e+' 23:59:59']}});}});
+}}
+function resetRange(){{
+  document.getElementById('drS').value=DR_MIN; document.getElementById('drE').value=DR_MAX;
+  _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.autorange':true}});}});
+}}
 function showTab(i){{
   document.querySelectorAll('.tabpanel').forEach((p,idx)=>p.classList.toggle('active',idx===i));
   document.querySelectorAll('.tabbtn').forEach((b,idx)=>b.classList.toggle('active',idx===i));

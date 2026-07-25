@@ -140,7 +140,11 @@ def main(start=None, end=None):
              "<p>구조 완성. 데이터 축적으로 구역-품위 추정이 정밀해지면 처방 정밀도 상승.</p>")]},
     ]
 
-    html = V.assemble_tabbed_html("석회석 광산-야드 CaO 추적·예측 통합 리포트" + period_txt, tabs)
+    # 데이터 전체 기간 → 날짜 직접입력 컨트롤 범위
+    alldt = pd.concat([yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)])
+    dr = (pd.to_datetime(alldt.min()).strftime("%Y-%m-%d"),
+          pd.to_datetime(alldt.max()).strftime("%Y-%m-%d")) if len(alldt) else None
+    html = V.assemble_tabbed_html("석회석 광산-야드 CaO 추적·예측 통합 리포트" + period_txt, tabs, date_range=dr)
     out = OUTPUTS_DIR / "final_report.html"
     out.write_text(html, encoding="utf-8")
     print(f"[OK] 최종 통합 리포트: {out} ({out.stat().st_size // 1024} KB){period_txt}")
