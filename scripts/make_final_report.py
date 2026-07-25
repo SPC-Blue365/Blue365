@@ -105,39 +105,113 @@ def main(start=None, end=None):
                      f'<br>최신 CaO {st.latest_actual:.2f}% (예측 {st.latest_pred:.2f}) · 최근 MAE {st.recent_mae:.2f}'
                      f'<ul>{al}</ul></div>')
 
+    def cap(t):
+        return f'<p class="cap">💬 {t}</p>'
+
+    # ── 경영 요약 (Executive Summary) ──
+    overall = max((st.level for st in statuses.values()), key=lambda x: int(x))
+    ov_icon, ov_label = BADGE[overall]
+    status_line = " · ".join(f"{BADGE[st.level][0]} {ln} {BADGE[st.level][1]}" for ln, st in statuses.items())
+    exec_summary = (
+        '<div class="exec">'
+        f'<h2 style="border:none;margin:10px 0 4px">📌 경영 요약</h2>'
+        f'<p style="font-size:1.05rem"><b>현재 상태: {ov_icon} {ov_label}</b> &nbsp;({status_line})</p>'
+        '<div class="kpirow">'
+        f'<div class="kpi"><div class="v">{S.TARGET.cao_mean}±{S.TARGET.tol}%</div><div class="l">품질 목표 (CaO 평균±표준편차)</div></div>'
+        f'<div class="kpi"><div class="v">{ycna.mean():.1f}%</div><div class="l">신설 야드 평균 (변동 ±{ycna.std():.1f})</div></div>'
+        f'<div class="kpi"><div class="v">{y45.mean():.1f}%</div><div class="l">기존 야드 평균 (변동 ±{y45.std():.1f})</div></div>'
+        f'<div class="kpi"><div class="v">±{statuses["신설"].recent_mae:.1f}%p</div><div class="l">예측 정확도(오차, 낮을수록 정확)</div></div>'
+        '</div>'
+        '<p><b>핵심 진단:</b> 야드 품위 <b>평균은 목표에 근접</b>하나, 시점별 <b>변동성(표준편차)이 목표(0.5)보다 큼</b>. '
+        '→ 과제는 평균 이동이 아니라 <b>변동성 축소(안정화)</b>.</p>'
+        '<p><b>앞으로 이렇게 관리하겠습니다:</b> '
+        '① <b>실시간 모니터링·조기경보</b>로 규격 이탈을 즉시 감지 → '
+        '② <b>야드 변경·품위 추적</b>으로 원인(어느 야드·시점)을 규명 → '
+        '③ 데이터가 쌓이면 <b>배합 최적화</b>로 목표 품위를 사전 제어. '
+        '데이터가 축적될수록 예측·제어 정밀도는 계속 향상됩니다.</p>'
+        '</div>'
+    )
+    guide = (
+        '<h2>이 대시보드 읽는 법</h2>'
+        '<ul>'
+        '<li><b>🌊 추적 흐름</b> — 캔 원석이 어느 라인·야드로, 언제 흘렀는지(물류·품위)</li>'
+        '<li><b>📈 변경일자별 추이</b> — 시간에 따른 품위 변화와 변동성(표준편차)</li>'
+        '<li><b>🤖 예측·모델</b> — 야드 품위를 얼마나 정확히 미리 맞히는지</li>'
+        '<li><b>📊 관리도</b> — 규격 이탈 여부를 감시(품질관리 표준 차트)</li>'
+        '<li><b>🚨 모니터·경보</b> — 지금 상태를 신호등으로 즉시 확인</li>'
+        '<li><b>⚗️ 배합 최적화</b> — 향후 목표품위 자동 배합(로드맵)</li>'
+        '</ul>'
+        '<p style="color:#667;font-size:.9rem">※ 각 그래프 위 날짜창·버튼으로 원하는 기간만 확대해 볼 수 있습니다.</p>'
+    )
+    glossary = (
+        '<h2>용어 (간단 풀이)</h2>'
+        '<dl class="glossary">'
+        '<dt>표준편차</dt><dd>값들이 평균에서 얼마나 흩어졌는지. 작을수록 일정(안정). 목표 0.5.</dd>'
+        '<dt>예측 오차(MAE)</dt><dd>예측이 실제와 평균 몇 %p 어긋나는지. 작을수록 정확.</dd>'
+        '<dt>관리도(UCL/LCL)</dt><dd>공정이 정상 범위(관리 상·하한) 안에 있는지 보는 품질관리 차트.</dd>'
+        '<dt>Sankey(흐름도)</dt><dd>물량·흐름의 크기를 띠 굵기로 보여주는 그림.</dd>'
+        '<dt>예측 모델(Ridge)</dt><dd>여러 기법 비교 후 채택한, 데이터가 적을 때 가장 안정적인 예측 방식.</dd>'
+        '</dl>'
+    )
+
     tabs = [
-        {"name": "📋 개요", "sections": [("프로젝트 개요 & 핵심 지표", overview)]},
+        {"name": "📋 개요", "sections": [
+            ("", exec_summary), ("", guide), ("", glossary),
+            ("프로젝트 개요 & 세부 지표", overview)]},
         {"name": "🌊 추적 흐름", "sections": [
-            ("야드 변경 타임라인 (언제 어느 야드로) — CaO/MgO 버튼", V.yardchange_gantt(yc, "CaO")),
-            ("야드변경 기반 Sankey (라인→야드, CaO/MgO 버튼)", V.build_yardchange_sankey(yc, "CaO")),
-            ("물류 개요 Sankey (광산→OSP→야드, 누적)", V.build_tracking_sankey(mine, osp_exp, yards)),
+            ("야드 변경 타임라인 (언제 어느 야드로) — CaO/MgO 버튼",
+             cap("각 라인이 <b>언제 어느 야드(Y1/Y2)</b>를 썼는지와 그때 품위. 막대 색이 진할수록 CaO 높음(우측 범례). 상단 날짜창·버튼으로 기간 확대.")),
+            ("", V.yardchange_gantt(yc, "CaO")),
+            ("야드변경 기반 Sankey (라인→야드)",
+             cap("라인별로 두 야드에 실린 <b>총 물량(띠 굵기)</b>과 <b>평균 품위(색)</b>. CaO/MgO 버튼으로 성분 전환.")),
+            ("", V.build_yardchange_sankey(yc, "CaO")),
+            ("물류 개요 Sankey (광산→OSP→야드)",
+             cap("광산(49Q·47Q)에서 캔 원석이 <b>어느 라인·야드로 얼마나</b> 흘렀는지 전체 물류를 한눈에. 굵을수록 물량 많음.")),
+            ("", V.build_tracking_sankey(mine, osp_exp, yards)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
-            ("변경일자별 야드 CaO·MgO 추이", V.yardchange_trend(yc)),
-            ("야드별 표준편차 (변경데이터)", V.yardchange_std_summary(yc, "yard")),
-            ("라인별 표준편차 (변경데이터)", V.yardchange_std_summary(yc, "line")),
-            ("라인별 표준편차 (연속 야드측정 CNA/45Q)", V.continuous_std_summary(yards)),
+            ("변경일자별 야드 CaO·MgO 추이",
+             cap("야드 변경 시점마다 <b>CaO(실선·왼쪽축)·MgO(점선·오른쪽축)</b>가 어떻게 움직였는지. 초록 띠=목표 규격, 마커 클수록 물량 많음.")),
+            ("", V.yardchange_trend(yc)),
+            ("야드별 표준편차 (변경데이터)",
+             cap("<b>품위가 얼마나 들쭉날쭉한지</b>(표준편차, 막대 낮을수록 안정). 초록 점선=목표 0.5.")),
+            ("", V.yardchange_std_summary(yc, "yard")),
+            ("라인별 표준편차 (변경데이터)",
+             cap("위와 같되 <b>라인(기존/신설) 단위</b>로 묶어 본 변동성.")),
+            ("", V.yardchange_std_summary(yc, "line")),
+            ("라인별 표준편차 (연속 야드측정 CNA/45Q)",
+             cap("<b>실시간 분석기 실측</b> 기준 변동성 — 대표값(위)보다 실제 변동이 훨씬 큼(목표 0.5와 큰 격차). <b>이 격차 축소가 핵심 과제.</b>")),
+            ("", V.continuous_std_summary(yards)),
             ("변경일자별 상세", "<table><tr><th>변경일시</th><th>라인</th><th>야드</th><th>CaO</th><th>MgO</th><th>야드물량</th></tr>"
              + "".join(f"<tr><td>{r.datetime:%Y/%m/%d %H:%M}</td><td>{r.line}</td><td>{r.yard}</td>"
                       f"<td>{r.cao:.2f}</td><td>{r.mgo:.2f}</td><td>{r.tonnage:,.0f}</td></tr>"
                       for r in yc.sort_values('datetime').itertuples()) + "</table>"),
         ]},
         {"name": "🤖 예측·모델", "sections": [
-            ("최적 모델 벤치마크 (10개)", "<table><tr><th>라인→야드</th><th>추천</th><th>최적 MAE</th></tr>"
-             + "".join(reco_rows) + "</table>"
-             '<div class="ok">선형(Ridge)이 최적 — 부스팅은 소표본 과적합으로 열위.</div>'),
+            ("최적 모델 벤치마크 (10개)",
+             cap("여러 예측기법을 <b>같은 조건에서 겨뤄</b> 오차(MAE, 낮을수록 정확)를 비교. 소량 데이터엔 선형(Ridge)이 최적.")
+             + "<table><tr><th>라인→야드</th><th>추천</th><th>최적 MAE</th></tr>"
+             + "".join(reco_rows) + "</table>"),
             ("", bench_secs[0][1]), ("", bench_secs[1][1]),
-            ("라인별 예측 실측 대비", "<table><tr><th>라인</th><th>야드</th><th>검증 MAE</th></tr>" + "".join(metric_rows) + "</table>"),
+            ("라인별 예측 실측 대비",
+             cap("검증 구간에서 <b>예측(빨강)과 실제(파랑)</b>가 가까울수록 정확. 주황 삼각형=규격 이탈 경보 지점. 표는 오차(MAE, %).")
+             + "<table><tr><th>라인</th><th>야드</th><th>검증 MAE</th></tr>" + "".join(metric_rows) + "</table>"),
             ("", pred_secs[0][1]), ("", pred_secs[1][1]),
         ]},
         {"name": "📊 관리도", "sections": [
-            ("규격내 시간 비율 (KPI)", "<table><tr><th>라인→야드</th><th>규격내 비율</th></tr>" + "".join(kpi_rows) + "</table>"),
+            ("규격내 시간 비율 (KPI)",
+             cap("품위가 <b>규격(44.1~45.1%) 안에 머문 시간 비율</b>. 높을수록 안정.")
+             + "<table><tr><th>라인→야드</th><th>규격내 비율</th></tr>" + "".join(kpi_rows) + "</table>"),
             ("", ctrl_secs[0][1]), ("", ctrl_secs[1][1]),
         ]},
-        {"name": "🚨 모니터·경보", "sections": [("라인별 실시간 상태", "".join(cards))]},
+        {"name": "🚨 모니터·경보", "sections": [
+            ("라인별 실시간 상태",
+             cap("현재 상태를 <b>신호등</b>으로. 🔴=규격 이탈/지속, 🟡=주의, 🟢=정상. 새 데이터가 오면 자동 갱신.")
+             + "".join(cards))]},
         {"name": "⚗️ 배합 최적화", "sections": [
-            ("배합 최적화 (경로 2 · 향후용)", f"<pre>{demo.summary()}</pre>"
-             "<p>구조 완성. 데이터 축적으로 구역-품위 추정이 정밀해지면 처방 정밀도 상승.</p>")]},
+            ("배합 최적화 (향후 로드맵)",
+             cap("목표 품위(44.6%)를 맞추려면 <b>각 구역에서 몇 톤을 섞을지</b> 역산. 지금은 방향성 가이드, 데이터 축적 시 정밀 처방.")
+             + f"<pre>{demo.summary()}</pre>")]},
     ]
 
     # 데이터 전체 기간 → 날짜 직접입력 컨트롤 범위
