@@ -534,7 +534,7 @@ function showTab(i){{
   document.querySelectorAll('.tabbtn').forEach((b,idx)=>b.classList.toggle('active',idx===i));
   document.querySelectorAll('#tab'+i+' .plotly-graph-div').forEach(d=>{{if(window.Plotly)Plotly.Plots.resize(d);}});
 }}
-window.addEventListener('load',()=>showTab(0));
+window.addEventListener('load',function(){{showTab(0); if(window.recomputeSummary){{recomputeSummary(DR_MIN,DR_MAX);}}}});
 </script></body></html>"""
 
 

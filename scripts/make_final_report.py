@@ -130,13 +130,24 @@ def main(start=None, end=None):
                              ensure_ascii=False)
     sum_script = (
         "<script>window.SUMAGG=" + sumagg_json + ";"
-        "window.recomputeSummary=function(s,e){s=s||'0000';e=e||'9999';"
+        "window.recomputeSummary=function(s,e){s=s||'0000';e=e||'9999';var res={};"
         "[['신설','New'],['기존','Old']].forEach(function(p){var a=(window.SUMAGG[p[0]]||[]),n=0,su=0,ss=0;"
         "a.forEach(function(r){if(r[0]>=s&&r[0]<=e){n+=r[1];su+=r[2];ss+=r[3];}});"
+        "var m=null,sd=null;if(n>0){m=su/n;sd=Math.sqrt(Math.max(0,ss/n-m*m));}res[p[1]]={m:m,sd:sd};"
         "var em=document.getElementById('sum'+p[1]+'Mean'),es=document.getElementById('sum'+p[1]+'Std');"
-        "if(n>0){var m=su/n,v=Math.max(0,ss/n-m*m),sd=Math.sqrt(v);"
-        "if(em)em.innerText=m.toFixed(1);if(es)es.innerText=sd.toFixed(1);}"
-        "else{if(em)em.innerText='-';if(es)es.innerText='-';}});};</script>"
+        "if(em)em.innerText=(m==null?'-':m.toFixed(1));if(es)es.innerText=(sd==null?'-':sd.toFixed(1));});"
+        # 핵심 진단(규칙 기반): 기간별 최대 표준편차/목표(0.5) 비율로 문장 자동 생성
+        "var dg=document.getElementById('sumDiag');if(dg){"
+        "var sds=[res.New.sd,res.Old.sd].filter(function(x){return x!=null;});"
+        "if(sds.length===0){dg.innerHTML='<b>핵심 진단:</b> 해당 기간 데이터가 없습니다.';}else{"
+        "var mx=Math.max.apply(null,sds),ratio=mx/0.5;"
+        "var ms=[res.New.m,res.Old.m].filter(function(x){return x!=null;});"
+        "var nearMean=ms.every(function(m){return Math.abs(m-44.6)<=0.5;});"
+        "if(ratio<=1.0){dg.innerHTML='<b>핵심 진단:</b> 평균·변동 모두 목표 수준(변동 최대 ±'+mx.toFixed(1)+' ≤ 0.5) → <b>안정 상태 유지·관리</b>.';}"
+        "else{var meanTxt=nearMean?'평균은 목표(44.6)에 근접하나':'평균이 목표(44.6)와 다소 차이가 있으나';"
+        "var v=(ratio<=2.0)?'<b>안정화 진행 필요</b>':'<b>변동성 축소(안정화)가 최우선 과제</b>';"
+        "dg.innerHTML='<b>핵심 진단:</b> '+meanTxt+' 시점별 변동성(표준편차) 최대 ±'+mx.toFixed(1)+' — 목표(0.5)의 <b>약 '+ratio.toFixed(1)+'배</b> → '+v+'.';}}}"
+        "};</script>"
     )
     exec_summary = (
         '<div class="exec">'
@@ -152,8 +163,8 @@ def main(start=None, end=None):
         f'<div class="kpi"><div class="v"><span id="sumOldMean">{y45.mean():.1f}</span>%</div><div class="l">기존 야드 평균 (변동 ±<span id="sumOldStd">{y45.std():.1f}</span>)</div></div>'
         f'<div class="kpi"><div class="v">±{statuses["신설"].recent_mae:.1f}%p</div><div class="l">예측 정확도(오차, 낮을수록 정확)</div></div>'
         '</div>'
-        '<p><b>핵심 진단:</b> 야드 품위 <b>평균은 목표에 근접</b>하나, 시점별 <b>변동성(표준편차)이 목표(0.5)보다 큼</b>. '
-        '→ 과제는 평균 이동이 아니라 <b>변동성 축소(안정화)</b>.</p>'
+        '<p id="sumDiag"><b>핵심 진단:</b> 야드 품위 평균은 목표에 근접하나, 시점별 변동성(표준편차)이 목표(0.5)보다 큼 '
+        '→ 변동성 축소(안정화)가 과제.</p>'
         '<p><b>앞으로 이렇게 관리하겠습니다:</b> '
         '① <b>실시간 모니터링·조기경보</b>로 규격 이탈을 즉시 감지 → '
         '② <b>야드 변경·품위 추적</b>으로 원인(어느 야드·시점)을 규명 → '
