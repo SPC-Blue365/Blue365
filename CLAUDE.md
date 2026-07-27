@@ -60,7 +60,7 @@
 - 엑셀 데이터 로딩·전처리, 결측치/이상치 처리
 - 탐색적 데이터 분석(EDA), 기술통계
 - 품위 트렌드 시각화 (시계열, 분포, 공정별 비교)
-- **산출물**: `docs/data_schema.md` 업데이트, `notebooks/01_eda/`, `src/data/`
+- **산출물**: `docs/data_schema.md` 업데이트, `src/data/`(정제·검증)
 
 ### `[Matching-Agent]` — 데이터 추적/매핑 (핵심 로직)
 공정 간 데이터를 연결하는 추적 로직을 설계한다.
@@ -76,7 +76,7 @@
 - **⭐️ 성공 기준 (Acceptance Criteria)**: 목표(44.6%±0.5)가 의미 있으려면 예측 오차가 그보다 충분히 작아야 한다. **예측 MAE는 0.5% 미만(가급적 ≤0.2%)** 을 목표로 하고, 데이터의 시간 순서를 지키는 **시계열 교차검증(time-series CV)** 으로 검증한다. 성능지표(MAE·RMSE·R²)를 반드시 리포트한다.
 - **⭐️ 모델 거버넌스(재벤치마크)**: 모델 선택은 **데이터 주도이며 고정이 아니다.** 현재 확정 모델은 **Ridge(선형, AR 피처)** 이나, 데이터가 크게 늘거나 사용자가 "모델 다시 추천해줘" 하면 `scripts/benchmark_models.py`(10개 모델 시계열 CV)를 재실행해 최적 모델을 재추천·교체 판단한다. (데이터가 많아지면 부스팅이 선형을 앞설 수 있음)
 - **⭐️ 달성 불가(Infeasibility) 처리**: OSP 재고 조합으로 목표 범위가 **물리적으로 불가능한 경우, 억지 답을 지어내지 않는다**(§2-1). 대신 ⓐ 가능한 범위에서 목표에 **가장 근접한 배합**을 제시하고, ⓑ "목표 미달 / 재고 제약으로 불가"임을 **명시적으로 경고**하며, ⓒ 어떤 제약이 병목인지 함께 보고한다.
-- **산출물**: 모델 → `src/models/`·`src/optimization/`·`models/`, 실험 → `notebooks/03_modeling/`, `notebooks/04_optimization/`
+- **산출물**: 모델 → `src/models/`·`src/optimization/`·`models/`, 실행 → `scripts/`
 
 ### `[Research-Agent]` — 선행연구 조사
 - 석회석 품위 관리, 시계열 데이터 매칭, ML 기반 배합 최적화 관련 최신 선행연구·기법 조사
@@ -151,13 +151,15 @@ Blue365/
 │   ├── features/              #   피처 엔지니어링
 │   ├── models/                #   예측 모델           [ML-Engineer]
 │   ├── optimization/          #   배합 최적화 솔버    [ML-Engineer]
-│   ├── visualization/         #   시각화 유틸
-│   └── utils/                 #   공통 유틸
-├── notebooks/                 # 탐색·실험 (실행 순서대로 번호 접두)
-│   ├── 01_eda/                #   EDA                 [Data-Analyst]
-│   ├── 02_matching/           #   매칭 실험           [Matching-Agent]
-│   ├── 03_modeling/           #   예측 모델링         [ML-Engineer]
-│   └── 04_optimization/       #   최적 배합 실험      [ML-Engineer]
+│   ├── monitoring/            #   경보·모니터링        [ML-Engineer]
+│   └── visualization/         #   시각화(Plotly)      [Synthesis-Agent]
+├── scripts/                   # 실행 진입점
+│   ├── run_all.py             #   ⭐️ 전체 파이프라인 원클릭
+│   ├── build_matched_dataset.py  #  매칭 통합셋       [Matching-Agent]
+│   ├── train_and_save.py      #   모델 학습·저장      [ML-Engineer]
+│   ├── benchmark_models.py    #   10개 모델 재벤치마크 [ML-Engineer]
+│   ├── monitor.py             #   운영 모니터 상태
+│   └── make_final_report.py   #   임원용 통합 리포트  [Synthesis-Agent]
 ├── docs/                      # 문서
 │   ├── handoff_state.md       #   ⭐️ 세션 간 핸드오프 상태 (매 단계 갱신)
 │   ├── data_schema.md         #   ⭐️ 데이터 스키마·Join Key·Time-Lag 규칙

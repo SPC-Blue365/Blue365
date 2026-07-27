@@ -39,30 +39,19 @@ ZONE_DELIMITERS = r"[/\-~]"
 
 @dataclass
 class SourceSpec:
-    """검증 게이트용 역할 컬럼 매핑 (src/data/validation.py 에서 사용)."""
+    """검증 게이트용 역할 컬럼 매핑 (src/data/validation.py 에서 사용).
+
+    정제(clean.py) 후 tidy 프레임의 '역할 컬럼'을 지정한다. 컬럼명을 코드에
+    하드코딩하지 않기 위한 계약.
+    """
 
     name: str
-    filename: Optional[str] = None
-    sheet: Optional[str] = None
     time_col: Optional[str] = None
     cao_col: Optional[str] = None
     tonnage_col: Optional[str] = None
     key_cols: list[str] = field(default_factory=list)
-
-    def is_ready(self) -> bool:
-        return bool(self.filename and self.time_col and self.key_cols)
-
-    def missing_fields(self) -> list[str]:
-        missing = []
-        if not self.filename:
-            missing.append("filename")
-        if not self.time_col:
-            missing.append("time_col")
-        if not self.cao_col:
-            missing.append("cao_col")
-        if not self.key_cols:
-            missing.append("key_cols")
-        return missing
+    allow_zero_tonnage: bool = False   # 0톤 허용 여부(야드 적재량 등)
+    expect_unique: bool = True         # Key 조합이 유일해야 하는지(False면 중복 검사 생략)
 
 
 # 데이터파일 (로컬 전용)
@@ -74,24 +63,25 @@ YARD_PAIR = {
     LINE_NEW: (SHEET_YARD_CNA, "CNA·6-7K 킬른"),
 }
 
-# 검증용 스펙 (원시 시트 기준 역할 컬럼)
-MINE = SourceSpec(
-    name="mine_49Q", filename=DATA_FILE, sheet=SHEET_MINE_49Q,
-    time_col="채굴일자", cao_col="CaO품위", tonnage_col="이송물량(톤)",
-    key_cols=["채굴일자", "공정구분", "OSP적재구역"],
+# === 검증 게이트 스펙 (정제 후 tidy 프레임 기준) ===
+# 매칭(조인) 전에 이 스펙으로 무결성을 검사한다. (CLAUDE.md §3 Matching-Agent 검증 게이트)
+SPEC_MINE = SourceSpec(
+    name="광산(정제)", time_col="date", cao_col="cao", tonnage_col="tonnage",
+    key_cols=["date", "line", "zone"],
+    expect_unique=False,   # 같은 일자·라인·구역에 교대/구간별 다중 기록이 정상
 )
-OSP = SourceSpec(
-    name="osp_old", filename=DATA_FILE, sheet=SHEET_OSP_OLD,
-    time_col="일자", cao_col=None, tonnage_col="인출량",
-    key_cols=["일자", "인출시간"],
+SPEC_OSP = SourceSpec(
+    name="OSP인출(정제)", time_col="datetime", cao_col=None, tonnage_col="withdrawn_ton",
+    key_cols=["datetime", "line", "zone"],
 )
-YARD = SourceSpec(
-    name="yard_cna", filename=DATA_FILE, sheet=SHEET_YARD_CNA,
-    time_col="일자", cao_col="CaO", tonnage_col="적재물량(TPH)",
-    key_cols=["일자", "시간"],
+SPEC_YARD = SourceSpec(
+    name="야드측정(정제)", time_col="datetime", cao_col="cao", tonnage_col="load",
+    key_cols=["datetime"], allow_zero_tonnage=True,   # 설비 정지 시 적재량 0 가능
 )
-
-ALL_SOURCES: list[SourceSpec] = [MINE, OSP, YARD]
+SPEC_YARDCHANGE = SourceSpec(
+    name="야드변경(정제)", time_col="datetime", cao_col="cao", tonnage_col="tonnage",
+    key_cols=["datetime", "line"],
+)
 
 
 # === 최종 품질 목표 (CLAUDE.md §1) ===

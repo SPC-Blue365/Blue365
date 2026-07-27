@@ -3,14 +3,28 @@
 > ⭐️ 새 세션 시작 시 Main-Agent가 **가장 먼저** 읽는 파일입니다. (CLAUDE.md §0 / §5)
 > 주요 단계 완료 시, 또는 사용자가 "handoff / 핸드오프 / 저장해줘" 요청 시 갱신합니다.
 
-- **최종 업데이트**: 2026-07-24 (운영 대시보드 4탭 + 야드변경 CaO/MgO 추적 완성)
-- **현재 파이프라인 단계**: `4. 운영 도구화 완료` (예측·모니터링·대시보드·야드변경 추적)
-- **현재 활성 Agent**: `[Synthesis-Agent]`
+- **최종 업데이트**: 2026-07-25 (임원 리포트 완성 + 코드베이스 정리·검증게이트 연결)
+- **현재 파이프라인 단계**: `5. 운영·발표 준비 완료` (추적·예측·모니터링·통합리포트)
+- **현재 활성 Agent**: `[Main-Agent]`
 - **데이터 보관 정책**: 🔒 **로컬 전용** — GitHub 커밋 금지 (`.gitignore`), 필요 시 `BLUE365_DATA_DIR` 환경변수
 
 ---
 
-## 🔖 복원 지점 — CHECKPOINT ② (최신): "운영 대시보드 + 야드변경 추적 완성" (2026-07-24)
+## 🔖 복원 지점 — CHECKPOINT ③ (최신): "임원 리포트 + 코드베이스 정리 완료" (2026-07-25)
+> **"아까 저장해 놓은 지점으로 돌아가줘"** → 이 지점으로 복귀.
+
+**이 지점의 상태:**
+- **임원용 통합 리포트** `outputs/final_report.html` (7탭: 개요·추적흐름·변경일자별추이·예측모델·관리도·모니터경보·배합최적화)
+  · 경영요약(신호등·KPI·핵심진단·실행계획) + 그래프별 한줄 캡션 + 용어집
+  · **기간 직접설정**(년-월-일) → KPI·핵심진단 자동 재계산 / 그래프별 기간버튼(1주·2주·1개월·1년·전체)+슬라이더
+  · 야드변경 타임라인(Gantt, CaO/MgO 토글), Sankey 2종, 표준편차 3종(야드별·라인별·연속측정)
+- **코드베이스 정리**: 중복 스크립트 3개·미사용 로더/스펙·미사용 의존성 5개·템플릿 잔재 제거
+- **검증 게이트 실제 연결**(`dataset.load_sources` → 매칭 전 자동 실행, 현재 ERROR 0)
+- **테스트 40개** (정제·매칭 핵심 로직 18개 추가), **`scripts/run_all.py` 원클릭 실행**
+
+---
+
+## 🔖 복원 지점 — CHECKPOINT ②: "운영 대시보드 + 야드변경 추적" (2026-07-24)
 > 사용자가 **"아까 저장해 놓은 지점으로 돌아가줘"** 라고 하면 **이 최신 체크포인트**로 복귀한다. (①은 이전 단계)
 
 **이 지점의 상태 = 아래 전부 완료·커밋됨:**
@@ -24,7 +38,7 @@
 2. 데이터 축적 시 `scripts/benchmark_models.py` 재실행 → 최적 모델 재추천.
 3. (보류) 이메일 알림 — 사내 SMTP·기밀 정책 확인 후.
 
-**⚠️ 재개 시 필수**: 원본 데이터는 로컬 전용이라 **새 세션에선 `data/raw/data_v1.xlsx`(야드변경 시트 포함 8시트)를 다시 첨부/배치**해야 한다. 이후 `python scripts/build_matched_dataset.py` → `train_and_save.py` → `monitor.py` → `make_report.py` / `make_dashboard_preview.py`, `streamlit run streamlit_app.py` 로 전체 재현.
+**⚠️ 재개 시 필수**: 원본 데이터는 로컬 전용이라 **새 세션에선 `data/raw/data_v1.xlsx`(야드변경 시트 포함 8시트)를 다시 첨부/배치**해야 한다. 이후 **`python scripts/run_all.py`** 한 번으로 전체 재현(검증→매칭→학습→모니터→통합리포트), 대시보드는 `streamlit run streamlit_app.py`.
 
 ---
 
@@ -44,11 +58,11 @@
 - 방침 확정: **경로1(예측·모니터링)=메인**, **경로2(배합최적화)=향후 데이터 축적 시 정밀화(항상 병행 유지)**.
 
 **이 지점에서 재개할 다음 작업 (사용자 요청):**
-1. **최적 모델 탐색(메인)**: 여러 알고리즘(XGBoost/LightGBM/RandomForest/ElasticNet 등) 비교 + 하이퍼파라미터 튜닝, 시계열 CV로 최적 예측모델 선정. (`notebooks/03_modeling/`, `src/models/`)
+1. **최적 모델 탐색(메인)**: 여러 알고리즘(XGBoost/LightGBM/RandomForest/ElasticNet 등) 비교 + 하이퍼파라미터 튜닝, 시계열 CV로 최적 예측모델 선정. (`src/models/`)
 2. 예측·모니터링 운영 도구화(경보 임계·대시보드).
 3. 경로2는 데이터 축적 대비 인터페이스 유지.
 
-**재개 방법**: 데이터 `data/raw/data_v1.xlsx` 로컬 배치 후 → `python scripts/build_matched_dataset.py`, `python scripts/train_forecast.py`, `python scripts/make_report.py` 로 현 상태 재현 가능.
+**재개 방법**: 데이터 `data/raw/data_v1.xlsx` 로컬 배치 후 → `python scripts/run_all.py` 로 현 상태 재현 가능.
 
 ---
 
@@ -69,7 +83,7 @@
 - **[그래프 내 기간 선택]** (2026-07-25): 시간축 차트(타임라인·추이·관리도·예측·경보이력) 우측 상단에 **기간 버튼(1주/2주/1개월/전체) + 하단 레인지 슬라이더** 내장(`figures._time_range_controls`). 사이드바 없이 그래프에서 바로 기간 확대.
 - **[기간 설정 + 표준편차]** (2026-07-24): **대시보드 사이드바 날짜범위 필터**(모든 차트·std 선택구간 재계산) + **정적 리포트 기간 인자**(`make_final_report.py --start --end`). 표준편차 3종: 야드별(변경)·라인별(변경)·**라인별 연속측정(CNA/45Q)**. 인사이트: 연속 실측 std 1.85~2.26 ≫ 변경데이터 0.5대 → 실제 변동성이 큼. (`figures.yardchange_std_summary(level)`, `continuous_std_summary`, `dataset.filter_period`)
 - **[야드변경 추적]** (2026-07-24): 신규 시트 `기존/신설라인 야드변경`(변경일·시간·Yard·석회석CaO·MgO·야드물량) 분석·정제(`clean.clean_yard_change`, `dataset.load_yard_change`). **야드변경 기반 Sankey + CaO/MgO 버튼 토글**(`figures.build_yardchange_sankey`, 라인→야드 Y1/Y2, 링크=야드물량, 색=성분품위) + **변경일자별 CaO·MgO 추이**(`figures.yardchange_trend`). 대시보드 '추적 흐름' 탭에 통합(+상세표). 차트 x축 날짜 슬래시 형식(2026/07/24)으로 수정.
-- **[대시보드 확장]** 3개 탭 추가(2026-07-23): ① Sankey 추적도(`figures.build_tracking_sankey`) ② 관리도/제어차트(`figures.control_chart`, 규격밴드+평균±3σ+규격내 KPI) ③ 경보 이력 로그(`src/monitoring/history.py`, 로컬 CSV 누적·중복제외, 타임라인). 이력 테스트 2개(총 22개 통과). 미리보기 `scripts/make_dashboard_preview.py`. 이메일 알림은 보류(기밀·SMTP).
+- **[대시보드 확장]** 3개 탭 추가(2026-07-23): ① Sankey 추적도(`figures.build_tracking_sankey`) ② 관리도/제어차트(`figures.control_chart`, 규격밴드+평균±3σ+규격내 KPI) ③ 경보 이력 로그(`src/monitoring/history.py`, 로컬 CSV 누적·중복제외, 타임라인). 이력 테스트 2개(총 22개 통과). 이메일 알림은 보류(기밀·SMTP).
 - **[운영도구] 모니터링·경보 시스템** (2026-07-23):
   - `src/models/dataset.py`(공용 로더), `src/models/persist`→`scripts/train_and_save.py`(Ridge 라인별 학습·저장 models/*.joblib)
   - `src/monitoring/alerts.py`(규격이탈·지속·모델편차·추세 경보, 설정가능) + `src/monitoring/monitor.py`(최근구간 예측·상태)
@@ -79,36 +93,36 @@
 - **[모델선정] 10개 모델 벤치마크** `src/models/benchmark.py` + `scripts/benchmark_models.py`
   - 결과: **선형 계열(LinearRegression/Ridge/ElasticNet)이 최적**. 신설/CNA MAE 0.798, 기존/45Q 1.032.
   - XGBoost/LightGBM/RF 등 복잡모델은 소표본 과적합으로 열위 → **운영모델 Ridge 확정**(강건).
-  - 리포트에 벤치마크 차트 반영(`scripts/make_report.py`).
+  - 리포트에 벤치마크 차트 반영(통합 리포트).
 - **[파일럿] 배합최적화 스캐폴드** `src/optimization/blend.py`(scipy linprog, 달성불가시 근접해+병목), 테스트 4개
-- **[파일럿] 결과물 리포트** `scripts/make_report.py` → `outputs/report_pilot1.html`(예측 실측대비·조기경보·최적화데모, 로컬전용)
 - **[파일럿] 예측모델** `src/models/forecast.py`(Ridge AR, 라인별, 시계열CV)
-- 프로젝트 저장소 초기 구조 생성 (data/ src/ notebooks/ docs/ 등)
+- 프로젝트 저장소 초기 구조 생성 (data/ src/ scripts/ docs/ 등)
 - 기존 Streamlit+OpenAI 챗봇 스캐폴드 제거
 - `CLAUDE.md` (프로젝트 헌법) 작성 + 운영규칙 보강 (성공기준·infeasibility·검증게이트·핸드오프 커밋)
 - 데이터 분석/ML 의존성(`requirements.txt`) 설정
 - **데이터 로더 뼈대** (`src/data/loader.py`): `inspect_excel`/`inspect_raw_dir`(스키마 미확정 정찰용), `load_source`/`load_all_sources`(스키마 확정 후 로딩). 파일명 미설정 시 지어내지 않고 안전 차단.
 - **검증 게이트** (`src/data/validation.py`): CaO 범위(0~100%)·음수/0 물량·Key 결측·Key 중복·공정 시간역전(광산≤OSP≤야드) 검사. ERROR/WARNING 리포트.
 - **설정 주도 구조** (`config/paths.py`, `config/schema.py`): 경로 중앙관리 + SourceSpec(MINE/OSP/YARD 컬럼 플레이스홀더) + 목표 TARGET(44.6±0.5).
-- **단위 테스트** (`tests/test_validation.py`): 11개 전부 통과 (`python -m pytest tests/`).
+- **단위 테스트**: 40개 전부 통과 (`python -m pytest tests/`) — 정제·매칭·검증·경보·배합·이력.
 
-## 2. 핵심 데이터 스키마 & 주요 변수 (Schema)
-- 아직 실데이터 미확보. 상세는 `docs/data_schema.md` 참조.
-- **확정 필요 항목**:
-  - [ ] 광산(XRF/감마레이) 데이터 컬럼 및 식별자
-  - [ ] OSP(적재 위치·물량) 데이터 컬럼 및 식별자
-  - [ ] 야드(CNA) 데이터 컬럼 및 식별자
-  - [ ] 공정 간 Join Key (작업일자·로트번호·차량번호·구역코드 등)
-  - [ ] Time-Lag 규칙 (광산→OSP→야드 이송/적재 시간차)
-  - [ ] 물량 단위(Ton), 품위 단위(%)
+## 2. 핵심 데이터 스키마 & 주요 변수 (Schema) — ✅ 확정
+원본 `data/raw/data_v1.xlsx` **8시트** (광산 49Q_XRF·47Q_감마 / OSP인출 기존·신설 / CNA / 45Q감마 / 기존·신설라인 야드변경). 상세는 `docs/data_schema.md`.
+- **라인 = 서로 다른 야드**: 기존 → 45Q(4-5K 킬른), 신설 → CNA(6-7K 킬른). *(사용자 확정)*
+- **P/W1~4호 = 인출 지점**(품위 아님), 지점당 **50% 균등 배분**. 기존→P/W1·2, 신설→P/W3·4.
+- **품위 매칭 = 시간인지**: 인출시각 이전의 최근 적재 품위(merge_asof), 라인 교차 금지.
+- **Time-Lag**: 데이터로 추정(상관 최대), 라인별 6~24h 범위.
+- **야드변경 시트**: 변경일·Yard(Y1/Y2)·석회석CaO·MgO·야드물량 → 추적/품위 분석의 기준.
+- 단위: 물량 톤(ton), 품위 %. 목표 CaO 44.6±0.5.
+- 코드 스펙: `config/schema.py`의 `SPEC_MINE/SPEC_OSP/SPEC_YARD/SPEC_YARDCHANGE` (정제 프레임 기준, 검증 게이트가 사용).
 
 ## 3. 현재 직면한 문제점 / 미해결 이슈 (Open Issues)
-- 실데이터 미업로드 상태. 로컬 `data/raw/`에 엑셀 필요.
-- **데이터 보관 정책 확정: 로컬 전용(Local-Only).** 저장소는 Public 유지하되 `data/`·`models/`·`outputs/predictions/` 실파일은 GitHub에 절대 커밋하지 않는다(`.gitignore`). git에는 코드·문서·스키마만. (Private 전환/데이터 커밋 방식은 폐기)
-- `config/schema.py`의 MINE/OSP/YARD 컬럼이 전부 미확정(None). EDA 후 채워야 로더·검증이 실제 컬럼에 작동.
+- **[본질적 한계]** 상류(OSP 인출) → 야드 CaO 상관 0.18로 약함 → 예측은 지속성(AR) 기반, 목표 MAE<0.5 미달. **처방적 배합제어는 신호 강화(데이터 축적) 후 가능.**
+- **[운영]** 연속 실측 표준편차 1.85~2.26 ≫ 목표 0.5 → **변동성 축소가 핵심 과제**(현재 두 라인 모두 규격 이탈 경보 빈발).
+- **[데이터]** 원본은 **로컬 전용**이라 새 세션에서 재첨부 필요(§복원 지점 참조). GitHub에는 코드·문서만.
+- (보류) 이메일 알림 — 사내 SMTP·기밀 정책 확인 후.
 
 ## 4. 다음 행동 (Next Action) ⭐️
-- **담당 Agent**: `[Data-Analyst]`
-- **행동**: 사용자가 데이터를 로컬 `data/raw/`에 두거나 채팅에 첨부하면 → ① `inspect_raw_dir()`로 파일·시트·컬럼·dtype·결측 파악 → ② `config/schema.py`의 SourceSpec + `docs/data_schema.md` 채우기(Join Key·Time-Lag 규칙 포함) → ③ `validate_source()`로 검증 게이트 실행 → ④ 초기 EDA/트렌드 시각화.
-- **주의**: 데이터·모델·예측결과 파일은 **원격 커밋 금지**. 커밋 전 `git status`로 확인.
-- **선행 조건**: 광산(XRF/감마레이)·OSP(적재/물량)·야드(CNA) 3종 데이터. 없으면 사용자에게 요청.
+- **담당 Agent**: `[Main-Agent]` → 상황에 따라 전환
+- **즉시 실행**: 데이터 배치 후 `python scripts/run_all.py` (검증게이트→매칭→학습→모니터→통합리포트 원클릭). 대시보드는 `streamlit run streamlit_app.py`.
+- **후보 작업**: ① 데이터 축적 시 `scripts/benchmark_models.py` 재실행 → 최적 모델 재추천 ② 배합 최적화(경로2) 정밀화 ③ (요청 시) PPTX 임원 덱.
+- **주의**: 데이터·모델·산출물은 **원격 커밋 금지**. 커밋 전 `git status` 확인.

@@ -96,7 +96,6 @@ def test_time_order_detects_reversal():
 def test_validate_source_with_full_spec_passes_clean_data():
     spec = SourceSpec(
         name="yard",
-        filename="yard.xlsx",
         time_col="t",
         cao_col="cao",
         tonnage_col="ton",

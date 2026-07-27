@@ -12,7 +12,15 @@ from config.paths import (
     PREDICTIONS_DIR,
     MODELS_DIR,
 )
-from config.schema import MINE, OSP, YARD, ALL_SOURCES, SourceSpec, TARGET
+from config.schema import (
+    SourceSpec,
+    SPEC_MINE,
+    SPEC_OSP,
+    SPEC_YARD,
+    SPEC_YARDCHANGE,
+    TARGET,
+    YARD_PAIR,
+)
 
 __all__ = [
     "PROJECT_ROOT",
@@ -25,10 +33,11 @@ __all__ = [
     "FIGURES_DIR",
     "PREDICTIONS_DIR",
     "MODELS_DIR",
-    "MINE",
-    "OSP",
-    "YARD",
-    "ALL_SOURCES",
     "SourceSpec",
+    "SPEC_MINE",
+    "SPEC_OSP",
+    "SPEC_YARD",
+    "SPEC_YARDCHANGE",
     "TARGET",
+    "YARD_PAIR",
 ]

@@ -209,12 +209,54 @@ def validate_source(df: pd.DataFrame, spec: SourceSpec) -> ValidationReport:
     (스키마 확정 후 다시 실행하면 실제 무결성 검사가 작동한다.)
     """
     report = ValidationReport(source=spec.name, n_rows=len(df))
-    # CaO 품위 0~100%
-    report.add(check_value_range(df, spec.cao_col, lo=0.0, hi=100.0))
-    # 물량 음수/0 금지
-    report.add(check_non_negative(df, spec.tonnage_col, allow_zero=False))
+    # CaO 품위 0~100% (해당 컬럼이 있는 소스만)
+    if spec.cao_col:
+        report.add(check_value_range(df, spec.cao_col, lo=0.0, hi=100.0))
+    # 물량 음수(스펙에 따라 0 허용) 검사
+    if spec.tonnage_col:
+        report.add(check_non_negative(df, spec.tonnage_col,
+                                      allow_zero=getattr(spec, "allow_zero_tonnage", False)))
     # Join Key 결측
     report.add(check_missing(df, spec.key_cols))
-    # Join Key 중복
-    report.add(check_duplicates(df, spec.key_cols))
+    # Join Key 중복 (유일성이 기대되는 소스만)
+    if getattr(spec, "expect_unique", True):
+        report.add(check_duplicates(df, spec.key_cols))
     return report
+
+
+# --------------------------------------------------------------------------- #
+# 파이프라인 검증 게이트 (매칭 전 실행) — CLAUDE.md §3
+# --------------------------------------------------------------------------- #
+def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, ValidationReport]:
+    """정제 완료된 프레임들을 매칭 전에 일괄 검증한다.
+
+    반환: {소스명: ValidationReport}. 이상은 조용히 넘기지 않고 호출측에서 보고한다.
+    """
+    from config import schema as S
+
+    reports: dict[str, ValidationReport] = {}
+    if mine is not None:
+        reports["광산"] = validate_source(mine, S.SPEC_MINE)
+    if osp is not None:
+        reports["OSP인출"] = validate_source(osp, S.SPEC_OSP)
+    for line, ydf in (yards or {}).items():
+        reports[f"야드({line})"] = validate_source(ydf, S.SPEC_YARD)
+    if yard_change is not None and len(yard_change):
+        reports["야드변경"] = validate_source(yard_change, S.SPEC_YARDCHANGE)
+    return reports
+
+
+def summarize_reports(reports: dict[str, ValidationReport]) -> str:
+    """여러 리포트를 한 화면 요약으로. ERROR가 있으면 상단에 표시."""
+    if not reports:
+        return "[검증] 대상 없음"
+    n_err = sum(len(r.errors) for r in reports.values())
+    n_warn = sum(len(r.warnings) for r in reports.values())
+    head = ("✅ 검증 통과" if n_err == 0 else f"❌ 검증 ERROR {n_err}건")
+    lines = [f"[검증 게이트] {head} (WARNING {n_warn}건)"]
+    for name, rep in reports.items():
+        mark = "✅" if rep.passed else "❌"
+        lines.append(f"  {mark} {name}: {rep.n_rows}행 · ERROR {len(rep.errors)} · WARNING {len(rep.warnings)}")
+        for issue in rep.issues:
+            lines.append(f"      - {issue}")
+    return "\n".join(lines)

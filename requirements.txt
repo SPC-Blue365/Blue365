@@ -1,25 +1,22 @@
 # === 데이터 처리 ===
 pandas
 numpy
-openpyxl          # 엑셀(.xlsx) 읽기/쓰기
+openpyxl          # 엑셀(.xlsx) 읽기 엔진
 
-# === 머신러닝 (예측) ===
-scikit-learn
-xgboost
-lightgbm
+# === 머신러닝 (예측·벤치마크) ===
+scikit-learn      # 확정 모델(Ridge) + 시계열 CV
+xgboost           # 모델 재벤치마크용 (scripts/benchmark_models.py)
+lightgbm          # 모델 재벤치마크용
+joblib            # 학습된 모델 저장/로딩
 
 # === 최적화 (배합 역산 솔버) ===
-scipy             # 선형계획법/제약 최적화 (linprog, minimize)
+scipy             # 선형계획법 (linprog)
 
-# === 시각화 ===
-matplotlib
-seaborn
-plotly
+# === 시각화 · 리포트 ===
+plotly            # 인터랙티브 차트(한글 안전) — 모든 그래프
 
-# === 노트북/개발 ===
-jupyter
-ipykernel
-pytest            # 검증 게이트 등 단위 테스트
-koreanize-matplotlib   # matplotlib 한글 폰트(향후용)
-streamlit         # 운영 모니터링 대시보드
-joblib
+# === 운영 대시보드 ===
+streamlit
+
+# === 테스트 ===
+pytest

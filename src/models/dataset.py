@@ -12,6 +12,7 @@ import pandas as pd
 from config import schema as S
 from config.paths import RAW_DIR
 from src.data import clean as C
+from src.data import validation as V
 from src.matching import pipeline as P
 from src.models import forecast as F
 
@@ -26,8 +27,12 @@ class LineData:
     features: pd.DataFrame      # 예측 피처 프레임
 
 
-def load_sources(raw_file: str | None = None):
-    """원시 엑셀 → (mine, osp_exp, yards dict). 재사용 기본 로더."""
+def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bool = True):
+    """원시 엑셀 → (mine, osp_exp, yards dict). 재사용 기본 로더.
+
+    validate=True 이면 매칭 전에 검증 게이트를 실행한다 (CLAUDE.md §3).
+    결과는 last_validation_reports 로 조회 가능하며, 이상은 verbose 로 보고한다.
+    """
     xls = pd.ExcelFile(RAW_DIR / (raw_file or S.DATA_FILE))
     mine = pd.concat(
         [C.clean_mine_49Q(pd.read_excel(xls, S.SHEET_MINE_49Q)),
@@ -39,9 +44,28 @@ def load_sources(raw_file: str | None = None):
          C.clean_osp(pd.read_excel(xls, S.SHEET_OSP_NEW), S.LINE_NEW, S.PW_COLS_NEW)],
         ignore_index=True,
     )
-    osp_exp = P.assign_expected_cao_timeaware(osp, mine)
     yards = {ln: C.clean_yard(pd.read_excel(xls, sh)) for ln, (sh, _) in S.YARD_PAIR.items()}
+
+    # ⭐️ 검증 게이트: 매칭(조인) '전에' 무결성 검사 (CLAUDE.md §3)
+    if validate:
+        yc = None
+        for sheet, line in [(S.SHEET_YC_OLD, S.LINE_OLD), (S.SHEET_YC_NEW, S.LINE_NEW)]:
+            if sheet in xls.sheet_names:
+                part = C.clean_yard_change(pd.read_excel(xls, sheet), line)
+                yc = part if yc is None else pd.concat([yc, part], ignore_index=True)
+        reports = V.validate_pipeline(mine, osp, yards, yc)
+        globals()["last_validation_reports"] = reports
+        if verbose:
+            n_err = sum(len(r.errors) for r in reports.values())
+            if n_err or any(r.warnings for r in reports.values()):
+                print(V.summarize_reports(reports))
+
+    osp_exp = P.assign_expected_cao_timeaware(osp, mine)
     return mine, osp_exp, yards
+
+
+# 마지막 검증 결과 (load_sources 실행 후 조회용)
+last_validation_reports: dict = {}
 
 
 def build_line_data(osp_exp, yards, line: str) -> LineData:
