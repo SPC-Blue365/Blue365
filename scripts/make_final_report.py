@@ -35,37 +35,99 @@ MIN_MODEL_ROWS = F.MIN_TRAIN_ROWS   # 시계열 CV·학습에 필요한 최소 �
 BADGE = {Level.GREEN: ("🟢", "정상"), Level.YELLOW: ("🟡", "주의"), Level.RED: ("🔴", "경고")}
 
 
-def _pred_block(ln, ld, te, mae, mae_persist, mae_naive, hit, gain, k) -> str:
+TOLS = [0.5, 1.0, 1.5, 2.0]      # 사용자가 고를 수 있는 허용폭(%p)
+GAIN_TIE = 5.0                    # 기준선 대비 개선폭이 이보다 작으면 '사실상 동급'
+
+
+def _verdict(mae, mae_persist, gain, tol) -> tuple[str, str]:
+    """허용폭별 판정 문장 + 스타일. 실제 검증 수치에서만 생성한다 (§2-1).
+
+    두 축으로 나눠 판단한다 — ⓐ 허용폭 안에 드는가, ⓑ '직전값 그대로 쓰기'를 넘는가.
+    ⓑ가 미미하면 '사실상 동급'이라고 분명히 밝힌다(개선폭 %만 보면 실제보다 좋아 보인다).
+    """
+    within = mae <= tol
+    a = (f"평균 오차 <b>{mae:.2f}%p</b>로 허용폭 ±{tol}%p <b>이내</b>입니다." if within
+         else f"평균 오차 <b>{mae:.2f}%p</b>로 허용폭 ±{tol}%p를 <b>넘습니다</b>.")
+
+    if gain < GAIN_TIE:
+        tie = True
+        b = (f"다만 '직전값 그대로 쓰기'({mae_persist:.2f})와 <b>사실상 동급</b>({gain:+.0f}%)이라, "
+             "현재 모델은 <b>독자적인 예측력이 거의 없습니다</b> — "
+             "품위가 시간당 크게 변하지 않아 '방금 값'만으로도 이만큼 맞는 것입니다.")
+    else:
+        tie = False
+        b = f"'직전값 그대로 쓰기'({mae_persist:.2f})보다 <b>{gain:.0f}% 정확</b>합니다."
+
+    if within and not tie:
+        c, cls = ("예측값을 보고 배합을 조정하는 <b>선제적 제어</b>를 시도할 수 있습니다.", "ok")
+    elif within and tie:
+        c, cls = ("허용폭 안에 들지만 <b>모델 덕분이 아니라 품위가 안정적이기 때문</b>이므로, "
+                  "이 수치를 모델 성능으로 보고하면 안 됩니다.", "note")
+    else:
+        c, cls = ("<b>이상 감지·조기경보</b>에는 쓸 수 있으나, <b>정밀 배합 제어는 아직 이릅니다.</b>", "note")
+    return f"{a} {b} {c}", cls
+
+
+def _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain) -> tuple[str, dict]:
     """라인별 예측 성적 KPI 타일 + 평문 판정 (임원용).
 
-    수치는 모두 실제 검증 결과에서 온다 — 판정 문장도 규칙 기반이며 지어내지 않는다(§2-1).
+    반환: (HTML, 허용폭별 수치·판정 dict) — dict 는 JS 가 허용폭 전환 시 갈아끼운다.
     """
-    tol = 0.5
-    if mae <= tol:
-        verdict, cls = (f"평균 오차가 목표 허용폭({tol}%p) <b>이내</b>입니다. "
-                        "예측값을 보고 배합을 조정하는 <b>선제적 제어</b>를 시도할 수 있습니다.", "ok")
-    elif mae < mae_persist:
-        verdict, cls = (f"평균 오차 <b>{mae:.2f}%p</b>로 목표 허용폭({tol}%p)보다 <b>큽니다</b>. "
-                        f"'직전값 그대로 쓰기'({mae_persist:.2f})보다는 <b>{gain:.0f}% 정확</b>하므로 "
-                        "<b>이상 감지·조기경보</b>에는 쓸 수 있으나, <b>정밀 배합 제어는 아직 이릅니다.</b>", "note")
-    else:
-        verdict, cls = (f"평균 오차 <b>{mae:.2f}%p</b>가 '직전값 그대로 쓰기'({mae_persist:.2f})를 "
-                        "<b>넘지 못했습니다.</b> 이 라인은 데이터가 더 쌓여야 모델이 값어치를 냅니다.", "note")
-
+    stat = {}
+    for t in TOLS:
+        v, cls = _verdict(mae, mae_persist, gain, t)
+        stat[f"{t}"] = dict(hit=round(float((err <= t).mean() * 100)), verdict=v, cls=cls)
+    d0 = stat[f"{TOLS[0]}"]
     span = f"{te.index.min():%m/%d %H시} ~ {te.index.max():%m/%d %H시}"
-    return (
+    html = (
         f"<h3 style='margin:18px 0 4px;color:#12395c'>{ln} 라인 → {ld.alias}</h3>"
         f"<div class='kpirow'>"
-        f"<div class='kpi'><div class='v'>{hit:.0f}%</div>"
-        f"<div class='l'>오차 ±0.5%p 이내 적중률</div></div>"
+        f"<div class='kpi'><div class='v'><span id='hit-{ln}'>{d0['hit']}</span>%</div>"
+        f"<div class='l'>오차 ±<span class='tolv'>{TOLS[0]}</span>%p 이내 적중률</div></div>"
         f"<div class='kpi'><div class='v'>{mae:.2f}<span style='font-size:.9rem'>%p</span></div>"
-        f"<div class='l'>평균 오차 (목표 {tol} 이하)</div></div>"
+        f"<div class='l'>평균 오차 (허용폭 ±<span class='tolv'>{TOLS[0]}</span> 이하 목표)</div></div>"
         f"<div class='kpi'><div class='v'>{gain:+.0f}%</div>"
         f"<div class='l'>'직전값 쓰기' 대비 개선</div></div>"
         f"<div class='kpi'><div class='v'>{len(te)}<span style='font-size:.9rem'>시간</span></div>"
         f"<div class='l'>검증 구간 ({span})</div></div>"
         f"</div>"
-        f"<div class='{cls}'><b>판정:</b> {verdict}</div>"
+        f"<div class='{d0['cls']}' id='verdict-{ln}'><b>판정:</b> {d0['verdict']}</div>"
+    )
+    return html, stat
+
+
+def _tol_script(pred_stats: dict) -> str:
+    """허용폭 전환 JS. 적중률·판정문·스코어카드 기준선을 한꺼번에 갈아끼운다."""
+    return (
+        "<script>window.PREDSTAT=" + json.dumps(pred_stats, ensure_ascii=False) + ";"
+        "window.setTol=function(t){"
+        "  var s=window.PREDSTAT||{};"
+        "  Object.keys(s).forEach(function(ln){"
+        "    var d=s[ln][t]; if(!d){return;}"
+        "    var h=document.getElementById('hit-'+ln); if(h)h.innerText=d.hit;"
+        "    var th=document.getElementById('thit-'+ln); if(th)th.innerText=d.hit;"
+        "    var v=document.getElementById('verdict-'+ln);"
+        "    if(v){v.innerHTML='<b>판정:</b> '+d.verdict; v.className=d.cls;}"
+        "  });"
+        "  document.querySelectorAll('.tolv').forEach(function(e){e.innerText=t;});"
+        # 스코어카드(가로 막대)의 목표 기준선·주석을 새 허용폭으로 이동
+        "  document.querySelectorAll('.plotly-graph-div').forEach(function(gd){"
+        "    var m=gd.layout&&gd.layout.meta; if(!m||m.kind!=='scorecard'){return;}"
+        "    var x=parseFloat(t);"
+        "    Plotly.relayout(gd,{'shapes[0].x0':x,'shapes[0].x1':x,"
+        "                        'annotations[0].x':x,'annotations[0].text':'허용폭 ±'+t+'%p'});"
+        "  });"
+        "};</script>"
+    )
+
+
+def _tol_selector() -> str:
+    """허용폭(±%p) 선택 드롭다운. 적중률·판정문·스코어카드 기준선이 함께 바뀐다."""
+    opts = "".join(f"<option value='{t}'>±{t}%p</option>" for t in TOLS)
+    return (
+        "<div class='tolbar'>🎯 <b>허용폭 기준</b> "
+        f"<select id='tolSel' onchange='setTol(this.value)'>{opts}</select>"
+        "<span class='hint'>기준을 넓히면 적중률이 올라갑니다 — 실제 관리 목표는 ±0.5%p입니다.</span></div>"
     )
 
 
@@ -104,6 +166,7 @@ def main(start=None, end=None):
 
     # ── 예측·벤치마크 ──
     pred_secs, bench_secs, ctrl_secs, metric_rows, reco_rows, kpi_rows = [], [], [], [], [], []
+    pred_stats: dict[str, dict] = {}   # 라인 → 허용폭별 적중률·판정 (HTML 내 JS가 전환)
     skipped: list[str] = []
     for ln, ld in lines.items():
         feats = ld.features
@@ -129,19 +192,23 @@ def main(start=None, end=None):
         # 기준선: '직전값 그대로 쓰기'(persist)와 '그냥 평균 쓰기'(naive) — 모델의 값어치 판단용
         mae_persist = float(np.abs(te["cao"].values - te["ar1"].values).mean())
         mae_naive = float(np.abs(te["cao"].values - d["cao"].iloc[:k].mean()).mean())
-        hit = float((err <= 0.5).mean() * 100)          # 목표 허용오차 안에 들어온 비율
         gain = (mae_persist - mae) / mae_persist * 100 if mae_persist else 0.0
         oos = (pr < V.TARGET - 0.5) | (pr > V.TARGET + 0.5)
 
-        pred_secs.append(("", _pred_block(ln, ld, te, mae, mae_persist, mae_naive, hit, gain, k)))
+        block, stat = _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain)
+        pred_stats[ln] = stat
+        pred_secs.append(("", block))
         pred_secs.append(("", V.prediction_scorecard(
             [("이 예측 모델", mae, True), ("직전값 그대로 쓰기", mae_persist, False),
              ("그냥 평균값 쓰기", mae_naive, False)],
+            tol=TOLS[0],
             title=f"{ln} → {ld.alias} · 예측 방법별 평균 오차 (짧을수록 정확)")))
         pred_secs.append(("", V.prediction_timeseries(te.index, te["cao"].values, pr, oos,
                           f"{ln} → {ld.alias} · 검증 구간 실측 vs 예측")))
+        tie = " <span style='color:#8a6d1a'>(동급)</span>" if gain < GAIN_TIE else ""
         metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td><b>{mae:.2f}</b></td>"
-                           f"<td>{mae_persist:.2f}</td><td>{hit:.0f}%</td></tr>")
+                           f"<td>{mae_persist:.2f}{tie}</td>"
+                           f"<td><span id='thit-{ln}'>{stat[f'{TOLS[0]}']['hit']}</span>%</td></tr>")
         bench_secs.append(("", V.model_benchmark_bar(bench, f"{ln} → {ld.alias}: 10개 모델 CV MAE")))
         reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td><b>{recommend(bench)}</b></td>"
                          f"<td>{bench[~bench['is_baseline']]['MAE'].min():.3f}</td></tr>")
@@ -260,7 +327,7 @@ def main(start=None, end=None):
         '② <b>야드 변경·품위 추적</b>으로 원인(어느 야드·시점)을 규명 → '
         '③ 데이터가 쌓이면 <b>배합 최적화</b>로 목표 품위를 사전 제어. '
         '데이터가 축적될수록 예측·제어 정밀도는 계속 향상됩니다.</p>'
-        '</div>' + sum_script + sankey_script
+        '</div>' + sum_script + sankey_script + _tol_script(pred_stats)
     )
     guide = (
         '<h2>이 대시보드 읽는 법</h2>'
@@ -325,8 +392,10 @@ def main(start=None, end=None):
                  "<b>모델이 못 본 뒤 30% 구간</b>에서 예측값과 실제 측정값을 비교했습니다.<br>"
                  "<b>읽는 법:</b> <b>적중률</b>이 높고 <b>평균 오차</b>가 목표 0.5%p보다 작아야 "
                  "'예측 보고 배합을 조절'할 수 있습니다. 아직 못 미치면 <b>조기경보 용도</b>로만 씁니다.")
+             + _tol_selector()
              + "<table><tr><th>라인</th><th>야드</th><th>모델 평균오차</th>"
-               "<th>직전값 쓰기</th><th>±0.5 적중률</th></tr>" + "".join(metric_rows) + "</table>"),
+               "<th>직전값 쓰기</th><th>±<span class='tolv'>" + f"{TOLS[0]}" + "</span> 적중률</th></tr>"
+             + "".join(metric_rows) + "</table>"),
             *_expand(pred_secs, "예측 성적"),
             ("(참고) 최적 모델 벤치마크 — 10개 기법 비교",
              cap("<b>어떤 기법을 쓸지 고른 근거</b>입니다(기술 검토용). 여러 예측기법을 같은 조건에서 겨뤄 "

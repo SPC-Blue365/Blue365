@@ -120,9 +120,11 @@ def prediction_scorecard(methods, tol: float = 0.5, title: str = "") -> go.Figur
         width=0.55,
     ))
     fig.add_vline(x=tol, line=dict(color=GREEN, dash="dash", width=2))
-    fig.add_annotation(x=tol, y=1.04, yref="paper", text=f"목표 {tol}%p", showarrow=False,
+    fig.add_annotation(x=tol, y=1.04, yref="paper", text=f"허용폭 ±{tol}%p", showarrow=False,
                        font=dict(color="#1d7a1d", size=12), xanchor="left", xshift=4)
     fig.update_layout(
+        # meta.kind → 리포트 HTML의 허용폭 선택 JS가 이 차트의 기준선을 찾아 옮긴다
+        meta=dict(kind="scorecard"),
         title=title, height=210 + 26 * len(ms), font=dict(size=12),
         margin=dict(l=10, r=54, t=54, b=34), showlegend=False,
         xaxis_title="평균 오차 (%p · 낮을수록 정확)", bargap=0.35,
@@ -643,6 +645,11 @@ table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px soli
 .note{{background:#fff8e1;border-left:4px solid #ffb300;padding:10px 14px;margin:12px 0;border-radius:4px}}
 .cap{{color:#334;font-size:.9rem;margin:2px 0 8px;background:#eef5ff;border-left:3px solid #1f77b4;padding:7px 11px;border-radius:4px;line-height:1.5}}
 .exec{{border:1px solid #d5dde5;border-radius:10px;padding:4px 18px 14px;margin:6px 0 18px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06)}}
+.tolbar{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0;padding:8px 12px;
+background:#eef2f6;border:1px solid #d5dde5;border-radius:8px;font-size:.92rem}}
+.tolbar select{{padding:5px 10px;border:1px solid #b9c4cf;border-radius:6px;font-size:.95rem;
+font-weight:700;color:#12395c;background:#fff;cursor:pointer}}
+.tolbar .hint{{color:#667;font-size:.82rem}}
 .kpirow{{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}}
 .kpi{{flex:1;min-width:150px;background:#f7f9fb;border:1px solid #e2e8ee;border-radius:8px;padding:10px 14px}}
 .kpi .v{{font-size:1.5rem;font-weight:800;color:#12395c}}.kpi .l{{font-size:.82rem;color:#667}}
