@@ -113,8 +113,29 @@ def stage_cao_bar(stages) -> go.Figure:
     return fig
 
 
+def _fmt(v, nd: int = 2) -> str:
+    """수치 표기. 값이 없으면 지어내지 않고 '-' (CLAUDE.md §2-1)."""
+    return "-" if v is None or (isinstance(v, float) and np.isnan(v)) else f"{v:.{nd}f}"
+
+
+def _wavg(values, weights) -> float:
+    """물량가중 평균. 품위가 빈칸인 행은 분자·분모 양쪽에서 제외한다.
+
+    (빈칸을 0으로 넣으면 평균이 0쪽으로 끌려간다 — 47Q CaO 45.6→36.6 왜곡 버그.)
+    """
+    import pandas as pd
+
+    v = pd.to_numeric(values, errors="coerce")
+    w = pd.to_numeric(weights, errors="coerce").fillna(0)
+    ok = v.notna() & (w > 0)
+    return float((v[ok] * w[ok]).sum() / w[ok].sum()) if w[ok].sum() > 0 else float("nan")
+
+
 def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
-    """광산→라인→야드 추적 Sankey (원시 정제 데이터에서 흐름 계산)."""
+    """광산→라인→야드 추적 Sankey (원시 정제 데이터에서 흐름 계산).
+
+    호버 수치는 정적/JS 재계산 경로가 동일한 규칙(물량가중·빈칸 제외)을 쓴다.
+    """
     import pandas as pd
 
     from config import schema as S
@@ -125,19 +146,22 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
     smap, lmap, ymap = {"49Q": 0, "47Q": 1}, {S.LINE_OLD: 2, S.LINE_NEW: 3}, {S.LINE_OLD: 4, S.LINE_NEW: 5}
     mm = mine[mine["line"].isin([S.LINE_OLD, S.LINE_NEW])]
     for (so, ln), g in mm.groupby(["source", "line"]):
-        ton, cao = g["tonnage"].sum(min_count=1), g["cao"].mean()
+        ton = g["tonnage"].sum(min_count=1)
+        cao, mgo = _wavg(g["cao"], g["tonnage"]), _wavg(g["mgo"], g["tonnage"])
         if pd.isna(ton) or ton <= 0:
             continue
         src.append(smap[so]); tgt.append(lmap[ln]); val.append(float(ton)); lc.append(grade_color(cao))
-        hov.append(f"{labels[smap[so]]} → {labels[lmap[ln]]}<br>이송 {ton:,.0f}톤 · 평균 CaO {cao:.2f}%")
+        hov.append(f"{labels[smap[so]]} → {labels[lmap[ln]]}<br>이송 {ton:,.0f}톤"
+                   f"<br>CaO {_fmt(cao)}% · MgO {_fmt(mgo)}%")
         keys.append(f"{so}|{ln}")
     for ln in [S.LINE_OLD, S.LINE_NEW]:
         ton = osp_exp.loc[osp_exp["line"] == ln, "withdrawn_ton"].sum(min_count=1)
-        ycao = yards[ln]["cao"].mean()
+        ycao, ymgo = yards[ln]["cao"].mean(), yards[ln]["mgo"].mean()   # 야드 실측 평균(빈칸 자동 제외)
         if pd.isna(ton) or ton <= 0:
             continue
         src.append(lmap[ln]); tgt.append(ymap[ln]); val.append(float(ton)); lc.append(grade_color(ycao))
-        hov.append(f"{labels[lmap[ln]]} → {labels[ymap[ln]]}<br>인출 {ton:,.0f}톤 · 야드 CaO {ycao:.2f}%")
+        hov.append(f"{labels[lmap[ln]]} → {labels[ymap[ln]]}<br>인출 {ton:,.0f}톤"
+                   f"<br>야드 CaO {_fmt(ycao)}% · MgO {_fmt(ymgo)}%")
         keys.append(f"__yard__{ln}")
     fig = sankey_tracking(labels, node_colors, src, tgt, val, lc, hov)
     fig.update_layout(meta=dict(
@@ -149,10 +173,15 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
 def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
     """Sankey 링크의 '일별' 집계 → 정적 HTML에서 기간별로 JS가 재계산할 수 있게 한다.
 
-    각 링크마다 [날짜, 물량, 물량×CaO, 물량×MgO] 를 쌓아두면,
+    각 링크마다 [날짜, 물량, 물량×CaO, CaO유효물량, 물량×MgO, MgO유효물량] 을 쌓아두면,
     임의 구간 합계로 총물량과 물량가중 평균 품위를 정확히 복원할 수 있다.
-    반환: {"yc": {링크키: [[d, ton, ton*cao, ton*mgo], ...]},
-           "flow": {링크키: [[d, ton, ton*cao, 0], ...]}}
+
+    ⭐️ **품위 빈칸은 평균에서 제외한다**: 품위가 비어 있는 행은 물량(ton)에는 포함되지만
+       가중평균의 분자·분모 **양쪽에서 모두 빠져야** 한다. 분모에 물량만 남으면 평균이
+       0 쪽으로 끌려간다(47Q는 15%가 빈칸이라 CaO가 45.6 → 36.6으로 왜곡됐던 버그).
+       CaO·MgO는 빈칸 위치가 다를 수 있으므로 **성분별로 유효물량을 따로** 집계한다.
+    반환: {"yc"/"flow": {링크키: [[d, ton, wc, wton_c, wm, wton_m], ...]},
+           "yard_daily": {라인: [[d, n_cao, sum_cao, n_mgo, sum_mgo], ...]}}
     """
     import pandas as pd
 
@@ -164,15 +193,22 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
             return out
         d = df.dropna(subset=[date_col]).copy()
         d["_d"] = pd.to_datetime(d[date_col]).dt.strftime("%Y-%m-%d")
+
+        def _weighted(g, ton, col):
+            """(물량×품위 합, 품위가 유효한 행의 물량 합). 빈칸 행은 양쪽에서 제외."""
+            if not col:
+                return 0.0, 0.0
+            v = pd.to_numeric(g[col], errors="coerce")
+            ok = v.notna()
+            return float((ton[ok] * v[ok]).sum()), float(ton[ok].sum())
+
         for keys, g in d.groupby(key_cols + ["_d"]):
             *kparts, day = keys if isinstance(keys, tuple) else (keys,)
             k = "|".join(str(x) for x in kparts)
-            ton = float(pd.to_numeric(g[ton_col], errors="coerce").fillna(0).sum())
-            wc = float((pd.to_numeric(g[ton_col], errors="coerce").fillna(0)
-                        * pd.to_numeric(g[cao_col], errors="coerce").fillna(0)).sum()) if cao_col else 0.0
-            wm = float((pd.to_numeric(g[ton_col], errors="coerce").fillna(0)
-                        * pd.to_numeric(g[mgo_col], errors="coerce").fillna(0)).sum()) if mgo_col else 0.0
-            out.setdefault(k, []).append([day, ton, wc, wm])
+            t = pd.to_numeric(g[ton_col], errors="coerce").fillna(0)
+            wc, wtc = _weighted(g, t, cao_col)
+            wm, wtm = _weighted(g, t, mgo_col)
+            out.setdefault(k, []).append([day, float(t.sum()), wc, wtc, wm, wtm])
         return out
 
     agg = {"yc": _rows(yc, ["line", "yard"], "tonnage", "cao", "mgo")}
@@ -180,7 +216,7 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
     # 물류 개요: 광산(source)→라인, 라인→야드
     flow: dict[str, list] = {}
     mm = mine[mine["line"].isin([S.LINE_OLD, S.LINE_NEW])] if mine is not None else None
-    flow.update(_rows(mm, ["source", "line"], "tonnage", "cao", date_col="date"))
+    flow.update(_rows(mm, ["source", "line"], "tonnage", "cao", "mgo", date_col="date"))
     # 라인→야드: OSP 인출톤(물량) + 해당 야드 CaO는 별도(야드 측정 평균)로 색 결정
     o = _rows(osp_exp, ["line"], "withdrawn_ton")
     for k, v in o.items():
@@ -189,10 +225,15 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
     for ln, y in (yards or {}).items():
         if y is None or len(y) == 0:
             continue
-        d = y.dropna(subset=["datetime", "cao"]).copy()
+        d = y.dropna(subset=["datetime"]).copy()
         d["_d"] = d["datetime"].dt.strftime("%Y-%m-%d")
-        yard_daily[ln] = [[day, int(len(g)), float(g["cao"].sum()), float(g["mgo"].sum())]
-                          for day, g in d.groupby("_d")]
+        # 성분별로 유효 측정 건수를 따로 센다 (45Q는 MgO만 13.6% 비어 있어 공통 카운트 쓰면 왜곡)
+        rows = []
+        for day, g in d.groupby("_d"):
+            c = pd.to_numeric(g["cao"], errors="coerce").dropna()
+            m = pd.to_numeric(g["mgo"], errors="coerce").dropna()
+            rows.append([day, int(len(c)), float(c.sum()), int(len(m)), float(m.sum())])
+        yard_daily[ln] = rows
     agg["flow"] = flow
     agg["yard_daily"] = yard_daily
     return agg
@@ -221,8 +262,9 @@ def build_yardchange_sankey(yc, default: str = "CaO") -> go.Figure:
     g = (yc.dropna(subset=["tonnage"]).groupby(["line", "yard"])
          .apply(lambda d: pd.Series(dict(
              ton=d["tonnage"].sum(),
-             cao=np.average(d["cao"], weights=d["tonnage"]) if d["tonnage"].sum() else np.nan,
-             mgo=np.average(d["mgo"], weights=d["tonnage"]) if d["tonnage"].sum() else np.nan,
+             # _wavg: 품위 빈칸 행만 제외(np.average 는 빈칸 하나에 링크 전체가 NaN이 됨)
+             cao=_wavg(d["cao"], d["tonnage"]),
+             mgo=_wavg(d["mgo"], d["tonnage"]),
              n=len(d))), include_groups=False)
          .reset_index())
 
@@ -592,10 +634,13 @@ function _mgoColor(v,a){{
   var t=Math.max(0,Math.min(1,(v-2.5)/2));
   return 'rgba('+Math.round(60+180*t)+','+Math.round(160-90*t)+','+Math.round(90-40*t)+','+a+')';
 }}
+// 행 = [날짜, 물량, 물량×CaO, CaO유효물량, 물량×MgO, MgO유효물량]
+// 품위 빈칸 행은 유효물량에서 빠지므로 분모에 남아 평균을 0쪽으로 끌지 않는다.
 function _sumRows(rows,s,e){{
-  var ton=0,wc=0,wm=0;
-  (rows||[]).forEach(function(r){{if(r[0]>=s&&r[0]<=e){{ton+=r[1];wc+=r[2];wm+=r[3];}}}});
-  return {{ton:ton, cao: ton>0?wc/ton:null, mgo: ton>0?wm/ton:null}};
+  var ton=0,wc=0,wtc=0,wm=0,wtm=0;
+  (rows||[]).forEach(function(r){{if(r[0]>=s&&r[0]<=e){{
+    ton+=r[1];wc+=r[2];wtc+=r[3];wm+=r[4];wtm+=r[5];}}}});
+  return {{ton:ton, cao: wtc>0?wc/wtc:null, mgo: wtm>0?wm/wtm:null}};
 }}
 function recomputeSankeys(s,e){{
   if(!window.SANKEYAGG){{return;}}
@@ -609,9 +654,11 @@ function recomputeSankeys(s,e){{
     meta.link_keys.forEach(function(k,i){{
       var a=_sumRows(store[k],s,e), c=a.cao, m=a.mgo;
       if(!isYC && k.indexOf('__yard__')===0){{   // 라인→야드: 색은 야드 실측 평균
-        var ln=k.replace('__yard__',''), n=0,sc=0,sm=0;
-        (yd[ln]||[]).forEach(function(r){{if(r[0]>=s&&r[0]<=e){{n+=r[1];sc+=r[2];sm+=r[3];}}}});
-        c = n>0?sc/n:null; m = n>0?sm/n:null;
+        // 야드 일별행 = [날짜, CaO건수, CaO합, MgO건수, MgO합] — 성분별 건수로 나눈다
+        var ln=k.replace('__yard__',''), nc=0,sc=0,nm=0,sm=0;
+        (yd[ln]||[]).forEach(function(r){{if(r[0]>=s&&r[0]<=e){{
+          nc+=r[1];sc+=r[2];nm+=r[3];sm+=r[4];}}}});
+        c = nc>0?sc/nc:null; m = nm>0?sm/nm:null;
       }}
       vals.push(a.ton); cao.push(c); mgo.push(m);
       var lb=meta.labels?meta.labels[i]:k;

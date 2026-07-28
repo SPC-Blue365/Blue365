@@ -121,6 +121,47 @@ def test_yard_pairing_matches_user_confirmed_domain_truth():
     assert S.YARD_PAIR[S.LINE_NEW][0] == S.SHEET_YARD_CNA
 
 
+def test_wavg_excludes_blank_grades_from_both_numerator_and_denominator():
+    """빈칸 품위는 평균에서 완전히 빠져야 한다 (0으로 계산되면 평균이 끌려 내려감)."""
+    from src.visualization.figures import _wavg
+    v = pd.Series([45.0, np.nan, 45.0])
+    w = pd.Series([100.0, 900.0, 100.0])   # 빈칸 행이 물량의 82%
+    assert _wavg(v, w) == pytest.approx(45.0)      # 빈칸=0 이면 8.2 로 폭락
+    assert np.isnan(_wavg(pd.Series([np.nan]), pd.Series([10.0])))
+
+
+def test_sankey_aggregates_ignore_blank_grades():
+    """일별 집계의 '성분 유효물량'이 빈칸 행의 물량을 포함하면 안 된다."""
+    from src.visualization import figures as V
+    mine = pd.DataFrame({
+        "date": pd.to_datetime(["2026-07-01"] * 3),
+        "source": ["47Q"] * 3, "line": ["기존"] * 3,
+        "tonnage": [100.0, 900.0, 100.0],
+        "cao": [45.0, np.nan, 45.0],       # 가운데 행이 빈칸
+        "mgo": [4.0, 4.0, np.nan],         # MgO 는 빈칸 위치가 다름
+    })
+    agg = V.sankey_daily_aggregates(mine, None, None, None)
+    (day, ton, wc, wtc, wm, wtm), = agg["flow"]["47Q|기존"]
+    assert ton == pytest.approx(1100.0)     # 물량은 전부 포함
+    assert wtc == pytest.approx(200.0)      # CaO 유효물량은 빈칸 행 제외
+    assert wc / wtc == pytest.approx(45.0)
+    assert wtm == pytest.approx(1000.0)     # MgO 는 별도 집계 (위치가 다름)
+    assert wm / wtm == pytest.approx(4.0)
+
+
+def test_yard_daily_counts_cao_and_mgo_separately():
+    """야드 일별집계는 성분별 건수를 따로 세야 한다 (45Q는 MgO만 결측)."""
+    from src.visualization import figures as V
+    yards = {"기존": pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-01 01:00", "2026-07-01 02:00"]),
+        "cao": [45.0, 45.0], "mgo": [3.4, np.nan],
+    })}
+    (day, nc, sc, nm, sm), = V.sankey_daily_aggregates(None, None, yards, None)["yard_daily"]["기존"]
+    assert (nc, sc) == (2, pytest.approx(90.0))
+    assert (nm, sm) == (1, pytest.approx(3.4))   # 공통 카운트(2)면 1.7 로 반토막
+    assert sm / nm == pytest.approx(3.4)
+
+
 def test_scripts_do_not_redefine_yard_pairing():
     """스크립트가 페어링을 자체 하드코딩하면 정본과 어긋난다(실제로 발생했던 버그)."""
     import pathlib
