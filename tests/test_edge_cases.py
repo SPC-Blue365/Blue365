@@ -308,6 +308,71 @@ def test_mine_47Q_uses_actual_start_end_times():
                             __import__("datetime").time(1, 0)) == pd.Timestamp("2026-06-23 00:00")
 
 
+def _inv_fixture():
+    mine = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-01 12:00", "2026-07-02 12:00", "2026-07-03 12:00"]),
+        "line": ["신설"] * 3, "tonnage": [100.0, 200.0, 300.0],
+    })
+    osp = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-01 08:00", "2026-07-02 08:00", "2026-07-03 08:00"]),
+        "line": ["신설"] * 3, "withdrawn_ton": [50.0, 400.0, 100.0],
+    })
+    return mine, osp
+
+
+def test_inventory_series_is_cumulative_net():
+    """재고 = 누적(적재 − 인출). 마지막 값은 전체 적재 − 전체 인출과 같아야 한다."""
+    from src.visualization import figures as V
+    mine, osp = _inv_fixture()
+    idx, cum, inflow, outflow = V.inventory_series(mine, osp, "신설")
+    assert list(cum.values) == pytest.approx([50.0, -150.0, 50.0])   # +50, -200, +200
+    assert cum.iloc[-1] == pytest.approx(600.0 - 550.0)
+    assert inflow.sum() == pytest.approx(600.0)
+    assert outflow.sum() == pytest.approx(550.0)
+
+
+def test_inventory_series_filters_by_line():
+    """다른 라인의 물량이 섞이면 안 된다 (OSP 는 라인별로 별개다)."""
+    from src.visualization import figures as V
+    mine, osp = _inv_fixture()
+    mine2 = pd.concat([mine, mine.assign(line="기존", tonnage=9999.0)])
+    idx, cum, inflow, _ = V.inventory_series(mine2, osp, "신설")
+    assert inflow.sum() == pytest.approx(600.0), "기존 라인 물량이 섞였다"
+
+
+def test_inventory_series_missing_tonnage_is_not_counted():
+    """결측 물량은 0 으로 더해질 뿐, 총량을 부풀리면 안 된다."""
+    from src.visualization import figures as V
+    mine, osp = _inv_fixture()
+    mine.loc[0, "tonnage"] = np.nan
+    _, _, inflow, _ = V.inventory_series(mine, osp, "신설")
+    assert inflow.sum() == pytest.approx(500.0)
+
+
+@pytest.mark.parametrize("m,o", [(None, None), ("empty", "empty"), (None, "keep")])
+def test_inventory_trend_survives_missing_data(m, o):
+    """데이터가 없거나 한쪽만 있어도 예외 없이 그려져야 한다 (가동 중지 라인)."""
+    from src.visualization import figures as V
+    mine, osp = _inv_fixture()
+    mm = None if m is None else (mine.iloc[0:0] if m == "empty" else mine)
+    oo = None if o is None else (osp.iloc[0:0] if o == "empty" else osp)
+    fig = V.inventory_trend(mm, oo)
+    assert fig is not None
+
+
+def test_inventory_trend_labels_are_not_color_only():
+    """계열이 2개이므로 범례 + 직접 라벨이 있어야 한다 (색만으로 구분 금지)."""
+    from src.visualization import figures as V
+    mine, osp = _inv_fixture()
+    mine2 = pd.concat([mine, mine.assign(line="기존")])
+    osp2 = pd.concat([osp, osp.assign(line="기존")])
+    fig = V.inventory_trend(mine2, osp2)
+    assert len(fig.data) == 2
+    assert all(t.name for t in fig.data), "범례 이름이 있어야 한다"
+    ann = [a.text for a in fig.layout.annotations]
+    assert any("기존" in t for t in ann) and any("신설" in t for t in ann)
+
+
 def test_segment_logic_is_not_duplicated():
     """구간 정의는 src/matching/segments.py 하나뿐이어야 한다 (페어링 버그의 재발 방지)."""
     import pathlib

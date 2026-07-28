@@ -112,6 +112,26 @@ def _balance_note(mine, osp_exp) -> str:
     return ("<br>이 기간 실제: " + " / ".join(parts)) if parts else ""
 
 
+def _inventory_note(mine, osp_exp) -> str:
+    """재고 차트를 읽을 때 필요한 데이터 커버리지 고지 (실제 수치로)."""
+    if mine is None or osp_exp is None or not len(mine) or not len(osp_exp):
+        return ""
+    notes = []
+    for ln in S.YARD_PAIR:
+        m = mine[mine["line"] == ln]
+        o = osp_exp[osp_exp["line"] == ln]
+        if not len(m) or not len(o):
+            continue
+        m0 = pd.to_datetime(m["datetime"]).min()
+        pre = o[pd.to_datetime(o["datetime"]) < m0]
+        t = float(pd.to_numeric(pre["withdrawn_ton"], errors="coerce").sum())
+        tot = float(pd.to_numeric(o["withdrawn_ton"], errors="coerce").sum())
+        if t > 0 and tot > 0:
+            notes.append(f"<b>{ln}</b>은 광산 기록({m0:%m/%d}) 이전 인출이 "
+                         f"{t:,.0f}톤({t / tot * 100:.1f}%) 있어 초반 하락이 다소 과장됩니다")
+    return ("ℹ️ " + " · ".join(notes) + ".") if notes else ""
+
+
 def _seg_selector(segs: list[dict]) -> str:
     """야드변경 구간 드롭다운 (라인별 그룹). 선택 시 두 Sankey가 그 구간으로 바뀐다."""
     if not segs:
@@ -153,6 +173,10 @@ def _seg_script(segs: list[dict]) -> str:
         "  var g=(window.YCSEG||{})[k]; if(!g){return;}"
         "  window.YCHL=g.link; window.YCLINE=g.line;"
         "  if(window.recomputeSankeys)recomputeSankeys(g.s,g.e);"
+        # 시간축 차트(재고 추이·타임라인 등)도 같은 구간으로 확대 — 탭 안에서 기간이 어긋나지 않게
+        "  if(window._timeGraphs){_timeGraphs().forEach(function(gd){"
+        "    Plotly.relayout(gd,{'xaxis.range':[g.s.slice(0,10)+' 00:00:00',"
+        "                                       g.e.slice(0,10)+' 23:59:59']});});}"
         "  if(box){"
         "    box.innerHTML='<b>'+g.label+'</b> ('+g.hours+'시간) · 이 구간은 <b>'+g.line+' 라인만</b> 표시합니다'"
         "      +'<br>변경 시점 품위 CaO '+(g.cao==null?'-':g.cao)+'% · MgO '+(g.mgo==null?'-':g.mgo)+'%'"
@@ -455,6 +479,14 @@ def main(start=None, end=None):
                  "<br>ℹ️ 광산 물량은 <b>채굴 교대 시각</b>(1차 08~16 · 2차 16~24 · 3차 00~08의 중점)과 "
                  "47Q의 <b>실측 시작·종료 시각</b>으로 시간축에 배치됩니다.")),
             ("", V.build_tracking_sankey(mine, osp_exp, yards)),
+            ("OSP 재고 증감 추이 (적재 − 인출 누적)",
+             cap("위 Sankey 의 좌우 차이가 <b>시간에 따라 어떻게 쌓였는지</b>. "
+                 "<b>선이 내려가면 재고를 헐어 쓰는 중</b>, 올라가면 쌓이는 중입니다. "
+                 "회색 0선은 <b>리포트 기간 시작 수준</b>.<br>"
+                 "<b>⚠️ 절대 재고량이 아닙니다</b> — 시작 시점의 재고가 데이터에 없어 "
+                 "<b>증감분만</b> 표시합니다(지어내지 않음). 판단에는 <b>기울기</b>를 보십시오.<br>"
+                 + _inventory_note(mine, osp_exp))),
+            ("", V.inventory_trend(mine, osp_exp)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
             ("변경일자별 야드 CaO·MgO 추이",

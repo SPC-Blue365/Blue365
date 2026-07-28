@@ -135,6 +135,86 @@ def prediction_scorecard(methods, tol: float = 0.5, title: str = "") -> go.Figur
     return fig
 
 
+#: 라인 구분용 계열색 (팔레트 검증기 6항목 전부 통과: CVD ΔE 20.1, 대비 3:1↑)
+LINE_COLORS = {"기존": BLUE, "신설": "#eb6834"}
+
+
+def inventory_series(mine, osp_exp, line: str, freq: str = "1D"):
+    """한 라인의 OSP 재고 '증감' 시계열 = 누적(적재 − 인출).
+
+    ⚠️ **시작 재고는 데이터에 없다.** 따라서 절대 재고량이 아니라 **기간 시작 대비
+       누적 증감**만 계산한다(시작점 0). 지어내지 않는다(CLAUDE.md §2-1).
+       판단에 쓰는 것은 **기울기**(늘고 있나 줄고 있나)이므로 기준선이 0이어도 무방하다.
+
+    반환: (index, 누적증감, 구간별 적재, 구간별 인출) — 데이터가 없으면 모두 빈 값.
+    """
+    import pandas as pd
+
+    def _agg(df, tcol, vcol):
+        if df is None or len(df) == 0 or tcol not in df.columns:
+            return pd.Series(dtype="float64")
+        d = df[df["line"] == line] if "line" in df.columns else df
+        d = d.dropna(subset=[tcol])
+        if len(d) == 0:
+            return pd.Series(dtype="float64")
+        s = pd.Series(pd.to_numeric(d[vcol], errors="coerce").fillna(0).values,
+                      index=pd.to_datetime(d[tcol].values))
+        return s.resample(freq).sum()
+
+    inflow = _agg(mine, "datetime", "tonnage")
+    outflow = _agg(osp_exp, "datetime", "withdrawn_ton")
+    if inflow.empty and outflow.empty:
+        empty = pd.Series(dtype="float64")
+        return empty.index, empty, empty, empty
+    idx = inflow.index.union(outflow.index)
+    inflow = inflow.reindex(idx, fill_value=0.0)
+    outflow = outflow.reindex(idx, fill_value=0.0)
+    return idx, (inflow - outflow).cumsum(), inflow, outflow
+
+
+def inventory_trend(mine, osp_exp, freq: str = "1D", title: str = "") -> go.Figure:
+    """OSP 재고 증감 추이 (라인별 · 기간 시작 대비 누적).
+
+    선이 내려가면 재고를 헐어 쓰는 중, 올라가면 쌓이는 중. 0선은 '기간 시작 수준'.
+    """
+    import pandas as pd
+
+    fig = go.Figure()
+    any_data = False
+    for ln, color in LINE_COLORS.items():
+        idx, cum, inflow, outflow = inventory_series(mine, osp_exp, ln, freq)
+        if len(idx) == 0:
+            continue
+        any_data = True
+        fig.add_trace(go.Scatter(
+            x=idx, y=cum.values, name=f"{ln} 라인", mode="lines",
+            line=dict(color=color, width=2.2),
+            customdata=np.stack([inflow.values, outflow.values], axis=-1),
+            hovertemplate=("%{x|%m/%d}<br>누적 증감 %{y:,.0f}톤"
+                           "<br>적재 %{customdata[0]:,.0f}톤 · 인출 %{customdata[1]:,.0f}톤"
+                           "<extra>" + ln + "</extra>"),
+        ))
+        # 마지막 값 직접 라벨 (색만으로 구분하지 않도록)
+        fig.add_annotation(x=idx[-1], y=cum.values[-1], text=f"{ln} {cum.values[-1]:+,.0f}t",
+                           showarrow=False, xanchor="left", xshift=6,
+                           font=dict(color=color, size=11))
+    if not any_data:
+        fig.update_layout(title="재고 추이 — 해당 기간 데이터 없음", height=300)
+        return fig
+
+    fig.add_hline(y=0, line=dict(color="#8c8c89", width=1.2),
+                  annotation_text="기간 시작 수준", annotation_position="top left",
+                  annotation_font=dict(size=11, color="#666"))
+    fig.update_layout(
+        title=title or "OSP 재고 증감 추이 (기간 시작 대비 누적 · 적재−인출)",
+        height=360, font=dict(size=12), margin=dict(l=10, r=86, t=54, b=10),
+        yaxis_title="누적 증감 (톤)", plot_bgcolor="white",
+        yaxis=dict(showgrid=True, gridcolor="#eceff2", zeroline=False, tickformat=","),
+        legend=dict(orientation="h", y=1.1, x=1, xanchor="right"),
+    )
+    return _time_range_controls(_korean_date_axis(fig))
+
+
 def stage_cao_bar(stages) -> go.Figure:
     """단계별 CaO 평균±표준편차 (변동성 축소 목표 시각화). stages=[(name,mean,std,color)]."""
     names = [s[0] for s in stages]

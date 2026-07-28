@@ -191,6 +191,15 @@ with tab2:
         st.caption("이 기간 실제: " + "  /  ".join(_bal))
     st.plotly_chart(V.build_tracking_sankey(mine_p, osp_p, yards), use_container_width=True)
 
+    st.markdown("### OSP 재고 증감 추이 (적재 − 인출 누적)")
+    st.caption(
+        "위 Sankey 의 좌우 차이가 **시간에 따라 어떻게 쌓였는지**. "
+        "**선이 내려가면 재고를 헐어 쓰는 중**, 올라가면 쌓이는 중입니다. 0선은 선택 기간 시작 수준.  \n"
+        "⚠️ **절대 재고량이 아닙니다** — 시작 시점의 재고가 데이터에 없어 **증감분만** 표시합니다. "
+        "판단에는 **기울기**를 보십시오."
+    )
+    st.plotly_chart(V.inventory_trend(mine_p, osp_p), use_container_width=True)
+
 # ── ③ 관리도 (제어차트) ──
 with tab3:
     st.markdown("규격밴드 + 통계 관리한계(평균±3σ) + 규격이탈점. **KPI = 규격내 시간 비율**.")
