@@ -1,6 +1,6 @@
 # 데이터 스키마 & 매칭 규칙 (Data Schema & Matching Rules)
 
-> `[Data-Analyst]` EDA 1차 결과. 원본: `data/raw/data_v1.xlsx` (6개 시트, 기간 2026-06-01 ~ 07-22).
+> `[Data-Analyst]` EDA 1차 결과. 원본: `data/raw/data_v1.xlsx` (8개 시트, 기간 2026-06-01 ~ **07-28**, 2026-07-28 갱신).
 > ✅=데이터로 확인된 사실 / ❓=사용자 확인 필요(추측 금지, CLAUDE.md §2).
 
 ---
