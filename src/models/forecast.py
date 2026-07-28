@@ -27,6 +27,23 @@ AR_FEATURES = ["ar1", "ar2", "ar3", "roll3_mean", "roll3_std", "hour"]
 UPSTREAM_FEATURES = ["up_impl", "up_ton"]
 AR_CORE = ["ar1", "ar2", "ar3", "roll3_mean", "roll3_std"]
 
+# 학습·검증에 필요한 최소 행수. 이보다 적으면 모델을 만들지 않고 명시적으로 실패한다
+# (가동 중지 라인·짧은 기간 설정에서 sklearn 의 난해한 오류 대신 원인을 알린다).
+MIN_TRAIN_ROWS = 20
+
+
+class InsufficientDataError(ValueError):
+    """모델 학습/검증에 필요한 최소 데이터가 없을 때 발생 (§2-1 값을 지어내지 않는다)."""
+
+
+def require_rows(n: int, need: int = MIN_TRAIN_ROWS, what: str = "모델 학습") -> None:
+    """행수가 부족하면 원인이 드러나는 한국어 메시지로 실패시킨다."""
+    if n < need:
+        raise InsufficientDataError(
+            f"{what}에 필요한 데이터 부족: 유효 {n}행 (최소 {need}행). "
+            "해당 라인이 가동 중지 상태이거나 설정한 기간이 너무 짧습니다."
+        )
+
 
 def build_features(
     yard_hourly_cao: pd.Series, osp_hourly: pd.DataFrame, lag_hours: int
@@ -73,6 +90,7 @@ def evaluate(
     """Ridge(AR[+상류]) 시계열 교차검증. persist/naive 기준선과 함께 리포트."""
     feats = AR_FEATURES + (UPSTREAM_FEATURES if use_upstream else [])
     d = features_df.dropna(subset=AR_CORE + ["cao"]).copy()
+    require_rows(len(d), max(MIN_TRAIN_ROWS, (n_splits + 1) * 2), "시계열 교차검증")
     X = d[feats].fillna(0.0).values
     y = d["cao"].values
     ar1 = d["ar1"].values
@@ -98,6 +116,7 @@ def fit_final(features_df: pd.DataFrame, use_upstream: bool = False, alpha: floa
     """전체 데이터로 최종 모델 학습(운영 배포용). (model, feats) 반환."""
     feats = AR_FEATURES + (UPSTREAM_FEATURES if use_upstream else [])
     d = features_df.dropna(subset=AR_CORE + ["cao"])
+    require_rows(len(d), MIN_TRAIN_ROWS, "최종 모델 학습")
     model = make_pipeline(StandardScaler(), Ridge(alpha=alpha))
     model.fit(d[feats].fillna(0.0).values, d["cao"].values)
     return model, feats

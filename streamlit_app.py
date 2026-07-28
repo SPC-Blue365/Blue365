@@ -52,7 +52,7 @@ _alldt = pd.concat([yc_full["datetime"]] + [y["datetime"] for y in yards_full.va
 dmin, dmax = pd.to_datetime(_alldt.min()).date(), pd.to_datetime(_alldt.max()).date()
 rng = st.sidebar.date_input("분석 기간", value=(dmin, dmax), min_value=dmin, max_value=dmax)
 start = pd.Timestamp(rng[0]) if isinstance(rng, (list, tuple)) and len(rng) >= 1 else pd.Timestamp(dmin)
-end = pd.Timestamp(rng[1]) + pd.Timedelta(days=1) if isinstance(rng, (list, tuple)) and len(rng) >= 2 else pd.Timestamp(dmax) + pd.Timedelta(days=1)
+end = pd.Timestamp(rng[1]) if isinstance(rng, (list, tuple)) and len(rng) >= 2 else pd.Timestamp(dmax)
 
 st.sidebar.header("⚙️ 경보 설정")
 lo = st.sidebar.number_input("규격 하한", value=float(S.TARGET.lower), step=0.1)
@@ -70,7 +70,7 @@ yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards_full.
 mine_p = filter_period(mine, start, end, "date")          # 광산도 동일 기간
 osp_p = filter_period(osp_exp, start, end, "datetime")    # OSP 인출도 동일 기간
 lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
-st.caption(f"선택 기간: {start.date()} ~ {(end - pd.Timedelta(days=1)).date()}  ·  야드변경 {len(yc)}건")
+st.caption(f"선택 기간: {start.date()} ~ {end.date()}  ·  야드변경 {len(yc)}건")
 
 statuses = monitor_all(lines, cfg)
 added = log_statuses(statuses)  # 경보 이력 누적(중복 제외)
@@ -83,8 +83,10 @@ with tab1:
     for col, (ln, stt) in zip(cols, statuses.items()):
         icon, label = stt.badge
         color = "#8a6d1a" if stt.is_stale else BADGE[stt.level][2]
-        col.metric(f"{icon} {ln} → {stt.alias}", f"{stt.latest_actual:.2f}%",
-                   f"예측 {stt.latest_pred:.2f} · MAE {stt.recent_mae:.2f}")
+        # 데이터 부족(가동 중지·짧은 기간)이면 nan 대신 '-' 로 정직하게 표시
+        has = np.isfinite(stt.latest_actual)
+        col.metric(f"{icon} {ln} → {stt.alias}", f"{stt.latest_actual:.2f}%" if has else "-",
+                   f"예측 {stt.latest_pred:.2f} · MAE {stt.recent_mae:.2f}" if has else "데이터 없음")
         col.markdown(f"<span style='color:{color};font-weight:700'>{label}</span> · 경보 {len(stt.alerts)}건",
                      unsafe_allow_html=True)
         col.caption(f"📅 기준 {stt.as_of} ({stt.age_text})" + (f"\n\n⏸️ {stt.note}" if stt.note else ""))
@@ -102,11 +104,14 @@ with tab1:
         else:
             st.success("경보 없음 — 정상 범위")
         s = stt.series
-        oos = ((s["pred"] < V.TARGET - 0.5) | (s["pred"] > V.TARGET + 0.5)).values
-        st.plotly_chart(
-            V.prediction_timeseries(s["datetime"], s["actual"].values, s["pred"].values, oos,
-                                    f"최근 {stt.n_monitored}시간 · 실측 vs 예측"),
-            use_container_width=True)
+        if len(s) == 0:
+            st.info("선택한 기간에 이 라인의 측정 데이터가 없어 예측 그래프를 표시할 수 없습니다.")
+        else:
+            oos = ((s["pred"] < V.TARGET - 0.5) | (s["pred"] > V.TARGET + 0.5)).values
+            st.plotly_chart(
+                V.prediction_timeseries(s["datetime"], s["actual"].values, s["pred"].values, oos,
+                                        f"최근 {stt.n_monitored}시간 · 실측 vs 예측"),
+                use_container_width=True)
 
 # ── ② 추적 흐름 (Sankey) ──
 with tab2:
@@ -143,8 +148,13 @@ with tab3:
         s = stt.series
         act = s["actual"].values
         fin = act[np.isfinite(act)]
-        in_spec = float(np.mean((fin >= lo) & (fin <= hi)) * 100) if len(fin) else 0.0
         c1, c2 = st.columns([1, 4])
+        if not len(fin):
+            c1.metric(f"{ln} 규격내 비율", "-")
+            c1.caption(f"{stt.alias}\n데이터 없음")
+            c2.info("선택한 기간에 이 라인의 측정 데이터가 없습니다.")
+            continue
+        in_spec = float(np.mean((fin >= lo) & (fin <= hi)) * 100)
         c1.metric(f"{ln} 규격내 비율", f"{in_spec:.0f}%")
         c1.caption(f"{stt.alias}\n최근 {stt.n_monitored}h")
         c2.plotly_chart(V.control_chart(s["datetime"], act, lo, hi, f"{ln} → {stt.alias} 관리도"),

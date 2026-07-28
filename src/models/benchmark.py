@@ -25,17 +25,22 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVR
 
-from src.models.forecast import AR_FEATURES, AR_CORE, UPSTREAM_FEATURES
+from src.models.forecast import (
+    AR_CORE, AR_FEATURES, MIN_TRAIN_ROWS, UPSTREAM_FEATURES, require_rows,
+)
 
 
-def get_models() -> dict:
-    """비교할 10개 모델. (스케일 민감 모델은 스케일러 포함)"""
+def get_models(n_neighbors: int = 7) -> dict:
+    """비교할 10개 모델. (스케일 민감 모델은 스케일러 포함)
+
+    n_neighbors: KNN 이웃 수. 표본이 작으면 가장 작은 CV 학습폴드보다 작게 낮춰 넘긴다.
+    """
     sc = lambda m: make_pipeline(StandardScaler(), m)
     models = {
         "1.LinearRegression": sc(LinearRegression()),
         "2.Ridge": sc(Ridge(alpha=1.0)),
         "3.ElasticNet": sc(ElasticNet(alpha=0.05, l1_ratio=0.5, max_iter=5000)),
-        "4.KNN": sc(KNeighborsRegressor(n_neighbors=7)),
+        "4.KNN": sc(KNeighborsRegressor(n_neighbors=max(1, n_neighbors))),
         "5.SVR(RBF)": sc(SVR(C=10.0, gamma="scale")),
         "6.RandomForest": RandomForestRegressor(n_estimators=300, max_depth=6, random_state=0, n_jobs=-1),
         "7.ExtraTrees": ExtraTreesRegressor(n_estimators=300, max_depth=6, random_state=0, n_jobs=-1),
@@ -61,12 +66,15 @@ def benchmark(features_df: pd.DataFrame, use_upstream: bool = False, n_splits: i
     """모델별 시계열 CV 성능표(MAE 오름차순). persist/naive 기준선 포함."""
     feats = AR_FEATURES + (UPSTREAM_FEATURES if use_upstream else [])
     d = features_df.dropna(subset=AR_CORE + ["cao"]).copy()
+    require_rows(len(d), max(MIN_TRAIN_ROWS, (n_splits + 1) * 2), "모델 벤치마크")
     X = d[feats].fillna(0.0).values
     y = d["cao"].values
     ar1 = d["ar1"].values
     tscv = TimeSeriesSplit(n_splits=n_splits)
 
-    models = get_models()
+    # 가장 작은 학습폴드보다 이웃 수가 많으면 KNN 이 실패하므로 표본에 맞춰 낮춘다.
+    smallest_train = len(X) // (n_splits + 1)
+    models = get_models(n_neighbors=min(7, max(1, smallest_train - 1)))
     models.update(_boosters())  # XGBoost/LightGBM 포함 (10.XGBoost 교체 + 11.LightGBM 추가)
 
     rows = []

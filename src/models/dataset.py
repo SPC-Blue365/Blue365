@@ -92,7 +92,12 @@ def all_lines(raw_file: str | None = None) -> dict[str, LineData]:
 
 
 def filter_period(df: pd.DataFrame, start=None, end=None, col: str = "datetime") -> pd.DataFrame:
-    """[start, end] 기간으로 필터. start/end None이면 무제한. 인덱스가 시간이면 col='index'."""
+    """[start, end] 기간으로 필터 (양끝 포함). start/end None이면 무제한.
+
+    ⭐️ end 가 '날짜만'(시각 00:00)이면 그 날 **하루 전체**를 포함한다.
+       (예: end='2026-07-28' → 07/28 23:59:59 까지. 리포트 HTML의 JS 필터와 동일 규칙)
+    인덱스가 시간이면 col='index'.
+    """
     if df is None or len(df) == 0:
         return df
     s = pd.to_datetime(df.index if col == "index" else df[col], errors="coerce")
@@ -100,7 +105,10 @@ def filter_period(df: pd.DataFrame, start=None, end=None, col: str = "datetime")
     if start is not None:
         m &= s >= pd.Timestamp(start)
     if end is not None:
-        m &= s <= pd.Timestamp(end)
+        e = pd.Timestamp(end)
+        if e == e.normalize():  # 시각 미지정 → 그 날 끝까지
+            e = e + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+        m &= s <= e
     return df[m.values]
 
 

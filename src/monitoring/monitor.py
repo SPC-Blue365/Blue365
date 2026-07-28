@@ -20,6 +20,9 @@ from src.monitoring.alerts import (
     Alert, AlertConfig, Level, data_age_hours, evaluate_alerts, is_data_stale, overall_level,
 )
 
+# 모니터에 필요한 최소 행수. 학습 구간(80%)이 F.MIN_TRAIN_ROWS 를 넘도록 잡는다.
+MIN_ROWS = max(10, int(F.MIN_TRAIN_ROWS / 0.8) + 1)
+
 
 @dataclass
 class LineStatus:
@@ -71,6 +74,15 @@ def _load_saved(line: str):
     return None
 
 
+def _insufficient(ld: LineData, msg: str) -> LineStatus:
+    """데이터 부족 상태. 다른 코드가 기대하는 series 스키마(datetime/actual/pred)를 유지한다."""
+    empty = pd.DataFrame({"datetime": pd.to_datetime([]), "actual": [], "pred": []})
+    return LineStatus(ld.line, ld.alias, Level.GREEN, None, np.nan, np.nan, np.nan, 0,
+                      [Alert(Level.YELLOW, "data", msg)], empty,
+                      age_hours=float("nan"), is_stale=False,
+                      note=S.LINE_NOTES.get(ld.line, ""))
+
+
 def monitor_line(
     ld: LineData, cfg: AlertConfig | None = None, recent_frac: float = 0.2, model_bundle=None,
     reference_time=None,
@@ -82,16 +94,18 @@ def monitor_line(
     """
     cfg = cfg or AlertConfig()
     d = ld.features.dropna(subset=F.AR_CORE + ["cao"]).copy()
-    if len(d) < 10:
-        return LineStatus(ld.line, ld.alias, Level.GREEN, None, np.nan, np.nan, np.nan, 0,
-                          [Alert(Level.YELLOW, "data", "데이터 부족(모니터 불가)")], d.assign(pred=np.nan))
+    if len(d) < MIN_ROWS:
+        return _insufficient(ld, f"데이터 부족({len(d)}행) — 모니터 불가")
 
     k = int(len(d) * (1 - recent_frac))
     bundle = model_bundle or _load_saved(ld.line)
     if bundle is not None:
         model, feats = bundle["model"], bundle["features"]
     else:
-        model, feats = F.fit_final(d.iloc[:k], use_upstream=False)
+        try:
+            model, feats = F.fit_final(d.iloc[:k], use_upstream=False)
+        except F.InsufficientDataError as e:
+            return _insufficient(ld, str(e))
 
     recent = d.iloc[k:].copy()
     recent["pred"] = model.predict(recent[feats].fillna(0.0).values)

@@ -24,11 +24,26 @@ from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
 from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
 from src.monitoring import monitor_all
+from src.monitoring.monitor import MIN_ROWS as _MIN
+
 from src.monitoring.alerts import AlertConfig, Level
 from src.optimization.blend import BlendSource, recommend_blend
 from src.visualization import figures as V
 
+MIN_MODEL_ROWS = F.MIN_TRAIN_ROWS   # 시계열 CV·학습에 필요한 최소 행수
+
 BADGE = {Level.GREEN: ("🟢", "정상"), Level.YELLOW: ("🟡", "주의"), Level.RED: ("🔴", "경고")}
+
+
+def _expand(secs: list, what: str) -> list:
+    """라인 수에 맞춰 그래프 섹션을 펼친다. 하나도 없으면 사유를 안내한다.
+
+    (라인이 가동 중지이거나 기간이 짧으면 섹션 수가 줄어든다 — 고정 인덱싱 금지.)
+    """
+    if secs:
+        return [("", fig) for _, fig in secs]
+    return [("", f"<p class='muted'>표시할 {what}가 없습니다 — "
+                 f"선택한 기간에 모델링 가능한 라인이 없습니다(가동 중지 또는 데이터 부족).</p>")]
 
 
 def _line_feats(osp_exp, yards, line):
@@ -44,6 +59,8 @@ def main(start=None, end=None):
     if start or end:
         yc = filter_period(yc, start, end, "datetime")
         yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards.items()}
+        mine = filter_period(mine, start, end, "date")        # 광산도 동일 기간(기간 혼재 방지)
+        osp_exp = filter_period(osp_exp, start, end, "datetime")
     period_txt = ""
     if start or end:
         period_txt = f" · 기간 {start or '처음'}~{end or '끝'}"
@@ -53,11 +70,24 @@ def main(start=None, end=None):
 
     # ── 예측·벤치마크 ──
     pred_secs, bench_secs, ctrl_secs, metric_rows, reco_rows, kpi_rows = [], [], [], [], [], []
+    skipped: list[str] = []
     for ln, ld in lines.items():
         feats = ld.features
         d = feats.dropna(subset=F.AR_CORE + ["cao"])
         k = int(len(d) * 0.7)
-        model, fcols = F.fit_final(d.iloc[:k])
+        try:
+            # 학습분할(70%)·벤치마크 모두 최소 행수를 넘겨야 한다 (부족하면 InsufficientDataError)
+            F.require_rows(k, MIN_MODEL_ROWS, "리포트 모델링")
+            model, fcols = F.fit_final(d.iloc[:k])
+            bench = benchmark(feats, use_upstream=False)
+        except F.InsufficientDataError:
+            # 데이터 부족(가동 중지·짧은 기간) → 지어내지 않고 생략 (CLAUDE.md §2-1)
+            msg = f"데이터 부족({len(d)}행) — 해당 기간 모델링 생략"
+            metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td>-</td></tr>")
+            reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>-</td><td>-</td></tr>")
+            kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>-</td></tr>")
+            skipped.append(f"{ln}→{ld.alias}: {msg}")
+            continue
         te = d.iloc[k:]
         pr = model.predict(te[fcols].fillna(0).values)
         mae = float(np.abs(te["cao"].values - pr).mean())
@@ -65,7 +95,6 @@ def main(start=None, end=None):
         pred_secs.append(("", V.prediction_timeseries(te.index, te["cao"].values, pr, oos,
                           f"{ln} → {ld.alias} · 검증 MAE={mae:.2f}")))
         metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td><b>{mae:.2f}</b></td></tr>")
-        bench = benchmark(feats, use_upstream=False)
         bench_secs.append(("", V.model_benchmark_bar(bench, f"{ln} → {ld.alias}: 10개 모델 CV MAE")))
         reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td><b>{recommend(bench)}</b></td>"
                          f"<td>{bench[~bench['is_baseline']]['MAE'].min():.3f}</td></tr>")
@@ -115,9 +144,11 @@ def main(start=None, end=None):
         return f'<p class="cap">💬 {t}</p>'
 
     # ── 경영 요약 (Executive Summary) ──
-    _a = pd.concat([yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)])
-    rmin = pd.to_datetime(_a.min()).strftime("%Y/%m/%d")
-    rmax = pd.to_datetime(_a.max()).strftime("%Y/%m/%d")
+    _parts = [yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)]
+    _a = pd.concat(_parts) if any(len(x) for x in _parts) else pd.Series(dtype="datetime64[ns]")
+    _mn, _mx = (pd.to_datetime(_a.min()), pd.to_datetime(_a.max())) if len(_a) else (pd.NaT, pd.NaT)
+    rmin = "-" if pd.isna(_mn) else _mn.strftime("%Y/%m/%d")
+    rmax = "-" if pd.isna(_mx) else _mx.strftime("%Y/%m/%d")
     # 가동 중인(데이터 최신) 라인만 종합 상태에 반영, 중지 라인은 별도 표기
     live = [st for st in statuses.values() if not st.is_stale]
     overall = max((st.level for st in live), key=lambda x: int(x)) if live else Level.GREEN
@@ -245,17 +276,17 @@ def main(start=None, end=None):
              cap("여러 예측기법을 <b>같은 조건에서 겨뤄</b> 오차(MAE, 낮을수록 정확)를 비교. 소량 데이터엔 선형(Ridge)이 최적.")
              + "<table><tr><th>라인→야드</th><th>추천</th><th>최적 MAE</th></tr>"
              + "".join(reco_rows) + "</table>"),
-            ("", bench_secs[0][1]), ("", bench_secs[1][1]),
+            *_expand(bench_secs, "벤치마크"),
             ("라인별 예측 실측 대비",
              cap("검증 구간에서 <b>예측(빨강)과 실제(파랑)</b>가 가까울수록 정확. 주황 삼각형=규격 이탈 경보 지점. 표는 오차(MAE, %).")
              + "<table><tr><th>라인</th><th>야드</th><th>검증 MAE</th></tr>" + "".join(metric_rows) + "</table>"),
-            ("", pred_secs[0][1]), ("", pred_secs[1][1]),
+            *_expand(pred_secs, "예측 그래프"),
         ]},
         {"name": "📊 관리도", "sections": [
             ("규격내 시간 비율 (KPI)",
              cap("품위가 <b>규격(44.1~45.1%) 안에 머문 시간 비율</b>. 높을수록 안정.")
              + "<table><tr><th>라인→야드</th><th>규격내 비율</th></tr>" + "".join(kpi_rows) + "</table>"),
-            ("", ctrl_secs[0][1]), ("", ctrl_secs[1][1]),
+            *_expand(ctrl_secs, "관리도"),
         ]},
         {"name": "🚨 모니터·경보", "sections": [
             ("라인별 실시간 상태",
@@ -268,9 +299,7 @@ def main(start=None, end=None):
     ]
 
     # 데이터 전체 기간 → 날짜 직접입력 컨트롤 범위
-    alldt = pd.concat([yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)])
-    dr = (pd.to_datetime(alldt.min()).strftime("%Y-%m-%d"),
-          pd.to_datetime(alldt.max()).strftime("%Y-%m-%d")) if len(alldt) else None
+    dr = (_mn.strftime("%Y-%m-%d"), _mx.strftime("%Y-%m-%d")) if not pd.isna(_mn) else None
     html = V.assemble_tabbed_html("석회석 광산-야드 CaO 추적·예측 통합 리포트" + period_txt, tabs, date_range=dr)
     out = OUTPUTS_DIR / "final_report.html"
     out.write_text(html, encoding="utf-8")

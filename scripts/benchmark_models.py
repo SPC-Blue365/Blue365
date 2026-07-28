@@ -22,6 +22,7 @@ from src.data import clean as C
 from src.matching import pipeline as P
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
+from src.models.forecast import InsufficientDataError
 
 PAIR = {S.LINE_OLD: (S.SHEET_MINE_45Q, "45Q·4-5K"), S.LINE_NEW: (S.SHEET_YARD_CNA, "CNA·6-7K")}
 
@@ -50,9 +51,14 @@ def main():
 
     for line, (sheet, alias) in PAIR.items():
         feats = build_features_for(xls, osp_exp, line, sheet)
-        bench = benchmark(feats, use_upstream=False, n_splits=5)
         print("=" * 66)
         print(f"[{line} 라인 → 야드 {alias}]  (목표 MAE<0.5)")
+        try:
+            bench = benchmark(feats, use_upstream=False, n_splits=5)
+        except InsufficientDataError as e:
+            # 가동 중지 라인 등 — 지어내지 않고 건너뛴다 (CLAUDE.md §2-1)
+            print(f"→ 벤치마크 생략: {e}\n")
+            continue
         print(bench[["rank", "model", "MAE", "RMSE", "R2"]].to_string(
             index=False, float_format=lambda x: f"{x:.3f}"))
         print(f"→ 추천 모델: {recommend(bench)}")
