@@ -49,7 +49,12 @@ except FileNotFoundError:
 
 # ── 사이드바: 기간 설정 (데이터가 늘어도 선택 구간만 표현) ──
 st.sidebar.header("📅 기간 설정")
-_alldt = pd.concat([yc_full["datetime"]] + [y["datetime"] for y in yards_full.values()])
+# ⭐️ 기본 기간은 Sankey 가 쓰는 모든 소스를 덮어야 한다. 야드/야드변경만으로 잡으면
+#    그보다 먼저 시작하는 OSP(신설 06/01) 물량이 '전체'에서 빠진다(6,000톤 누락 버그).
+_alldt = pd.concat(
+    [yc_full["datetime"]] + [y["datetime"] for y in yards_full.values()]
+    + [pd.to_datetime(osp_exp["datetime"]), pd.to_datetime(mine["date"])]
+)
 dmin, dmax = pd.to_datetime(_alldt.min()).date(), pd.to_datetime(_alldt.max()).date()
 rng = st.sidebar.date_input("분석 기간", value=(dmin, dmax), min_value=dmin, max_value=dmax)
 start = pd.Timestamp(rng[0]) if isinstance(rng, (list, tuple)) and len(rng) >= 1 else pd.Timestamp(dmin)
@@ -169,6 +174,20 @@ with tab2:
         st.info("야드변경 시트가 없습니다. (기존라인/신설라인 야드변경 시트를 추가하세요)")
     st.divider()
     st.markdown("### 물류 개요 (광산→OSP→야드) — 선택 기간 기준")
+    st.caption(
+        "⚠️ **좌우 물량 합은 일치하지 않는 것이 정상입니다.** 왼쪽은 광산에서 OSP로 **적재한 양**, "
+        "오른쪽은 OSP에서 야드로 **인출한 양**으로 공정 단계가 다르며, 그 사이 OSP가 **재고(버퍼)** "
+        "역할을 하므로 차이가 곧 재고 증감입니다.  \n"
+        "⚠️ **광산은 일 단위 기록**이라 구간이 하루 중간에 시작·종료해도 겹치는 날은 하루 전체가 포함됩니다."
+    )
+    _bal = []
+    for _ln in S.YARD_PAIR:
+        _m = float(pd.to_numeric(mine_p.loc[mine_p["line"] == _ln, "tonnage"], errors="coerce").sum())
+        _o = float(pd.to_numeric(osp_p.loc[osp_p["line"] == _ln, "withdrawn_ton"], errors="coerce").sum())
+        if _m or _o:
+            _bal.append(f"**{_ln}** 적재 {_m:,.0f}톤 · 인출 {_o:,.0f}톤 → 재고 {_m - _o:+,.0f}톤")
+    if _bal:
+        st.caption("이 기간 실제: " + "  /  ".join(_bal))
     st.plotly_chart(V.build_tracking_sankey(mine_p, osp_p, yards), use_container_width=True)
 
 # ── ③ 관리도 (제어차트) ──

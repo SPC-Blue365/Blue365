@@ -97,6 +97,21 @@ def _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain) -> tuple[str
     return html, stat
 
 
+def _balance_note(mine, osp_exp) -> str:
+    """라인별 적재량 vs 인출량 = OSP 재고 증감. 실제 수치로 근거를 보인다."""
+    if mine is None or osp_exp is None or not len(mine) or not len(osp_exp):
+        return ""
+    parts = []
+    for ln in S.YARD_PAIR:
+        m = float(pd.to_numeric(mine.loc[mine["line"] == ln, "tonnage"], errors="coerce").sum())
+        o = float(pd.to_numeric(osp_exp.loc[osp_exp["line"] == ln, "withdrawn_ton"],
+                                errors="coerce").sum())
+        if m <= 0 and o <= 0:
+            continue
+        parts.append(f"<b>{ln}</b> 적재 {m:,.0f}톤 · 인출 {o:,.0f}톤 → 재고 {m - o:+,.0f}톤")
+    return ("<br>이 기간 실제: " + " / ".join(parts)) if parts else ""
+
+
 def _seg_selector(segs: list[dict]) -> str:
     """야드변경 구간 드롭다운 (라인별 그룹). 선택 시 두 Sankey가 그 구간으로 바뀐다."""
     if not segs:
@@ -431,7 +446,14 @@ def main(start=None, end=None):
              cap("라인별로 두 야드에 실린 <b>물량(띠 굵기)</b>과 <b>평균 품위(색)</b>. CaO/MgO 버튼으로 성분 전환. <b>상단 기간을 적용하면 그 기간 기준으로 다시 계산</b>되며 제목에 기간이 표시됩니다.")),
             ("", V.build_yardchange_sankey(yc, "CaO")),
             ("물류 개요 Sankey (광산→OSP→야드)",
-             cap("광산(49Q·47Q)에서 캔 원석이 <b>어느 라인·야드로 얼마나</b> 흘렀는지 한눈에. 굵을수록 물량 많음. <b>상단 기간에 따라 재계산</b>됩니다(제목에 기간 표시).")),
+             cap("광산(49Q·47Q)에서 캔 원석이 <b>어느 라인·야드로 얼마나</b> 흘렀는지 한눈에. 굵을수록 물량 많음. "
+                 "<b>상단 기간·구간에 따라 재계산</b>됩니다(제목에 표시).<br>"
+                 "<b>⚠️ 좌우 물량 합이 일치하지 않는 것이 정상입니다.</b> 왼쪽은 광산에서 OSP로 <b>적재한 양</b>, "
+                 "오른쪽은 OSP에서 야드로 <b>인출한 양</b>으로 <b>공정 단계가 다른 물량</b>이며, "
+                 "그 사이 <b>OSP가 재고(버퍼)</b> 역할을 하므로 차이가 곧 <b>재고 증감</b>입니다."
+                 + _balance_note(mine, osp_exp) +
+                 "<br><b>⚠️ 광산은 일 단위 기록</b>이라, 구간이 하루 중간에 시작·종료해도 "
+                 "<b>겹치는 날은 하루 전체</b>가 포함됩니다(시각 정보가 없어 쪼갤 수 없음).")),
             ("", V.build_tracking_sankey(mine, osp_exp, yards)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [

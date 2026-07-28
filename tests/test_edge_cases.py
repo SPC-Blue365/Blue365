@@ -234,6 +234,45 @@ def test_segments_are_defined_per_line():
     assert all(s["line"] in s["label"] and s["link"].startswith(s["line"]) for s in segs)
 
 
+def test_flow_aggregate_keys_are_minute_precise():
+    """OSP 인출은 분 단위 시각이라 키도 분 단위여야 한다.
+
+    시간 단위로 묶으면 구간 끝에서 최대 59분치가 더 딸려 들어온다
+    (신설 06/24 구간에서 9,000톤이 초과 집계됐던 버그).
+    """
+    from src.visualization import figures as V
+    osp = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-06-27 16:10", "2026-06-27 16:40"]),
+        "line": ["신설"] * 2, "withdrawn_ton": [1000.0, 9000.0],
+    })
+    rows = V.sankey_daily_aggregates(None, osp, None, None)["flow"]["__yard__신설"]
+    keys = sorted(r[0] for r in rows)
+    assert keys == ["2026-06-27T16:10", "2026-06-27T16:40"]
+    # 구간 끝이 16:19 면 16:40 건은 빠져야 한다 (JS 사전순 비교와 동일)
+    e = "2026-06-27T16:19"
+    got = sum(r[1] for r in rows if r[0] <= e)
+    assert got == pytest.approx(1000.0), "구간 끝을 넘는 인출이 섞이면 안 된다"
+
+
+def test_mine_rows_use_whole_day_because_dates_have_no_time():
+    """광산은 일 단위 기록이라 겹치는 날은 하루 전체를 포함해야 한다.
+
+    시각 경계로 자르면 정오에 시작하는 구간에서 그 날 채굴분이 통째로 사라진다
+    (실측 최대 48% 누락). 시각 정보가 없어 쪼갤 수 없으므로 하루 전체를 넣고 밝힌다.
+    """
+    from src.visualization import figures as V
+    mine = pd.DataFrame({
+        "date": pd.to_datetime(["2026-06-22", "2026-06-23"]),
+        "source": ["49Q"] * 2, "line": ["신설"] * 2,
+        "tonnage": [22000.0, 23000.0], "cao": [45.0, 45.0], "mgo": [3.0, 3.0],
+    })
+    rows = V.sankey_daily_aggregates(mine, None, None, None)["flow"]["49Q|신설"]
+    assert all(r[0].endswith("T00:00") for r in rows), "광산 키는 자정(시각 없음)"
+    # 구간이 06/22 03시에 시작해도 그 날 채굴분이 살아 있어야 한다 (JS 가 일 단위로 넓힘)
+    ks = "2026-06-22T03"[:10] + "T00"
+    assert sum(r[1] for r in rows if r[0] >= ks) == pytest.approx(45000.0)
+
+
 def test_segment_logic_is_not_duplicated():
     """구간 정의는 src/matching/segments.py 하나뿐이어야 한다 (페어링 버그의 재발 방지)."""
     import pathlib
