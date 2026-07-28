@@ -197,9 +197,11 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
         keys.append(f"{so}|{ln}")
     for ln in [S.LINE_OLD, S.LINE_NEW]:
         ton = osp_exp.loc[osp_exp["line"] == ln, "withdrawn_ton"].sum(min_count=1)
-        ycao, ymgo = yards[ln]["cao"].mean(), yards[ln]["mgo"].mean()   # 야드 실측 평균(빈칸 자동 제외)
         if pd.isna(ton) or ton <= 0:
             continue
+        y = yards.get(ln)                                  # 라인 필터로 빠져 있을 수 있다
+        ycao = y["cao"].mean() if y is not None and len(y) else float("nan")
+        ymgo = y["mgo"].mean() if y is not None and len(y) else float("nan")
         src.append(lmap[ln]); tgt.append(ymap[ln]); val.append(float(ton)); lc.append(grade_color(ycao))
         hov.append(f"{labels[lmap[ln]]} → {labels[ymap[ln]]}<br>인출 {ton:,.0f}톤"
                    f"<br>야드 CaO {_fmt(ycao)}% · MgO {_fmt(ymgo)}%")
@@ -702,6 +704,15 @@ function _nrm(v,hi){{
   if(!v){{return hi?'9999':'0000';}}
   return v.length===10 ? v+(hi?'T99':'T00') : v;
 }}
+// 링크 키에서 라인 이름을 뽑는다. 데이터는 라인별로 완전히 구분되어 있으므로
+// 구간을 고르면 '그 라인의 흐름만' 남길 수 있다.
+//   야드변경 키 = '기존|기존(Y1)'      → 앞부분
+//   물류 키     = '49Q|기존' / '__yard__기존' → 뒷부분
+function _keyLine(k,isYC){{
+  if(isYC){{return k.split('|')[0];}}
+  if(k.indexOf('__yard__')===0){{return k.slice(8);}}
+  var p=k.split('|'); return p.length>1?p[1]:'';
+}}
 function recomputeSankeys(s,e){{
   if(!window.SANKEYAGG){{return;}}
   var label=(s||'전체')+' ~ '+(e||'전체');
@@ -713,6 +724,11 @@ function recomputeSankeys(s,e){{
     var yd=window.SANKEYAGG.yard_daily||{{}};
     var vals=[],cao=[],mgo=[],hov=[],hovM=[];
     meta.link_keys.forEach(function(k,i){{
+      // 구간을 고르면 그 라인의 흐름만 남긴다 (다른 라인은 같은 시간에 따로 돌던 것)
+      if(window.YCLINE && _keyLine(k,isYC)!==window.YCLINE){{
+        vals.push(0); cao.push(null); mgo.push(null);
+        hov.push(''); hovM.push(''); return;
+      }}
       var a=_sumRows(store[k],s,e), c=a.cao, m=a.mgo;
       if(!isYC && k.indexOf('__yard__')===0){{   // 라인→야드: 색은 야드 실측 평균
         // 야드 일별행 = [날짜, CaO건수, CaO합, MgO건수, MgO합] — 성분별 건수로 나눈다
@@ -740,7 +756,8 @@ function recomputeSankeys(s,e){{
     Plotly.restyle(gd,{{'link.value':[vals],'link.color':[colors],
                        'link.customdata':[mode==='MgO'?hovM:hov]}},[0]);
     var base=(gd.layout.title&&gd.layout.title.text?gd.layout.title.text:'').split('  〔')[0];
-    Plotly.relayout(gd,{{'title.text': base+'  〔'+label+'〕'}});
+    Plotly.relayout(gd,{{'title.text': base+'  〔'+label
+                        +(window.YCLINE?' · '+window.YCLINE+' 라인만':'')+'〕'}});
   }});
 }}
 function applyRange(){{

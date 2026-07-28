@@ -191,13 +191,15 @@ def test_yard_change_aggregate_uses_minute_keys():
     assert agg["신설|신설(Y2)"][0][0] == "2026-07-26T19:50"
 
 
-def _load_report_module():
-    import importlib.util, pathlib
-    p = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "make_final_report.py"
-    spec = importlib.util.spec_from_file_location("_mfr", p)
-    m = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(m)
-    return m
+def _yc_fixture():
+    yc = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-24 12:30", "2026-07-26 19:50"]),
+        "line": ["신설"] * 2, "yard": ["신설(Y1)", "신설(Y2)"],
+        "cao": [45.35, 45.21], "mgo": [3.05, 3.1], "tonnage": [46000.0, 45880.0],
+    })
+    yards = {"신설": pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-27 00:00"]), "cao": [45.0], "mgo": [3.0]})}
+    return yc, yards
 
 
 def test_yc_segment_end_excludes_next_change_event():
@@ -206,21 +208,41 @@ def test_yc_segment_end_excludes_next_change_event():
     끝을 다음 변경 시각으로 두면 그 이벤트의 물량(약 46,000톤)이 통째로 섞여
     구간 물량이 최대 2배로 보인다 — 실제로 발생했던 버그.
     """
-    m = _load_report_module()
-    yc = pd.DataFrame({
-        "datetime": pd.to_datetime(["2026-07-24 12:30", "2026-07-26 19:50"]),
-        "line": ["신설"] * 2, "yard": ["신설(Y1)", "신설(Y2)"],
-        "cao": [45.35, 45.21], "mgo": [3.05, 3.1], "tonnage": [46000.0, 45880.0],
-    })
-    yards = {"신설": pd.DataFrame({
-        "datetime": pd.to_datetime(["2026-07-27 00:00"]), "cao": [45.0], "mgo": [3.0]})}
-    segs = m._yc_segments(yc, None, None, yards)
+    from src.matching.segments import yard_change_segments
+    yc, yards = _yc_fixture()
+    segs = yard_change_segments(yc, None, None, yards)
     first = segs[0]
     assert first["s"] == "2026-07-24T12"        # 시작은 '시' 내림 → 그 시각대 물류 포함
     assert first["e"] == "2026-07-26T19:49"     # 끝은 다음 변경(19:50) 1분 전 → 배제
     # 문자열 비교로 다음 이벤트가 실제로 빠지는지 확인 (JS 필터와 동일 규칙)
     assert not ("2026-07-26T19:50" >= first["s"] and "2026-07-26T19:50" <= first["e"])
     assert "2026-07-24T12:30" >= first["s"] and "2026-07-24T12:30" <= first["e"]
+    # pandas 경계도 배타적이어야 한다 (대시보드는 start/end 로 자른다)
+    assert first["end"] == pd.Timestamp("2026-07-26 19:50")
+    assert first["start"] == pd.Timestamp("2026-07-24 12:00")
+
+
+def test_segments_are_defined_per_line():
+    """구간에는 항상 라인이 붙어야 한다 — 두 라인의 변경 시점이 다르기 때문."""
+    from src.matching.segments import yard_change_segments
+    yc, yards = _yc_fixture()
+    yc2 = pd.concat([yc, pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-25 09:00"]), "line": ["기존"],
+        "yard": ["기존(Y1)"], "cao": [45.0], "mgo": [3.0], "tonnage": [1000.0]})])
+    segs = yard_change_segments(yc2, None, None, yards)
+    assert {s["line"] for s in segs} == {"신설", "기존"}
+    assert all(s["line"] in s["label"] and s["link"].startswith(s["line"]) for s in segs)
+
+
+def test_segment_logic_is_not_duplicated():
+    """구간 정의는 src/matching/segments.py 하나뿐이어야 한다 (페어링 버그의 재발 방지)."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for path in list((root / "scripts").glob("*.py")) + [root / "streamlit_app.py"]:
+        src = path.read_text(encoding="utf-8")
+        assert "def yard_change_segments" not in src and "def _yc_segments" not in src, (
+            f"{path.name} 이 구간 정의를 자체 구현합니다 — src.matching.segments 를 쓰세요."
+        )
 
 
 def test_scripts_do_not_redefine_yard_pairing():

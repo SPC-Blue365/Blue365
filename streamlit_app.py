@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from config import schema as S
+from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_segments
 from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
 from src.monitoring import load_history, log_statuses, monitor_all
 from src.monitoring.alerts import AlertConfig, Level
@@ -115,6 +116,35 @@ with tab1:
 
 # ── ② 추적 흐름 (Sankey) ──
 with tab2:
+    # ⭐️ 야드변경 구간 선택 — 고르면 '그 라인 · 그 구간'만 남긴다.
+    #    구간 정의는 src.matching.segments 정본 하나만 쓴다(리포트와 동일 규칙).
+    segs = yard_change_segments(yc, mine_p, osp_p, yards)
+    seg = None
+    if segs:
+        opts = {f"{g['label']} ({g['hours']}h)": g for g in segs}
+        pick = st.selectbox("🔀 야드변경 구간 (선택하면 그 라인·구간만 표시)",
+                            ["전체 기간 (누적)"] + list(opts))
+        seg = opts.get(pick)
+
+    if seg:
+        # 시간 + 라인 양쪽으로 거른다 (데이터는 라인별로 구분되어 있다)
+        ln_sel = seg["line"]
+        yc = yc[(yc["line"] == ln_sel) & (yc["datetime"] >= seg["start"]) & (yc["datetime"] < seg["end"])]
+        mine_p = filter_period(mine_p[mine_p["line"] == ln_sel], seg["start"], seg["end"], "date")
+        osp_p = filter_period(osp_p[osp_p["line"] == ln_sel], seg["start"], seg["end"], "datetime")
+        yards = {ln: (filter_period(df, seg["start"], seg["end"], "datetime") if ln == ln_sel
+                      else df.iloc[0:0])                    # 다른 라인은 비운다
+                 for ln, df in yards.items()}
+        st.info(
+            f"**{seg['label']}** ({seg['hours']}시간) · **{ln_sel} 라인만** 표시 중\n\n"
+            f"변경 시점 품위 CaO {seg['cao'] if seg['cao'] is not None else '-'}% · "
+            f"MgO {seg['mgo'] if seg['mgo'] is not None else '-'}% · "
+            f"이 구간 데이터: 광산 {seg['n_mine']}행 · OSP 인출 {seg['n_osp']}행 · 야드 측정 {seg['n_own']}건"
+        )
+        st.warning(f"⚠️ {LAG_CAUTION}")
+        for w in segment_warnings(seg):
+            st.error(f"⚠️ {w}")
+
     st.markdown("### 야드변경 기반 추적 (CaO/MgO)")
     st.markdown("라인별 **야드변경일자**에 실제 적재한 물량·품위 기준. 링크 두께=야드물량, "
                 "**차트 상단 CaO/MgO 버튼**으로 성분 전환. 호버=상세.")
