@@ -82,16 +82,55 @@ def prediction_timeseries(index, actual, pred, oos, title) -> go.Figure:
     fig.add_hrect(y0=TARGET - 0.5, y1=TARGET + 0.5, fillcolor=GREEN, opacity=0.10,
                   line_width=0, annotation_text="규격 44.1~45.1", annotation_position="top left")
     fig.add_hline(y=TARGET, line=dict(color=GREEN, dash="dash", width=1))
-    fig.add_trace(go.Scatter(x=index, y=actual, name="실측 CaO", line=dict(color=BLUE, width=1.6)))
-    fig.add_trace(go.Scatter(x=index, y=pred, name="예측 CaO", line=dict(color=RED, width=1.6)))
+    fig.add_trace(go.Scatter(x=index, y=actual, name="실측 CaO (실제 측정)",
+                             line=dict(color=BLUE, width=1.8),
+                             hovertemplate="%{x|%m/%d %H시}<br>실측 %{y:.2f}%<extra></extra>"))
+    fig.add_trace(go.Scatter(x=index, y=pred, name="예측 CaO (1시간 전에 예측한 값)",
+                             line=dict(color=RED, width=1.8),
+                             hovertemplate="%{x|%m/%d %H시}<br>예측 %{y:.2f}%<extra></extra>"))
     if np.any(oos):
         fig.add_trace(go.Scatter(x=np.asarray(index)[oos], y=np.asarray(pred)[oos],
-                      mode="markers", name="규격이탈 경보",
-                      marker=dict(color=ORANGE, size=7, symbol="triangle-up")))
+                      mode="markers", name="규격이탈 사전경보",
+                      marker=dict(color=ORANGE, size=8, symbol="triangle-up",
+                                  line=dict(color="white", width=1)),
+                      hovertemplate="%{x|%m/%d %H시}<br>규격이탈 예상 %{y:.2f}%<extra></extra>"))
     fig.update_layout(title=title, height=340, font=dict(size=12),
                       margin=dict(l=10, r=10, t=44, b=10),
                       yaxis_title="CaO (%)", legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
     return _time_range_controls(_korean_date_axis(fig))
+
+
+def prediction_scorecard(methods, tol: float = 0.5, title: str = "") -> go.Figure:
+    """예측 방법별 평균 오차 비교 (가로 막대 · 모델만 강조).
+
+    "이 예측이 쓸만한가"를 한 눈에 답하는 임원용 차트.
+    methods = [(방법이름, MAE, is_model), ...] — is_model=True 인 항목만 색을 입히고
+    나머지 기준선은 회색으로 후퇴시킨다(emphasis 형태: 1 hue + gray).
+    tol = 목표 허용오차(±0.5%p) — 이 선보다 왼쪽이어야 실무 사용 가능.
+    """
+    ms = sorted(methods, key=lambda x: x[1], reverse=True)   # 가로막대는 아래가 먼저
+    names = [m[0] for m in ms]
+    vals = [m[1] for m in ms]
+    colors = [BLUE if m[2] else "#b6bcc4" for m in ms]
+    fig = go.Figure(go.Bar(
+        x=vals, y=names, orientation="h", marker_color=colors,
+        text=[f"{v:.2f}" for v in vals], textposition="outside",
+        textfont=dict(size=13, color="#1a1a1a"),
+        hovertemplate="%{y}<br>평균 오차 %{x:.2f}%p<extra></extra>",
+        width=0.55,
+    ))
+    fig.add_vline(x=tol, line=dict(color=GREEN, dash="dash", width=2))
+    fig.add_annotation(x=tol, y=1.04, yref="paper", text=f"목표 {tol}%p", showarrow=False,
+                       font=dict(color="#1d7a1d", size=12), xanchor="left", xshift=4)
+    fig.update_layout(
+        title=title, height=210 + 26 * len(ms), font=dict(size=12),
+        margin=dict(l=10, r=54, t=54, b=34), showlegend=False,
+        xaxis_title="평균 오차 (%p · 낮을수록 정확)", bargap=0.35,
+        xaxis=dict(range=[0, max(vals) * 1.22], showgrid=True, gridcolor="#eceff2", zeroline=False),
+        yaxis=dict(showgrid=False),
+        plot_bgcolor="white",
+    )
+    return fig
 
 
 def stage_cao_bar(stages) -> go.Figure:

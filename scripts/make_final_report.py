@@ -35,6 +35,40 @@ MIN_MODEL_ROWS = F.MIN_TRAIN_ROWS   # 시계열 CV·학습에 필요한 최소 �
 BADGE = {Level.GREEN: ("🟢", "정상"), Level.YELLOW: ("🟡", "주의"), Level.RED: ("🔴", "경고")}
 
 
+def _pred_block(ln, ld, te, mae, mae_persist, mae_naive, hit, gain, k) -> str:
+    """라인별 예측 성적 KPI 타일 + 평문 판정 (임원용).
+
+    수치는 모두 실제 검증 결과에서 온다 — 판정 문장도 규칙 기반이며 지어내지 않는다(§2-1).
+    """
+    tol = 0.5
+    if mae <= tol:
+        verdict, cls = (f"평균 오차가 목표 허용폭({tol}%p) <b>이내</b>입니다. "
+                        "예측값을 보고 배합을 조정하는 <b>선제적 제어</b>를 시도할 수 있습니다.", "ok")
+    elif mae < mae_persist:
+        verdict, cls = (f"평균 오차 <b>{mae:.2f}%p</b>로 목표 허용폭({tol}%p)보다 <b>큽니다</b>. "
+                        f"'직전값 그대로 쓰기'({mae_persist:.2f})보다는 <b>{gain:.0f}% 정확</b>하므로 "
+                        "<b>이상 감지·조기경보</b>에는 쓸 수 있으나, <b>정밀 배합 제어는 아직 이릅니다.</b>", "note")
+    else:
+        verdict, cls = (f"평균 오차 <b>{mae:.2f}%p</b>가 '직전값 그대로 쓰기'({mae_persist:.2f})를 "
+                        "<b>넘지 못했습니다.</b> 이 라인은 데이터가 더 쌓여야 모델이 값어치를 냅니다.", "note")
+
+    span = f"{te.index.min():%m/%d %H시} ~ {te.index.max():%m/%d %H시}"
+    return (
+        f"<h3 style='margin:18px 0 4px;color:#12395c'>{ln} 라인 → {ld.alias}</h3>"
+        f"<div class='kpirow'>"
+        f"<div class='kpi'><div class='v'>{hit:.0f}%</div>"
+        f"<div class='l'>오차 ±0.5%p 이내 적중률</div></div>"
+        f"<div class='kpi'><div class='v'>{mae:.2f}<span style='font-size:.9rem'>%p</span></div>"
+        f"<div class='l'>평균 오차 (목표 {tol} 이하)</div></div>"
+        f"<div class='kpi'><div class='v'>{gain:+.0f}%</div>"
+        f"<div class='l'>'직전값 쓰기' 대비 개선</div></div>"
+        f"<div class='kpi'><div class='v'>{len(te)}<span style='font-size:.9rem'>시간</span></div>"
+        f"<div class='l'>검증 구간 ({span})</div></div>"
+        f"</div>"
+        f"<div class='{cls}'><b>판정:</b> {verdict}</div>"
+    )
+
+
 def _expand(secs: list, what: str) -> list:
     """라인 수에 맞춰 그래프 섹션을 펼친다. 하나도 없으면 사유를 안내한다.
 
@@ -90,11 +124,24 @@ def main(start=None, end=None):
             continue
         te = d.iloc[k:]
         pr = model.predict(te[fcols].fillna(0).values)
-        mae = float(np.abs(te["cao"].values - pr).mean())
+        err = np.abs(te["cao"].values - pr)
+        mae = float(err.mean())
+        # 기준선: '직전값 그대로 쓰기'(persist)와 '그냥 평균 쓰기'(naive) — 모델의 값어치 판단용
+        mae_persist = float(np.abs(te["cao"].values - te["ar1"].values).mean())
+        mae_naive = float(np.abs(te["cao"].values - d["cao"].iloc[:k].mean()).mean())
+        hit = float((err <= 0.5).mean() * 100)          # 목표 허용오차 안에 들어온 비율
+        gain = (mae_persist - mae) / mae_persist * 100 if mae_persist else 0.0
         oos = (pr < V.TARGET - 0.5) | (pr > V.TARGET + 0.5)
+
+        pred_secs.append(("", _pred_block(ln, ld, te, mae, mae_persist, mae_naive, hit, gain, k)))
+        pred_secs.append(("", V.prediction_scorecard(
+            [("이 예측 모델", mae, True), ("직전값 그대로 쓰기", mae_persist, False),
+             ("그냥 평균값 쓰기", mae_naive, False)],
+            title=f"{ln} → {ld.alias} · 예측 방법별 평균 오차 (짧을수록 정확)")))
         pred_secs.append(("", V.prediction_timeseries(te.index, te["cao"].values, pr, oos,
-                          f"{ln} → {ld.alias} · 검증 MAE={mae:.2f}")))
-        metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td><b>{mae:.2f}</b></td></tr>")
+                          f"{ln} → {ld.alias} · 검증 구간 실측 vs 예측")))
+        metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td><b>{mae:.2f}</b></td>"
+                           f"<td>{mae_persist:.2f}</td><td>{hit:.0f}%</td></tr>")
         bench_secs.append(("", V.model_benchmark_bar(bench, f"{ln} → {ld.alias}: 10개 모델 CV MAE")))
         reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td><b>{recommend(bench)}</b></td>"
                          f"<td>{bench[~bench['is_baseline']]['MAE'].min():.3f}</td></tr>")
@@ -272,15 +319,23 @@ def main(start=None, end=None):
                       for r in yc.sort_values('datetime').itertuples()) + "</table>"),
         ]},
         {"name": "🤖 예측·모델", "sections": [
-            ("최적 모델 벤치마크 (10개)",
-             cap("여러 예측기법을 <b>같은 조건에서 겨뤄</b> 오차(MAE, 낮을수록 정확)를 비교. 소량 데이터엔 선형(Ridge)이 최적.")
+            ("이 예측, 실제로 쓸 만한가? (라인별 성적)",
+             cap("<b>질문:</b> 1시간 뒤 야드 CaO를 미리 맞출 수 있는가?<br>"
+                 "<b>방법:</b> 데이터를 시간순으로 놓고 <b>앞 70%만 학습</b>시킨 뒤, "
+                 "<b>모델이 못 본 뒤 30% 구간</b>에서 예측값과 실제 측정값을 비교했습니다.<br>"
+                 "<b>읽는 법:</b> <b>적중률</b>이 높고 <b>평균 오차</b>가 목표 0.5%p보다 작아야 "
+                 "'예측 보고 배합을 조절'할 수 있습니다. 아직 못 미치면 <b>조기경보 용도</b>로만 씁니다.")
+             + "<table><tr><th>라인</th><th>야드</th><th>모델 평균오차</th>"
+               "<th>직전값 쓰기</th><th>±0.5 적중률</th></tr>" + "".join(metric_rows) + "</table>"),
+            *_expand(pred_secs, "예측 성적"),
+            ("(참고) 최적 모델 벤치마크 — 10개 기법 비교",
+             cap("<b>어떤 기법을 쓸지 고른 근거</b>입니다(기술 검토용). 여러 예측기법을 같은 조건에서 겨뤄 "
+                 "오차를 비교했고, 데이터가 적을 때는 단순한 선형(Ridge)이 가장 안정적이었습니다.<br>"
+                 "<b>※ 위 성적표와 숫자가 다른 이유:</b> 위는 <b>마지막 30% 한 구간</b>으로 시험한 값이고, "
+                 "아래는 <b>구간을 옮겨가며 여러 번</b> 시험한 평균(시계열 교차검증)입니다. 둘 다 실제 검증 결과입니다.")
              + "<table><tr><th>라인→야드</th><th>추천</th><th>최적 MAE</th></tr>"
              + "".join(reco_rows) + "</table>"),
             *_expand(bench_secs, "벤치마크"),
-            ("라인별 예측 실측 대비",
-             cap("검증 구간에서 <b>예측(빨강)과 실제(파랑)</b>가 가까울수록 정확. 주황 삼각형=규격 이탈 경보 지점. 표는 오차(MAE, %).")
-             + "<table><tr><th>라인</th><th>야드</th><th>검증 MAE</th></tr>" + "".join(metric_rows) + "</table>"),
-            *_expand(pred_secs, "예측 그래프"),
         ]},
         {"name": "📊 관리도", "sections": [
             ("규격내 시간 비율 (KPI)",
