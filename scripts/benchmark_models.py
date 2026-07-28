@@ -24,7 +24,7 @@ from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
 from src.models.forecast import InsufficientDataError
 
-PAIR = {S.LINE_OLD: (S.SHEET_MINE_45Q, "45Q·4-5K"), S.LINE_NEW: (S.SHEET_YARD_CNA, "CNA·6-7K")}
+PAIR = S.YARD_PAIR   # 야드 페어링 정본은 config/schema.py 하나뿐 (중복 정의 금지)
 
 
 def build_features_for(xls, osp_exp, line, sheet):

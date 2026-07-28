@@ -110,3 +110,23 @@ def test_monitor_line_works_with_enough_data():
     st = monitor_line(_line(200))
     assert len(st.series) > 0
     assert np.isfinite(st.recent_mae)
+
+
+# ── 야드 페어링: 정본은 config/schema.YARD_PAIR 하나뿐 ─────────────────────
+
+def test_yard_pairing_matches_user_confirmed_domain_truth():
+    """사용자 확정: 기존↔45Q(4-5K 킬른), 신설↔CNA(6-7K 킬른). 뒤바뀌면 안 된다."""
+    import config.schema as S
+    assert S.YARD_PAIR[S.LINE_OLD][0] == S.SHEET_MINE_45Q
+    assert S.YARD_PAIR[S.LINE_NEW][0] == S.SHEET_YARD_CNA
+
+
+def test_scripts_do_not_redefine_yard_pairing():
+    """스크립트가 페어링을 자체 하드코딩하면 정본과 어긋난다(실제로 발생했던 버그)."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for path in (root / "scripts").glob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        assert "SHEET_YARD_CNA" not in src and "SHEET_MINE_45Q" not in src, (
+            f"{path.name} 이 야드 시트를 직접 지정합니다 — S.YARD_PAIR 를 사용하세요."
+        )
