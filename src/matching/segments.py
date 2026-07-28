@@ -43,7 +43,7 @@ def yard_change_segments(yc, mine=None, osp_exp=None, yards=None) -> list[dict]:
             # 남겨 두고 n_own=0 경고가 뜨게 한다 (§2-1 숨기지 않는다).
             if pd.isna(e) or e <= s:
                 e = s + pd.Timedelta(hours=1)
-            n_mine = _count(mine, ln, s.normalize(), e, "date")
+            n_mine = _count(mine, ln, s.floor("1h"), e, "datetime")
             n_osp = _count(osp_exp, ln, s, e, "datetime")
             n_own = int(((y["datetime"] >= s) & (y["datetime"] < e)).sum()) \
                 if y is not None and len(y) else 0

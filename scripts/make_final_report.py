@@ -224,7 +224,7 @@ def main(start=None, end=None):
     if start or end:
         yc = filter_period(yc, start, end, "datetime")
         yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards.items()}
-        mine = filter_period(mine, start, end, "date")        # 광산도 동일 기간(기간 혼재 방지)
+        mine = filter_period(mine, start, end, "datetime")    # 광산도 동일 기간(교대 시각 기준)
         osp_exp = filter_period(osp_exp, start, end, "datetime")
     period_txt = ""
     if start or end:
@@ -452,8 +452,8 @@ def main(start=None, end=None):
                  "오른쪽은 OSP에서 야드로 <b>인출한 양</b>으로 <b>공정 단계가 다른 물량</b>이며, "
                  "그 사이 <b>OSP가 재고(버퍼)</b> 역할을 하므로 차이가 곧 <b>재고 증감</b>입니다."
                  + _balance_note(mine, osp_exp) +
-                 "<br><b>⚠️ 광산은 일 단위 기록</b>이라, 구간이 하루 중간에 시작·종료해도 "
-                 "<b>겹치는 날은 하루 전체</b>가 포함됩니다(시각 정보가 없어 쪼갤 수 없음).")),
+                 "<br>ℹ️ 광산 물량은 <b>채굴 교대 시각</b>(1차 08~16 · 2차 16~24 · 3차 00~08의 중점)과 "
+                 "47Q의 <b>실측 시작·종료 시각</b>으로 시간축에 배치됩니다.")),
             ("", V.build_tracking_sankey(mine, osp_exp, yards)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [

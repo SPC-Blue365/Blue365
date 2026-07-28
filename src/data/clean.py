@@ -72,6 +72,61 @@ def _to_numeric(series: pd.Series) -> pd.Series:
 # --------------------------------------------------------------------------- #
 # ① 광산 (Mine) — 구역별 품위 이벤트로 전개
 # --------------------------------------------------------------------------- #
+def shift_midpoint(date, shift, handover: bool | None = None):
+    """교대(1/2/3차) → 그 교대의 **대표 시각(중점)**.
+
+    광산 물량을 시간축에 놓으려면 대표 시각이 하나 필요하다. 교대 시작을 쓰면
+    구간 경계에서 8시간을 통째로 앞당기게 되므로 **중점**을 쓴다(경계 오차 최소).
+      1차 08~16 → 12:00 · 2차 16~24 → 20:00 · 3차 00~08 → 04:00
+    handover=True 면 인수인계(기본 30분)만큼 시작을 늦춰 중점을 계산한다.
+    (기본값은 config.schema.HANDOVER_APPLIED — 현재 False, §데이터스키마 참조)
+    """
+    d = pd.to_datetime(date, errors="coerce")
+    win = S.SHIFT_HOURS.get(str(shift).strip()) if shift is not None else None
+    if pd.isna(d) or win is None:
+        return pd.NaT
+    use_ho = S.HANDOVER_APPLIED if handover is None else handover
+    start_h, end_h = win
+    start = d.normalize() + pd.Timedelta(hours=start_h)
+    end = d.normalize() + pd.Timedelta(hours=end_h)
+    if use_ho:
+        start = start + pd.Timedelta(minutes=S.HANDOVER_MINUTES)
+    return start + (end - start) / 2
+
+
+def _time_midpoint(date, t_start, t_end):
+    """47Q 처럼 시작·종료 시각이 있는 경우의 대표 시각(중점).
+
+    종료가 시작보다 이르면 자정을 넘긴 것으로 보고 하루를 더한다.
+    """
+    d = pd.to_datetime(date, errors="coerce")
+    if pd.isna(d):
+        return pd.NaT
+    s = _combine(d, t_start)
+    e = _combine(d, t_end)
+    if pd.isna(s):
+        return e if pd.notna(e) else pd.NaT
+    if pd.isna(e):
+        return s
+    if e < s:
+        e += pd.Timedelta(days=1)
+    return s + (e - s) / 2
+
+
+def _combine(day, t):
+    """날짜 + datetime.time → Timestamp (시각이 없으면 NaT)."""
+    if t is None or (isinstance(t, float) and np.isnan(t)) or pd.isna(t):
+        return pd.NaT
+    if isinstance(t, str):
+        parsed = pd.to_datetime(t, errors="coerce")
+        if pd.isna(parsed):
+            return pd.NaT
+        t = parsed.time()
+    if hasattr(t, "hour"):
+        return day.normalize() + pd.Timedelta(hours=t.hour, minutes=getattr(t, "minute", 0))
+    return pd.NaT
+
+
 def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
     """49Q XRF: 교대 단위 → (일자, 라인, 구역, CaO, MgO, 톤) 구역 전개 long."""
     rows = []
@@ -92,6 +147,8 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
                     tonnage=per_ton,
                     source="49Q",
                     shift=r.get("채굴시간(교대)"),
+                    # 교대 시간대로 실제 시각 부여 (일 단위였을 때의 경계 오차 제거)
+                    datetime=shift_midpoint(r.get("채굴일자"), r.get("채굴시간(교대)")),
                 )
             )
     return pd.DataFrame(rows)
@@ -117,6 +174,8 @@ def clean_mine_47Q(df: pd.DataFrame) -> pd.DataFrame:
                     tonnage=per_ton,
                     source="47Q",
                     shift=None,
+                    # 47Q 는 실제 시작·종료 시각이 있다 → 그 중점을 대표 시각으로
+                    datetime=_time_midpoint(r.get("채굴일자"), r.get("시작시간"), r.get("종료시간")),
                 )
             )
     return pd.DataFrame(rows)

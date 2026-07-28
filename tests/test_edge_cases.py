@@ -135,6 +135,7 @@ def test_sankey_aggregates_ignore_blank_grades():
     from src.visualization import figures as V
     mine = pd.DataFrame({
         "date": pd.to_datetime(["2026-07-01"] * 3),
+        "datetime": pd.to_datetime(["2026-07-01 12:00"] * 3),
         "source": ["47Q"] * 3, "line": ["기존"] * 3,
         "tonnage": [100.0, 900.0, 100.0],
         "cao": [45.0, np.nan, 45.0],       # 가운데 행이 빈칸
@@ -254,23 +255,57 @@ def test_flow_aggregate_keys_are_minute_precise():
     assert got == pytest.approx(1000.0), "구간 끝을 넘는 인출이 섞이면 안 된다"
 
 
-def test_mine_rows_use_whole_day_because_dates_have_no_time():
-    """광산은 일 단위 기록이라 겹치는 날은 하루 전체를 포함해야 한다.
+def test_mine_rows_get_real_timestamps_from_shift():
+    """광산은 교대 시각으로 시간축에 놓인다 — 더 이상 일 단위가 아니다.
 
-    시각 경계로 자르면 정오에 시작하는 구간에서 그 날 채굴분이 통째로 사라진다
-    (실측 최대 48% 누락). 시각 정보가 없어 쪼갤 수 없으므로 하루 전체를 넣고 밝힌다.
+    이전에는 시각이 없어 구간 경계에서 그 날 채굴분이 통째로 사라지거나(최대 48%)
+    하루 전체가 들어갔다. 교대 시간대(사용자 확정)로 대표 시각을 부여해 해소.
     """
+    from src.data import clean as C
     from src.visualization import figures as V
+
+    # 1차 08~16 → 12:00 · 2차 16~24 → 20:00 · 3차 00~08 → 04:00 (중점)
+    assert C.shift_midpoint("2026-06-22", "1차") == pd.Timestamp("2026-06-22 12:00")
+    assert C.shift_midpoint("2026-06-22", "2차") == pd.Timestamp("2026-06-22 20:00")
+    assert C.shift_midpoint("2026-06-22", "3차") == pd.Timestamp("2026-06-22 04:00")
+    assert pd.isna(C.shift_midpoint("2026-06-22", None))
+    assert pd.isna(C.shift_midpoint(None, "1차"))
+
     mine = pd.DataFrame({
-        "date": pd.to_datetime(["2026-06-22", "2026-06-23"]),
+        "date": pd.to_datetime(["2026-06-22", "2026-06-22"]),
+        "datetime": [C.shift_midpoint("2026-06-22", "1차"), C.shift_midpoint("2026-06-22", "2차")],
         "source": ["49Q"] * 2, "line": ["신설"] * 2,
         "tonnage": [22000.0, 23000.0], "cao": [45.0, 45.0], "mgo": [3.0, 3.0],
     })
     rows = V.sankey_daily_aggregates(mine, None, None, None)["flow"]["49Q|신설"]
-    assert all(r[0].endswith("T00:00") for r in rows), "광산 키는 자정(시각 없음)"
-    # 구간이 06/22 03시에 시작해도 그 날 채굴분이 살아 있어야 한다 (JS 가 일 단위로 넓힘)
-    ks = "2026-06-22T03"[:10] + "T00"
-    assert sum(r[1] for r in rows if r[0] >= ks) == pytest.approx(45000.0)
+    keys = sorted(r[0] for r in rows)
+    assert keys == ["2026-06-22T12:00", "2026-06-22T20:00"], "교대별로 다른 시각에 놓여야 한다"
+    # 구간이 06/22 16시에 시작하면 1차(12:00)는 빠지고 2차(20:00)만 남는다
+    got = sum(r[1] for r in rows if r[0] >= "2026-06-22T16")
+    assert got == pytest.approx(23000.0)
+
+
+def test_handover_only_shifts_midpoint_by_15min():
+    """인수인계 30분은 대표 시각을 15분 움직일 뿐 — 제외해도 구간 귀속이 안 바뀐다."""
+    from src.data import clean as C
+    from config import schema as S
+
+    base = C.shift_midpoint("2026-06-22", "1차", handover=False)
+    ho = C.shift_midpoint("2026-06-22", "1차", handover=True)
+    assert ho - base == pd.Timedelta(minutes=S.HANDOVER_MINUTES / 2)
+    assert S.HANDOVER_APPLIED is False, "검증 결과 귀속 변화 0건이라 제외한다"
+    # 기본값(HANDOVER_APPLIED=False)이 실제로 적용되는지
+    assert C.shift_midpoint("2026-06-22", "1차") == base
+
+
+def test_mine_47Q_uses_actual_start_end_times():
+    """47Q 는 실측 시작·종료 시각이 있으므로 그 중점을 쓴다."""
+    from src.data import clean as C
+    assert C._time_midpoint("2026-06-22", __import__("datetime").time(8, 30),
+                            __import__("datetime").time(9, 30)) == pd.Timestamp("2026-06-22 09:00")
+    # 자정을 넘기면 하루를 더해 계산
+    assert C._time_midpoint("2026-06-22", __import__("datetime").time(23, 0),
+                            __import__("datetime").time(1, 0)) == pd.Timestamp("2026-06-23 00:00")
 
 
 def test_segment_logic_is_not_duplicated():

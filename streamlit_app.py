@@ -53,7 +53,7 @@ st.sidebar.header("📅 기간 설정")
 #    그보다 먼저 시작하는 OSP(신설 06/01) 물량이 '전체'에서 빠진다(6,000톤 누락 버그).
 _alldt = pd.concat(
     [yc_full["datetime"]] + [y["datetime"] for y in yards_full.values()]
-    + [pd.to_datetime(osp_exp["datetime"]), pd.to_datetime(mine["date"])]
+    + [pd.to_datetime(osp_exp["datetime"]), pd.to_datetime(mine["datetime"])]
 )
 dmin, dmax = pd.to_datetime(_alldt.min()).date(), pd.to_datetime(_alldt.max()).date()
 rng = st.sidebar.date_input("분석 기간", value=(dmin, dmax), min_value=dmin, max_value=dmax)
@@ -73,7 +73,7 @@ cfg = AlertConfig(lo=lo, hi=hi, sustain_hours=sustain, deviation_warn=dev)
 # 기간 필터 적용 → 모든 차트가 선택 구간으로 재계산
 yc = filter_period(yc_full, start, end, "datetime")
 yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards_full.items()}
-mine_p = filter_period(mine, start, end, "date")          # 광산도 동일 기간
+mine_p = filter_period(mine, start, end, "datetime")      # 광산도 동일 기간(교대 시각 기준)
 osp_p = filter_period(osp_exp, start, end, "datetime")    # OSP 인출도 동일 기간
 lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
 st.caption(f"선택 기간: {start.date()} ~ {end.date()}  ·  야드변경 {len(yc)}건")
@@ -135,7 +135,7 @@ with tab2:
         # 시간 + 라인 양쪽으로 거른다 (데이터는 라인별로 구분되어 있다)
         ln_sel = seg["line"]
         yc = yc[(yc["line"] == ln_sel) & (yc["datetime"] >= seg["start"]) & (yc["datetime"] < seg["end"])]
-        mine_p = filter_period(mine_p[mine_p["line"] == ln_sel], seg["start"], seg["end"], "date")
+        mine_p = filter_period(mine_p[mine_p["line"] == ln_sel], seg["start"], seg["end"], "datetime")
         osp_p = filter_period(osp_p[osp_p["line"] == ln_sel], seg["start"], seg["end"], "datetime")
         yards = {ln: (filter_period(df, seg["start"], seg["end"], "datetime") if ln == ln_sel
                       else df.iloc[0:0])                    # 다른 라인은 비운다
@@ -178,7 +178,8 @@ with tab2:
         "⚠️ **좌우 물량 합은 일치하지 않는 것이 정상입니다.** 왼쪽은 광산에서 OSP로 **적재한 양**, "
         "오른쪽은 OSP에서 야드로 **인출한 양**으로 공정 단계가 다르며, 그 사이 OSP가 **재고(버퍼)** "
         "역할을 하므로 차이가 곧 재고 증감입니다.  \n"
-        "⚠️ **광산은 일 단위 기록**이라 구간이 하루 중간에 시작·종료해도 겹치는 날은 하루 전체가 포함됩니다."
+        "ℹ️ 광산 물량은 **채굴 교대 시각**(1차 08~16 · 2차 16~24 · 3차 00~08의 중점)과 "
+        "47Q의 **실측 시작·종료 시각**으로 시간축에 배치됩니다."
     )
     _bal = []
     for _ln in S.YARD_PAIR:

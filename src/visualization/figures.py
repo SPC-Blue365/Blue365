@@ -269,7 +269,8 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
     # 물류 링크도 **분 단위** 키. OSP 인출은 시각이 분 단위라, 시간 단위로 묶으면 구간
     # 끝에서 최대 59분치가 더 딸려 들어온다(신설 06/24 구간에서 9,000톤 초과 집계됐던 버그).
     mm = mine[mine["line"].isin([S.LINE_OLD, S.LINE_NEW])] if mine is not None else None
-    flow.update(_rows(mm, ["source", "line"], "tonnage", "cao", "mgo", date_col="date",
+    # 광산도 교대 시각(datetime)을 쓴다 — 일 단위였을 때의 경계 오차가 사라진다
+    flow.update(_rows(mm, ["source", "line"], "tonnage", "cao", "mgo", date_col="datetime",
                       key_fmt="%Y-%m-%dT%H:%M"))
     # 라인→야드: OSP 인출톤(물량) + 해당 야드 CaO는 별도(야드 측정 평균)로 색 결정
     o = _rows(osp_exp, ["line"], "withdrawn_ton", key_fmt="%Y-%m-%dT%H:%M")
@@ -732,12 +733,8 @@ function recomputeSankeys(s,e){{
         vals.push(0); cao.push(null); mgo.push(null);
         hov.push(''); hovM.push(''); return;
       }}
-      // ⭐️ 광산은 '일 단위' 기록(시각 없음)이라 시각 경계로 자르면 시작일 채굴분이
-      //    통째로 사라진다(최대 48%). 겹치는 날은 하루 전체를 포함하고, 그 사실을
-      //    캡션에 밝힌다. (안내상자의 광산 행수도 같은 기준이라 서로 어긋나지 않는다)
-      var isMine=!isYC && /^(49Q|47Q)\\|/.test(k);
-      var ks=isMine?s.slice(0,10)+'T00':s, ke=isMine?e.slice(0,10)+'T99':e;
-      var a=_sumRows(store[k],ks,ke), c=a.cao, m=a.mgo;
+      // 광산도 교대 시각(49Q)·실측 시각(47Q)을 갖게 되어 다른 소스와 같은 경계를 쓴다.
+      var a=_sumRows(store[k],s,e), c=a.cao, m=a.mgo;
       if(!isYC && k.indexOf('__yard__')===0){{   // 라인→야드: 색은 야드 실측 평균
         // 야드 일별행 = [날짜, CaO건수, CaO합, MgO건수, MgO합] — 성분별 건수로 나눈다
         var ln=k.replace('__yard__',''), nc=0,sc=0,nm=0,sm=0;
