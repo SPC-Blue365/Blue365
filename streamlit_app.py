@@ -19,7 +19,7 @@ import streamlit as st
 
 from config import schema as S
 from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
-from src.monitoring import load_history, log_statuses, monitor_line
+from src.monitoring import load_history, log_statuses, monitor_all
 from src.monitoring.alerts import AlertConfig, Level
 from src.visualization import figures as V
 
@@ -70,7 +70,7 @@ yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards_full.
 lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
 st.caption(f"선택 기간: {start.date()} ~ {(end - pd.Timedelta(days=1)).date()}  ·  야드변경 {len(yc)}건")
 
-statuses = {ln: monitor_line(ld, cfg) for ln, ld in lines.items()}
+statuses = monitor_all(lines, cfg)
 added = log_statuses(statuses)  # 경보 이력 누적(중복 제외)
 
 tab1, tab2, tab3, tab4 = st.tabs(["📟 실시간 모니터", "🌊 추적 흐름", "📈 관리도", "📋 경보 이력"])
@@ -79,15 +79,20 @@ tab1, tab2, tab3, tab4 = st.tabs(["📟 실시간 모니터", "🌊 추적 흐�
 with tab1:
     cols = st.columns(len(statuses))
     for col, (ln, stt) in zip(cols, statuses.items()):
-        icon, label, color = BADGE[stt.level]
+        icon, label = stt.badge
+        color = "#8a6d1a" if stt.is_stale else BADGE[stt.level][2]
         col.metric(f"{icon} {ln} → {stt.alias}", f"{stt.latest_actual:.2f}%",
                    f"예측 {stt.latest_pred:.2f} · MAE {stt.recent_mae:.2f}")
         col.markdown(f"<span style='color:{color};font-weight:700'>{label}</span> · 경보 {len(stt.alerts)}건",
                      unsafe_allow_html=True)
+        col.caption(f"📅 기준 {stt.as_of} ({stt.age_text})" + (f"\n\n⏸️ {stt.note}" if stt.note else ""))
     st.divider()
     for ln, stt in statuses.items():
-        icon, label, color = BADGE[stt.level]
+        icon, label = stt.badge
         st.subheader(f"{icon} {ln} 라인 → {stt.alias} · {label}")
+        st.caption(f"📅 데이터 기준 {stt.as_of} ({stt.age_text})" + (f" · ⏸️ {stt.note}" if stt.note else ""))
+        if stt.is_stale:
+            st.warning("이 라인은 최신 데이터가 없습니다 — 아래 상태·경보는 위 기준 시각의 값입니다.")
         if stt.alerts:
             for a in stt.alerts:
                 _, _, c = BADGE[a.level]

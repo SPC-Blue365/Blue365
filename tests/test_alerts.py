@@ -42,3 +42,25 @@ def test_trend_warns():
     a = _series([44.0, 44.4, 44.8, 45.2, 45.6, 46.0])  # 급상승
     alerts = evaluate_alerts(a, a, AlertConfig(trend_warn=0.3))
     assert any(al.kind == "trend" for al in alerts)
+
+
+# --- 데이터 최신성(가동 중지·수집 중단 감지) ---
+def test_data_age_hours():
+    from src.monitoring.alerts import data_age_hours
+    a = pd.Timestamp("2026-07-21 00:00")
+    b = pd.Timestamp("2026-07-28 00:00")
+    assert data_age_hours(a, b) == 168.0        # 7일
+    assert data_age_hours(b, b) == 0.0
+
+
+def test_is_data_stale_flags_old_data():
+    from src.monitoring.alerts import is_data_stale
+    old = pd.Timestamp("2026-07-21 00:00")
+    now = pd.Timestamp("2026-07-28 00:00")
+    assert is_data_stale(old, now, stale_hours=24) is True
+    assert is_data_stale(now, now, stale_hours=24) is False
+
+
+def test_is_data_stale_handles_missing_time():
+    from src.monitoring.alerts import is_data_stale
+    assert is_data_stale(None, pd.Timestamp("2026-07-28"), 24) is False

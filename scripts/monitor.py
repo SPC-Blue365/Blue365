@@ -36,9 +36,12 @@ def main() -> None:
     print("=" * 60)
     sections, cards = [], []
     for line, st in statuses.items():
-        color, badge = BADGE[st.level]
+        icon, label = st.badge
+        color = "#8a6d1a" if st.is_stale else BADGE[st.level][0]
+        badge = f"{icon} {label}"
         print(f"[{badge}] {line}→{st.alias}: 최신 CaO={st.latest_actual:.2f}% "
               f"(예측 {st.latest_pred:.2f}), 최근MAE={st.recent_mae:.2f}, 경보 {len(st.alerts)}건")
+        print(f"     📅 기준 {st.as_of} ({st.age_text})" + (f" · ⏸️ {st.note}" if st.note else ""))
         for a in st.alerts:
             print(f"     - [{a.level.label}] {a.message}")
 
@@ -52,6 +55,7 @@ def main() -> None:
             for a in st.alerts) or "<li>경보 없음</li>"
         card = (f'<div style="border-left:6px solid {color};padding:8px 14px;margin:10px 0;background:#fafafa">'
                 f'<h3 style="margin:4px 0">{badge} · {line} 라인 → {st.alias}</h3>'
+                f'<p>📅 기준 {st.as_of} ({st.age_text})' + (f' · ⏸️ {st.note}' if st.note else '') + '</p>'
                 f'<p>최신 CaO <b>{st.latest_actual:.2f}%</b> (예측 {st.latest_pred:.2f}) · 최근 MAE {st.recent_mae:.2f}</p>'
                 f'<ul>{alert_html}</ul></div>')
         cards.append(card)

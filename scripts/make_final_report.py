@@ -23,7 +23,7 @@ from config.paths import OUTPUTS_DIR, ensure_dirs
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
 from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
-from src.monitoring import monitor_line
+from src.monitoring import monitor_all
 from src.monitoring.alerts import AlertConfig, Level
 from src.optimization.blend import BlendSource, recommend_blend
 from src.visualization import figures as V
@@ -49,7 +49,7 @@ def main(start=None, end=None):
         period_txt = f" · 기간 {start or '처음'}~{end or '끝'}"
     lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
     cfg = AlertConfig()
-    statuses = {ln: monitor_line(ld, cfg) for ln, ld in lines.items()}
+    statuses = monitor_all(lines, cfg)
 
     # ── 예측·벤치마크 ──
     pred_secs, bench_secs, ctrl_secs, metric_rows, reco_rows, kpi_rows = [], [], [], [], [], []
@@ -100,9 +100,14 @@ def main(start=None, end=None):
     # ── 모니터 상태 카드 ──
     cards = []
     for ln, st in statuses.items():
-        icon, label = BADGE[st.level]
+        icon, label = st.badge
         al = "".join(f"<li>[{a.level.label}] {a.message}</li>" for a in st.alerts) or "<li>경보 없음</li>"
-        cards.append(f'<div class="note" style="border-color:#12395c"><b>{icon} {ln} → {st.alias} · {label}</b>'
+        stale_css = "#8a6d1a" if st.is_stale else "#12395c"
+        asof = (f'<span style="color:{stale_css}">📅 기준 {st.as_of} ({st.age_text})'
+                + (" · ⏸️ 데이터 갱신 중단" if st.is_stale else "") + "</span>")
+        note = f'<br><i style="color:#8a6d1a">※ {st.note}</i>' if st.note else ""
+        cards.append(f'<div class="note" style="border-color:{stale_css}"><b>{icon} {ln} → {st.alias} · {label}</b>'
+                     f'<br>{asof}{note}'
                      f'<br>최신 CaO {st.latest_actual:.2f}% (예측 {st.latest_pred:.2f}) · 최근 MAE {st.recent_mae:.2f}'
                      f'<ul>{al}</ul></div>')
 
@@ -113,9 +118,14 @@ def main(start=None, end=None):
     _a = pd.concat([yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)])
     rmin = pd.to_datetime(_a.min()).strftime("%Y/%m/%d")
     rmax = pd.to_datetime(_a.max()).strftime("%Y/%m/%d")
-    overall = max((st.level for st in statuses.values()), key=lambda x: int(x))
+    # 가동 중인(데이터 최신) 라인만 종합 상태에 반영, 중지 라인은 별도 표기
+    live = [st for st in statuses.values() if not st.is_stale]
+    overall = max((st.level for st in live), key=lambda x: int(x)) if live else Level.GREEN
     ov_icon, ov_label = BADGE[overall]
-    status_line = " · ".join(f"{BADGE[st.level][0]} {ln} {BADGE[st.level][1]}" for ln, st in statuses.items())
+    if not live:
+        ov_icon, ov_label = "⏸️", "전 라인 가동 중지"
+    status_line = " · ".join(
+        f"{st.badge[0]} {ln} {st.badge[1]}({st.age_text})" for ln, st in statuses.items())
 
     # 일별 CaO 집계(개수/합/제곱합) → HTML 내 JS가 기간별 평균·표준편차를 정확 재계산
     def _daily_cao(df):
@@ -247,7 +257,7 @@ def main(start=None, end=None):
         ]},
         {"name": "🚨 모니터·경보", "sections": [
             ("라인별 실시간 상태",
-             cap("현재 상태를 <b>신호등</b>으로. 🔴=규격 이탈/지속, 🟡=주의, 🟢=정상. 새 데이터가 오면 자동 갱신.")
+             cap("현재 상태를 <b>신호등</b>으로. 🔴=규격 이탈/지속, 🟡=주의, 🟢=정상, <b>⏸️=가동 중지·데이터 갱신 중단</b>. 각 라인의 <b>📅 기준 시각</b>을 함께 표기하므로 언제 기준 상태인지 바로 알 수 있습니다.")
              + "".join(cards))]},
         {"name": "⚗️ 배합 최적화", "sections": [
             ("배합 최적화 (향후 로드맵)",

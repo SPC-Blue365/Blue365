@@ -33,6 +33,25 @@ class AlertConfig:
     deviation_warn: float = 1.0       # |실측-예측| 이 이상이면 모델편차 주의
     trend_warn: float = 0.5           # 최근 추세 기울기(시간당) 절대값 주의
     trend_window: int = 6             # 추세 계산 창(시간)
+    stale_hours: int = 24             # 이 시간 이상 새 측정이 없으면 '데이터 지연'으로 표시
+
+
+def data_age_hours(latest_time, reference_time) -> float:
+    """마지막 측정 이후 경과 시간(h). 판정 불가 시 nan."""
+    t = pd.to_datetime(latest_time, errors="coerce")
+    ref = pd.to_datetime(reference_time, errors="coerce")
+    if pd.isna(t) or pd.isna(ref):
+        return float("nan")
+    return max(0.0, (ref - t).total_seconds() / 3600.0)
+
+
+def is_data_stale(latest_time, reference_time, stale_hours: int = 24) -> bool:
+    """마지막 측정이 stale_hours 이상 지났으면 True (가동 중지·수집 중단 가능).
+
+    경보(품위 이탈)와 별개 개념 — 오래된 데이터로 '현재 상태'를 단정하지 않기 위함.
+    """
+    age = data_age_hours(latest_time, reference_time)
+    return bool(age == age and age >= stale_hours)  # nan이면 False
 
 
 @dataclass
