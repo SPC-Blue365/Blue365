@@ -121,7 +121,7 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
 
     labels = ["49Q 광산(XRF)", "47Q 광산(감마)", "기존 라인", "신설 라인", "45Q 야드(4-5K)", "CNA 야드(6-7K)"]
     node_colors = ["#6baed6", "#9ecae1", "#f4a582", "#fdae61", "#74c476", "#31a354"]
-    src, tgt, val, lc, hov = [], [], [], [], []
+    src, tgt, val, lc, hov, keys = [], [], [], [], [], []
     smap, lmap, ymap = {"49Q": 0, "47Q": 1}, {S.LINE_OLD: 2, S.LINE_NEW: 3}, {S.LINE_OLD: 4, S.LINE_NEW: 5}
     mm = mine[mine["line"].isin([S.LINE_OLD, S.LINE_NEW])]
     for (so, ln), g in mm.groupby(["source", "line"]):
@@ -130,6 +130,7 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
             continue
         src.append(smap[so]); tgt.append(lmap[ln]); val.append(float(ton)); lc.append(grade_color(cao))
         hov.append(f"{labels[smap[so]]} → {labels[lmap[ln]]}<br>이송 {ton:,.0f}톤 · 평균 CaO {cao:.2f}%")
+        keys.append(f"{so}|{ln}")
     for ln in [S.LINE_OLD, S.LINE_NEW]:
         ton = osp_exp.loc[osp_exp["line"] == ln, "withdrawn_ton"].sum(min_count=1)
         ycao = yards[ln]["cao"].mean()
@@ -137,7 +138,64 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
             continue
         src.append(lmap[ln]); tgt.append(ymap[ln]); val.append(float(ton)); lc.append(grade_color(ycao))
         hov.append(f"{labels[lmap[ln]]} → {labels[ymap[ln]]}<br>인출 {ton:,.0f}톤 · 야드 CaO {ycao:.2f}%")
-    return sankey_tracking(labels, node_colors, src, tgt, val, lc, hov)
+        keys.append(f"__yard__{ln}")
+    fig = sankey_tracking(labels, node_colors, src, tgt, val, lc, hov)
+    fig.update_layout(meta=dict(
+        kind="flow_sankey", link_keys=keys,
+        labels=[f"{labels[a]} → {labels[b]}" for a, b in zip(src, tgt)]))
+    return fig
+
+
+def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
+    """Sankey 링크의 '일별' 집계 → 정적 HTML에서 기간별로 JS가 재계산할 수 있게 한다.
+
+    각 링크마다 [날짜, 물량, 물량×CaO, 물량×MgO] 를 쌓아두면,
+    임의 구간 합계로 총물량과 물량가중 평균 품위를 정확히 복원할 수 있다.
+    반환: {"yc": {링크키: [[d, ton, ton*cao, ton*mgo], ...]},
+           "flow": {링크키: [[d, ton, ton*cao, 0], ...]}}
+    """
+    import pandas as pd
+
+    from config import schema as S
+
+    def _rows(df, key_cols, ton_col, cao_col=None, mgo_col=None, date_col="datetime"):
+        out: dict[str, list] = {}
+        if df is None or len(df) == 0:
+            return out
+        d = df.dropna(subset=[date_col]).copy()
+        d["_d"] = pd.to_datetime(d[date_col]).dt.strftime("%Y-%m-%d")
+        for keys, g in d.groupby(key_cols + ["_d"]):
+            *kparts, day = keys if isinstance(keys, tuple) else (keys,)
+            k = "|".join(str(x) for x in kparts)
+            ton = float(pd.to_numeric(g[ton_col], errors="coerce").fillna(0).sum())
+            wc = float((pd.to_numeric(g[ton_col], errors="coerce").fillna(0)
+                        * pd.to_numeric(g[cao_col], errors="coerce").fillna(0)).sum()) if cao_col else 0.0
+            wm = float((pd.to_numeric(g[ton_col], errors="coerce").fillna(0)
+                        * pd.to_numeric(g[mgo_col], errors="coerce").fillna(0)).sum()) if mgo_col else 0.0
+            out.setdefault(k, []).append([day, ton, wc, wm])
+        return out
+
+    agg = {"yc": _rows(yc, ["line", "yard"], "tonnage", "cao", "mgo")}
+
+    # 물류 개요: 광산(source)→라인, 라인→야드
+    flow: dict[str, list] = {}
+    mm = mine[mine["line"].isin([S.LINE_OLD, S.LINE_NEW])] if mine is not None else None
+    flow.update(_rows(mm, ["source", "line"], "tonnage", "cao", date_col="date"))
+    # 라인→야드: OSP 인출톤(물량) + 해당 야드 CaO는 별도(야드 측정 평균)로 색 결정
+    o = _rows(osp_exp, ["line"], "withdrawn_ton")
+    for k, v in o.items():
+        flow[f"__yard__{k}"] = v
+    yard_daily = {}
+    for ln, y in (yards or {}).items():
+        if y is None or len(y) == 0:
+            continue
+        d = y.dropna(subset=["datetime", "cao"]).copy()
+        d["_d"] = d["datetime"].dt.strftime("%Y-%m-%d")
+        yard_daily[ln] = [[day, int(len(g)), float(g["cao"].sum()), float(g["mgo"].sum())]
+                          for day, g in d.groupby("_d")]
+    agg["flow"] = flow
+    agg["yard_daily"] = yard_daily
+    return agg
 
 
 def _mgo_color(v: float, alpha: float = 0.6) -> str:
@@ -185,6 +243,7 @@ def build_yardchange_sankey(yc, default: str = "CaO") -> go.Figure:
     mgo_h = [f"{r.line} → {r.yard}<br>물량 {r.ton:,.0f}톤 · 변경 {int(r.n)}회<br>"
              f"CaO {r.cao:.2f}% · <b>MgO {r.mgo:.2f}%</b>" for r in g.itertuples()]
 
+    link_keys = [f"{r.line}|{r.yard}" for r in g.itertuples()]
     start_c, start_h = (cao_c, cao_h) if default == "CaO" else (mgo_c, mgo_h)
     fig = go.Figure(go.Sankey(
         arrangement="snap",
@@ -194,6 +253,8 @@ def build_yardchange_sankey(yc, default: str = "CaO") -> go.Figure:
                   hovertemplate="%{customdata}<extra></extra>"),
     ))
     fig.update_layout(
+        meta=dict(kind="yc_sankey", link_keys=link_keys,
+                  labels=[f"{r.line} → {r.yard}" for r in g.itertuples()]),
         title=f"야드변경 추적 · 성분={default}  (링크 두께=야드물량, 색=품위)",
         font=dict(size=13), height=440, margin=dict(l=10, r=10, t=70, b=10),
         updatemenus=[dict(
@@ -518,23 +579,89 @@ function _timeGraphs(){{
     return g._fullLayout && g._fullLayout.xaxis && g._fullLayout.xaxis.type==='date';
   }});
 }}
+// --- Sankey 기간 재계산 (일별 집계 SANKEYAGG 로 링크 물량·색 갱신) ---
+function _caoColor(v,a){{
+  if(v===null||isNaN(v)){{return 'rgba(150,150,150,'+a+')';}}
+  var d=Math.max(-2,Math.min(2,v-44.6))/2, r,g,b;
+  if(d>=0){{r=214;g=Math.round(160-120*d);b=Math.round(120-100*d);}}
+  else{{r=Math.round(60-30*d);g=Math.round(140+20*d);b=200;}}
+  return 'rgba('+r+','+g+','+b+','+a+')';
+}}
+function _mgoColor(v,a){{
+  if(v===null||isNaN(v)){{return 'rgba(150,150,150,'+a+')';}}
+  var t=Math.max(0,Math.min(1,(v-2.5)/2));
+  return 'rgba('+Math.round(60+180*t)+','+Math.round(160-90*t)+','+Math.round(90-40*t)+','+a+')';
+}}
+function _sumRows(rows,s,e){{
+  var ton=0,wc=0,wm=0;
+  (rows||[]).forEach(function(r){{if(r[0]>=s&&r[0]<=e){{ton+=r[1];wc+=r[2];wm+=r[3];}}}});
+  return {{ton:ton, cao: ton>0?wc/ton:null, mgo: ton>0?wm/ton:null}};
+}}
+function recomputeSankeys(s,e){{
+  if(!window.SANKEYAGG){{return;}}
+  s=s||'0000'; e=e||'9999';
+  document.querySelectorAll('.plotly-graph-div').forEach(function(gd){{
+    var meta=gd.layout&&gd.layout.meta; if(!meta||!meta.link_keys){{return;}}
+    var isYC=meta.kind==='yc_sankey';
+    var store=isYC?window.SANKEYAGG.yc:window.SANKEYAGG.flow;
+    var yd=window.SANKEYAGG.yard_daily||{{}};
+    var vals=[],cao=[],mgo=[],hov=[],hovM=[];
+    meta.link_keys.forEach(function(k,i){{
+      var a=_sumRows(store[k],s,e), c=a.cao, m=a.mgo;
+      if(!isYC && k.indexOf('__yard__')===0){{   // 라인→야드: 색은 야드 실측 평균
+        var ln=k.replace('__yard__',''), n=0,sc=0,sm=0;
+        (yd[ln]||[]).forEach(function(r){{if(r[0]>=s&&r[0]<=e){{n+=r[1];sc+=r[2];sm+=r[3];}}}});
+        c = n>0?sc/n:null; m = n>0?sm/n:null;
+      }}
+      vals.push(a.ton); cao.push(c); mgo.push(m);
+      var lb=meta.labels?meta.labels[i]:k;
+      var tt=Math.round(a.ton).toLocaleString();
+      hov.push('<b>'+lb+'</b><br>물량 '+tt+'톤<br>CaO '+(c==null?'-':c.toFixed(2))+'% · MgO '+(m==null?'-':m.toFixed(2))+'%');
+      hovM.push('<b>'+lb+'</b><br>물량 '+tt+'톤<br>MgO '+(m==null?'-':m.toFixed(2))+'% · CaO '+(c==null?'-':c.toFixed(2))+'%');
+    }});
+    var mode=gd.getAttribute('data-comp')||'CaO';
+    var colors=(mode==='MgO')?mgo.map(function(v){{return _mgoColor(v,0.75);}})
+                             :cao.map(function(v){{return _caoColor(v,0.55);}});
+    Plotly.restyle(gd,{{'link.value':[vals],'link.color':[colors],
+                       'link.customdata':[mode==='MgO'?hovM:hov]}},[0]);
+    var base=(gd.layout.title&&gd.layout.title.text?gd.layout.title.text:'').split('  〔')[0];
+    Plotly.relayout(gd,{{'title.text': base+'  〔'+s+' ~ '+e+'〕'}});
+  }});
+}}
 function applyRange(){{
   var s=document.getElementById('drS').value, e=document.getElementById('drE').value;
   if(!s||!e){{return;}}
   _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.range':[s+' 00:00:00', e+' 23:59:59']}});}});
   if(window.recomputeSummary){{window.recomputeSummary(s,e);}}
+  recomputeSankeys(s,e);
 }}
 function resetRange(){{
   document.getElementById('drS').value=DR_MIN; document.getElementById('drE').value=DR_MAX;
   _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.autorange':true}});}});
   if(window.recomputeSummary){{window.recomputeSummary(DR_MIN,DR_MAX);}}
+  recomputeSankeys(DR_MIN,DR_MAX);
 }}
 function showTab(i){{
   document.querySelectorAll('.tabpanel').forEach((p,idx)=>p.classList.toggle('active',idx===i));
   document.querySelectorAll('.tabbtn').forEach((b,idx)=>b.classList.toggle('active',idx===i));
   document.querySelectorAll('#tab'+i+' .plotly-graph-div').forEach(d=>{{if(window.Plotly)Plotly.Plots.resize(d);}});
 }}
-window.addEventListener('load',function(){{showTab(0); if(window.recomputeSummary){{recomputeSummary(DR_MIN,DR_MAX);}}}});
+// Sankey CaO/MgO 버튼 클릭 시 현재 성분을 기록(기간 재계산이 성분 유지)
+function _hookSankeyToggle(){{
+  document.querySelectorAll('.plotly-graph-div').forEach(function(gd){{
+    var meta=gd.layout&&gd.layout.meta; if(!meta||!meta.link_keys){{return;}}
+    if(!gd.getAttribute('data-comp')){{gd.setAttribute('data-comp','CaO');}}
+    if(gd._compHooked){{return;}} gd._compHooked=true;
+    gd.on('plotly_buttonclicked',function(ev){{
+      var lb=ev&&ev.button&&ev.button.label; if(lb==='CaO'||lb==='MgO'){{gd.setAttribute('data-comp',lb);}}
+    }});
+  }});
+}}
+window.addEventListener('load',function(){{
+  showTab(0);
+  if(window.recomputeSummary){{recomputeSummary(DR_MIN,DR_MAX);}}
+  _hookSankeyToggle();
+}});
 </script></body></html>"""
 
 

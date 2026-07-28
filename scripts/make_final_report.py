@@ -138,6 +138,8 @@ def main(start=None, end=None):
         return rows
     sumagg_json = json.dumps({"신설": _daily_cao(yards[S.LINE_NEW]), "기존": _daily_cao(yards[S.LINE_OLD])},
                              ensure_ascii=False)
+    sankey_agg = V.sankey_daily_aggregates(mine, osp_exp, yards, yc)
+    sankey_script = ("<script>window.SANKEYAGG=" + json.dumps(sankey_agg, ensure_ascii=False) + ";</script>")
     sum_script = (
         "<script>window.SUMAGG=" + sumagg_json + ";"
         "window.recomputeSummary=function(s,e){s=s||'0000';e=e||'9999';var res={};"
@@ -180,7 +182,7 @@ def main(start=None, end=None):
         '② <b>야드 변경·품위 추적</b>으로 원인(어느 야드·시점)을 규명 → '
         '③ 데이터가 쌓이면 <b>배합 최적화</b>로 목표 품위를 사전 제어. '
         '데이터가 축적될수록 예측·제어 정밀도는 계속 향상됩니다.</p>'
-        '</div>' + sum_script
+        '</div>' + sum_script + sankey_script
     )
     guide = (
         '<h2>이 대시보드 읽는 법</h2>'
@@ -214,10 +216,10 @@ def main(start=None, end=None):
              cap("각 라인이 <b>언제 어느 야드(Y1/Y2)</b>를 썼는지와 그때 품위. 막대 색이 진할수록 CaO 높음(우측 범례). 상단 날짜창·버튼으로 기간 확대.")),
             ("", V.yardchange_gantt(yc, "CaO")),
             ("야드변경 기반 Sankey (라인→야드)",
-             cap("라인별로 두 야드에 실린 <b>총 물량(띠 굵기)</b>과 <b>평균 품위(색)</b>. CaO/MgO 버튼으로 성분 전환.")),
+             cap("라인별로 두 야드에 실린 <b>물량(띠 굵기)</b>과 <b>평균 품위(색)</b>. CaO/MgO 버튼으로 성분 전환. <b>상단 기간을 적용하면 그 기간 기준으로 다시 계산</b>되며 제목에 기간이 표시됩니다.")),
             ("", V.build_yardchange_sankey(yc, "CaO")),
             ("물류 개요 Sankey (광산→OSP→야드)",
-             cap("광산(49Q·47Q)에서 캔 원석이 <b>어느 라인·야드로 얼마나</b> 흘렀는지 전체 물류를 한눈에. 굵을수록 물량 많음.")),
+             cap("광산(49Q·47Q)에서 캔 원석이 <b>어느 라인·야드로 얼마나</b> 흘렀는지 한눈에. 굵을수록 물량 많음. <b>상단 기간에 따라 재계산</b>됩니다(제목에 기간 표시).")),
             ("", V.build_tracking_sankey(mine, osp_exp, yards)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [

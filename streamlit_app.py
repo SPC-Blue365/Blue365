@@ -67,6 +67,8 @@ cfg = AlertConfig(lo=lo, hi=hi, sustain_hours=sustain, deviation_warn=dev)
 # 기간 필터 적용 → 모든 차트가 선택 구간으로 재계산
 yc = filter_period(yc_full, start, end, "datetime")
 yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards_full.items()}
+mine_p = filter_period(mine, start, end, "date")          # 광산도 동일 기간
+osp_p = filter_period(osp_exp, start, end, "datetime")    # OSP 인출도 동일 기간
 lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
 st.caption(f"선택 기간: {start.date()} ~ {(end - pd.Timedelta(days=1)).date()}  ·  야드변경 {len(yc)}건")
 
@@ -131,8 +133,8 @@ with tab2:
     else:
         st.info("야드변경 시트가 없습니다. (기존라인/신설라인 야드변경 시트를 추가하세요)")
     st.divider()
-    st.markdown("### 물류 개요 (광산→OSP→야드, 누적)")
-    st.plotly_chart(V.build_tracking_sankey(mine, osp_exp, yards), use_container_width=True)
+    st.markdown("### 물류 개요 (광산→OSP→야드) — 선택 기간 기준")
+    st.plotly_chart(V.build_tracking_sankey(mine_p, osp_p, yards), use_container_width=True)
 
 # ── ③ 관리도 (제어차트) ──
 with tab3:
