@@ -96,6 +96,98 @@ def _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain) -> tuple[str
     return html, stat
 
 
+def _yc_segments(yc, mine, osp_exp, yards) -> list[dict]:
+    """라인별 야드변경 구간 목록 + 구간별 실제 데이터 건수.
+
+    ⭐️ 구간은 **반드시 라인별**로 정의한다. 기존(9회·96~228h)과 신설(24회·42~100h)은
+       변경 시점이 거의 겹치지 않아(공통 4일) '두 라인 공통의 야드변경 기간'은 없다.
+       한 라인 기준으로 자른 구간을 다른 라인에 적용하면 그 라인의 야드 기간을
+       중간에서 자르게 되므로, 라벨에 항상 어느 라인의 구간인지 밝힌다.
+    """
+    if yc is None or len(yc) == 0:
+        return []
+    segs = []
+    for ln, d in yc.sort_values("datetime").groupby("line"):
+        d = d.reset_index(drop=True)
+        # 해당 라인 데이터의 마지막 시각 (마지막 구간의 끝)
+        y = yards.get(ln)
+        tail = pd.to_datetime(y["datetime"]).max() if y is not None and len(y) else d["datetime"].max()
+        for i, r in d.iterrows():
+            s = r["datetime"]
+            e = d.loc[i + 1, "datetime"] if i + 1 < len(d) else max(tail, s)
+            if pd.isna(e) or e <= s:
+                continue
+            n_mine = int(((mine["date"] >= s.normalize()) & (mine["date"] <= e)
+                          & (mine["line"] == ln)).sum()) if mine is not None and len(mine) else 0
+            n_osp = int(((osp_exp["datetime"] >= s) & (osp_exp["datetime"] <= e)
+                         & (osp_exp["line"] == ln)).sum()) if osp_exp is not None and len(osp_exp) else 0
+            n_own = int(((y["datetime"] >= s) & (y["datetime"] < e)).sum()) if y is not None and len(y) else 0
+            # 구간 경계 — 시작은 '시' 단위로 내림(그 시각대의 물류 집계를 포함),
+            # 끝은 '다음 변경 1분 전'(분 단위)로 잡아 다음 구간의 변경 이벤트를 확실히 배제한다.
+            # (그러지 않으면 야드변경 물량이 한 건 통째로 더 섞여 최대 2배로 보인다.)
+            e_excl = e - pd.Timedelta(minutes=1)
+            segs.append(dict(
+                key=f"{ln}|{i}", line=ln, yard=r["yard"],
+                s=f"{s:%Y-%m-%dT%H}", e=f"{e_excl:%Y-%m-%dT%H:%M}",
+                hours=round((e - s).total_seconds() / 3600),
+                label=f"{ln} · {r['yard']} · {s:%m/%d %H시}~{e:%m/%d %H시}",
+                link=f"{ln}|{r['yard']}",          # 야드변경 Sankey 의 링크 키
+                n_mine=n_mine, n_osp=n_osp, n_own=n_own,
+                cao=None if pd.isna(r["cao"]) else round(float(r["cao"]), 2),
+                mgo=None if pd.isna(r["mgo"]) else round(float(r["mgo"]), 2),
+            ))
+    return segs
+
+
+def _seg_selector(segs: list[dict]) -> str:
+    """야드변경 구간 드롭다운 (라인별 그룹). 선택 시 두 Sankey가 그 구간으로 바뀐다."""
+    if not segs:
+        return ""
+    groups = {}
+    for sg in segs:
+        groups.setdefault(sg["line"], []).append(sg)
+    opt = "<option value=''>전체 기간 (누적)</option>"
+    for ln, items in groups.items():
+        opt += f"<optgroup label='{ln} 라인 야드변경 구간 ({len(items)}개)'>"
+        opt += "".join(f"<option value='{s['key']}'>{s['label']} ({s['hours']}h)</option>"
+                       for s in items)
+        opt += "</optgroup>"
+    return (
+        "<div class='tolbar'>🔀 <b>야드변경 구간</b> "
+        f"<select id='segSel' onchange='setSeg(this.value)'>{opt}</select>"
+        "<span class='hint'>구간은 <b>라인별</b>입니다 — 두 라인의 변경 시점이 다르기 때문입니다.</span>"
+        "</div><div id='segInfo' class='cap' style='display:none'></div>"
+    )
+
+
+def _seg_script(segs: list[dict]) -> str:
+    """구간 선택 JS. 두 Sankey를 그 구간으로 재계산하고, 선택 링크를 강조한다."""
+    return (
+        "<script>window.YCSEG=" + json.dumps({s["key"]: s for s in segs}, ensure_ascii=False) + ";"
+        "window.YCHL=null;"
+        "window.setSeg=function(k){"
+        "  var box=document.getElementById('segInfo');"
+        "  if(!k){ window.YCHL=null; if(box)box.style.display='none';"
+        "          if(window.recomputeSankeys)recomputeSankeys(DR_MIN,DR_MAX); return; }"
+        "  var g=(window.YCSEG||{})[k]; if(!g){return;}"
+        "  window.YCHL=g.link;"
+        "  if(window.recomputeSankeys)recomputeSankeys(g.s,g.e);"
+        "  if(box){"
+        "    var warn=[];"
+        "    if(g.n_own===0){warn.push('이 구간에 <b>'+g.line+' 야드 측정이 없습니다</b>(가동 중지 또는 측정 간격).');}"
+        "    if(g.n_mine<10){warn.push('광산 기록이 <b>'+g.n_mine+'건</b>뿐이라 평균이 몇 건에 좌우됩니다.');}"
+        "    box.innerHTML='<b>'+g.label+'</b> ('+g.hours+'시간) · 변경 시점 품위 CaO '"
+        "      +(g.cao==null?'-':g.cao)+'% · MgO '+(g.mgo==null?'-':g.mgo)+'%'"
+        "      +'<br>이 구간 데이터: 광산 '+g.n_mine+'행 · OSP 인출 '+g.n_osp+'행 · 야드 측정 '+g.n_own+'건'"
+        "      +'<br><span style=\"color:#8a6d1a\">⚠️ 이송 지연(3~6시간)이 있어 구간 끝에 캔 광석은 다음 구간 야드에 실립니다."
+        "         짧은 구간에서 <b>광산 품위와 야드 품위를 같은 물질로 보면 안 됩니다.</b></span>'"
+        "      +(warn.length?'<br><span style=\"color:#b23\">⚠️ '+warn.join(' ')+'</span>':'');"
+        "    box.style.display='block';"
+        "  }"
+        "};</script>"
+    )
+
+
 def _tol_script(pred_stats: dict) -> str:
     """허용폭 전환 JS. 적중률·판정문·스코어카드 기준선을 한꺼번에 갈아끼운다."""
     return (
@@ -258,7 +350,13 @@ def main(start=None, end=None):
         return f'<p class="cap">💬 {t}</p>'
 
     # ── 경영 요약 (Executive Summary) ──
+    # ⭐️ '전체 기간'은 Sankey 가 쓰는 모든 소스를 덮어야 한다. 야드/야드변경만으로 잡으면
+    #    그보다 먼저 시작하는 OSP(신설 06/01)·광산 물량이 '전체'에서 빠진다(6,000톤 누락 버그).
     _parts = [yc["datetime"]] + [y["datetime"] for y in yards.values() if len(y)]
+    if osp_exp is not None and len(osp_exp):
+        _parts.append(pd.to_datetime(osp_exp["datetime"]))
+    if mine is not None and len(mine):
+        _parts.append(pd.to_datetime(mine["date"]))
     _a = pd.concat(_parts) if any(len(x) for x in _parts) else pd.Series(dtype="datetime64[ns]")
     _mn, _mx = (pd.to_datetime(_a.min()), pd.to_datetime(_a.max())) if len(_a) else (pd.NaT, pd.NaT)
     rmin = "-" if pd.isna(_mn) else _mn.strftime("%Y/%m/%d")
@@ -283,6 +381,7 @@ def main(start=None, end=None):
         return rows
     sumagg_json = json.dumps({"신설": _daily_cao(yards[S.LINE_NEW]), "기존": _daily_cao(yards[S.LINE_OLD])},
                              ensure_ascii=False)
+    segments = _yc_segments(yc, mine, osp_exp, yards)
     sankey_agg = V.sankey_daily_aggregates(mine, osp_exp, yards, yc)
     sankey_script = ("<script>window.SANKEYAGG=" + json.dumps(sankey_agg, ensure_ascii=False) + ";</script>")
     sum_script = (
@@ -327,7 +426,7 @@ def main(start=None, end=None):
         '② <b>야드 변경·품위 추적</b>으로 원인(어느 야드·시점)을 규명 → '
         '③ 데이터가 쌓이면 <b>배합 최적화</b>로 목표 품위를 사전 제어. '
         '데이터가 축적될수록 예측·제어 정밀도는 계속 향상됩니다.</p>'
-        '</div>' + sum_script + sankey_script + _tol_script(pred_stats)
+        '</div>' + sum_script + sankey_script + _tol_script(pred_stats) + _seg_script(segments)
     )
     guide = (
         '<h2>이 대시보드 읽는 법</h2>'
@@ -357,6 +456,12 @@ def main(start=None, end=None):
             ("", exec_summary), ("", guide), ("", glossary),
             ("프로젝트 개요 & 세부 지표", overview)]},
         {"name": "🌊 추적 흐름", "sections": [
+            ("특정 야드변경 구간만 보기",
+             cap("아래에서 <b>야드변경 구간</b>을 고르면 두 Sankey가 <b>그 구간만</b>으로 다시 계산됩니다. "
+                 "야드변경 Sankey는 선택 구간의 링크를 <b>진하게 강조</b>하고 나머지는 흐리게 표시합니다.<br>"
+                 "<b>구간은 라인별입니다</b> — 기존(9회)과 신설(24회)은 변경 시점이 거의 겹치지 않아 "
+                 "'두 라인 공통의 야드변경 기간'은 존재하지 않습니다.")
+             + _seg_selector(segments)),
             ("야드 변경 타임라인 (언제 어느 야드로) — CaO/MgO 버튼",
              cap("각 라인이 <b>언제 어느 야드(Y1/Y2)</b>를 썼는지와 그때 품위. 막대 색이 진할수록 CaO 높음(우측 범례). 상단 날짜창·버튼으로 기간 확대.")),
             ("", V.yardchange_gantt(yc, "CaO")),

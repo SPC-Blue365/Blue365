@@ -214,8 +214,12 @@ def build_tracking_sankey(mine, osp_exp, yards) -> go.Figure:
 def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
     """Sankey 링크의 '일별' 집계 → 정적 HTML에서 기간별로 JS가 재계산할 수 있게 한다.
 
-    각 링크마다 [날짜, 물량, 물량×CaO, CaO유효물량, 물량×MgO, MgO유효물량] 을 쌓아두면,
+    각 링크마다 [시각키, 물량, 물량×CaO, CaO유효물량, 물량×MgO, MgO유효물량] 을 쌓아두면,
     임의 구간 합계로 총물량과 물량가중 평균 품위를 정확히 복원할 수 있다.
+
+    ⭐️ 시각키는 **시간 단위**(`YYYY-MM-DDTHH`)다. 야드변경 구간이 42시간부터 시작하므로
+       일 단위로 묶으면 경계일이 이웃 구간과 섞인다. 문자열 사전순 비교가 시간순과
+       일치하므로 JS 는 그대로 범위 비교만 하면 된다(날짜만 넘어오면 JS 가 T00/T99 로 보정).
 
     ⭐️ **품위 빈칸은 평균에서 제외한다**: 품위가 비어 있는 행은 물량(ton)에는 포함되지만
        가중평균의 분자·분모 **양쪽에서 모두 빠져야** 한다. 분모에 물량만 남으면 평균이
@@ -228,12 +232,13 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
 
     from config import schema as S
 
-    def _rows(df, key_cols, ton_col, cao_col=None, mgo_col=None, date_col="datetime"):
+    def _rows(df, key_cols, ton_col, cao_col=None, mgo_col=None, date_col="datetime",
+              key_fmt="%Y-%m-%dT%H"):
         out: dict[str, list] = {}
         if df is None or len(df) == 0:
             return out
         d = df.dropna(subset=[date_col]).copy()
-        d["_d"] = pd.to_datetime(d[date_col]).dt.strftime("%Y-%m-%d")
+        d["_d"] = pd.to_datetime(d[date_col]).dt.strftime(key_fmt)
 
         def _weighted(g, ton, col):
             """(물량×품위 합, 품위가 유효한 행의 물량 합). 빈칸 행은 양쪽에서 제외."""
@@ -252,7 +257,10 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
             out.setdefault(k, []).append([day, float(t.sum()), wc, wtc, wm, wtm])
         return out
 
-    agg = {"yc": _rows(yc, ["line", "yard"], "tonnage", "cao", "mgo")}
+    # 야드변경은 **분 단위** 키를 쓴다 — 변경 시각이 12:30·19:50 처럼 분 단위라, 시간 단위로
+    # 묶으면 구간 끝의 '다음 변경 이벤트'를 배제할 수 없어 물량이 통째로 한 건 더 섞인다.
+    agg = {"yc": _rows(yc, ["line", "yard"], "tonnage", "cao", "mgo",
+                       key_fmt="%Y-%m-%dT%H:%M")}
 
     # 물류 개요: 광산(source)→라인, 라인→야드
     flow: dict[str, list] = {}
@@ -267,7 +275,7 @@ def sankey_daily_aggregates(mine, osp_exp, yards, yc) -> dict:
         if y is None or len(y) == 0:
             continue
         d = y.dropna(subset=["datetime"]).copy()
-        d["_d"] = d["datetime"].dt.strftime("%Y-%m-%d")
+        d["_d"] = d["datetime"].dt.strftime("%Y-%m-%dT%H")
         # 성분별로 유효 측정 건수를 따로 센다 (45Q는 MgO만 13.6% 비어 있어 공통 카운트 쓰면 왜곡)
         rows = []
         for day, g in d.groupby("_d"):
@@ -688,9 +696,16 @@ function _sumRows(rows,s,e){{
     ton+=r[1];wc+=r[2];wtc+=r[3];wm+=r[4];wtm+=r[5];}}}});
   return {{ton:ton, cao: wtc>0?wc/wtc:null, mgo: wtm>0?wm/wtm:null}};
 }}
+// 집계 키가 'YYYY-MM-DDTHH' 이므로 날짜만 넘어오면 그 날 전체를 덮도록 보정한다.
+// (T00~T99 — 'T99' 는 어떤 실제 시각키보다 사전순으로 크다)
+function _nrm(v,hi){{
+  if(!v){{return hi?'9999':'0000';}}
+  return v.length===10 ? v+(hi?'T99':'T00') : v;
+}}
 function recomputeSankeys(s,e){{
   if(!window.SANKEYAGG){{return;}}
-  s=s||'0000'; e=e||'9999';
+  var label=(s||'전체')+' ~ '+(e||'전체');
+  s=_nrm(s,false); e=_nrm(e,true);
   document.querySelectorAll('.plotly-graph-div').forEach(function(gd){{
     var meta=gd.layout&&gd.layout.meta; if(!meta||!meta.link_keys){{return;}}
     var isYC=meta.kind==='yc_sankey';
@@ -715,10 +730,17 @@ function recomputeSankeys(s,e){{
     var mode=gd.getAttribute('data-comp')||'CaO';
     var colors=(mode==='MgO')?mgo.map(function(v){{return _mgoColor(v,0.75);}})
                              :cao.map(function(v){{return _caoColor(v,0.55);}});
+    // 야드변경 구간을 고르면 그 링크만 진하게, 나머지는 흐리게 (선택 구간 강조)
+    if(isYC && window.YCHL){{
+      colors=colors.map(function(c,i){{
+        return meta.link_keys[i]===window.YCHL ? c.replace(/,[\\d.]+\\)$/,',0.9)')
+                                               : c.replace(/,[\\d.]+\\)$/,',0.10)');
+      }});
+    }}
     Plotly.restyle(gd,{{'link.value':[vals],'link.color':[colors],
                        'link.customdata':[mode==='MgO'?hovM:hov]}},[0]);
     var base=(gd.layout.title&&gd.layout.title.text?gd.layout.title.text:'').split('  〔')[0];
-    Plotly.relayout(gd,{{'title.text': base+'  〔'+s+' ~ '+e+'〕'}});
+    Plotly.relayout(gd,{{'title.text': base+'  〔'+label+'〕'}});
   }});
 }}
 function applyRange(){{

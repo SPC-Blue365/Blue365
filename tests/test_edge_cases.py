@@ -150,16 +150,77 @@ def test_sankey_aggregates_ignore_blank_grades():
 
 
 def test_yard_daily_counts_cao_and_mgo_separately():
-    """야드 일별집계는 성분별 건수를 따로 세야 한다 (45Q는 MgO만 결측)."""
+    """야드 집계는 성분별 건수를 따로 세야 한다 (45Q는 MgO만 결측)."""
     from src.visualization import figures as V
-    yards = {"기존": pd.DataFrame({
-        "datetime": pd.to_datetime(["2026-07-01 01:00", "2026-07-01 02:00"]),
+    yards = {"기존": pd.DataFrame({          # 같은 시각대(01시)에 두 건
+        "datetime": pd.to_datetime(["2026-07-01 01:00", "2026-07-01 01:30"]),
         "cao": [45.0, 45.0], "mgo": [3.4, np.nan],
     })}
-    (day, nc, sc, nm, sm), = V.sankey_daily_aggregates(None, None, yards, None)["yard_daily"]["기존"]
+    (key, nc, sc, nm, sm), = V.sankey_daily_aggregates(None, None, yards, None)["yard_daily"]["기존"]
     assert (nc, sc) == (2, pytest.approx(90.0))
     assert (nm, sm) == (1, pytest.approx(3.4))   # 공통 카운트(2)면 1.7 로 반토막
     assert sm / nm == pytest.approx(3.4)
+
+
+def test_sankey_aggregate_keys_are_hourly():
+    """집계 키는 시간 단위여야 한다 — 야드변경 구간이 42시간부터라 일 단위면 경계가 섞인다."""
+    from src.visualization import figures as V
+    yards = {"기존": pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-01 01:00", "2026-07-01 05:00"]),
+        "cao": [44.0, 46.0], "mgo": [3.0, 3.0],
+    })}
+    rows = V.sankey_daily_aggregates(None, None, yards, None)["yard_daily"]["기존"]
+    keys = [r[0] for r in rows]
+    assert keys == ["2026-07-01T01", "2026-07-01T05"], "시간 단위로 분리되어야 한다"
+    # 문자열 사전순 비교가 시간순과 일치해야 JS 범위 필터가 성립한다
+    assert sorted(keys) == keys
+    assert "2026-07-01T05" > "2026-07-01"          # 날짜만 넘어온 시작 경계보다 큼
+    assert "2026-07-01T05" < "2026-07-01T99"       # JS 가 붙이는 종료 경계보다 작음
+
+
+def test_yard_change_aggregate_uses_minute_keys():
+    """야드변경은 분 단위 키여야 한다 — 변경 시각이 12:30·19:50 처럼 분 단위이기 때문."""
+    from src.visualization import figures as V
+    yc = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-24 12:30", "2026-07-26 19:50"]),
+        "line": ["신설"] * 2, "yard": ["신설(Y1)", "신설(Y2)"],
+        "cao": [45.35, 45.21], "mgo": [3.05, 3.1], "tonnage": [46000.0, 45880.0],
+    })
+    agg = V.sankey_daily_aggregates(None, None, None, yc)["yc"]
+    assert agg["신설|신설(Y1)"][0][0] == "2026-07-24T12:30"
+    assert agg["신설|신설(Y2)"][0][0] == "2026-07-26T19:50"
+
+
+def _load_report_module():
+    import importlib.util, pathlib
+    p = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "make_final_report.py"
+    spec = importlib.util.spec_from_file_location("_mfr", p)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_yc_segment_end_excludes_next_change_event():
+    """구간 끝은 '다음 변경 1분 전'이어야 한다.
+
+    끝을 다음 변경 시각으로 두면 그 이벤트의 물량(약 46,000톤)이 통째로 섞여
+    구간 물량이 최대 2배로 보인다 — 실제로 발생했던 버그.
+    """
+    m = _load_report_module()
+    yc = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-24 12:30", "2026-07-26 19:50"]),
+        "line": ["신설"] * 2, "yard": ["신설(Y1)", "신설(Y2)"],
+        "cao": [45.35, 45.21], "mgo": [3.05, 3.1], "tonnage": [46000.0, 45880.0],
+    })
+    yards = {"신설": pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-27 00:00"]), "cao": [45.0], "mgo": [3.0]})}
+    segs = m._yc_segments(yc, None, None, yards)
+    first = segs[0]
+    assert first["s"] == "2026-07-24T12"        # 시작은 '시' 내림 → 그 시각대 물류 포함
+    assert first["e"] == "2026-07-26T19:49"     # 끝은 다음 변경(19:50) 1분 전 → 배제
+    # 문자열 비교로 다음 이벤트가 실제로 빠지는지 확인 (JS 필터와 동일 규칙)
+    assert not ("2026-07-26T19:50" >= first["s"] and "2026-07-26T19:50" <= first["e"])
+    assert "2026-07-24T12:30" >= first["s"] and "2026-07-24T12:30" <= first["e"]
 
 
 def test_scripts_do_not_redefine_yard_pairing():
