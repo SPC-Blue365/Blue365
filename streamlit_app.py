@@ -203,9 +203,13 @@ with tab2:
 # ── ③ 관리도 (제어차트) ──
 with tab3:
     st.markdown("규격밴드 + 통계 관리한계(평균±3σ) + 규격이탈점. **KPI = 규격내 시간 비율**.")
+    st.caption("**선택 기간 전체**의 시간별 야드 실측 기준입니다 "
+               "(실시간 모니터 탭의 '최근 감시창'과 달리 기간 전체를 봅니다).")
     for ln, stt in statuses.items():
-        s = stt.series
-        act = s["actual"].values
+        # ⭐️ 관리도는 선택 기간 전체의 시간별 야드 실측을 쓴다. 모니터의 series 는
+        #    경보용 '최근 20% 감시창'이라 그걸 쓰면 x축이 최근 며칠만 나온다(실제 발생 버그).
+        ys = lines[ln].yard_series
+        cx, act = ys.index, ys.values
         fin = act[np.isfinite(act)]
         c1, c2 = st.columns([1, 4])
         if not len(fin):
@@ -215,8 +219,9 @@ with tab3:
             continue
         in_spec = float(np.mean((fin >= lo) & (fin <= hi)) * 100)
         c1.metric(f"{ln} 규격내 비율", f"{in_spec:.0f}%")
-        c1.caption(f"{stt.alias}\n최근 {stt.n_monitored}h")
-        c2.plotly_chart(V.control_chart(s["datetime"], act, lo, hi, f"{ln} → {stt.alias} 관리도"),
+        c1.caption(f"{stt.alias}\n집계 {len(fin):,}시간")
+        c2.plotly_chart(V.control_chart(cx, act, lo, hi,
+                                        f"{ln} → {stt.alias} 관리도 (규격내 {in_spec:.0f}%)"),
                         use_container_width=True)
 
 # ── ④ 경보 이력 ──

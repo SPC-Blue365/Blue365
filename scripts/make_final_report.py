@@ -275,7 +275,7 @@ def main(start=None, end=None):
             msg = f"데이터 부족({len(d)}행) — 해당 기간 모델링 생략"
             metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td>-</td></tr>")
             reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>-</td><td>-</td></tr>")
-            kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>-</td></tr>")
+            kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>-</td><td>-</td></tr>")
             skipped.append(f"{ln}→{ld.alias}: {msg}")
             continue
         te = d.iloc[k:]
@@ -297,7 +297,8 @@ def main(start=None, end=None):
             tol=TOLS[0],
             title=f"{ln} → {ld.alias} · 예측 방법별 평균 오차 (짧을수록 정확)")))
         pred_secs.append(("", V.prediction_timeseries(te.index, te["cao"].values, pr, oos,
-                          f"{ln} → {ld.alias} · 검증 구간 실측 vs 예측")))
+                          f"{ln} → {ld.alias} · 검증 구간만 표시 "
+                          f"({te.index.min():%m/%d}~{te.index.max():%m/%d}, 모델이 못 본 뒤 30%)")))
         tie = " <span style='color:#8a6d1a'>(동급)</span>" if gain < GAIN_TIE else ""
         metric_rows.append(f"<tr><td>{ln}</td><td>{ld.alias}</td><td><b>{mae:.2f}</b></td>"
                            f"<td>{mae_persist:.2f}{tie}</td>"
@@ -305,13 +306,17 @@ def main(start=None, end=None):
         bench_secs.append(("", V.model_benchmark_bar(bench, f"{ln} → {ld.alias}: 10개 모델 CV MAE")))
         reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td><b>{recommend(bench)}</b></td>"
                          f"<td>{bench[~bench['is_baseline']]['MAE'].min():.3f}</td></tr>")
-        st = statuses[ln]
-        act = st.series["actual"].values
+        # ⭐️ 관리도는 **리포트 기간 전체**의 시간별 야드 실측을 쓴다.
+        #    모니터의 series 는 경보용 '최근 20% 감시창'이라, 그걸 쓰면 x축이 최근 며칠만
+        #    나오고 규격내 비율도 그 구간 기준이 되어 기간 설정과 어긋난다(실제 발생 버그).
+        ys = ld.yard_series
+        cx, act = ys.index, ys.values
         fin = act[np.isfinite(act)]
         insp = float(np.mean((fin >= cfg.lo) & (fin <= cfg.hi)) * 100) if len(fin) else 0.0
-        kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>{insp:.0f}%</td></tr>")
-        ctrl_secs.append(("", V.control_chart(st.series["datetime"], act, cfg.lo, cfg.hi,
-                          f"{ln} → {ld.alias} 관리도 (규격내 {insp:.0f}%)")))
+        kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>{insp:.0f}%</td>"
+                        f"<td>{len(fin):,}시간</td></tr>")
+        ctrl_secs.append(("", V.control_chart(cx, act, cfg.lo, cfg.hi,
+                          f"{ln} → {ld.alias} 관리도 (규격내 {insp:.0f}% · {len(fin):,}시간)")))
 
     # ── 개요 지표 ──
     ycna = yards[S.LINE_NEW]["cao"]; y45 = yards[S.LINE_OLD]["cao"]
@@ -511,6 +516,8 @@ def main(start=None, end=None):
              cap("<b>질문:</b> 1시간 뒤 야드 CaO를 미리 맞출 수 있는가?<br>"
                  "<b>방법:</b> 데이터를 시간순으로 놓고 <b>앞 70%만 학습</b>시킨 뒤, "
                  "<b>모델이 못 본 뒤 30% 구간</b>에서 예측값과 실제 측정값을 비교했습니다.<br>"
+                 "<b>⚠️ 아래 그래프의 x축은 리포트 기간 전체가 아니라 <u>검증 구간(뒤 30%)</u>입니다</b> — "
+                 "모델이 학습에 쓰지 않은 구간에서만 성적을 재기 때문입니다.<br>"
                  "<b>읽는 법:</b> <b>적중률</b>이 높고 <b>평균 오차</b>가 목표 0.5%p보다 작아야 "
                  "'예측 보고 배합을 조절'할 수 있습니다. 아직 못 미치면 <b>조기경보 용도</b>로만 씁니다.")
              + _tol_selector()
@@ -529,8 +536,10 @@ def main(start=None, end=None):
         ]},
         {"name": "📊 관리도", "sections": [
             ("규격내 시간 비율 (KPI)",
-             cap("품위가 <b>규격(44.1~45.1%) 안에 머문 시간 비율</b>. 높을수록 안정.")
-             + "<table><tr><th>라인→야드</th><th>규격내 비율</th></tr>" + "".join(kpi_rows) + "</table>"),
+             cap("품위가 <b>규격(44.1~45.1%) 안에 머문 시간 비율</b>. 높을수록 안정.<br>"
+                 "<b>리포트 기간 전체</b>의 시간별 야드 실측 기준입니다(상단 기간을 바꾸면 다시 생성해야 반영).")
+             + "<table><tr><th>라인→야드</th><th>규격내 비율</th><th>집계 시간</th></tr>"
+             + "".join(kpi_rows) + "</table>"),
             *_expand(ctrl_secs, "관리도"),
         ]},
         {"name": "🚨 모니터·경보", "sections": [

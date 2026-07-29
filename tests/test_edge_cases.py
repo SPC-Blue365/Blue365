@@ -373,6 +373,33 @@ def test_inventory_trend_labels_are_not_color_only():
     assert any("기존" in t for t in ann) and any("신설" in t for t in ann)
 
 
+def test_monitor_series_is_only_a_recent_window():
+    """모니터 series 는 경보용 '최근 감시창'이다 — 관리도가 이걸 쓰면 x축이 잘린다.
+
+    실제로 신설 관리도가 전체 49일 중 최근 8일(16%)만 보이던 버그의 원인.
+    관리도·KPI 는 LineData.yard_series(기간 전체)를 써야 한다.
+    """
+    ld = _line(200)
+    st = monitor_line(ld)
+    assert len(st.series) < len(ld.yard_series.dropna()), "series 는 일부 구간만 담는다"
+    # 관리도가 써야 할 전체 시계열은 훨씬 길다
+    assert len(ld.yard_series) >= 200
+
+
+def test_control_chart_source_covers_full_period():
+    """관리도에 넘기는 시계열은 야드 데이터 전 구간을 덮어야 한다."""
+    ld = _line(200)
+    ys = ld.yard_series
+    st = monitor_line(ld)
+    assert ys.index.min() <= st.series["datetime"].min()
+    assert ys.index.max() >= st.series["datetime"].max()
+    # 관리도가 실제로 그 시계열로 그려지는지 (예외 없이)
+    from src.visualization import figures as V
+    fig = V.control_chart(ys.index, ys.values, 44.1, 45.1, "t")
+    xs = fig.data[0].x
+    assert pd.Timestamp(xs[0]) == ys.index.min() and pd.Timestamp(xs[-1]) == ys.index.max()
+
+
 def test_segment_logic_is_not_duplicated():
     """구간 정의는 src/matching/segments.py 하나뿐이어야 한다 (페어링 버그의 재발 방지)."""
     import pathlib
