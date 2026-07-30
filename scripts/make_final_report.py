@@ -24,7 +24,8 @@ from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_seg
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
 from src.models.dataset import (
-    build_line_data, filter_period, load_osp_stock, load_sources, load_yard_change, stock_vs_flow,
+    build_line_data, calibrate_flow, filter_period, load_osp_stock, load_sources,
+    load_yard_change, stock_vs_flow,
 )
 from src.monitoring import monitor_all
 from src.monitoring.monitor import MIN_ROWS as _MIN
@@ -153,6 +154,32 @@ def _stock_gap_note(stock, mine, osp_exp) -> str:
               "49Q만으로 계산하면 격차가 <b>더 커지므로</b>, 원인은 유입원이 아니라 "
               "<b>적재량 과소 기록 또는 인출량 과대 기록</b> 쪽입니다. 확인 전까지 어느 한쪽을 "
               "맞다고 단정하지 않고 <b>둘 다 표시</b>합니다(§2-1).")
+
+
+def _calib_note(calib: dict) -> str:
+    """실사에 맞춘 흐름 보정 결과 (경험적 보정임을 분명히 밝힌다)."""
+    parts = []
+    for ln, c in (calib or {}).items():
+        if not c:
+            continue
+        parts.append(
+            f"<b>{ln}</b>: {c['method']} = <b>{c['coef']:.3f}</b> "
+            f"(오차 {c['resid_std_raw']:,.0f}→{c['resid_std']:,.0f}톤, {c['improve']:.0f}% 개선)")
+    if not parts:
+        return ""
+    noise = [c["noise_std"] for c in calib.values() if c and c.get("noise_std") == c.get("noise_std")]
+    nz = f"{min(noise):,.0f}~{max(noise):,.0f}톤" if noise else "-"
+    return ("<br><b>🔧 실사에 맞춘 보정</b> — " + " / ".join(parts)
+            + "<br>실사 재고에 가장 잘 맞는 배율을 <b>데이터로 추정</b>해 흐름 곡선을 보정했습니다"
+              "(굵은 점선). 옅은 점선이 보정 전입니다. 두 라인 모두 <b>인출이 7~9% 과대 기록</b>된 "
+              "것으로 나오는데, 이는 서로 독립적인 두 라인에서 같은 방향으로 나온 결과입니다.<br>"
+              f"<b>남은 오차의 하한은 육안 실사 자체의 흔들림</b>입니다 — 교대 간 실사값이 "
+              f"표준편차 <b>{nz}</b>만큼 튀고 해상도도 1,000톤 단위라, 보정으로 이 아래까지 "
+              "줄이는 것은 불가능합니다.<br>"
+              "<b>⚠️ 경험적 보정이지 원인 규명이 아닙니다.</b> 어느 기록이 실제와 다른지는 현장 "
+              "확인이 필요합니다.<br>"
+              "<b>💡 운영상 '지금 재고'가 필요하면 가장 최근 실사값을 쓰십시오</b> — 흐름 계산은 "
+              "실사와 실사 사이를 메우는 용도로만 신뢰할 수 있습니다.")
 
 
 def _seg_selector(segs: list[dict]) -> str:
@@ -412,6 +439,8 @@ def main(start=None, end=None):
     sumagg_json = json.dumps({"신설": _daily_cao(yards[S.LINE_NEW]), "기존": _daily_cao(yards[S.LINE_OLD])},
                              ensure_ascii=False)
     stock_p = filter_period(stock, start, end, "datetime") if (start or end) else stock
+    # 실사에 맞춘 흐름 보정계수 (라인별). 실사가 5회 미만이면 빈 dict → 보정 없이 표시
+    calib = {ln: calibrate_flow(stock_p, mine, osp_exp, ln) for ln in S.YARD_PAIR}
     segments = yard_change_segments(yc, mine, osp_exp, yards)
     sankey_agg = V.sankey_daily_aggregates(mine, osp_exp, yards, yc)
     sankey_script = ("<script>window.SANKEYAGG=" + json.dumps(sankey_agg, ensure_ascii=False) + ";</script>")
@@ -523,8 +552,9 @@ def main(start=None, end=None):
                  "계산한 <b>추정 재고(점선)</b>를 겹쳐 본 것입니다. "
                  "<b>두 선이 벌어지면 광산 기록에 잡히지 않은 유입이 있다</b>는 뜻입니다.<br>"
                  "ℹ️ 실사값은 <b>1,000톤 단위 개략치</b>이고, 교대 중간(1차 12:30·2차 20:30·3차 04:30)에 파악합니다."
-                 + _stock_gap_note(stock_p, mine, osp_exp))),
-            ("", V.stock_trend(stock_p, mine, osp_exp)),
+                 + _stock_gap_note(stock_p, mine, osp_exp)
+                 + _calib_note(calib))),
+            ("", V.stock_trend(stock_p, mine, osp_exp, calibrations=calib)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
             ("변경일자별 야드 CaO·MgO 추이",

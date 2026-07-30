@@ -535,6 +535,47 @@ def test_stock_vs_flow_returns_empty_when_no_overlap():
     assert stock_vs_flow(pd.DataFrame(), far, far, "기존") == {}
 
 
+def test_calibration_rejects_implausible_coefficients():
+    """육안 노이즈 때문에 나오는 비현실적 배율(α=0.28 등)은 채택하지 않는다.
+
+    '기록의 1/4만 실제'라는 뜻이 되어 현장 지식과 배치되므로 ±30% 밖은 거른다.
+    """
+    from src.models.dataset import calibrate_flow
+    # 재고가 흐름과 무관하게 요동 → 회귀가 계수를 0 쪽으로 끌어내린다
+    idx = pd.date_range("2026-07-01 04:30", periods=12, freq="8h")
+    stock = pd.DataFrame({"datetime": idx, "line": ["신설"] * 12,
+                          "stock_ton": [30000, 31000, 29000, 30000, 31000, 29000,
+                                        30000, 31000, 29000, 30000, 31000, 29000]})
+    mine = pd.DataFrame({"datetime": idx, "line": ["신설"] * 12, "tonnage": [5000.0] * 12})
+    osp = pd.DataFrame({"datetime": idx, "line": ["신설"] * 12, "withdrawn_ton": [5000.0] * 12})
+    cal = calibrate_flow(stock, mine, osp, "신설")
+    if cal:
+        assert 0.7 <= cal["coef"] <= 1.3 or cal["method"] == "하루당 가산", \
+            f"비현실적 배율이 채택됐다: {cal}"
+
+
+def test_calibration_reports_eyeball_noise_floor():
+    """보정으로 줄일 수 없는 하한(육안 실사 흔들림)을 함께 보고해야 한다."""
+    from src.models.dataset import calibrate_flow
+    idx = pd.date_range("2026-07-01 04:30", periods=20, freq="8h")
+    stock = pd.DataFrame({"datetime": idx, "line": ["신설"] * 20,
+                          "stock_ton": 30000 + np.tile([0, 2000, -2000, 1000], 5)})
+    mine = pd.DataFrame({"datetime": idx, "line": ["신설"] * 20, "tonnage": [5000.0] * 20})
+    osp = pd.DataFrame({"datetime": idx, "line": ["신설"] * 20, "withdrawn_ton": [5000.0] * 20})
+    cal = calibrate_flow(stock, mine, osp, "신설")
+    assert cal and cal["noise_std"] > 0, "교대 간 흔들림을 노이즈 하한으로 보고해야 한다"
+
+
+def test_calibration_needs_enough_stocktakes():
+    """실사가 5회 미만이면 보정하지 않는다 (억지로 맞추지 않는다)."""
+    from src.models.dataset import calibrate_flow
+    idx = pd.date_range("2026-07-01 04:30", periods=3, freq="8h")
+    stock = pd.DataFrame({"datetime": idx, "line": ["신설"] * 3, "stock_ton": [30000, 31000, 29000]})
+    mine = pd.DataFrame({"datetime": idx, "line": ["신설"] * 3, "tonnage": [5000.0] * 3})
+    osp = pd.DataFrame({"datetime": idx, "line": ["신설"] * 3, "withdrawn_ton": [5000.0] * 3})
+    assert calibrate_flow(stock, mine, osp, "신설") == {}
+
+
 def test_stock_trend_survives_empty_inputs():
     from src.visualization import figures as V
     assert V.stock_trend(pd.DataFrame(), None, None) is not None

@@ -20,7 +20,8 @@ import streamlit as st
 from config import schema as S
 from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_segments
 from src.models.dataset import (
-    build_line_data, filter_period, load_osp_stock, load_sources, load_yard_change, stock_vs_flow,
+    build_line_data, calibrate_flow, filter_period, load_osp_stock, load_sources,
+    load_yard_change, stock_vs_flow,
 )
 from src.monitoring import load_history, log_statuses, monitor_all
 from src.monitoring.alerts import AlertConfig, Level
@@ -222,7 +223,18 @@ with tab2:
         if gaps:
             st.warning("⚠️ 이 기간 실측 격차 — " + "  /  ".join(gaps)
                        + "  \n실사 재고가 흐름 계산보다 **덜 줄었습니다**. 원인 확인이 필요합니다.")
-        st.plotly_chart(V.stock_trend(stock_p, mine_p, osp_p), use_container_width=True)
+        calib = {_ln: calibrate_flow(stock_p, mine_p, osp_p, _ln) for _ln in S.YARD_PAIR}
+        cparts = [f"**{_ln}** {c['method']}={c['coef']:.3f} "
+                  f"(오차 {c['resid_std_raw']:,.0f}→{c['resid_std']:,.0f}톤, {c['improve']:.0f}% 개선)"
+                  for _ln, c in calib.items() if c]
+        if cparts:
+            st.info("🔧 **실사에 맞춘 보정** — " + "  /  ".join(cparts)
+                    + "  \n남은 오차의 하한은 육안 실사 자체의 흔들림입니다"
+                      "(교대 간 표준편차 "
+                    + "~".join(f"{c['noise_std']:,.0f}" for c in calib.values() if c) + "톤). "
+                      "**운영상 '지금 재고'는 가장 최근 실사값을 쓰십시오.**")
+        st.plotly_chart(V.stock_trend(stock_p, mine_p, osp_p, calibrations=calib),
+                        use_container_width=True)
 
 # ── ③ 관리도 (제어차트) ──
 with tab3:

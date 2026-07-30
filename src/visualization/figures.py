@@ -216,16 +216,19 @@ def inventory_trend(mine, osp_exp, freq: str = "1D", title: str = "") -> go.Figu
     return _time_range_controls(_korean_date_axis(fig))
 
 
-def stock_trend(stock, mine, osp_exp, title: str = "") -> go.Figure:
+def stock_trend(stock, mine, osp_exp, title: str = "", calibrations: dict | None = None) -> go.Figure:
     """OSP 실사 재고 vs 흐름계산 재고 (라인별 2단 비교).
 
     - **실선 = 실사 재고**(교대마다 파악한 실제 재고량, 1,000톤 단위 개략치)
-    - **점선 = 흐름 계산**(첫 실사값에서 출발해 적재−인출만 누적한 값)
+    - **굵은 점선 = 보정 흐름**(실사에 맞춰 기록 배율을 추정·보정한 값)
+    - **옅은 점선 = 보정 전 흐름**(적재−인출 그대로) — 보정 전후 차이를 함께 보인다
     두 선이 벌어지면 **광산 기록에 안 잡힌 유입**이 있다는 뜻이다. 어느 한쪽을
     맞다고 단정하지 않고 둘 다 보여준다(CLAUDE.md §2-1).
     """
     import pandas as pd
     from plotly.subplots import make_subplots
+
+    from src.models.dataset import apply_calibration
 
     lines = [ln for ln in LINE_COLORS
              if stock is not None and len(stock) and (stock["line"] == ln).any()]
@@ -254,32 +257,44 @@ def stock_trend(stock, mine, osp_exp, title: str = "") -> go.Figure:
 
         # 흐름 계산: **흐름 데이터가 시작되는 시점의 실사값**을 출발점으로 (적재−인출) 누적.
         # (전체 실사의 첫 값에 붙이면 2년 전 값에서 출발해 선이 엉뚱한 곳으로 간다)
-        idx, cum, _, _ = inventory_series(mine, osp_exp, ln)
+        idx, cum, inflow, outflow = inventory_series(mine, osp_exp, ln)
         if len(idx):
             flow_start = idx[0]
             prior = g[g["datetime"] <= flow_start]
             base = float(prior["stock_ton"].iloc[-1]) if len(prior) else float(g["stock_ton"].iloc[0])
-            anchor = pd.Series(cum.values, index=idx)
-            if len(anchor):
-                y = base + anchor.values
+            y = base + cum.values
+            cal = (calibrations or {}).get(ln) or {}
+            if cal:
+                # 실사에 맞춘 보정 곡선을 주선으로, 보정 전은 옅게 참고용으로
+                ycal = apply_calibration(cal, idx, inflow.cumsum().values,
+                                         outflow.cumsum().values, base)
                 fig.add_trace(go.Scatter(
-                    x=anchor.index, y=y, name="흐름 계산 (적재−인출)", legendgroup="b",
+                    x=idx, y=y, name="보정 전 흐름", legendgroup="c", showlegend=(i == 1),
+                    mode="lines", line=dict(color="#c9cdd2", width=1.4, dash="dot"),
+                    hovertemplate="%{x|%m/%d}<br>보정 전 %{y:,.0f}톤<extra></extra>"),
+                    row=i, col=1)
+                fig.add_trace(go.Scatter(
+                    x=idx, y=ycal, name=f"보정 흐름 ({cal['method']}={cal['coef']:.3f})",
+                    legendgroup="b", showlegend=(i == 1), mode="lines",
+                    line=dict(color="#8c8c89", width=2.0, dash="dash"),
+                    hovertemplate="%{x|%m/%d}<br>보정 흐름 %{y:,.0f}톤<extra></extra>"),
+                    row=i, col=1)
+                fig.add_annotation(x=idx[-1], y=ycal[-1], text=f"보정 {ycal[-1]:,.0f}t",
+                                   showarrow=False, xanchor="left", xshift=6,
+                                   font=dict(color="#6b6b68", size=11), row=i, col=1)
+                y = ycal      # 0선 경고 판단은 보정 후 기준
+            else:
+                fig.add_trace(go.Scatter(
+                    x=idx, y=y, name="흐름 계산 (적재−인출)", legendgroup="b",
                     showlegend=(i == 1), mode="lines",
                     line=dict(color="#8c8c89", width=1.8, dash="dash"),
                     hovertemplate="%{x|%m/%d}<br>흐름 계산 %{y:,.0f}톤<extra></extra>"),
                     row=i, col=1)
-                fig.add_annotation(x=anchor.index[-1], y=y[-1], text=f"계산 {y[-1]:,.0f}t",
+                fig.add_annotation(x=idx[-1], y=y[-1], text=f"계산 {y[-1]:,.0f}t",
                                    showarrow=False, xanchor="left", xshift=6,
                                    font=dict(color="#6b6b68", size=11), row=i, col=1)
-                if y.min() < 0:
-                    # 계산상 재고가 0 미만 = 물리적으로 불가능 → 기록에 없는 유입의 증거
-                    fig.add_hline(y=0, line=dict(color="#d03b3b", width=1, dash="dot"),
-                                  row=i, col=1)
-                    fig.add_annotation(
-                        x=anchor.index[int(len(anchor) * 0.5)], y=0,
-                        text="⚠ 계산대로면 재고가 0 미만 — 기록에 없는 유입이 있다는 뜻",
-                        showarrow=False, yshift=-14, font=dict(color="#b23", size=10),
-                        row=i, col=1)
+            if np.nanmin(y) < 0:
+                fig.add_hline(y=0, line=dict(color="#d03b3b", width=1, dash="dot"), row=i, col=1)
         fig.update_yaxes(title_text="재고 (톤)", row=i, col=1, tickformat=",",
                          showgrid=True, gridcolor="#eceff2", zeroline=False)
 
