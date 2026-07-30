@@ -400,6 +400,57 @@ def test_control_chart_source_covers_full_period():
     assert pd.Timestamp(xs[0]) == ys.index.min() and pd.Timestamp(xs[-1]) == ys.index.max()
 
 
+# ── 물량 보존: 구역코드가 없어도 물량을 버리지 않는다 ────────────────────────
+
+def test_mine_rows_without_zone_keep_their_tonnage():
+    """구역코드가 비어도 물량이 있으면 살려야 한다 (실제로 10,337톤이 사라졌던 버그)."""
+    from src.data.clean import clean_mine_49Q
+    df = pd.DataFrame({
+        "채굴일자": pd.to_datetime(["2026-07-21", "2026-07-21"]),
+        "채굴시간(교대)": ["3차", "1차"],
+        "공정구분": ["신설", "운휴"],
+        "OSP적재구역": [None, "운휴"],          # 둘 다 구역코드 없음
+        "CaO품위": [41.30, 43.0], "MgO품위": [1.38, 2.0],
+        "이송물량(톤)": [3294, "-"],            # 앞은 실물량, 뒤는 운휴(물량 없음)
+    })
+    out = clean_mine_49Q(df)
+    assert len(out) == 1, "물량 있는 행은 살고, 운휴 행만 빠져야 한다"
+    assert out["tonnage"].sum() == pytest.approx(3294.0)
+    assert pd.isna(out["zone"].iloc[0])          # 구역은 모르는 채로 둔다
+    assert out["cao"].iloc[0] == pytest.approx(41.30)
+
+
+def test_osp_rows_without_withdrawal_point_keep_tonnage():
+    """인출지점(P/W)이 비어도 인출량이 있으면 살려야 한다 (2,000톤이 사라졌던 버그)."""
+    from src.data.clean import clean_osp
+    df = pd.DataFrame({
+        "일자": pd.to_datetime(["2026-06-11", "2026-06-11"]),
+        "인출시간": ["13:00:00", "16:00:00"],
+        " P/W3호": [None, 55.0], " P/W4호": [None, 50.0],
+        "인출량": [2000.0, 4800.0],
+        "비고": ["Yard 변경 1Y 잔량:2,000", None],
+    })
+    out = clean_osp(df, "신설", [" P/W3호", " P/W4호"])
+    assert out["withdrawn_ton"].sum() == pytest.approx(6800.0)
+    assert pd.isna(out.loc[out["zone"].isna(), "withdrawn_ton"]).sum() == 0
+
+
+def test_matching_keeps_zone_less_withdrawals():
+    """지점 없는 인출도 매칭 단계에서 사라지면 안 된다(품위만 라인평균으로 대체)."""
+    from src.matching.pipeline import assign_expected_cao_timeaware
+    osp = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-06-11 13:00", "2026-06-11 16:00"]),
+        "line": ["신설"] * 2, "zone": [np.nan, 55.0], "withdrawn_ton": [2000.0, 4800.0],
+    })
+    mine = pd.DataFrame({
+        "date": pd.to_datetime(["2026-06-10"]), "line": ["신설"],
+        "zone": [55.0], "cao": [45.0],
+    })
+    out = assign_expected_cao_timeaware(osp, mine)
+    assert out["withdrawn_ton"].sum() == pytest.approx(6800.0), "인출 물량이 보존돼야 한다"
+    assert out["expected_cao"].notna().all(), "지점 없는 행도 라인평균으로 채워진다"
+
+
 # ── OSP 실사 재고 ────────────────────────────────────────────────────────────
 
 def _stock_raw():

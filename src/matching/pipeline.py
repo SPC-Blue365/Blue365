@@ -168,9 +168,14 @@ def assign_expected_cao_timeaware(
     )
     line_glob = mine.groupby("line")["cao"].mean()
 
-    o = osp.dropna(subset=["datetime", "zone"]).copy()
+    o = osp.dropna(subset=["datetime"]).copy()
     o["date"] = o["datetime"].dt.floor("D")
-    parts = []
+    # ⭐️ 인출지점(zone)이 비어도 **물량은 버리지 않는다**. 지점별 품위 매칭만 불가하므로
+    #    아래 fillna 에서 라인 전역 평균으로 대체된다.
+    #    (예전엔 zone 결측 행을 통째로 버려 인출 2,000톤이 사라졌다)
+    no_zone = o[o["zone"].isna()].assign(expected_cao=np.nan)
+    o = o.dropna(subset=["zone"])
+    parts = [no_zone] if len(no_zone) else []
     for (ln, zn), g in o.groupby(["line", "zone"]):
         mm = mine_daily[(mine_daily["line"] == ln) & (mine_daily["zone"] == zn)][["date", "cao"]]
         g = g.sort_values("date")

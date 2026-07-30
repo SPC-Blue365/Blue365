@@ -132,9 +132,14 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, r in df.iterrows():
         zones = parse_zone_codes(r.get("OSP적재구역"))
-        if not zones:
-            continue
         tonnage = _to_numeric(pd.Series([r.get("이송물량(톤)")])).iloc[0]
+        # ⭐️ 구역코드가 비어도 **물량이 있으면 버리지 않는다**(zone=NaN 으로 남긴다).
+        #    예전엔 통째로 건너뛰어 실제 채굴 물량 10,337톤이 사라졌다.
+        #    구역 기반 매칭은 zone 결측 행을 알아서 제외하므로 안전하다.
+        if not zones:
+            if pd.isna(tonnage) or tonnage <= 0:
+                continue          # 운휴 등 실물량 없는 행만 건너뛴다
+            zones = [np.nan]
         per_ton = tonnage / len(zones) if pd.notna(tonnage) else np.nan
         for z in zones:
             rows.append(
@@ -159,9 +164,11 @@ def clean_mine_47Q(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for _, r in df.iterrows():
         zones = parse_zone_codes(r.get("OSP적재구역"))
-        if not zones:
-            continue
         tonnage = pd.to_numeric(r.get("이송물량(톤)"), errors="coerce")
+        if not zones:                       # 49Q 와 동일 규칙 (물량 보존)
+            if pd.isna(tonnage) or tonnage <= 0:
+                continue
+            zones = [np.nan]
         per_ton = tonnage / len(zones) if pd.notna(tonnage) else np.nan
         for z in zones:
             rows.append(
@@ -216,16 +223,21 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
             if pd.notna(r.get(c))
         ]
         zones = [z for z in zones if pd.notna(z)]
-        if not zones:
-            continue
         total = pd.to_numeric(r.get("인출량"), errors="coerce")
+        # ⭐️ 인출지점(P/W)이 비어도 **인출량이 있으면 버리지 않는다**(zone=NaN).
+        #    야드변경 잔량처럼 지점 없이 기록되는 행이 있어, 예전엔 2,000톤이 사라졌다.
+        if not zones:
+            if pd.isna(total) or total <= 0:
+                continue
+            zones = [np.nan]
         per = total / len(zones) if pd.notna(total) else np.nan
         dt = _combine_datetime(
             pd.Series([r.get("일자")]), pd.Series([r.get("인출시간")])
         ).iloc[0]
         for z in zones:
             rows.append(
-                dict(datetime=dt, line=line, zone=float(z), withdrawn_ton=per)
+                dict(datetime=dt, line=line, zone=float(z) if pd.notna(z) else np.nan,
+                     withdrawn_ton=per)
             )
     return pd.DataFrame(rows)
 
