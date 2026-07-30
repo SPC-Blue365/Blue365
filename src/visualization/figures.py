@@ -79,9 +79,12 @@ def sankey_tracking(labels, node_colors, srcs, tgts, values, link_colors, link_h
 def prediction_timeseries(index, actual, pred, oos, title) -> go.Figure:
     """예측 실측 대비 + 규격밴드 + 조기경보."""
     fig = go.Figure()
-    fig.add_hrect(y0=TARGET - 0.5, y1=TARGET + 0.5, fillcolor=GREEN, opacity=0.10,
-                  line_width=0, annotation_text="규격 44.1~45.1", annotation_position="top left")
+    # 규격 라벨은 플롯 바깥 오른쪽에 (왼쪽 안쪽에 두면 y축 눈금에 잘린다)
+    fig.add_hrect(y0=TARGET - 0.5, y1=TARGET + 0.5, fillcolor=GREEN, opacity=0.10, line_width=0)
     fig.add_hline(y=TARGET, line=dict(color=GREEN, dash="dash", width=1))
+    fig.add_annotation(x=1.0, xref="paper", xanchor="left", xshift=6, y=TARGET, yref="y",
+                       text=f"규격<br>{TARGET - 0.5:g}~{TARGET + 0.5:g}", showarrow=False,
+                       align="left", font=dict(size=10, color="#1d7a1d"))
     fig.add_trace(go.Scatter(x=index, y=actual, name="실측 CaO (실제 측정)",
                              line=dict(color=BLUE, width=1.8),
                              hovertemplate="%{x|%m/%d %H시}<br>실측 %{y:.2f}%<extra></extra>"))
@@ -94,9 +97,13 @@ def prediction_timeseries(index, actual, pred, oos, title) -> go.Figure:
                       marker=dict(color=ORANGE, size=8, symbol="triangle-up",
                                   line=dict(color="white", width=1)),
                       hovertemplate="%{x|%m/%d %H시}<br>규격이탈 예상 %{y:.2f}%<extra></extra>"))
-    fig.update_layout(title=title, height=340, font=dict(size=12),
-                      margin=dict(l=10, r=10, t=44, b=10),
-                      yaxis_title="CaO (%)", legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
+    # 제목이 길어 범례와 겹치던 문제 → 범례를 제목 **아래 줄**로 내리고 위 여백을 넉넉히.
+    fig.update_layout(title=dict(text=title, y=0.97, yanchor="top"),
+                      height=372, font=dict(size=12),
+                      margin=dict(l=10, r=76, t=88, b=10), yaxis_title="CaO (%)",
+                      # 기간 버튼이 오른쪽(x=1)에 있으므로 범례는 왼쪽에 둔다
+                      legend=dict(orientation="h", y=1.02, yanchor="bottom",
+                                  x=0, xanchor="left", font=dict(size=11)))
     return _time_range_controls(_korean_date_axis(fig))
 
 
@@ -300,9 +307,11 @@ def stock_trend(stock, mine, osp_exp, title: str = "", calibrations: dict | None
 
     fig.update_layout(
         title=title or "OSP 재고 — 실사(실선) vs 흐름 계산(점선)",
-        height=250 * len(lines) + 90, font=dict(size=12),
-        margin=dict(l=10, r=96, t=86, b=10), plot_bgcolor="white",
-        legend=dict(orientation="h", y=1.06, x=1, xanchor="right"),
+        height=250 * len(lines) + 150, font=dict(size=12),
+        margin=dict(l=10, r=96, t=86, b=92), plot_bgcolor="white",
+        # 범례를 아래로 — 위에 두면 서브플롯 제목과 기간 버튼을 동시에 가린다
+        legend=dict(orientation="h", y=-0.30, yanchor="top", x=0.5, xanchor="center",
+                    font=dict(size=11)),
     )
     for ax in fig.select_xaxes():
         ax.update(tickformatstops=KDATE_STOPS)
@@ -678,11 +687,17 @@ def _std_bar(g, title: str) -> go.Figure:
                          text=[f"{v:.2f}" for v in g["mgo_std"]], textposition="outside",
                          customdata=np.stack([g["mgo_m"], g["n"]], axis=-1),
                          hovertemplate="%{x}<br>MgO 표준편차 %{y:.3f}<br>평균 %{customdata[0]:.2f}% · n=%{customdata[1]}<extra></extra>"))
-    fig.add_hline(y=0.5, line=dict(color=GREEN, dash="dash"),
-                  annotation_text="목표 CaO 표준편차 0.5", annotation_position="top right")
+    # 목표선은 막대·라벨 **아래**로 깔고(layer='below'), 주석은 플롯 **바깥 오른쪽**에 둔다.
+    # (안 그러면 0.5 근처 막대의 값 라벨과 겹치고, 큰 막대 위에 글씨가 얹힌다)
+    fig.add_hline(y=0.5, line=dict(color=GREEN, dash="dash"), layer="below")
+    fig.add_annotation(x=1.0, xref="paper", xanchor="left", xshift=6, y=0.5, yref="y",
+                       text="목표 0.5", showarrow=False, font=dict(color="#1d7a1d", size=11))
+    ymax = float(np.nanmax([g["cao_std"].max(), g["mgo_std"].max(), 0.5]))
     fig.update_layout(title=title, barmode="group", height=360, font=dict(size=12),
-                      yaxis_title="표준편차 (%p)", margin=dict(l=10, r=10, t=46, b=10),
-                      legend=dict(orientation="h", y=1.14, x=1, xanchor="right"))
+                      yaxis_title="표준편차 (%p)", margin=dict(l=10, r=76, t=64, b=10),
+                      yaxis=dict(range=[0, ymax * 1.18]),      # 값 라벨이 잘리지 않게 여유
+                      legend=dict(orientation="h", y=1.06, yanchor="bottom",
+                                  x=1, xanchor="right"))
     return fig
 
 
@@ -730,20 +745,41 @@ def control_chart(times, values, lo, hi, title) -> go.Figure:
     sd = float(fin.std()) if len(fin) else 0.0
     ucl, lcl = mean + 3 * sd, mean - 3 * sd
     fig = go.Figure()
-    fig.add_hrect(y0=lo, y1=hi, fillcolor=GREEN, opacity=0.10, line_width=0,
-                  annotation_text="규격", annotation_position="top left")
-    fig.add_hline(y=mean, line=dict(color="#555", width=1), annotation_text=f"평균 {mean:.2f}")
+    # 기준선 라벨은 전부 플롯 **바깥 오른쪽**에 세로로 나눠 배치한다.
+    # (안쪽에 두면 '규격'은 y축 눈금과, '평균'은 오른쪽 가장자리와 겹친다)
+    fig.add_hrect(y0=lo, y1=hi, fillcolor=GREEN, opacity=0.10, line_width=0)
+    fig.add_hline(y=mean, line=dict(color="#555", width=1))
     for y, nm in [(ucl, "UCL"), (lcl, "LCL")]:
-        fig.add_hline(y=y, line=dict(color=RED, dash="dot", width=1), annotation_text=nm)
+        fig.add_hline(y=y, line=dict(color=RED, dash="dot", width=1))
+    # 규격 범위는 제목에 넣고(라벨끼리 겹침 방지), 오른쪽에는 3개만 세로로 배치한다.
+    # 값이 가까우면 겹치므로 위에서부터 훑으며 최소 간격(픽셀)을 강제한다.
+    lab = sorted([(ucl, "UCL", "#b23"), (mean, f"평균 {mean:.2f}", "#555"),
+                  (lcl, "LCL", "#b23")], key=lambda t: -t[0])
+    span = max(ucl - lcl, 1e-6)
+    min_gap = span * 0.09          # 이보다 가까우면 아래로 밀어낸다
+    prev_y, prev_shift = None, 0
+    for y, txt, col in lab:
+        shift = 0
+        if prev_y is not None and (prev_y - y) < min_gap:
+            shift = prev_shift - 13
+        fig.add_annotation(x=1.0, xref="paper", xanchor="left", xshift=6, y=y, yref="y",
+                           yshift=shift, text=txt, showarrow=False,
+                           font=dict(size=10, color=col))
+        prev_y, prev_shift = y, shift
     fig.add_trace(go.Scatter(x=times, y=v, mode="lines+markers", name="CaO",
                              line=dict(color=BLUE, width=1.3), marker=dict(size=4)))
     oos = (v < lo) | (v > hi)
     if np.any(oos):
         fig.add_trace(go.Scatter(x=np.asarray(times)[oos], y=v[oos], mode="markers",
                       name="규격이탈", marker=dict(color=ORANGE, size=8, symbol="x")))
-    fig.update_layout(title=title, height=340, font=dict(size=12), yaxis_title="CaO (%)",
-                      margin=dict(l=10, r=10, t=44, b=10),
-                      legend=dict(orientation="h", y=1.12, x=1, xanchor="right"))
+    # 규격 범위를 제목에 넣어 오른쪽 라벨 수를 줄인다(겹침 방지)
+    ttl = title if "규격 " in title else f"{title} · 규격 {lo:g}~{hi:g}"
+    fig.update_layout(title=dict(text=ttl, y=0.97, yanchor="top"),
+                      height=364, font=dict(size=12), yaxis_title="CaO (%)",
+                      margin=dict(l=10, r=92, t=76, b=10),   # 오른쪽은 기준선 라벨 자리
+                      # 기간 버튼이 오른쪽(x=1)이므로 범례는 왼쪽에 둔다
+                      legend=dict(orientation="h", y=1.02, yanchor="bottom",
+                                  x=0, xanchor="left", font=dict(size=11)))
     return _time_range_controls(_korean_date_axis(fig))
 
 
