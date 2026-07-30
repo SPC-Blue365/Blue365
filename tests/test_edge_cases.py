@@ -400,6 +400,96 @@ def test_control_chart_source_covers_full_period():
     assert pd.Timestamp(xs[0]) == ys.index.min() and pd.Timestamp(xs[-1]) == ys.index.max()
 
 
+# ── OSP 실사 재고 ────────────────────────────────────────────────────────────
+
+def _stock_raw():
+    """'OSP 재고' 시트 원시 배치 재현 — 좌우 2블록, 헤더 3번째 행, 가운데 빈 열."""
+    rows = [
+        [None] * 9,
+        ["OSP1", None, None, None, None, "OSP2", None, None, None],
+        ["날짜", "차수", "OSP 구분", "재고량", None, "날짜", "차수", "OSP 구분", "재고량"],
+        ["2026-07-01", 3, "OSP1", 30000, None, "2026-07-01", 3, "OSP2", 25000],
+        ["2026-07-01", 1, "OSP1", 31000, None, "2026-07-01", 1, "OSP2", 26000],
+        ["2026-07-01", 2, "OSP1", 32000, None, "2026-07-01", 2, "OSP2", 27000],
+        ["2026-07-02", 3, "OSP1", 33000, None, None, None, None, None],
+        ["2026-07-02", 3, "OSP1", 34000, None, None, None, None, None],   # 중복(같은 날짜·차수)
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_osp_stock_parses_both_blocks_and_maps_lines():
+    """OSP1→기존, OSP2→신설 로 매핑되고 좌우 블록이 모두 읽혀야 한다."""
+    from src.data.clean import clean_osp_stock
+    d = clean_osp_stock(_stock_raw())
+    assert set(d["line"]) == {"기존", "신설"}
+    assert (d[d["line"] == "신설"]["stock_ton"].tolist()) == [25000.0, 26000.0, 27000.0]
+
+
+def test_osp_stock_uses_stocktake_times_not_shift_midpoints():
+    """실사 시각은 교대 중간 파악시간(1차 12:30·2차 20:30·3차 04:30)이다.
+
+    채굴 교대 중점(12:00/20:00/04:00)과 혼동하면 안 된다.
+    """
+    from src.data.clean import clean_osp_stock
+    d = clean_osp_stock(_stock_raw())
+    g = d[(d["line"] == "기존") & (d["date"] == pd.Timestamp("2026-07-01"))]
+    times = dict(zip(g["shift"], g["datetime"].dt.strftime("%H:%M")))
+    assert times == {3: "04:30", 1: "12:30", 2: "20:30"}
+
+
+def test_osp_stock_keeps_last_of_duplicate_and_reports_count():
+    """같은 (라인·날짜·차수) 중복은 마지막 값을 채택하고 몇 건인지 남긴다."""
+    from src.data.clean import clean_osp_stock
+    d = clean_osp_stock(_stock_raw())
+    dup = d[(d["line"] == "기존") & (d["date"] == pd.Timestamp("2026-07-02"))]
+    assert len(dup) == 1 and dup["stock_ton"].iloc[0] == 34000.0   # 마지막 기록
+    assert d.attrs["dup_dropped"] == 1
+
+
+def test_osp_stock_shifts_are_chronological_within_a_day():
+    """하루 안에서 3차(04:30) → 1차(12:30) → 2차(20:30) 순서여야 한다."""
+    from src.data.clean import clean_osp_stock
+    d = clean_osp_stock(_stock_raw())
+    g = d[(d["line"] == "기존") & (d["date"] == pd.Timestamp("2026-07-01"))].sort_values("datetime")
+    assert g["shift"].tolist() == [3, 1, 2]
+
+
+def test_stock_vs_flow_reports_gap_without_picking_a_side():
+    """실사와 흐름계산을 둘 다 돌려주고 격차를 계산한다 (한쪽으로 단정하지 않음)."""
+    from src.data.clean import clean_osp_stock
+    from src.models.dataset import stock_vs_flow
+    stock = clean_osp_stock(_stock_raw())
+    # 흐름 데이터가 실사 구간을 덮어야 대조가 성립한다
+    span = ["2026-07-01 00:00", "2026-07-01 12:00", "2026-07-02 23:00"]
+    mine = pd.DataFrame({"datetime": pd.to_datetime(span),
+                         "line": ["기존"] * 3, "tonnage": [0.0, 1000.0, 0.0]})
+    osp = pd.DataFrame({"datetime": pd.to_datetime(["2026-07-01 00:00", "2026-07-01 13:00",
+                                                    "2026-07-02 23:00"]),
+                        "line": ["기존"] * 3, "withdrawn_ton": [0.0, 500.0, 0.0]})
+    r = stock_vs_flow(stock, mine, osp, "기존")
+    assert r["calc"] == pytest.approx(500.0)          # 적재 1000 − 인출 500
+    assert r["actual"] == pytest.approx(r["s1"] - r["s0"])
+    assert r["gap"] == pytest.approx(r["actual"] - r["calc"])
+    assert r["s0"] == 30000.0 and r["s1"] == 34000.0  # 첫·마지막 실사값
+
+
+def test_stock_vs_flow_returns_empty_when_no_overlap():
+    """흐름 데이터가 실사 구간과 안 겹치면 억지로 값을 만들지 않는다."""
+    from src.data.clean import clean_osp_stock
+    from src.models.dataset import stock_vs_flow
+    stock = clean_osp_stock(_stock_raw())
+    far = pd.DataFrame({"datetime": pd.to_datetime(["2026-09-01 12:00"]),
+                        "line": ["기존"], "tonnage": [100.0], "withdrawn_ton": [50.0]})
+    assert stock_vs_flow(stock, far, far, "기존") == {}
+    assert stock_vs_flow(pd.DataFrame(), far, far, "기존") == {}
+
+
+def test_stock_trend_survives_empty_inputs():
+    from src.visualization import figures as V
+    assert V.stock_trend(pd.DataFrame(), None, None) is not None
+    assert V.stock_trend(None, None, None) is not None
+
+
 def test_segment_logic_is_not_duplicated():
     """구간 정의는 src/matching/segments.py 하나뿐이어야 한다 (페어링 버그의 재발 방지)."""
     import pathlib

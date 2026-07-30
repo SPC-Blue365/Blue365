@@ -175,7 +175,8 @@ def inventory_series(mine, osp_exp, line: str, freq: str = "1D"):
 def inventory_trend(mine, osp_exp, freq: str = "1D", title: str = "") -> go.Figure:
     """OSP 재고 증감 추이 (라인별 · 기간 시작 대비 누적).
 
-    선이 내려가면 재고를 헐어 쓰는 중, 올라가면 쌓이는 중. 0선은 '기간 시작 수준'.
+    선이 내려가면 **쓴 양이 들어온 양보다 많아 재고가 줄고 있다**는 뜻,
+    올라가면 재고가 늘고 있다는 뜻. 0선은 '기간 시작 수준'.
     """
     import pandas as pd
 
@@ -213,6 +214,104 @@ def inventory_trend(mine, osp_exp, freq: str = "1D", title: str = "") -> go.Figu
         legend=dict(orientation="h", y=1.1, x=1, xanchor="right"),
     )
     return _time_range_controls(_korean_date_axis(fig))
+
+
+def stock_trend(stock, mine, osp_exp, title: str = "") -> go.Figure:
+    """OSP 실사 재고 vs 흐름계산 재고 (라인별 2단 비교).
+
+    - **실선 = 실사 재고**(교대마다 파악한 실제 재고량, 1,000톤 단위 개략치)
+    - **점선 = 흐름 계산**(첫 실사값에서 출발해 적재−인출만 누적한 값)
+    두 선이 벌어지면 **광산 기록에 안 잡힌 유입**이 있다는 뜻이다. 어느 한쪽을
+    맞다고 단정하지 않고 둘 다 보여준다(CLAUDE.md §2-1).
+    """
+    import pandas as pd
+    from plotly.subplots import make_subplots
+
+    lines = [ln for ln in LINE_COLORS
+             if stock is not None and len(stock) and (stock["line"] == ln).any()]
+    if not lines:
+        f = go.Figure()
+        f.update_layout(title="OSP 실사 재고 — 해당 기간 데이터 없음", height=300)
+        return f
+
+    fig = make_subplots(rows=len(lines), cols=1, shared_xaxes=True, vertical_spacing=0.09,
+                        subplot_titles=[f"{ln} 라인 (OSP{'1' if ln == '기존' else '2'})"
+                                        for ln in lines])
+    for i, ln in enumerate(lines, start=1):
+        g = stock[stock["line"] == ln].dropna(subset=["stock_ton"]).sort_values("datetime")
+        if not len(g):
+            continue
+        color = LINE_COLORS[ln]
+        fig.add_trace(go.Scatter(
+            x=g["datetime"], y=g["stock_ton"], name="실사 재고", legendgroup="a",
+            showlegend=(i == 1), mode="lines", line=dict(color=color, width=2.2),
+            hovertemplate="%{x|%m/%d %H시}<br>실사 재고 %{y:,.0f}톤<extra></extra>"),
+            row=i, col=1)
+        fig.add_annotation(x=g["datetime"].iloc[-1], y=g["stock_ton"].iloc[-1],
+                           text=f"실사 {g['stock_ton'].iloc[-1]:,.0f}t", showarrow=False,
+                           xanchor="left", xshift=6, font=dict(color=color, size=11),
+                           row=i, col=1)
+
+        # 흐름 계산: **흐름 데이터가 시작되는 시점의 실사값**을 출발점으로 (적재−인출) 누적.
+        # (전체 실사의 첫 값에 붙이면 2년 전 값에서 출발해 선이 엉뚱한 곳으로 간다)
+        idx, cum, _, _ = inventory_series(mine, osp_exp, ln)
+        if len(idx):
+            flow_start = idx[0]
+            prior = g[g["datetime"] <= flow_start]
+            base = float(prior["stock_ton"].iloc[-1]) if len(prior) else float(g["stock_ton"].iloc[0])
+            anchor = pd.Series(cum.values, index=idx)
+            if len(anchor):
+                y = base + anchor.values
+                fig.add_trace(go.Scatter(
+                    x=anchor.index, y=y, name="흐름 계산 (적재−인출)", legendgroup="b",
+                    showlegend=(i == 1), mode="lines",
+                    line=dict(color="#8c8c89", width=1.8, dash="dash"),
+                    hovertemplate="%{x|%m/%d}<br>흐름 계산 %{y:,.0f}톤<extra></extra>"),
+                    row=i, col=1)
+                fig.add_annotation(x=anchor.index[-1], y=y[-1], text=f"계산 {y[-1]:,.0f}t",
+                                   showarrow=False, xanchor="left", xshift=6,
+                                   font=dict(color="#6b6b68", size=11), row=i, col=1)
+                if y.min() < 0:
+                    # 계산상 재고가 0 미만 = 물리적으로 불가능 → 기록에 없는 유입의 증거
+                    fig.add_hline(y=0, line=dict(color="#d03b3b", width=1, dash="dot"),
+                                  row=i, col=1)
+                    fig.add_annotation(
+                        x=anchor.index[int(len(anchor) * 0.5)], y=0,
+                        text="⚠ 계산대로면 재고가 0 미만 — 기록에 없는 유입이 있다는 뜻",
+                        showarrow=False, yshift=-14, font=dict(color="#b23", size=10),
+                        row=i, col=1)
+        fig.update_yaxes(title_text="재고 (톤)", row=i, col=1, tickformat=",",
+                         showgrid=True, gridcolor="#eceff2", zeroline=False)
+
+    fig.update_layout(
+        title=title or "OSP 재고 — 실사(실선) vs 흐름 계산(점선)",
+        height=250 * len(lines) + 90, font=dict(size=12),
+        margin=dict(l=10, r=96, t=86, b=10), plot_bgcolor="white",
+        legend=dict(orientation="h", y=1.06, x=1, xanchor="right"),
+    )
+    for ax in fig.select_xaxes():
+        ax.update(tickformatstops=KDATE_STOPS)
+    # 아래 축에만 기간 버튼·슬라이더 (실사는 2년치, 흐름은 최근 몇 주 — 확대해서 비교)
+    fig.update_xaxes(
+        rangeselector=dict(
+            buttons=[dict(count=1, label="1개월", step="month", stepmode="backward"),
+                     dict(count=3, label="3개월", step="month", stepmode="backward"),
+                     dict(count=1, label="1년", step="year", stepmode="backward"),
+                     dict(step="all", label="전체")],
+            x=1, xanchor="right", y=1.02, yanchor="bottom",
+            bgcolor="#f4f7fa", activecolor="#cfe0f2", bordercolor="#12395c",
+            borderwidth=1, font=dict(size=11, color="#12395c")),
+        rangeslider=dict(visible=True, thickness=0.05),
+        row=len(lines), col=1,
+    )
+    # 처음엔 '비교가 보이는 구간'으로 확대해서 연다 (실사는 2년치라 그냥 두면 안 보인다).
+    # 전체 이력은 위 '전체' 버튼·아래 슬라이더로 볼 수 있다.
+    idx0, _, _, _ = inventory_series(mine, osp_exp, lines[0])
+    if len(idx0):
+        lo = pd.Timestamp(idx0[0]) - pd.Timedelta(days=7)
+        hi = pd.Timestamp(stock["datetime"].max()) + pd.Timedelta(days=1)
+        fig.update_xaxes(range=[lo, hi])
+    return fig
 
 
 def stage_cao_bar(stages) -> go.Figure:

@@ -271,3 +271,48 @@ def clean_yard_change(df: pd.DataFrame, line: str) -> pd.DataFrame:
     out["mgo"] = pd.to_numeric(df["석회석MgO"], errors="coerce")
     out["tonnage"] = pd.to_numeric(df["야드물량"], errors="coerce")
     return out.dropna(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
+
+
+# --------------------------------------------------------------------------- #
+# ⑤ OSP 실사 재고 — 좌우 2블록(OSP1/OSP2) → tidy long
+# --------------------------------------------------------------------------- #
+def clean_osp_stock(raw: pd.DataFrame) -> pd.DataFrame:
+    """'OSP 재고' 시트(header=None 로 읽은 원시 프레임) → tidy long.
+
+    시트는 좌우 두 블록이 나란히 있다(가운데 열은 빈 칸).
+      0~3열 = OSP1(기존 라인) · 5~8열 = OSP2(신설 라인), 헤더는 3번째 행.
+    각 블록: 날짜 · 차수(1/2/3) · OSP 구분 · 재고량(톤)
+
+    ⭐️ 실사 시각은 교대 중간의 1시간 파악 시간대 중점을 쓴다(사용자 확정).
+       1차 12:30 · 2차 20:30 · 3차 04:30 — 채굴 교대 중점과는 별개다.
+    ⭐️ 같은 (라인·날짜·차수)가 두 번 기록된 행이 있다(전 기간 28행).
+       조용히 버리지 않고 **마지막 기록을 채택**하며, 몇 건이었는지 남긴다.
+
+    반환 컬럼: datetime, date, shift, line, stock_ton, dup_dropped(attrs)
+    """
+    frames = []
+    for name, cols in S.STOCK_BLOCKS.items():
+        if raw.shape[1] <= max(cols):
+            continue
+        d = raw.iloc[S.STOCK_HEADER_ROW + 1:, cols].copy()
+        d.columns = ["date", "shift", "osp", "stock_ton"]
+        d = d.dropna(how="all")
+        d["date"] = pd.to_datetime(d["date"], errors="coerce")
+        d["shift"] = pd.to_numeric(d["shift"], errors="coerce")
+        d["stock_ton"] = _to_numeric(d["stock_ton"])
+        d = d.dropna(subset=["date", "shift"])
+        d["shift"] = d["shift"].astype(int)
+        d["line"] = S.OSP_TO_LINE.get(name, name)
+        d["datetime"] = d["date"] + pd.to_timedelta(
+            d["shift"].map(S.STOCK_TAKE_HOURS).astype(float), unit="h")
+        frames.append(d[["datetime", "date", "shift", "line", "stock_ton"]])
+
+    cols = ["datetime", "date", "shift", "line", "stock_ton"]
+    if not frames:
+        return pd.DataFrame(columns=cols)
+    out = pd.concat(frames, ignore_index=True).sort_values("datetime")
+    before = len(out)
+    out = out.drop_duplicates(subset=["line", "date", "shift"], keep="last")
+    out = out.reset_index(drop=True)
+    out.attrs["dup_dropped"] = before - len(out)
+    return out

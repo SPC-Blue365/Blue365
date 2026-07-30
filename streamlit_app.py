@@ -19,7 +19,9 @@ import streamlit as st
 
 from config import schema as S
 from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_segments
-from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
+from src.models.dataset import (
+    build_line_data, filter_period, load_osp_stock, load_sources, load_yard_change, stock_vs_flow,
+)
 from src.monitoring import load_history, log_statuses, monitor_all
 from src.monitoring.alerts import AlertConfig, Level
 from src.visualization import figures as V
@@ -35,14 +37,15 @@ BADGE = {Level.GREEN: ("🟢", "정상", "#2ca02c"),
 def _load():
     mine, osp_exp, yards = load_sources()
     yc = load_yard_change()
-    return mine, osp_exp, yards, yc
+    stock = load_osp_stock()
+    return mine, osp_exp, yards, yc, stock
 
 
 st.title("⛏️ 석회석 광산-야드 CaO 운영 모니터")
 st.caption(f"목표 CaO {S.TARGET.cao_mean}±{S.TARGET.tol}% · 라인별 예측·경보·추적 · 로컬 전용")
 
 try:
-    mine, osp_exp, yards_full, yc_full = _load()
+    mine, osp_exp, yards_full, yc_full, stock_full = _load()
 except FileNotFoundError:
     st.error("data/raw/ 에 데이터가 없습니다. 엑셀을 배치한 뒤 새로고침하세요.")
     st.stop()
@@ -75,6 +78,7 @@ yc = filter_period(yc_full, start, end, "datetime")
 yards = {ln: filter_period(df, start, end, "datetime") for ln, df in yards_full.items()}
 mine_p = filter_period(mine, start, end, "datetime")      # 광산도 동일 기간(교대 시각 기준)
 osp_p = filter_period(osp_exp, start, end, "datetime")    # OSP 인출도 동일 기간
+stock_p = filter_period(stock_full, start, end, "datetime")   # 실사 재고도 동일 기간
 lines = {ln: build_line_data(osp_exp, yards, ln) for ln in S.YARD_PAIR}
 st.caption(f"선택 기간: {start.date()} ~ {end.date()}  ·  야드변경 {len(yc)}건")
 
@@ -194,11 +198,31 @@ with tab2:
     st.markdown("### OSP 재고 증감 추이 (적재 − 인출 누적)")
     st.caption(
         "위 Sankey 의 좌우 차이가 **시간에 따라 어떻게 쌓였는지**. "
-        "**선이 내려가면 재고를 헐어 쓰는 중**, 올라가면 쌓이는 중입니다. 0선은 선택 기간 시작 수준.  \n"
+        "**선이 내려가면 쓴 양이 들어온 양보다 많아 재고가 줄고 있다는 뜻**이고, "
+        "올라가면 재고가 늘고 있다는 뜻입니다. 0선은 선택 기간 시작 수준.  \n"
         "⚠️ **절대 재고량이 아닙니다** — 시작 시점의 재고가 데이터에 없어 **증감분만** 표시합니다. "
         "판단에는 **기울기**를 보십시오."
     )
     st.plotly_chart(V.inventory_trend(mine_p, osp_p), use_container_width=True)
+
+    if len(stock_p):
+        st.markdown("### OSP 실사 재고 — 실제 재고량 vs 흐름 계산")
+        st.caption(
+            "교대마다 직접 파악한 **실사 재고량(실선)**과, 광산 적재−인출만으로 계산한 "
+            "**추정 재고(점선)**를 겹쳐 본 것입니다. **두 선이 벌어지면 광산 기록에 잡히지 않은 "
+            "유입이 있다는 뜻**입니다.  \n"
+            "ℹ️ 실사값은 **1,000톤 단위 개략치**이며 교대 중간(1차 12:30·2차 20:30·3차 04:30)에 파악합니다."
+        )
+        gaps = []
+        for _ln in S.YARD_PAIR:
+            r = stock_vs_flow(stock_p, mine_p, osp_p, _ln)
+            if r:
+                gaps.append(f"**{_ln}** 실사 {r['actual']:+,.0f}톤 vs 흐름 {r['calc']:+,.0f}톤 "
+                            f"→ 격차 {r['gap']:+,.0f}톤({r['gap_per_day']:+,.0f}톤/일)")
+        if gaps:
+            st.warning("⚠️ 이 기간 실측 격차 — " + "  /  ".join(gaps)
+                       + "  \n실사 재고가 흐름 계산보다 **덜 줄었습니다**. 원인 확인이 필요합니다.")
+        st.plotly_chart(V.stock_trend(stock_p, mine_p, osp_p), use_container_width=True)
 
 # ── ③ 관리도 (제어차트) ──
 with tab3:

@@ -23,7 +23,9 @@ from config.paths import OUTPUTS_DIR, ensure_dirs
 from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_segments
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
-from src.models.dataset import build_line_data, filter_period, load_sources, load_yard_change
+from src.models.dataset import (
+    build_line_data, filter_period, load_osp_stock, load_sources, load_yard_change, stock_vs_flow,
+)
 from src.monitoring import monitor_all
 from src.monitoring.monitor import MIN_ROWS as _MIN
 
@@ -130,6 +132,23 @@ def _inventory_note(mine, osp_exp) -> str:
             notes.append(f"<b>{ln}</b>은 광산 기록({m0:%m/%d}) 이전 인출이 "
                          f"{t:,.0f}톤({t / tot * 100:.1f}%) 있어 초반 하락이 다소 과장됩니다")
     return ("ℹ️ " + " · ".join(notes) + ".") if notes else ""
+
+
+def _stock_gap_note(stock, mine, osp_exp) -> str:
+    """실사 재고와 흐름 계산의 격차를 실제 수치로 고지 (원인은 단정하지 않는다)."""
+    parts = []
+    for ln in S.YARD_PAIR:
+        r = stock_vs_flow(stock, mine, osp_exp, ln)
+        if not r:
+            continue
+        parts.append(
+            f"<b>{ln}</b>: 실사 {r['s0']:,.0f}→{r['s1']:,.0f}톤({r['actual']:+,.0f}) vs "
+            f"흐름 계산 {r['calc']:+,.0f}톤 → <b>격차 {r['gap']:+,.0f}톤</b>({r['gap_per_day']:+,.0f}톤/일)")
+    if not parts:
+        return ""
+    return ("<br><b>⚠️ 이 기간 실측 격차</b> — " + " / ".join(parts)
+            + "<br>실사 재고가 흐름 계산보다 <b>덜 줄었습니다</b>. 광산(49Q·47Q) 외 유입원이 있거나, "
+              "인출 기록 기준이 다를 수 있어 <b>원인 확인이 필요합니다</b>(단정하지 않고 둘 다 표시).")
 
 
 def _seg_selector(segs: list[dict]) -> str:
@@ -244,6 +263,7 @@ def main(start=None, end=None):
     ensure_dirs()
     mine, osp_exp, yards = load_sources()
     yc = load_yard_change()
+    stock = load_osp_stock()          # OSP 실사 재고 (시트 없으면 빈 프레임)
     # 기간 필터 (--start/--end). 지정 시 해당 구간으로 모든 산출물 재계산.
     if start or end:
         yc = filter_period(yc, start, end, "datetime")
@@ -387,6 +407,7 @@ def main(start=None, end=None):
         return rows
     sumagg_json = json.dumps({"신설": _daily_cao(yards[S.LINE_NEW]), "기존": _daily_cao(yards[S.LINE_OLD])},
                              ensure_ascii=False)
+    stock_p = filter_period(stock, start, end, "datetime") if (start or end) else stock
     segments = yard_change_segments(yc, mine, osp_exp, yards)
     sankey_agg = V.sankey_daily_aggregates(mine, osp_exp, yards, yc)
     sankey_script = ("<script>window.SANKEYAGG=" + json.dumps(sankey_agg, ensure_ascii=False) + ";</script>")
@@ -486,12 +507,20 @@ def main(start=None, end=None):
             ("", V.build_tracking_sankey(mine, osp_exp, yards)),
             ("OSP 재고 증감 추이 (적재 − 인출 누적)",
              cap("위 Sankey 의 좌우 차이가 <b>시간에 따라 어떻게 쌓였는지</b>. "
-                 "<b>선이 내려가면 재고를 헐어 쓰는 중</b>, 올라가면 쌓이는 중입니다. "
+                 "<b>선이 내려가면 쓴 양이 들어온 양보다 많아 재고가 줄고 있다는 뜻</b>이고, "
+                 "올라가면 재고가 늘고 있다는 뜻입니다. "
                  "회색 0선은 <b>리포트 기간 시작 수준</b>.<br>"
                  "<b>⚠️ 절대 재고량이 아닙니다</b> — 시작 시점의 재고가 데이터에 없어 "
                  "<b>증감분만</b> 표시합니다(지어내지 않음). 판단에는 <b>기울기</b>를 보십시오.<br>"
                  + _inventory_note(mine, osp_exp))),
             ("", V.inventory_trend(mine, osp_exp)),
+            ("OSP 실사 재고 — 실제 재고량 vs 흐름 계산",
+             cap("교대마다 직접 파악한 <b>실사 재고량(실선)</b>과, 광산 적재−인출만으로 "
+                 "계산한 <b>추정 재고(점선)</b>를 겹쳐 본 것입니다. "
+                 "<b>두 선이 벌어지면 광산 기록에 잡히지 않은 유입이 있다</b>는 뜻입니다.<br>"
+                 "ℹ️ 실사값은 <b>1,000톤 단위 개략치</b>이고, 교대 중간(1차 12:30·2차 20:30·3차 04:30)에 파악합니다."
+                 + _stock_gap_note(stock_p, mine, osp_exp))),
+            ("", V.stock_trend(stock_p, mine, osp_exp)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
             ("변경일자별 야드 CaO·MgO 추이",

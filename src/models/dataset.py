@@ -54,6 +54,24 @@ def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bo
                 part = C.clean_yard_change(pd.read_excel(xls, sheet), line)
                 yc = part if yc is None else pd.concat([yc, part], ignore_index=True)
         reports = V.validate_pipeline(mine, osp, yards, yc)
+        # OSP 실사 재고: 값 범위·중복만 가볍게 점검 (품위 컬럼이 없어 기존 스펙과 별개)
+        if S.SHEET_OSP_STOCK in xls.sheet_names:
+            stk = C.clean_osp_stock(pd.read_excel(xls, S.SHEET_OSP_STOCK, header=None))
+            issues = []
+            neg = int((pd.to_numeric(stk["stock_ton"], errors="coerce") < 0).sum())
+            if neg:
+                issues.append(V.Issue("stock_negative", V.Severity.ERROR,
+                                      "재고량이 음수입니다", neg))
+            na = int(stk["stock_ton"].isna().sum())
+            if na:
+                issues.append(V.Issue("stock_missing", V.Severity.WARNING,
+                                      "재고량 결측 (최근 실사 미입력 가능)", na))
+            if stk.attrs.get("dup_dropped"):
+                issues.append(V.Issue("stock_duplicate", V.Severity.WARNING,
+                                      "날짜+차수 중복 — 마지막 기록을 채택했습니다",
+                                      stk.attrs["dup_dropped"]))
+            reports["OSP재고"] = V.ValidationReport(
+                source="OSP재고", n_rows=len(stk), issues=issues)
         globals()["last_validation_reports"] = reports
         if verbose:
             n_err = sum(len(r.errors) for r in reports.values())
@@ -124,3 +142,49 @@ def load_yard_change(raw_file: str | None = None) -> pd.DataFrame:
             frames.append(C.clean_yard_change(pd.read_excel(xls, sheet), line))
     cols = ["datetime", "line", "yard", "cao", "mgo", "tonnage"]
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=cols)
+
+
+def load_osp_stock(raw_file: str | None = None) -> pd.DataFrame:
+    """OSP 실사 재고 시트 → tidy long (datetime, date, shift, line, stock_ton).
+
+    시트가 없으면 빈 DataFrame 반환(구 버전 데이터 호환).
+    """
+    xls = pd.ExcelFile(RAW_DIR / (raw_file or S.DATA_FILE))
+    cols = ["datetime", "date", "shift", "line", "stock_ton"]
+    if S.SHEET_OSP_STOCK not in xls.sheet_names:
+        return pd.DataFrame(columns=cols)
+    raw = pd.read_excel(xls, S.SHEET_OSP_STOCK, header=None)
+    return C.clean_osp_stock(raw)
+
+
+def stock_vs_flow(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFrame,
+                  line: str) -> dict:
+    """실사 재고 변화 vs 흐름계산(적재−인출) 대조 (한 라인).
+
+    두 값이 어긋나면 '광산 기록에 안 잡힌 유입'이 있다는 뜻이다. 어느 한쪽을
+    맞다고 단정하지 않고 **둘 다와 그 차이를 함께 보고**한다(CLAUDE.md §2-1).
+    반환: dict(start,end,days,actual,calc,gap,gap_per_day,inflow,outflow,s0,s1) 또는 {}
+    """
+    if stock is None or len(stock) == 0:
+        return {}
+    g = stock[(stock["line"] == line)].dropna(subset=["stock_ton"]).sort_values("datetime")
+    m = mine[mine["line"] == line] if mine is not None and len(mine) else None
+    o = osp_exp[osp_exp["line"] == line] if osp_exp is not None and len(osp_exp) else None
+    if len(g) < 2 or m is None or o is None or not len(m) or not len(o):
+        return {}
+    lo = max(g["datetime"].min(), m["datetime"].min(), o["datetime"].min())
+    hi = min(g["datetime"].max(), m["datetime"].max(), o["datetime"].max())
+    gg = g[(g["datetime"] >= lo) & (g["datetime"] <= hi)]
+    if len(gg) < 2:
+        return {}
+    a, b = gg["datetime"].iloc[0], gg["datetime"].iloc[-1]
+    days = max((b - a).total_seconds() / 86400, 1e-9)
+    inflow = float(pd.to_numeric(
+        m[(m["datetime"] > a) & (m["datetime"] <= b)]["tonnage"], errors="coerce").sum())
+    outflow = float(pd.to_numeric(
+        o[(o["datetime"] > a) & (o["datetime"] <= b)]["withdrawn_ton"], errors="coerce").sum())
+    s0, s1 = float(gg["stock_ton"].iloc[0]), float(gg["stock_ton"].iloc[-1])
+    actual, calc = s1 - s0, inflow - outflow
+    return dict(start=a, end=b, days=days, actual=actual, calc=calc,
+                gap=actual - calc, gap_per_day=(actual - calc) / days,
+                inflow=inflow, outflow=outflow, s0=s0, s1=s1)
