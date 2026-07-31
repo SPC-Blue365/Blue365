@@ -576,6 +576,35 @@ def test_calibration_needs_enough_stocktakes():
     assert calibrate_flow(stock, mine, osp, "신설") == {}
 
 
+def test_calibration_windows_detect_a_real_drift():
+    """구간별 β 추정이 계량기 지시 변화를 잡아내야 한다 (벨트스케일 교정 판단용)."""
+    from src.models.dataset import calibration_windows
+    # 30일 · 8시간마다 실사. 인출은 매번 1,000t 지시, 적재 1,000t.
+    # 앞 15일은 지시가 정확(β=1.0), 뒤 15일은 10% 과대 지시(β=0.9)로 만든다.
+    idx = pd.date_range("2026-07-01 04:30", periods=90, freq="8h")
+    inflow, shown = 1000.0, 1000.0
+    stock, s = [], 30000.0
+    for i in range(len(idx)):
+        real_out = shown if i < 45 else shown * 0.9      # 실제 인출은 뒤에서 더 적음
+        s += inflow - real_out
+        stock.append(s)
+    st = pd.DataFrame({"datetime": idx, "line": ["신설"] * len(idx), "stock_ton": stock})
+    mine = pd.DataFrame({"datetime": idx, "line": ["신설"] * len(idx),
+                         "tonnage": [inflow] * len(idx)})
+    osp = pd.DataFrame({"datetime": idx, "line": ["신설"] * len(idx),
+                        "withdrawn_ton": [shown] * len(idx)})
+    ws = calibration_windows(st, mine, osp, "신설", window_days=10)
+    assert len(ws) >= 3
+    assert ws[0]["beta"] > ws[-1]["beta"], "뒤로 갈수록 β가 낮아져야 한다(과대 지시 시작)"
+    assert all(w["se"] >= 0 for w in ws)
+
+
+def test_calibration_drift_chart_handles_empty():
+    from src.visualization import figures as V
+    assert V.calibration_drift({}) is not None
+    assert V.calibration_drift({"신설": []}) is not None
+
+
 def test_stock_trend_survives_empty_inputs():
     from src.visualization import figures as V
     assert V.stock_trend(pd.DataFrame(), None, None) is not None

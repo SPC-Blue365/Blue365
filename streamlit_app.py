@@ -20,8 +20,8 @@ import streamlit as st
 from config import schema as S
 from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_segments
 from src.models.dataset import (
-    build_line_data, calibrate_flow, filter_period, load_osp_stock, load_sources,
-    load_yard_change, stock_vs_flow,
+    build_line_data, calibrate_flow, calibration_windows, filter_period, load_osp_stock,
+    load_sources, load_yard_change, stock_vs_flow,
 )
 from src.monitoring import load_history, log_statuses, monitor_all
 from src.monitoring.alerts import AlertConfig, Level
@@ -235,6 +235,17 @@ with tab2:
                       "**운영상 '지금 재고'는 가장 최근 실사값을 쓰십시오.**")
         st.plotly_chart(V.stock_trend(stock_p, mine_p, osp_p, calibrations=calib),
                         use_container_width=True)
+
+        cw = {_ln: calibration_windows(stock_p, mine_p, osp_p, _ln) for _ln in S.YARD_PAIR}
+        if any(cw.values()):
+            st.markdown("### 인출 벨트스케일 지시 배율 추이 (교정 시점 판단)")
+            st.caption(
+                "인출량은 **벨트스케일**로 계량하며, 벨트스케일 오차는 **통과 물량에 비례**하므로 "
+                "배율 β 로 보는 것이 물리적으로 맞습니다.  \n"
+                "**β = 실제 ÷ 계량기 지시값** — 1.0이면 정확, 낮을수록 계량기가 실제보다 많이 찍는 것입니다. "
+                "오차막대는 95% 신뢰구간이며, **겹치지 않으면 실제로 변한 것**입니다."
+            )
+            st.plotly_chart(V.calibration_drift(cw), use_container_width=True)
 
 # ── ③ 관리도 (제어차트) ──
 with tab3:

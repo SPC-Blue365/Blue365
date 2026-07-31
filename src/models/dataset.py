@@ -257,11 +257,15 @@ def calibrate_flow(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFram
     if not cands:
         return {}
     name, coef, resid = min(cands, key=lambda t: float(np.std(t[2])))
+    # 계수의 표준오차 (원점 통과 회귀) — 추세인지 노이즈인지 판단에 쓴다
+    base = {"적재 × α": In, "인출 × β": Out}.get(name, days)
+    den = float(np.dot(base, base))
+    se = float(np.sqrt((resid ** 2).sum() / max(len(resid) - 1, 1) / den)) if den > 0 else float("nan")
     raw_std = float(np.std(raw_resid))
     new_std = float(np.std(resid))
     # 육안 실사 자체의 노이즈(교대 간 변동 표준편차) — 보정으로 줄일 수 없는 하한
     noise = float(np.std(np.diff(Sv))) if len(Sv) > 2 else float("nan")
-    return dict(method=name, coef=coef, resid_std=new_std, resid_std_raw=raw_std,
+    return dict(method=name, coef=coef, se=se, resid_std=new_std, resid_std_raw=raw_std,
                 improve=(1 - new_std / raw_std) * 100 if raw_std else 0.0,
                 n=len(g), days=float(days[-1]), s0=s0, noise_std=noise)
 
@@ -277,3 +281,49 @@ def apply_calibration(cal: dict, idx, cum_in, cum_out, s0: float):
         return s0 + ci - cal["coef"] * co
     d = (pd.to_datetime(pd.Series(idx)) - pd.to_datetime(idx[0])).dt.total_seconds().values / 86400.0
     return s0 + ci - co + cal["coef"] * d
+
+
+def calibration_windows(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFrame,
+                        line: str, window_days: int = 10) -> list[dict]:
+    """보정계수를 기간을 잘라 구간별로 추정한다 (계량기 지시값이 흘러가는지 확인).
+
+    ⭐️ 인출은 **벨트스케일**로 계량하므로 오차가 통과 물량에 비례한다(사용자 확인).
+       따라서 배율 β 로 표현하는 것이 물리적으로 맞고, β 가 시간에 따라 변하면
+       계량기 지시가 흘러가고 있다는 뜻이다 → 교정 시점 판단 근거.
+
+    반환: [{start, end, beta, se, n}] — 구간별 β 와 표준오차.
+    """
+    out = []
+    if stock is None or len(stock) == 0:
+        return out
+    g0 = stock[stock["line"] == line].dropna(subset=["stock_ton"]).sort_values("datetime")
+    m = mine[mine["line"] == line] if mine is not None and len(mine) else None
+    o = osp_exp[osp_exp["line"] == line] if osp_exp is not None and len(osp_exp) else None
+    if len(g0) < 10 or m is None or o is None or not len(m) or not len(o):
+        return out
+    lo = max(g0["datetime"].min(), m["datetime"].min(), o["datetime"].min())
+    hi = min(g0["datetime"].max(), m["datetime"].max(), o["datetime"].max())
+    g0 = g0[(g0["datetime"] >= lo) & (g0["datetime"] <= hi)]
+    edges = list(pd.date_range(lo, hi, freq=f"{window_days}D")) + [hi]
+    mt = pd.to_datetime(m["datetime"]).values
+    mv = pd.to_numeric(m["tonnage"], errors="coerce").fillna(0).values
+    ot = pd.to_datetime(o["datetime"]).values
+    ov = pd.to_numeric(o["withdrawn_ton"], errors="coerce").fillna(0).values
+    for a, b in zip(edges, edges[1:]):
+        gg = g0[(g0["datetime"] >= a) & (g0["datetime"] <= b)]
+        if len(gg) < 5:
+            continue
+        t0, s0 = gg["datetime"].iloc[0], float(gg["stock_ton"].iloc[0])
+        T = pd.to_datetime(gg["datetime"]).values
+        In = np.array([mv[(mt > np.datetime64(t0)) & (mt <= t)].sum() for t in T])
+        Out = np.array([ov[(ot > np.datetime64(t0)) & (ot <= t)].sum() for t in T])
+        Sv = gg["stock_ton"].values.astype(float)
+        yv = s0 + In - Sv
+        den = float(np.dot(Out, Out))
+        if den <= 0:
+            continue
+        beta = float(np.dot(Out, yv) / den)
+        r = yv - beta * Out
+        se = float(np.sqrt((r ** 2).sum() / max(len(r) - 1, 1) / den))
+        out.append(dict(start=a, end=b, beta=beta, se=se, n=len(gg)))
+    return out

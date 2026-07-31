@@ -24,8 +24,8 @@ from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_seg
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
 from src.models.dataset import (
-    build_line_data, calibrate_flow, filter_period, load_osp_stock, load_sources,
-    load_yard_change, stock_vs_flow,
+    build_line_data, calibrate_flow, calibration_windows, filter_period, load_osp_stock,
+    load_sources, load_yard_change, stock_vs_flow,
 )
 from src.monitoring import monitor_all
 from src.monitoring.monitor import MIN_ROWS as _MIN
@@ -180,6 +180,24 @@ def _calib_note(calib: dict) -> str:
               "확인이 필요합니다.<br>"
               "<b>💡 운영상 '지금 재고'가 필요하면 가장 최근 실사값을 쓰십시오</b> — 흐름 계산은 "
               "실사와 실사 사이를 메우는 용도로만 신뢰할 수 있습니다.")
+
+
+def _drift_note(win: dict) -> str:
+    """구간별 β 가 흘러가는지 판정 (추세 vs 들쭉날쭉)."""
+    out = []
+    for ln, ws in (win or {}).items():
+        if len(ws) < 3:
+            continue
+        b = np.array([w["beta"] for w in ws])
+        slope = float(np.polyfit(np.arange(len(b)), b, 1)[0])
+        rng = f"{b.min():.3f}~{b.max():.3f}"
+        if abs(slope) >= 0.03:
+            kind = (f"<b>한 방향으로 흘러갑니다</b>({b[0]:.3f}→{b[-1]:.3f}, "
+                    f"10일당 {slope:+.3f}) — 계량기 지시가 점점 변하고 있어 <b>교정 점검 대상</b>")
+        else:
+            kind = f"뚜렷한 추세 없이 <b>들쭉날쭉</b>합니다({rng}) — 그때그때 조건에 따라 흔들리는 형태"
+        out.append(f"<b>{ln}</b>: {kind}")
+    return ("<br><b>📈 판정</b> — " + " / ".join(out)) if out else ""
 
 
 def _seg_selector(segs: list[dict]) -> str:
@@ -441,6 +459,7 @@ def main(start=None, end=None):
     stock_p = filter_period(stock, start, end, "datetime") if (start or end) else stock
     # 실사에 맞춘 흐름 보정계수 (라인별). 실사가 5회 미만이면 빈 dict → 보정 없이 표시
     calib = {ln: calibrate_flow(stock_p, mine, osp_exp, ln) for ln in S.YARD_PAIR}
+    calib_win = {ln: calibration_windows(stock_p, mine, osp_exp, ln) for ln in S.YARD_PAIR}
     segments = yard_change_segments(yc, mine, osp_exp, yards)
     sankey_agg = V.sankey_daily_aggregates(mine, osp_exp, yards, yc)
     sankey_script = ("<script>window.SANKEYAGG=" + json.dumps(sankey_agg, ensure_ascii=False) + ";</script>")
@@ -555,6 +574,15 @@ def main(start=None, end=None):
                  + _stock_gap_note(stock_p, mine, osp_exp)
                  + _calib_note(calib))),
             ("", V.stock_trend(stock_p, mine, osp_exp, calibrations=calib)),
+            ("인출 벨트스케일 지시 배율 추이 (교정 시점 판단)",
+             cap("인출량은 <b>벨트스케일</b>로 계량합니다(사용자 확인). 벨트스케일 오차는 "
+                 "<b>통과 물량에 비례</b>하므로 배율 β 로 나타내는 것이 물리적으로 맞습니다.<br>"
+                 "<b>β = 실제 ÷ 계량기 지시값</b> — <b>1.0이면 정확</b>, 1.0보다 낮으면 "
+                 "계량기가 실제보다 <b>많이 찍고 있다</b>는 뜻입니다(0.90 → 약 10% 과대).<br>"
+                 "오차막대는 95% 신뢰구간입니다. <b>구간끼리 겹치지 않으면 실제로 변한 것</b>이며, "
+                 "노이즈로 설명되지 않습니다."
+                 + _drift_note(calib_win))),
+            ("", V.calibration_drift(calib_win)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
             ("변경일자별 야드 CaO·MgO 추이",

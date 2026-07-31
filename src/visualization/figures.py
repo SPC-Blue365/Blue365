@@ -338,6 +338,55 @@ def stock_trend(stock, mine, osp_exp, title: str = "", calibrations: dict | None
     return fig
 
 
+def calibration_drift(windows: dict, title: str = "") -> go.Figure:
+    """인출 벨트스케일 지시 배율 β 의 시간 변화 (교정 시점 판단용).
+
+    β = 실제 인출량 / 계량기 지시값. **1.0 이면 정확**, 1.0 미만이면 계량기가
+    실제보다 **많이 찍고 있다**는 뜻(예: 0.90 → 약 10% 과대 지시).
+    오차막대는 95% 신뢰구간이며, 구간끼리 겹치지 않으면 실제로 변한 것이다.
+    windows: {라인: [ {start,end,beta,se,n}, ... ]}
+    """
+    import pandas as pd
+
+    fig = go.Figure()
+    any_pt = False
+    for ln, ws in (windows or {}).items():
+        if not ws:
+            continue
+        any_pt = True
+        x = [pd.Timestamp(w["start"]) + (pd.Timestamp(w["end"]) - pd.Timestamp(w["start"])) / 2
+             for w in ws]
+        yv = [w["beta"] for w in ws]
+        err = [1.96 * w["se"] for w in ws]
+        fig.add_trace(go.Scatter(
+            x=x, y=yv, name=f"{ln} 라인", mode="lines+markers",
+            line=dict(color=LINE_COLORS.get(ln, BLUE), width=2),
+            marker=dict(size=9),
+            error_y=dict(type="data", array=err, visible=True, thickness=1.2, width=5),
+            customdata=[[w["n"], (1 - w["beta"]) * 100] for w in ws],
+            hovertemplate=("%{x|%m/%d}<br>β %{y:.3f}"
+                           "<br>계량기 과대 지시 %{customdata[1]:+.1f}%"
+                           "<br>실사 %{customdata[0]}회<extra>" + ln + "</extra>")))
+    if not any_pt:
+        fig.update_layout(title="계량 배율 추정 — 데이터 부족", height=300)
+        return fig
+
+    fig.add_hline(y=1.0, line=dict(color="#8c8c89", width=1.5), layer="below")
+    fig.add_annotation(x=1.0, xref="paper", xanchor="left", xshift=6, y=1.0, yref="y",
+                       text="1.0<br>정확", showarrow=False, align="left",
+                       font=dict(size=10, color="#555"))
+    fig.update_layout(
+        title=dict(text=title or "인출 벨트스케일 지시 배율 β 추이 (1.0=정확 · 낮을수록 과대 지시)",
+                   y=0.97, yanchor="top"),
+        height=340, font=dict(size=12), margin=dict(l=10, r=78, t=84, b=10),
+        yaxis_title="β (실제 ÷ 지시값)", plot_bgcolor="white",
+        yaxis=dict(showgrid=True, gridcolor="#eceff2", zeroline=False),
+        legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, xanchor="left",
+                    font=dict(size=11)),
+    )
+    return _korean_date_axis(fig)
+
+
 def stage_cao_bar(stages) -> go.Figure:
     """단계별 CaO 평균±표준편차 (변동성 축소 목표 시각화). stages=[(name,mean,std,color)]."""
     names = [s[0] for s in stages]
