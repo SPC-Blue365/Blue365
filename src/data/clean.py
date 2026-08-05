@@ -129,6 +129,21 @@ def _combine(day, t):
     return pd.NaT
 
 
+def active_ratio(raw) -> float:
+    """`공정구분` 라벨 → 그 교대의 **가동 비율** (시간당 생산량 환산용).
+
+    "운휴/기존" 은 교대의 절반만 이송했다는 뜻이다(2026-08-05 사용자 확정).
+    물량은 전량 실제 라인 것이지만 **가동 시간은 절반**이므로, t/h 로 환산할 때
+    이 비율을 나눠 줘야 생산능력(C/R) 상한과 올바로 비교된다.
+    """
+    if raw is None or (isinstance(raw, float) and np.isnan(raw)) or pd.isna(raw):
+        return 0.0
+    parts = [p.strip() for p in str(raw).split(S.LINE_SPLIT_DELIM) if p.strip()]
+    if not parts:
+        return 0.0
+    return S.IDLE_ACTIVE_RATIO if S.LINE_IDLE in parts else 1.0
+
+
 def split_line_label(raw) -> list[str]:
     """복합 `공정구분` 라벨 → 실제 라인 리스트 (§S.LINE_SPLIT_DELIM 규칙).
 
@@ -176,6 +191,7 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
                     tonnage=per_ton,
                     source="49Q",
                     shift=r.get("채굴시간(교대)"),
+                    active_ratio=active_ratio(r.get("공정구분")),
                     # 교대 시간대로 실제 시각 부여 (일 단위였을 때의 경계 오차 제거)
                     datetime=shift_midpoint(r.get("채굴일자"), r.get("채굴시간(교대)")),
                 )
@@ -250,6 +266,7 @@ def clean_mine_47Q(df: pd.DataFrame) -> pd.DataFrame:
                     tonnage=per_ton,
                     source="47Q",
                     shift=None,
+                    active_ratio=active_ratio(r.get("공정구분")),
                     # 47Q 는 실제 시작·종료 시각이 있다 → 그 중점을 대표 시각으로
                     datetime=_time_midpoint(r.get("채굴일자"), r.get("시작시간"), r.get("종료시간")),
                 )

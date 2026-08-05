@@ -780,3 +780,44 @@ def test_validation_flags_unknown_line_label():
     hits = [i for i in rep.issues if i.check == "line_unknown"]
     assert hits, "미상 라인 라벨을 반드시 보고해야 한다"
     assert "1,234" in hits[0].message
+
+
+def test_active_ratio_reflects_half_idle_shift():
+    """'운휴/기존' 은 교대의 절반만 가동 → 시간당 환산에 쓸 비율이 0.5 여야 한다.
+
+    물량은 전량 실제 라인 것이고(운휴는 생산 없음), 바뀌는 것은 **가동 시간**뿐이다.
+    (2026-08-05 사용자 확정. 생산능력 C/R 상한 감사에 쓰인다.)
+    """
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import active_ratio, clean_mine_49Q
+
+    assert active_ratio("기존") == 1.0
+    assert active_ratio("기존/신설") == 1.0          # 둘 다 가동 — 운휴 없음
+    assert active_ratio("운휴/기존") == S.IDLE_ACTIVE_RATIO
+    assert active_ratio("운휴/신설") == S.IDLE_ACTIVE_RATIO
+    assert active_ratio(None) == 0.0
+
+    raw = pd.DataFrame([{
+        "채굴일자": pd.Timestamp("2026-06-25"), "채굴시간(교대)": "1차", "OSP적재구역": "55",
+        "공정구분": "운휴/기존", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 1891.0,
+    }])
+    out = clean_mine_49Q(raw)
+    assert float(out["tonnage"].sum()) == 1891.0        # 물량은 그대로
+    assert set(out["active_ratio"]) == {0.5}
+    # 8시간 교대의 절반 가동 → 시간당 환산이 능력 상한(G/C 1,600 t/h) 안에 들어와야 한다
+    tph = 1891.0 / (8 * 0.5)
+    assert tph <= S.CRUSHER_CAPACITY_TPH["G/C"][1]
+
+
+def test_crusher_capacity_spec_is_not_additive():
+    """동시 가동(G/C+H/C)은 처리량이 가산되지 않는다 — 하류 병목 때문(사용자 확정)."""
+    from config import schema as S
+
+    gc = S.CRUSHER_CAPACITY_TPH["G/C"]
+    hc = S.CRUSHER_CAPACITY_TPH["H/C"]
+    both = S.CRUSHER_CAPACITY_TPH["G/C+H/C"]
+    assert both == gc, "동시 가동 능력은 G/C 단독과 같다"
+    assert both[1] < gc[1] + hc[1], "가산으로 모델링하면 안 된다"
+    assert S.COL_CRUSHER == "C/R"
