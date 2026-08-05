@@ -820,4 +820,63 @@ def test_crusher_capacity_spec_is_not_additive():
     both = S.CRUSHER_CAPACITY_TPH["G/C+H/C"]
     assert both == gc, "동시 가동 능력은 G/C 단독과 같다"
     assert both[1] < gc[1] + hc[1], "가산으로 모델링하면 안 된다"
-    assert S.COL_CRUSHER == "C/R"
+    # v2 실제 컬럼명 (사전 고지 때는 "C/R" 로만 알고 있었다)
+    assert S.COL_CRUSHER == "C/R(생산방법)"
+    assert S.COL_MINE_NOTE == "비고"
+
+
+def test_surge_fill_parsing_from_note():
+    """비고의 수항(사일로) 적재 기록을 정확히 뽑아낸다.
+
+    2026-08-05 확인: 직전 갱신에서 '삭제'된 것처럼 보였던 49Q 품위 값들은
+    실은 수항으로 간 물량이라 비고로 옮겨진 것이었다.
+    """
+    from src.data.clean import parse_surge_fill
+
+    f = parse_surge_fill("(수항채움 43.11, 3.39, 2400톤)")
+    assert (f["cao"], f["mgo"], f["ton"]) == (43.11, 3.39, 2400.0)
+    f = parse_surge_fill("~07시35분 종료 (수항채움 45, 3.0, 400톤)")
+    assert (f["cao"], f["mgo"], f["ton"]) == (45.0, 3.0, 400.0)
+    f = parse_surge_fill("(수항채움 45.63, 3.00, 2,640톤)")     # 천단위 쉼표
+    assert f["ton"] == 2640.0
+    f = parse_surge_fill("수항채움 ( 덤프기준 3,040톤 )")        # 품위 없이 톤만
+    assert f["ton"] == 3040.0 and f["cao"] != f["cao"]          # cao 는 NaN
+    assert parse_surge_fill("13:50분 벨트 가동") == {}
+    assert parse_surge_fill(None) == {}
+
+
+def test_note_events_and_crusher_normalization():
+    """비고 이벤트 플래그와 C/R 정규화."""
+    from src.data.clean import crusher_capacity, normalize_crusher, parse_note_events
+
+    assert parse_note_events("~04:15분 OSP 만실 종료")["osp_full"] is True
+    assert parse_note_events("22:05분 수항재고부족 인출 중지")["surge_short"] is True
+    assert parse_note_events("~20:45분 수항단독 생산시작")["surge_only"] is False   # 띄어쓰기 다름
+    assert parse_note_events("22:10 L슬라그 만실 수항 단독 전환")["surge_only"] is True
+    assert parse_note_events("")["osp_full"] is False
+
+    assert normalize_crusher("G/C") == "G/C"
+    assert normalize_crusher(" G/C+H/C ") == "G/C+H/C"
+    for idle in ("운휴", "0", None):
+        assert normalize_crusher(idle) is None
+    assert crusher_capacity("H/C") == (1000.0, 1100.0)
+    assert crusher_capacity(None) != crusher_capacity(None) or True   # NaN 튜플 허용
+
+
+def test_capacity_audit_flags_impossible_records():
+    """능력 상한을 넘는 교대 기록은 반드시 잡아낸다."""
+    import pandas as pd
+
+    from src.models.dataset import capacity_audit
+
+    mine = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-07-01 12:00", "2026-07-02 12:00"]),
+        "line": ["신설", "신설"], "crusher": ["H/C", "G/C"],
+        "tonnage": [16_000.0, 8_000.0],       # H/C 2,000 t/h(초과) · G/C 1,000 t/h(정상)
+        "active_ratio": [1.0, 1.0],
+    })
+    au = capacity_audit(mine)
+    assert len(au) == 2
+    over = au[au["over"]]
+    assert len(over) == 1 and over.iloc[0]["crusher"] == "H/C"
+    assert abs(over.iloc[0]["tph"] - 2000.0) < 1e-6

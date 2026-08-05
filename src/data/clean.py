@@ -129,6 +129,66 @@ def _combine(day, t):
     return pd.NaT
 
 
+# --------------------------------------------------------------------------- #
+# 수항(사일로) & 생산방법 — v2 의 C/R·비고 컬럼에서 뽑는다
+# --------------------------------------------------------------------------- #
+#: "(수항채움 43.11, 3.39, 2400톤)" → (CaO, MgO, 톤)
+_SURGE_FULL = re.compile(r"수항채움[^0-9]*?([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d,]+)\s*톤")
+#: "수항채움 ( 덤프기준 3,040톤 )" → 톤만
+_SURGE_TON = re.compile(r"수항채움[^0-9]*?([\d,]+)\s*톤")
+
+
+def parse_surge_fill(note) -> dict:
+    """비고에서 **수항 적재** 기록을 뽑는다 → {cao, mgo, ton} (없으면 {}).
+
+    ⭐️ 수항채움 물량은 **그 시점의 OSP 적재가 아니다.** 사일로에 쌓였다가 나중에
+       G/C 를 거쳐 나가므로, 재고 수지에서 OSP 적재와 분리해 다뤄야 한다.
+    """
+    if note is None or pd.isna(note):
+        return {}
+    txt = str(note)
+    m = _SURGE_FULL.search(txt)
+    if m:
+        return dict(cao=float(m.group(1)), mgo=float(m.group(2)),
+                    ton=float(m.group(3).replace(",", "")))
+    m = _SURGE_TON.search(txt)
+    if m:
+        return dict(cao=np.nan, mgo=np.nan, ton=float(m.group(1).replace(",", "")))
+    return {}
+
+
+#: 비고에 남는 운전 이벤트 (분석·경보에 쓰는 플래그)
+NOTE_EVENTS = {
+    "surge_short": "수항재고부족",     # 수항이 비어 생산 중단
+    "surge_only": "수항 단독",         # 수항 재고만으로 생산
+    "osp_full": "OSP 만실",            # OSP 가 가득 참 — 적재 상한에 걸림
+    "yard_full": "야드 만실",          # 야드가 가득 참
+}
+
+
+def parse_note_events(note) -> dict:
+    """비고 → 운전 이벤트 플래그 dict (없으면 전부 False)."""
+    txt = "" if note is None or pd.isna(note) else str(note)
+    return {k: (kw in txt) for k, kw in NOTE_EVENTS.items()}
+
+
+def normalize_crusher(raw) -> Optional[str]:
+    """C/R(생산방법) 값 정규화. 생산이 없는 값(운휴·0·빈칸)은 None."""
+    if raw is None or pd.isna(raw):
+        return None
+    v = str(raw).strip()
+    return None if v in S.CRUSHER_IDLE else v
+
+
+def crusher_capacity(cr: Optional[str]) -> tuple[float, float]:
+    """생산방법 → (하한, 상한) t/h. 모르는 값이면 (nan, nan)."""
+    if not cr:
+        return (np.nan, np.nan)
+    lo_hi = S.CRUSHER_CAPACITY_TPH.get(cr)
+    return (float(lo_hi[0]), float(lo_hi[1])) if lo_hi else (np.nan, np.nan)
+
+
+
 def active_ratio(raw) -> float:
     """`공정구분` 라벨 → 그 교대의 **가동 비율** (시간당 생산량 환산용).
 
@@ -192,6 +252,8 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
                     source="49Q",
                     shift=r.get("채굴시간(교대)"),
                     active_ratio=active_ratio(r.get("공정구분")),
+                    crusher=normalize_crusher(r.get(S.COL_CRUSHER)),
+                    note=r.get(S.COL_MINE_NOTE),
                     # 교대 시간대로 실제 시각 부여 (일 단위였을 때의 경계 오차 제거)
                     datetime=shift_midpoint(r.get("채굴일자"), r.get("채굴시간(교대)")),
                 )

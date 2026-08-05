@@ -74,6 +74,18 @@ def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bo
                                       stk.attrs["dup_dropped"]))
             reports["OSP재고"] = V.ValidationReport(
                 source="OSP재고", n_rows=len(stk), issues=issues)
+        # ⭐️ 생산능력(C/R) 상한 감사 — 상한 초과 기록은 물리적으로 불가능하다.
+        try:
+            au = capacity_audit(mine)
+            if len(au) and bool(au["over"].any()):
+                bad = au[au["over"]]
+                reports["광산"].issues.append(V.Issue(
+                    "capacity_over", V.Severity.ERROR,
+                    f"생산능력 상한 초과 — 최대 {bad['tph'].max():,.0f} t/h "
+                    f"(상한 {bad['cap_hi'].max():,.0f}). 기록 오류 후보입니다", len(bad)))
+        except Exception as exc:                      # 감사 실패가 파이프라인을 막지 않게
+            reports["광산"].issues.append(V.Issue(
+                "capacity_audit_failed", V.Severity.WARNING, f"능력 감사 실행 실패: {exc}"))
         globals()["last_validation_reports"] = reports
         if verbose:
             n_err = sum(len(r.errors) for r in reports.values())
@@ -158,6 +170,54 @@ def load_osp_stock(raw_file: str | None = None) -> pd.DataFrame:
         return pd.DataFrame(columns=cols)
     raw = pd.read_excel(xls, S.SHEET_OSP_STOCK, header=None)
     return C.clean_osp_stock(raw)
+
+
+def load_surge_fills(raw_file: str | None = None) -> pd.DataFrame:
+    """비고에서 뽑은 **수항(사일로) 적재** 기록 → [datetime, date, shift, cao, mgo, ton, note].
+
+    수항은 광산과 G/C 사이의 버퍼다(용량 10,000톤). 여기 채운 물량은 **그 시점의
+    OSP 적재가 아니며**, 나중에 G/C 를 거쳐 나간다 — 재고 수지에서 분리해 다뤄야 한다.
+    """
+    xls = pd.ExcelFile(RAW_DIR / (raw_file or S.DATA_FILE))
+    cols = ["datetime", "date", "shift", "cao", "mgo", "ton", "note"]
+    raw = pd.read_excel(xls, S.SHEET_MINE_49Q)
+    if S.COL_MINE_NOTE not in raw.columns:
+        return pd.DataFrame(columns=cols)      # 구 버전 데이터 호환
+    rows = []
+    for _, r in raw.iterrows():
+        f = C.parse_surge_fill(r.get(S.COL_MINE_NOTE))
+        if not f:
+            continue
+        rows.append(dict(datetime=C.shift_midpoint(r.get("채굴일자"), r.get("채굴시간(교대)")),
+                         date=pd.to_datetime(r.get("채굴일자"), errors="coerce"),
+                         shift=r.get("채굴시간(교대)"), cao=f["cao"], mgo=f["mgo"],
+                         ton=f["ton"], note=str(r.get(S.COL_MINE_NOTE))))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def capacity_audit(mine: pd.DataFrame) -> pd.DataFrame:
+    """생산방법(C/R) 상한으로 교대별 적재 기록을 감사한다.
+
+    시간당 = 물량 ÷ (8h × 가동비율). 상한을 넘는 기록은 **물리적으로 불가능**하므로
+    기록 오류 후보다. 지어내지 않고 '발견해서 보고'만 한다(CLAUDE.md §2-1).
+    """
+    cols = ["datetime", "line", "crusher", "tonnage", "hours", "tph", "cap_hi", "over"]
+    if mine is None or "crusher" not in mine:
+        return pd.DataFrame(columns=cols)
+    d = mine.dropna(subset=["crusher"]).copy()
+    d = d[pd.to_numeric(d["tonnage"], errors="coerce") > 0]
+    if d.empty:
+        return pd.DataFrame(columns=cols)
+    # 한 교대(=원본 한 행)가 구역·라인으로 쪼개져 있으므로 교대 단위로 되모은다
+    g = (d.groupby(["datetime", "crusher", "active_ratio"], dropna=False)
+           .agg(tonnage=("tonnage", "sum"), line=("line", lambda x: "/".join(sorted(set(x)))))
+           .reset_index())
+    g["hours"] = 8.0 * g["active_ratio"].fillna(1.0)
+    g["tph"] = g["tonnage"] / g["hours"].replace(0, np.nan)
+    g["cap_hi"] = g["crusher"].map(lambda c: C.crusher_capacity(c)[1])
+    g["over"] = g["tph"] > g["cap_hi"]
+    return g[cols].sort_values("tph", ascending=False)
+
 
 
 def stock_vs_flow(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFrame,
