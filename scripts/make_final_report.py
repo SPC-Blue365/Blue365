@@ -25,6 +25,7 @@ from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
 from src.models.dataset import (
     build_line_data, calibrate_flow, calibration_windows, filter_period, load_osp_stock,
+    surge_balance, surge_cycles, surge_events,
     load_sources, load_yard_change, stock_vs_flow,
 )
 from src.monitoring import monitor_all
@@ -63,6 +64,24 @@ def _corr_txt(lds: dict) -> str:
     if not vals:
         return "매우 낮음"
     return f"{min(vals):.2f}~{max(vals):.2f}" if len(vals) > 1 else f"{vals[0]:.2f}"
+
+
+
+def _surge_note(bal: dict, cyc) -> str:
+    """수항 재고를 어디까지 알 수 있는지 정직하게 밝힌다 (§2-1)."""
+    if not bal:
+        return ""
+    head = ("<br><b>⚠️ 연속 재고 곡선은 만들 수 없습니다.</b> " + bal["reason"]
+            if not bal.get("feasible") else "")
+    if cyc is None or not len(cyc):
+        return head
+    ok = cyc[cyc["plausible"]]
+    return (head + "<br><b>대신 '고갈' 시점(재고≈0)을 기준점으로 삼아 국소 수지를 닫았습니다.</b> "
+            f"채움→고갈 사이클 <b>{len(cyc)}개</b>(전부 물리적으로 성립) — "
+            f"평균 인출률 중앙 <b>{ok['tph'].median():,.0f} t/h</b>"
+            f"(G/C 상한 1,600), 사이클 길이 중앙 {ok['hours'].median():.0f}시간, "
+            f"누적 채움 최대 <b>{cyc['fill_ton'].max():,.0f}톤</b> — "
+            f"사용자 확인 용량 10,000톤과 거의 일치합니다.")
 
 
 
@@ -497,6 +516,8 @@ def main(start=None, end=None):
     # 실사에 맞춘 흐름 보정계수 (라인별). 실사가 5회 미만이면 빈 dict → 보정 없이 표시
     calib = {ln: calibrate_flow(stock_p, mine, osp_exp, ln) for ln in S.YARD_PAIR}
     calib_win = {ln: calibration_windows(stock_p, mine, osp_exp, ln) for ln in S.YARD_PAIR}
+    surge_ev, surge_cyc = surge_events(), surge_cycles()
+    surge_bal = surge_balance()
     segments = yard_change_segments(yc, mine, osp_exp, yards)
     sankey_agg = V.sankey_daily_aggregates(mine, osp_exp, yards, yc)
     sankey_script = ("<script>window.SANKEYAGG=" + json.dumps(sankey_agg, ensure_ascii=False) + ";</script>")
@@ -620,6 +641,13 @@ def main(start=None, end=None):
                  "노이즈로 설명되지 않습니다."
                  + _drift_note(calib_win))),
             ("", V.calibration_drift(calib_win)),
+            ("수항(사일로) 재고 — 어디까지 알 수 있나",
+             cap("광산 채굴분이 OSP 로 가는 길은 둘입니다 — <b>수항(사일로, 1만톤)→G/C</b> 또는 "
+                 "<b>H/C 직송</b>. 동시 가동이라도 <b>OSP 로 가는 벨트가 1개</b>라 거기서 만나 "
+                 "적치되며, 이것이 동시 가동 능력이 합산되지 않는 이유입니다.<br>"
+                 "수항은 버퍼라 <b>채굴 품위와 OSP 적재 품위 사이에 지연·혼합</b>이 생깁니다."
+                 + _surge_note(surge_bal, surge_cyc))),
+            ("", V.surge_timeline(surge_ev, surge_cyc)),
         ]},
         {"name": "📈 변경일자별 추이", "sections": [
             ("변경일자별 야드 CaO·MgO 추이",

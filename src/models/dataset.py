@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -202,6 +203,110 @@ def load_surge_fills(raw_file: str | None = None) -> pd.DataFrame:
         dup = key[key > 1].index
         out.loc[dup, "suspect"] = True
     return out
+
+
+#: 비고에 남는 수항 이벤트 종류
+SURGE_FILL = "채움"
+SURGE_EMPTY = "고갈"
+SURGE_SOLO = "수항단독"
+
+
+def surge_events(raw_file: str | None = None) -> pd.DataFrame:
+    """비고에서 수항 이벤트를 시간순으로 뽑는다 → [datetime, kind, ton, note].
+
+    kind: 채움(수항채움) · 고갈(수항재고부족) · 수항단독(수항 재고만으로 생산)
+    고갈은 **그 시점 재고 ≈ 0** 이라는 앵커라서 국소 수지의 기준점이 된다.
+    """
+    xls = pd.ExcelFile(RAW_DIR / (raw_file or S.DATA_FILE))
+    cols = ["datetime", "kind", "ton", "note"]
+    raw = pd.read_excel(xls, S.SHEET_MINE_49Q)
+    if S.COL_MINE_NOTE not in raw.columns:
+        return pd.DataFrame(columns=cols)
+    rows = []
+    for _, r in raw.iterrows():
+        note = r.get(S.COL_MINE_NOTE)
+        txt = "" if note is None or pd.isna(note) else str(note)
+        when = C.shift_midpoint(r.get("채굴일자"), r.get("채굴시간(교대)"))
+        fill = C.parse_surge_fill(note)
+        if fill:
+            rows.append(dict(datetime=when, kind=SURGE_FILL, ton=fill["ton"], note=txt))
+        flat = re.sub(r"\s+", "", txt)        # 띄어쓰기 변형("수항재고 부족")까지 잡는다
+        if "수항재고부족" in flat or "수항부족" in flat:
+            rows.append(dict(datetime=when, kind=SURGE_EMPTY, ton=np.nan, note=txt))
+        elif "수항단독" in flat:
+            rows.append(dict(datetime=when, kind=SURGE_SOLO, ton=np.nan, note=txt))
+    return (pd.DataFrame(rows, columns=cols)
+            .dropna(subset=["datetime"]).sort_values("datetime").reset_index(drop=True))
+
+
+def surge_balance(raw_file: str | None = None) -> dict:
+    """수항 재고 수지 — **연속 곡선이 가능한지부터 판정**한다.
+
+    수항 유입은 비고의 '수항채움'뿐이고, 유출은 G/C 가 처리한 양이다
+    (G/C 경로는 전부 수항을 거친다). 둘을 맞춰 보면 유출이 유입 기록의 수십 배라
+    `재고 = 유입 − 유출` 이 음수가 된다 → **유입 기록이 불완전하다**는 뜻이다.
+
+    실제로 '수항채움'은 **G/C 를 안 쓰는 동안(생산정지·H/C 가동) 비축한 양**만 적은 것이고,
+    정상 운전 중 연속으로 흘러 들어간 양은 기록되지 않는다. 따라서 **연속 재고 곡선은
+    만들 수 없다** — 지어내지 않고 그 사실과 근거를 반환한다(CLAUDE.md §2-1).
+
+    반환: dict(feasible, inflow_ton, outflow_lo, outflow_hi, ratio, reason, anchors)
+    """
+    mine, _, _ = load_sources(raw_file, validate=False, verbose=False)
+    fills = load_surge_fills(raw_file)
+    ev = surge_events(raw_file)
+    m = mine[mine["source"] == "49Q"].dropna(subset=["datetime"])
+    shift = m.groupby(["datetime", "crusher"], dropna=False)["tonnage"].sum().reset_index()
+    lo = float(shift.loc[shift["crusher"] == "G/C", "tonnage"].sum())
+    both = float(shift.loc[shift["crusher"] == "G/C+H/C", "tonnage"].sum())
+    inflow = float(fills["ton"].sum()) if len(fills) else 0.0
+    ratio = (lo / inflow) if inflow > 0 else np.inf
+    feasible = inflow >= lo
+    return dict(
+        feasible=feasible, inflow_ton=inflow, outflow_lo=lo, outflow_hi=lo + both,
+        ratio=ratio, n_fills=len(fills),
+        anchors=int((ev["kind"] == SURGE_EMPTY).sum()) if len(ev) else 0,
+        reason=("" if feasible else
+                f"유입 기록 {inflow:,.0f}톤 < G/C 유출 {lo:,.0f}톤 (유출이 {ratio:.0f}배). "
+                "'수항채움'은 G/C 를 안 쓰는 동안 비축한 양만 적은 것이라 유입 기록이 "
+                "불완전하다 → 연속 재고 곡선을 만들 수 없다."),
+    )
+
+
+
+def surge_cycles(raw_file: str | None = None) -> pd.DataFrame:
+    """수항 **채움 → 고갈** 사이클 → [start, end, fill_ton, hours, tph, plausible].
+
+    연속 재고 곡선은 유입 기록이 불완전해 만들 수 없다(`surge_balance`). 대신
+    **'고갈' 이벤트는 그 시점 재고 ≈ 0** 이라는 앵커이므로, 직전 고갈 이후 채운 양이
+    다음 고갈까지 모두 빠져나간 것으로 보면 **국소 수지**는 닫힌다.
+
+    tph = 채운 양 ÷ 사이클 시간 = 그 사이클의 **평균 수항 인출률**.
+    G/C 능력 상한을 넘으면 그 사이에 기록되지 않은 유입이 더 있었다는 뜻이므로
+    `plausible=False` 로 표시한다(값을 지어내지 않고 한계를 드러낸다, §2-1).
+    """
+    ev = surge_events(raw_file)
+    cols = ["start", "end", "fill_ton", "n_fills", "hours", "tph", "plausible"]
+    if ev.empty:
+        return pd.DataFrame(columns=cols)
+    cap = float(S.CRUSHER_CAPACITY_TPH["G/C"][1])
+    rows, acc, n, since = [], 0.0, 0, None
+    for _, e in ev.iterrows():
+        if e["kind"] == SURGE_FILL:
+            if since is None:
+                since = e["datetime"]
+            acc += float(e["ton"] or 0.0)
+            n += 1
+        elif e["kind"] == SURGE_EMPTY and acc > 0 and since is not None:
+            hours = (e["datetime"] - since).total_seconds() / 3600
+            tph = acc / hours if hours > 0 else np.nan
+            rows.append(dict(start=since, end=e["datetime"], fill_ton=acc, n_fills=n,
+                             hours=round(hours, 2),
+                             tph=round(tph) if np.isfinite(tph) else np.nan,
+                             plausible=bool(np.isfinite(tph) and tph <= cap)))
+            acc, n, since = 0.0, 0, None
+    return pd.DataFrame(rows, columns=cols)
+
 
 
 def capacity_audit(mine: pd.DataFrame) -> pd.DataFrame:

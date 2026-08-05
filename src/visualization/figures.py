@@ -1121,3 +1121,66 @@ code,pre{{background:#f4f4f4;border-radius:4px}}pre{{padding:12px;overflow-x:aut
 <body><h1>{title}</h1>{inner}{tail_html}
 <p style="color:#888;font-size:0.85em;margin-top:24px">※ 본 리포트·데이터는 로컬 전용입니다. 외부(원격)에 발행/커밋하지 않습니다.</p>
 </body></html>"""
+
+
+def surge_timeline(events, cycles, capacity_ton: float = 10_000, title: str = "") -> go.Figure:
+    """수항(사일로) 이벤트 타임라인 + 채움→고갈 사이클의 누적 재고 하한.
+
+    ⚠️ **연속 재고 곡선이 아니다.** 정상 운전 중 수항으로 흘러든 양은 기록되지 않아
+       전체 곡선은 만들 수 없다. 여기 그리는 것은 **'고갈' 앵커(재고≈0) 사이에서
+       기록으로 확인되는 누적 채움**이며, 실제 재고의 **하한**이다.
+    """
+    fig = go.Figure()
+    if events is None or len(events) == 0:
+        fig.update_layout(title="수항 이벤트 — 데이터 없음", height=300)
+        return fig
+
+    # 사이클별 누적 채움(계단) — 고갈에서 0 으로 떨어진다
+    if cycles is not None and len(cycles):
+        xs, ys = [], []
+        for _, c in cycles.iterrows():
+            fills = events[(events["kind"] == "채움")
+                           & (events["datetime"] >= c["start"])
+                           & (events["datetime"] <= c["end"])].sort_values("datetime")
+            acc = 0.0
+            for _, f in fills.iterrows():
+                xs += [f["datetime"], f["datetime"]]
+                ys += [acc, acc + float(f["ton"] or 0)]
+                acc += float(f["ton"] or 0)
+            xs += [c["end"], c["end"], None]
+            ys += [acc, 0, None]
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines", name="기록된 누적 채움 (재고 하한)",
+            line=dict(color=BLUE, width=2, shape="hv"),
+            hovertemplate="%{x|%m/%d %H시}<br>누적 채움 %{y:,.0f}톤<extra></extra>"))
+
+    ev_ton = events[events["kind"] == "채움"]
+    if len(ev_ton):
+        fig.add_trace(go.Scatter(
+            x=ev_ton["datetime"], y=ev_ton["ton"], mode="markers", name="채움 기록",
+            marker=dict(color=BLUE, size=9, symbol="triangle-up"),
+            customdata=ev_ton["note"],
+            hovertemplate="%{x|%m/%d %H시}<br>채움 %{y:,.0f}톤<br>%{customdata}<extra></extra>"))
+    for kind, sym, col, nm in (("고갈", "x", RED, "수항재고 고갈 (재고≈0)"),
+                               ("수항단독", "diamond", ORANGE, "수항 단독 생산")):
+        g = events[events["kind"] == kind]
+        if not len(g):
+            continue
+        fig.add_trace(go.Scatter(
+            x=g["datetime"], y=[0] * len(g), mode="markers", name=nm,
+            marker=dict(color=col, size=10, symbol=sym),
+            customdata=g["note"],
+            hovertemplate="%{x|%m/%d %H시}<br>" + nm + "<br>%{customdata}<extra></extra>"))
+
+    fig.add_hline(y=capacity_ton, line=dict(color=GREEN, dash="dash", width=1.2), layer="below")
+    fig.add_annotation(x=1.0, xref="paper", xanchor="left", xshift=6, y=capacity_ton, yref="y",
+                       text=f"용량<br>{capacity_ton:,.0f}t", showarrow=False, align="left",
+                       font=dict(size=10, color="#555"))
+    fig.update_layout(
+        title=dict(text=title or "수항(사일로) 이벤트 — 기록된 누적 채움은 실제 재고의 하한",
+                   y=0.97, yanchor="top"),
+        height=360, font=dict(size=12), margin=dict(l=10, r=86, t=88, b=10),
+        yaxis_title="톤", plot_bgcolor="white",
+        legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, xanchor="left",
+                    font=dict(size=11)))
+    return _time_range_controls(_korean_date_axis(fig))

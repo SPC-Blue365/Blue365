@@ -851,8 +851,11 @@ def test_note_events_and_crusher_normalization():
 
     assert parse_note_events("~04:15분 OSP 만실 종료")["osp_full"] is True
     assert parse_note_events("22:05분 수항재고부족 인출 중지")["surge_short"] is True
-    assert parse_note_events("~20:45분 수항단독 생산시작")["surge_only"] is False   # 띄어쓰기 다름
+    # 같은 말이 띄어쓰기만 다르게 적힌다 — 공백을 무시하고 둘 다 잡아야 한다
+    assert parse_note_events("~20:45분 수항단독 생산시작")["surge_only"] is True
     assert parse_note_events("22:10 L슬라그 만실 수항 단독 전환")["surge_only"] is True
+    assert parse_note_events("~21시45분 수항재고 부족 종료")["surge_short"] is True
+    assert parse_note_events("22:05분 수항재고부족 인출 중지")["surge_short"] is True
     assert parse_note_events("")["osp_full"] is False
 
     assert normalize_crusher("G/C") == "G/C"
@@ -930,3 +933,43 @@ def test_surge_fill_duplicates_flagged_as_suspect():
     assert len(dup) == 2, "07/20·07/25 의 (49.25, 0.79, 1200) 중복이 잡혀야 한다"
     assert dup["date"].nunique() == 2 and dup["cao"].nunique() == 1
     assert not sf.loc[~sf["suspect"], "cao"].dropna().duplicated().all()
+
+
+def test_surge_balance_reports_infeasible_instead_of_inventing():
+    """수항 연속 재고 곡선은 유입 기록이 불완전해 만들 수 없다 — 지어내지 않고 사유를 낸다.
+
+    유입(비고 '수항채움') 26,960톤 vs G/C 유출 622,349톤 → 재고가 음수가 된다.
+    '수항채움'은 G/C 를 안 쓰는 동안 비축한 양만 적은 것이기 때문이다.
+    """
+    from src.models.dataset import surge_balance
+
+    b = surge_balance()
+    assert b["feasible"] is False, "유입 기록이 유출보다 작으면 불가 판정이어야 한다"
+    assert b["outflow_lo"] > b["inflow_ton"] * 5
+    assert b["reason"], "불가 사유를 반드시 남겨야 한다"
+    assert b["anchors"] >= 1, "'고갈' 앵커가 있어야 국소 수지를 닫을 수 있다"
+
+
+def test_surge_cycles_close_locally_and_stay_under_capacity():
+    """'고갈'(재고≈0)을 앵커로 삼은 채움→고갈 사이클은 물리적으로 성립해야 한다."""
+    from config import schema as S
+    from src.models.dataset import surge_cycles
+
+    c = surge_cycles()
+    assert len(c) >= 3
+    assert c["plausible"].all(), "인출률이 G/C 상한을 넘는 사이클이 있으면 안 된다"
+    assert (c["tph"] <= S.CRUSHER_CAPACITY_TPH["G/C"][1]).all()
+    assert (c["end"] > c["start"]).all()
+    # 누적 채움 최대가 수항 용량 근처여야 한다 (사용자 확인: 약 1만톤)
+    assert c["fill_ton"].max() <= S.SURGE_BIN_CAPACITY_TON * 1.1
+
+
+def test_surge_events_catch_whitespace_variants():
+    """'수항재고 부족'처럼 띄어쓰기가 다른 표기도 놓치지 않는다.
+
+    2026-08-05: 이 버그로 고갈 이벤트 10건 중 6건이 빠져 있었다.
+    """
+    from src.models.dataset import SURGE_EMPTY, surge_events
+
+    ev = surge_events()
+    assert int((ev["kind"] == SURGE_EMPTY).sum()) >= 8

@@ -159,17 +159,23 @@ def parse_surge_fill(note) -> dict:
 
 #: 비고에 남는 운전 이벤트 (분석·경보에 쓰는 플래그)
 NOTE_EVENTS = {
-    "surge_short": "수항재고부족",     # 수항이 비어 생산 중단
-    "surge_only": "수항 단독",         # 수항 재고만으로 생산
+    "surge_short": "수항재고부족",     # 수항이 비어 생산 중단 ("수항재고 부족" 표기도 있다)
+    "surge_only": "수항단독",          # 수항 재고만으로 생산 ("수항 단독" 표기도 있다)
     "osp_full": "OSP 만실",            # OSP 가 가득 참 — 적재 상한에 걸림
     "yard_full": "야드 만실",          # 야드가 가득 참
 }
 
 
 def parse_note_events(note) -> dict:
-    """비고 → 운전 이벤트 플래그 dict (없으면 전부 False)."""
+    """비고 → 운전 이벤트 플래그 dict (없으면 전부 False).
+
+    ⚠️ 같은 말이 띄어쓰기만 다르게 적힌다 — "수항재고부족" / "수항재고 부족",
+       "수항단독" / "수항 단독". 공백을 지우고 대조해야 놓치지 않는다
+       (2026-08-05: 이 때문에 고갈 이벤트 10건 중 6건이 빠져 있었다).
+    """
     txt = "" if note is None or pd.isna(note) else str(note)
-    return {k: (kw in txt) for k, kw in NOTE_EVENTS.items()}
+    flat = re.sub(r"\s+", "", txt)
+    return {k: (re.sub(r"\s+", "", kw) in flat) for k, kw in NOTE_EVENTS.items()}
 
 
 def normalize_crusher(raw) -> Optional[str]:
