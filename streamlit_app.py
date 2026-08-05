@@ -237,7 +237,10 @@ with tab2:
                         use_container_width=True)
 
         cw = {_ln: calibration_windows(stock_p, mine_p, osp_p, _ln) for _ln in S.YARD_PAIR}
-        if any(cw.values()):
+        # 식별 불가 구간(라인 정지 등)은 그래프에서 빠지므로, 남는 구간이 있을 때만 그린다
+        _drop = [f"{_ln} {w['reason']}" for _ln, ws in cw.items() for w in ws
+                 if not w.get("ok", True)]
+        if any(any(w.get("ok", True) for w in ws) for ws in cw.values()):
             st.markdown("### 인출 벨트스케일 지시 배율 추이 (교정 시점 판단)")
             st.caption(
                 "인출량은 **벨트스케일**로 계량하며, 벨트스케일 오차는 **통과 물량에 비례**하므로 "
@@ -246,6 +249,10 @@ with tab2:
                 "오차막대는 95% 신뢰구간이며, **겹치지 않으면 실제로 변한 것**입니다."
             )
             st.plotly_chart(V.calibration_drift(cw), use_container_width=True)
+            if _drop:
+                st.caption("⚠️ 제외한 구간 — " + " / ".join(_drop)
+                           + ". 인출이 거의 없으면 배율의 분모가 0에 가까워 β 가 튀므로 "
+                             "계량 배율로 볼 수 없습니다.")
 
 # ── ③ 관리도 (제어차트) ──
 with tab3:

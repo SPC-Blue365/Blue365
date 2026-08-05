@@ -631,3 +631,41 @@ def test_scripts_do_not_redefine_yard_pairing():
         assert "SHEET_YARD_CNA" not in src and "SHEET_MINE_45Q" not in src, (
             f"{path.name} 이 야드 시트를 직접 지정합니다 — S.YARD_PAIR 를 사용하세요."
         )
+
+
+def test_calibration_window_rejects_unidentifiable_beta():
+    """라인이 멈춰 인출이 거의 없는 구간은 β 를 식별할 수 없다 → ok=False 로 표시한다.
+
+    2026-08-05 갱신본에서 기존 라인 마지막 창이 β=6.98 로 나온 실제 사례.
+    이런 값을 계량 배율로 보고하면 안 된다(CLAUDE.md §2-1).
+    """
+    import numpy as np
+    import pandas as pd
+
+    from src.models.dataset import MIN_WINDOW_TON, PLAUSIBLE, calibration_windows
+
+    t = pd.date_range("2026-06-01", periods=30, freq="8h")
+    # 재고는 계속 줄지만 인출 기록은 거의 없다 → 분모가 0에 가까워 β 가 튄다
+    st = pd.DataFrame({"datetime": t, "line": "신설",
+                       "stock_ton": np.linspace(50_000, 20_000, len(t))})
+    mine = pd.DataFrame({"datetime": t, "line": "신설", "tonnage": 0.0})
+    osp = pd.DataFrame({"datetime": t, "line": "신설", "withdrawn_ton": 1.0})
+
+    ws = calibration_windows(st, mine, osp, "신설", window_days=5)
+    assert ws, "구간 자체는 생성되어야 한다 (조용히 사라지면 안 됨)"
+    assert all(not w["ok"] for w in ws), "식별 불가 구간은 전부 ok=False 여야 한다"
+    assert all(w["reason"] for w in ws), "제외 사유가 반드시 남아야 한다"
+    assert all(w["beta"] > PLAUSIBLE[1] or w["reason"].startswith("인출") for w in ws)
+    assert MIN_WINDOW_TON > 0
+
+
+def test_zone_codes_split_on_comma():
+    """2026-08-05 갱신본에서 처음 등장한 쉼표 표기가 구역을 잃지 않아야 한다."""
+    from src.data.clean import parse_zone_codes
+
+    assert parse_zone_codes("25~30, 65~40") == [25.0, 30.0, 65.0, 40.0]
+    assert parse_zone_codes("35~60, 75~85") == [35.0, 60.0, 75.0, 85.0]
+    # 기존 표기는 그대로 동작해야 한다 (회귀 방지)
+    assert parse_zone_codes("50/55") == [50.0, 55.0]
+    assert parse_zone_codes("100-0") == [100.0, 0.0]
+    assert parse_zone_codes("운휴") == []

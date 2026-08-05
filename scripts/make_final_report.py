@@ -43,6 +43,29 @@ TOLS = [0.5, 1.0, 1.5, 2.0]      # 사용자가 고를 수 있는 허용폭(%p)
 GAIN_TIE = 5.0                    # 기준선 대비 개선폭이 이보다 작으면 '사실상 동급'
 
 
+def _n_sheets() -> int:
+    """원본 엑셀의 시트 수 — 시트가 늘어도 문구가 낡지 않도록 실제로 센다."""
+    from config.paths import RAW_DIR
+    return len(pd.ExcelFile(RAW_DIR / S.DATA_FILE).sheet_names)
+
+
+def _corr_txt(lds: dict) -> str:
+    """라인별 상류-야드 상관을 실제 추정값으로 표기 (고정값을 쓰지 않는다, §2-1).
+
+    추정 Time-Lag 에서의 상관 — 즉 **상류 신호가 가장 잘 맞는 지점의 값**을 인용한다.
+    최선값조차 낮다는 점을 보이는 편이 정직하다.
+    """
+    vals = []
+    for ln, ld in (lds or {}).items():
+        c = getattr(ld, "lag_corr", float("nan"))
+        if c == c:
+            vals.append(abs(float(c)))
+    if not vals:
+        return "매우 낮음"
+    return f"{min(vals):.2f}~{max(vals):.2f}" if len(vals) > 1 else f"{vals[0]:.2f}"
+
+
+
 def _verdict(mae, mae_persist, gain, tol) -> tuple[str, str]:
     """허용폭별 판정 문장 + 스타일. 실제 검증 수치에서만 생성한다 (§2-1).
 
@@ -183,9 +206,17 @@ def _calib_note(calib: dict) -> str:
 
 
 def _drift_note(win: dict) -> str:
-    """구간별 β 가 흘러가는지 판정 (추세 vs 들쭉날쭉)."""
-    out = []
-    for ln, ws in (win or {}).items():
+    """구간별 β 가 흘러가는지 판정 (추세 vs 들쭉날쭉).
+
+    식별 불가 구간(ok=False)은 판정에서 빼되, **몇 개를 왜 뺐는지 반드시 밝힌다**(§2-1).
+    """
+    out, dropped = [], []
+    for ln, ws_all in (win or {}).items():
+        ws = [w for w in (ws_all or []) if w.get("ok", True)]
+        for w in (ws_all or []):
+            if not w.get("ok", True):
+                dropped.append(f"{ln} {pd.Timestamp(w['start']):%m/%d}~"
+                               f"{pd.Timestamp(w['end']):%m/%d}({w['reason']})")
         if len(ws) < 3:
             continue
         b = np.array([w["beta"] for w in ws])
@@ -197,7 +228,12 @@ def _drift_note(win: dict) -> str:
         else:
             kind = f"뚜렷한 추세 없이 <b>들쭉날쭉</b>합니다({rng}) — 그때그때 조건에 따라 흔들리는 형태"
         out.append(f"<b>{ln}</b>: {kind}")
-    return ("<br><b>📈 판정</b> — " + " / ".join(out)) if out else ""
+    note = ("<br><b>📈 판정</b> — " + " / ".join(out)) if out else ""
+    if dropped:
+        note += ("<br><b>⚠️ 제외한 구간</b> — " + " / ".join(dropped)
+                 + ". 인출이 거의 없는 구간은 배율의 분모가 0에 가까워져 β 가 몇 배로 튑니다. "
+                   "계량 배율이 아니라 <b>식별 불가</b>이므로 그래프·판정에서 뺐습니다.")
+    return note
 
 
 def _seg_selector(segs: list[dict]) -> str:
@@ -391,7 +427,7 @@ def main(start=None, end=None):
     ycna = yards[S.LINE_NEW]["cao"]; y45 = yards[S.LINE_OLD]["cao"]
     overview = (
         "<p>광산 → OSP → 야드 전 공정 CaO 추적 매칭 + 예측·모니터링 통합 리포트. "
-        "원본 <code>data_v1.xlsx</code>(야드변경 포함 8시트).</p>"
+        f"원본 <code>{S.DATA_FILE}</code>({_n_sheets()}시트).</p>"
         "<table><tr><th>항목</th><th>값</th></tr>"
         f"<tr><td>품질 목표</td><td>CaO {S.TARGET.cao_mean}±{S.TARGET.tol}%</td></tr>"
         f"<tr><td>야드 CNA(신설) 평균/표준편차</td><td>{ycna.mean():.2f} / {ycna.std():.2f}</td></tr>"
@@ -400,8 +436,9 @@ def main(start=None, end=None):
         "</table>"
         '<div class="ok"><b>핵심:</b> 평균은 목표에 근접, 과제는 <b>변동성(표준편차) 축소</b>. '
         '예측·관리도·경보로 모니터링, 야드변경 추적으로 흐름 파악.</div>'
-        '<div class="note"><b>정직한 한계:</b> 상류(OSP)가 야드 CaO를 거의 설명하지 못해(상관 0.18) '
-        '예측은 지속성(AR) 기반. 목표 MAE&lt;0.5 미달 — 데이터 축적 시 개선.</div>')
+        f'<div class="note"><b>정직한 한계:</b> 상류(OSP)가 야드 CaO를 거의 설명하지 못해'
+        f'(상관 {_corr_txt(lines)}) 예측은 지속성(AR) 기반. '
+        f'목표 MAE&lt;0.5 미달 — 데이터 축적 시 개선.</div>')
 
     # ── 배합 최적화 데모 ──
     demo = recommend_blend([BlendSource("구역45(기존)", 44.1, 2000), BlendSource("구역55(신설)", 45.4, 2000),

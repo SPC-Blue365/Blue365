@@ -26,6 +26,7 @@ class LineData:
     osp_hourly: pd.DataFrame    # index=시간, [impl, ton]
     lag_hours: int
     features: pd.DataFrame      # 예측 피처 프레임
+    lag_corr: float = float("nan")   # 그 lag 에서의 상류-야드 상관 (매칭 파이프라인과 동일 값)
 
 
 def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bool = True):
@@ -96,12 +97,13 @@ def build_line_data(osp_exp, yards, line: str) -> LineData:
     o = osp_exp[osp_exp["line"] == line].dropna(subset=["datetime"]).copy()
     o["h"] = o["datetime"].dt.floor("1h")
     oh = o.groupby("h").agg(impl=("expected_cao", "mean"), ton=("withdrawn_ton", "sum"))
-    lag = P.estimate_time_lag(
+    est = P.estimate_time_lag(
         oh.reset_index().rename(columns={"h": "datetime", "impl": "osp_expected_cao"}),
         ys.reset_index().rename(columns={"h": "datetime", "cao": "yard_cao"}), 24
-    ).best_lag_hours
+    )
+    lag = est.best_lag_hours
     feats = F.build_features(ys, oh, lag)
-    return LineData(line, alias, ys, oh, lag, feats)
+    return LineData(line, alias, ys, oh, lag, feats, float(est.best_corr))
 
 
 def all_lines(raw_file: str | None = None) -> dict[str, LineData]:
@@ -191,6 +193,16 @@ def stock_vs_flow(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFrame
                 inflow=inflow, outflow=outflow, s0=s0, s1=s1)
 
 
+# ⭐️ 타당 범위 가드: 계량 배율이 이 범위를 벗어나면 채택하지 않는다.
+#    증분 회귀는 육안 실사 노이즈에 눌려 α=0.28·β=0.25 같은 값을 내놓는데,
+#    이는 '기록의 1/4만 실제'라는 뜻이라 현장 지식과 배치된다(감쇠 편향).
+PLAUSIBLE = (0.7, 1.3)
+
+# 한 구간에서 β 를 식별하려면 인출이 최소한 이만큼은 흘러야 한다.
+# (라인이 멈춘 구간은 분모가 0에 가까워 β 가 몇 배로 튄다)
+MIN_WINDOW_TON = 5_000.0
+
+
 def calibrate_flow(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFrame,
                    line: str) -> dict:
     """실사 재고에 맞춰 흐름 계산을 보정하는 계수를 추정한다 (최소제곱).
@@ -237,11 +249,6 @@ def calibrate_flow(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.DataFram
     def _fit(x, y):
         den = float(np.dot(x, x))
         return float(np.dot(x, y) / den) if den > 0 else np.nan
-
-    # ⭐️ 타당 범위 가드: 배율이 이 범위를 벗어나면 채택하지 않는다.
-    #    증분 회귀는 육안 실사 노이즈에 눌려 α=0.28·β=0.25 같은 값을 내놓는데,
-    #    이는 '기록의 1/4만 실제'라는 뜻이라 현장 지식과 배치된다(감쇠 편향).
-    PLAUSIBLE = (0.7, 1.3)
 
     cands = []
     raw_resid = Sv - (s0 + In - Out)
@@ -291,7 +298,12 @@ def calibration_windows(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.Dat
        따라서 배율 β 로 표현하는 것이 물리적으로 맞고, β 가 시간에 따라 변하면
        계량기 지시가 흘러가고 있다는 뜻이다 → 교정 시점 판단 근거.
 
-    반환: [{start, end, beta, se, n}] — 구간별 β 와 표준오차.
+    ⚠️ 라인이 멈춘 구간에서는 β 를 **식별할 수 없다**. 인출이 거의 없는데 재고는 움직이면
+       분모(Out)가 0에 가까워 β 가 몇 배로 튄다 — 실제로 2026-08-05 갱신본에서 기존 라인
+       마지막 창이 β=6.98 로 나왔다. 이런 창은 계량 배율이 아니라 '식별 불가'이므로
+       `ok=False` 로 표시해 그래프에서 빼고, 몇 개를 왜 뺐는지는 리포트가 밝힌다(§2-1).
+
+    반환: [{start, end, beta, se, n, ok, reason}] — 구간별 β·표준오차와 식별 가능 여부.
     """
     out = []
     if stock is None or len(stock) == 0:
@@ -325,5 +337,10 @@ def calibration_windows(stock: pd.DataFrame, mine: pd.DataFrame, osp_exp: pd.Dat
         beta = float(np.dot(Out, yv) / den)
         r = yv - beta * Out
         se = float(np.sqrt((r ** 2).sum() / max(len(r) - 1, 1) / den))
-        out.append(dict(start=a, end=b, beta=beta, se=se, n=len(gg)))
+        ok, reason = True, ""
+        if float(Out.max()) < MIN_WINDOW_TON:
+            ok, reason = False, f"인출 {Out.max():,.0f}톤 — 계량 배율을 식별하기엔 너무 적음"
+        elif not (PLAUSIBLE[0] <= beta <= PLAUSIBLE[1]):
+            ok, reason = False, f"β {beta:.2f} — 타당범위({PLAUSIBLE[0]}~{PLAUSIBLE[1]}) 밖"
+        out.append(dict(start=a, end=b, beta=beta, se=se, n=len(gg), ok=ok, reason=reason))
     return out

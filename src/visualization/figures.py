@@ -344,13 +344,17 @@ def calibration_drift(windows: dict, title: str = "") -> go.Figure:
     β = 실제 인출량 / 계량기 지시값. **1.0 이면 정확**, 1.0 미만이면 계량기가
     실제보다 **많이 찍고 있다**는 뜻(예: 0.90 → 약 10% 과대 지시).
     오차막대는 95% 신뢰구간이며, 구간끼리 겹치지 않으면 실제로 변한 것이다.
-    windows: {라인: [ {start,end,beta,se,n}, ... ]}
+    windows: {라인: [ {start,end,beta,se,n,ok,reason}, ... ]}
+
+    ⚠️ ok=False 인 구간(라인 정지 등으로 인출이 거의 없어 β 를 식별할 수 없는 창)은
+       그리지 않는다. 몇 개를 왜 뺐는지는 리포트 본문이 밝힌다(CLAUDE.md §2-1).
     """
     import pandas as pd
 
     fig = go.Figure()
     any_pt = False
-    for ln, ws in (windows or {}).items():
+    for ln, ws_all in (windows or {}).items():
+        ws = [w for w in (ws_all or []) if w.get("ok", True)]
         if not ws:
             continue
         any_pt = True
