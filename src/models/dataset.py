@@ -192,7 +192,16 @@ def load_surge_fills(raw_file: str | None = None) -> pd.DataFrame:
                          date=pd.to_datetime(r.get("채굴일자"), errors="coerce"),
                          shift=r.get("채굴시간(교대)"), cao=f["cao"], mgo=f["mgo"],
                          ton=f["ton"], note=str(r.get(S.COL_MINE_NOTE))))
-    return pd.DataFrame(rows, columns=cols)
+    out = pd.DataFrame(rows, columns=cols)
+    # ⚠️ 서로 다른 날짜에 (CaO, MgO, 톤) 이 완전히 같으면 **붙여넣기 오류**로 본다.
+    #    "같은 품위를 두 번 가질 수는 없다"는 사용자 판단(2026-08-05). 어느 쪽이 원본인지
+    #    단정할 수 없으므로 지우지 않고 **의심 표시만** 하고, 품위 통계에서는 제외한다(§2-1).
+    out["suspect"] = False
+    if len(out):
+        key = out.dropna(subset=["cao"]).groupby(["cao", "mgo", "ton"])["date"].transform("nunique")
+        dup = key[key > 1].index
+        out.loc[dup, "suspect"] = True
+    return out
 
 
 def capacity_audit(mine: pd.DataFrame) -> pd.DataFrame:
@@ -216,7 +225,21 @@ def capacity_audit(mine: pd.DataFrame) -> pd.DataFrame:
     g["tph"] = g["tonnage"] / g["hours"].replace(0, np.nan)
     g["cap_hi"] = g["crusher"].map(lambda c: C.crusher_capacity(c)[1])
     g["over"] = g["tph"] > g["cap_hi"]
-    return g[cols].sort_values("tph", ascending=False)
+
+    # 비고에서 실제 생산 구간을 뽑은 교대는 그 시간으로 다시 환산해 참고 컬럼으로 둔다.
+    # ⚠️ 감사의 '판정'(over)은 계속 8h 기준을 쓴다 — 구간 채택 자체가 능력 상한을 조건으로
+    #    삼기 때문에, 그 시간으로 다시 판정하면 순환논리가 된다.
+    if {"op_start", "op_end"} <= set(mine.columns):
+        w = (mine.dropna(subset=["op_start", "op_end"])
+                 .groupby("datetime")[["op_start", "op_end"]].first())
+        g = g.merge(w, left_on="datetime", right_index=True, how="left")
+        oh = (g["op_end"] - g["op_start"]).dt.total_seconds() / 3600
+        g["op_hours"] = oh
+        g["op_tph"] = g["tonnage"] / oh.replace(0, np.nan)
+    else:
+        g["op_hours"] = np.nan
+        g["op_tph"] = np.nan
+    return g[cols + ["op_hours", "op_tph"]].sort_values("tph", ascending=False)
 
 
 

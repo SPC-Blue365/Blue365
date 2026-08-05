@@ -880,3 +880,53 @@ def test_capacity_audit_flags_impossible_records():
     over = au[au["over"]]
     assert len(over) == 1 and over.iloc[0]["crusher"] == "H/C"
     assert abs(over.iloc[0]["tph"] - 2000.0) < 1e-6
+
+
+def test_note_window_accepts_only_physically_possible_spans():
+    """비고 시각은 '교대 전체 생산구간'과 '구역별 부분구간'이 섞여 있다.
+
+    구분 표지가 없으므로 물리적 가능성으로 가른다 — 교대보다 길거나 능력 상한을
+    넘으면 채택하지 않는다. (2026-08-05, v2 비고 반영)
+    """
+    from src.data.clean import parse_note_window
+
+    # 교대 전체 생산구간 — 채택
+    assert parse_note_window("00:20~07:50분 생산종료", "3차", 1600, 10414) == (20, 470)
+    # '24시'는 자정(1440분). 0 으로 접으면 구간이 하루로 벌어진다.
+    assert parse_note_window("19:50~24:00", "2차", 1600, 6403) == (1190, 1440)
+    # 여러 시각이 나열돼도 최소~최대로 묶는다
+    assert parse_note_window("00:40/04:30/05:30/06:00/07:10~07:50", "3차", 1600, 11335) == (40, 470)
+
+    # 구역별 부분 적치구간 — 물량 대비 t/h 가 능력을 넘으므로 기각
+    assert parse_note_window("06:30-07:05 까지 40번 적치", "3차", 1600, 11391) is None
+    # 교대(8h)보다 긴 구간도 기각
+    assert parse_note_window("01:00~23:00", "1차", 1600, 100) is None
+    # 시각이 하나뿐이면 구간을 만들 수 없다
+    assert parse_note_window("13:50분 벨트 가동", "1차", 1600, 5000) is None
+    assert parse_note_window(None, "1차") is None
+
+
+def test_zone_windows_from_note():
+    """'16:20~18:30분 35번' → 구역별 실제 적치 창 (교대 중점보다 정밀)."""
+    from src.data.clean import parse_zone_windows
+
+    got = parse_zone_windows("16:20~18:30분 35번, 18:30~20:40분 60번")
+    assert got == [(980, 1110, 35.0), (1110, 1240, 60.0)]
+    assert parse_zone_windows("00:20~04:00 25번 적치") == [(20, 240, 25.0)]
+    assert parse_zone_windows("계속 생산") == []
+
+
+def test_surge_fill_duplicates_flagged_as_suspect():
+    """서로 다른 날짜에 (CaO,MgO,톤)이 완전히 같으면 붙여넣기 오류로 표시한다.
+
+    2026-08-05 사용자 판단: 같은 품위를 두 번 가질 수는 없다.
+    어느 쪽이 원본인지 단정할 수 없으므로 지우지 않고 표시만 한다(§2-1).
+    """
+    from src.models.dataset import load_surge_fills
+
+    sf = load_surge_fills()
+    assert "suspect" in sf.columns
+    dup = sf[sf["suspect"]]
+    assert len(dup) == 2, "07/20·07/25 의 (49.25, 0.79, 1200) 중복이 잡혀야 한다"
+    assert dup["date"].nunique() == 2 and dup["cao"].nunique() == 1
+    assert not sf.loc[~sf["suspect"], "cao"].dropna().duplicated().all()

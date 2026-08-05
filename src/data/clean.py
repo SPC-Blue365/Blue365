@@ -189,6 +189,77 @@ def crusher_capacity(cr: Optional[str]) -> tuple[float, float]:
 
 
 
+# --------------------------------------------------------------------------- #
+# 비고의 시각 표기 → 교대 실제 생산 구간 · 구역별 적치 창
+# --------------------------------------------------------------------------- #
+#: 'HH:MM' · 'HH시MM분' · 'HH시' 를 모두 받는다
+_T = r"(\d{1,2})\s*(?::|시)\s*(\d{1,2})?\s*분?"
+_RE_TIME = re.compile(_T)
+#: "16:20~18:30분 35번" → 구역별 적치 창
+_RE_ZONE_WIN = re.compile(_T + r"\s*[~\-]\s*" + _T + r"\s*(\d{1,3})\s*번")
+
+
+def _to_min(h, m) -> int:
+    """'24시'는 자정(=1440분)으로 본다. 0 으로 접으면 구간이 하루로 벌어진다."""
+    h = int(h)
+    return (1440 if h == 24 else (h % 24) * 60) + (int(m) if m else 0)
+
+
+def parse_note_window(note, shift=None, capacity_hi: float = np.inf,
+                      tonnage: float = np.nan) -> Optional[tuple[int, int]]:
+    """비고 → 그 교대의 **생산 구간(분, 자정 기준)**. 못 믿을 값이면 None.
+
+    비고에는 '교대 전체 생산구간'과 '구역별 부분 적치구간'이 **같은 표기**로 섞여 있다
+    (예: "00:20~07:50분 생산종료" vs "06:30-07:05 까지 40번 적치").
+    구분할 표지가 없으므로 **물리적으로 가능한지**로 가른다 —
+      ⓐ 구간 길이가 교대 길이(8h)를 넘지 않을 것
+      ⓑ 물량 ÷ 구간시간 이 생산능력 상한을 넘지 않을 것
+    둘 중 하나라도 어기면 그 표기는 교대 생산구간이 아니라고 보고 **채택하지 않는다**.
+
+    구간은 적힌 모든 시각의 (최소, 최대)다. 중간에 쉬는 구간이 있으면 실제 가동시간은
+    이보다 짧으므로, 여기서 나오는 t/h 는 **하한**이다(과대평가하지 않는 쪽).
+    """
+    if note is None or pd.isna(note):
+        return None
+    ts = [_to_min(h, m) for h, m in _RE_TIME.findall(str(note))]
+    if len(ts) < 2:
+        return None
+    lo, hi = min(ts), max(ts)
+    hours = (hi - lo) / 60.0
+    if hours <= 0:
+        return None
+    win = S.SHIFT_HOURS.get(str(shift).strip()) if shift is not None else None
+    max_h = (win[1] - win[0]) if win else 8
+    if hours > max_h + 1e-9:                       # ⓐ 교대보다 길 수 없다
+        return None
+    if np.isfinite(capacity_hi) and pd.notna(tonnage) and tonnage > 0:
+        if tonnage / hours > capacity_hi:          # ⓑ 능력 상한을 넘을 수 없다
+            return None
+    return lo, hi
+
+
+def parse_zone_windows(note) -> list[tuple[int, int, float]]:
+    """비고 → [(시작분, 종료분, 구역)] — "16:20~18:30분 35번" 형태.
+
+    구역 단위 실제 적치 시각이라 교대 중점보다 훨씬 정밀하다. 다만 표기가 드물다.
+    """
+    if note is None or pd.isna(note):
+        return []
+    out = []
+    for h1, m1, h2, m2, z in _RE_ZONE_WIN.findall(str(note)):
+        a, b = _to_min(h1, m1), _to_min(h2, m2)
+        if b > a:
+            out.append((a, b, float(z)))
+    return out
+
+
+def _at(day, minute: Optional[int]):
+    """채굴일자 + 분 → Timestamp (없으면 NaT)."""
+    d = pd.to_datetime(day, errors="coerce")
+    return pd.NaT if pd.isna(d) or minute is None else d.normalize() + pd.Timedelta(minutes=minute)
+
+
+
 def active_ratio(raw) -> float:
     """`공정구분` 라벨 → 그 교대의 **가동 비율** (시간당 생산량 환산용).
 
@@ -238,6 +309,9 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
         lines = split_line_label(r.get("공정구분"))
         if not lines:                   # 전부 운휴 → 실물량 없음
             continue
+        _cr = normalize_crusher(r.get(S.COL_CRUSHER))
+        _win = parse_note_window(r.get(S.COL_MINE_NOTE), r.get("채굴시간(교대)"),
+                                 crusher_capacity(_cr)[1], tonnage)
         per_ton = tonnage / (len(zones) * len(lines)) if pd.notna(tonnage) else np.nan
         for z in zones:
           for _ln in lines:
@@ -252,8 +326,10 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
                     source="49Q",
                     shift=r.get("채굴시간(교대)"),
                     active_ratio=active_ratio(r.get("공정구분")),
-                    crusher=normalize_crusher(r.get(S.COL_CRUSHER)),
+                    crusher=_cr,
                     note=r.get(S.COL_MINE_NOTE),
+                    op_start=_at(r.get("채굴일자"), _win[0] if _win else None),
+                    op_end=_at(r.get("채굴일자"), _win[1] if _win else None),
                     # 교대 시간대로 실제 시각 부여 (일 단위였을 때의 경계 오차 제거)
                     datetime=shift_midpoint(r.get("채굴일자"), r.get("채굴시간(교대)")),
                 )
