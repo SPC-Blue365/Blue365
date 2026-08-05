@@ -23,6 +23,7 @@ from config.paths import OUTPUTS_DIR, ensure_dirs
 from src.matching.segments import LAG_CAUTION, segment_warnings, yard_change_segments
 from src.models import forecast as F
 from src.models.benchmark import benchmark, recommend
+from src.models.roadmap import readiness, summary_text
 from src.models.dataset import (
     build_line_data, calibrate_flow, calibration_windows, filter_period, load_osp_stock,
     surge_balance, surge_cycles, surge_events,
@@ -145,6 +146,44 @@ def _grade_gap_note(mine, yc) -> str:
 
 
 
+def _roadmap_block(mine, yc) -> str:
+    """배합 최적화까지 얼마나 남았는지 — 데이터로 계산해 보여준다.
+
+    두 갈래를 나눠 보인다. 하나는 시간이 해결하고(검증 사례), 하나는 해결하지 못한다
+    (구역 품위 정밀도). 섞어 놓으면 "조금만 더 모으면 되겠네" 로 잘못 읽힌다.
+    """
+    r = readiness(mine, yc)
+    c, z = r["cases"], r["zone"]
+    pct = min(100, round(c["have"] / max(c["need"], 1) * 100))
+    bar = (f"<div style='background:#eef2f6;border-radius:6px;height:16px;margin:6px 0;'>"
+           f"<div style='background:{'#2ca02c' if r['ready'] else '#1f77b4'};width:{pct}%;"
+           f"height:100%;border-radius:6px'></div></div>")
+    head = ("<div class='ok'><b>🎉 준비 완료</b> — " if r["ready"] else
+            "<div class='note'><b>⏳ 아직 이릅니다</b> — ") + summary_text(r).split("— ", 1)[-1] + "</div>"
+    return (head +
+            "<h3>① 검증 사례 — <b>시간이 해결합니다</b></h3>"
+            "<p>“이 구역들로 뽑았더니 야드가 이랬다”는 사례(야드변경 구간)가 쌓여야 "
+            "배합 계산이 맞는지 <b>확인</b>할 수 있습니다.</p>"
+            f"<p><b>{c['have']}건 / 목표 {c['need']}건</b> ({pct}%)</p>{bar}"
+            f"<p>지금 속도는 <b>월 {c['per_month']:.0f}건</b>이므로 앞으로 "
+            f"<b>약 {c['months']:.1f}개월</b>이면 채워집니다."
+            + (" <b>이미 채워졌습니다.</b>" if c["ready"] else "") + "</p>"
+            "<h3>② 구역 품위 정밀도 — <b>시간이 해결하지 못합니다</b></h3>"
+            "<p>배합을 계산하려면 “이 구역은 몇 %”를 알아야 합니다. "
+            "그런데 지금은 그 값 자체가 흔들립니다.</p>"
+            f"<p>주요 구역 {z['n_major']}개의 평균 오차 = <b>±{z['se_median']:.2f}%p</b> "
+            f"(가장 나쁜 구역 ±{z['se_max']:.2f}%p) — <b>맞추려는 목표(±{S.TARGET.tol}%p)보다 큽니다.</b> "
+            "자를 만들려는데 자보다 눈금이 굵은 셈입니다.</p>"
+            f"<p>표본을 늘려 ±0.1%p 까지 좁히려면 구역당 <b>{z['need_per_zone']:.0f}건</b>이 필요한데 "
+            f"지금은 <b>{z['obs_median']:.0f}건</b>입니다 — <b>{z['ratio']:.0f}배</b>. "
+            "지금 속도로는 <b>수 년</b>이 걸립니다.</p>"
+            "<p><b>왜 그런가:</b> 같은 구역 안에서도 품위가 크게 다릅니다(구역별 산포 2~4%p). "
+            "표본을 늘리면 <b>평균</b>만 정밀해질 뿐, 실제로 뽑는 순간의 품위는 여전히 흔들립니다.<br>"
+            "<b>→ 데이터를 더 모으는 것보다 <u>인출 지점에서 직접 재는 것</u>이 훨씬 빠른 길입니다.</b> "
+            "(OSP 인출 벨트 분석기 등. 이건 설비 투자 판단 사항입니다.)</p>")
+
+
+
 def _verdict(mae, mae_persist, gain, tol) -> tuple[str, str]:
     """허용폭별 판정 문장 + 스타일. 실제 검증 수치에서만 생성한다 (§2-1).
 
@@ -174,7 +213,8 @@ def _verdict(mae, mae_persist, gain, tol) -> tuple[str, str]:
     return f"{a} {b} {c}", cls
 
 
-def _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain) -> tuple[str, dict]:
+def _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain,
+                med: float = float('nan')) -> tuple[str, dict]:
     """라인별 예측 성적 KPI 타일 + 평문 판정 (임원용).
 
     반환: (HTML, 허용폭별 수치·판정 dict) — dict 는 JS 가 허용폭 전환 시 갈아끼운다.
@@ -473,7 +513,8 @@ def main(start=None, end=None):
         gain = (mae_persist - mae) / mae_persist * 100 if mae_persist else 0.0
         oos = (pr < V.TARGET - 0.5) | (pr > V.TARGET + 0.5)
 
-        block, stat = _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain)
+        med = float(np.median(err))
+        block, stat = _pred_block(ln, ld, te, err, mae, mae_persist, mae_naive, gain, med)
         pred_stats[ln] = stat
         pred_secs.append(("", block))
         pred_secs.append(("", V.prediction_scorecard(
@@ -489,8 +530,19 @@ def main(start=None, end=None):
                            f"<td>{mae_persist:.2f}{tie}</td>"
                            f"<td><span id='thit-{ln}'>{stat[f'{TOLS[0]}']['hit']}</span>%</td></tr>")
         bench_secs.append(("", V.model_benchmark_bar(bench, f"{ln} → {ld.alias}: 10개 모델 CV MAE")))
-        reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td><b>{recommend(bench)}</b></td>"
-                         f"<td>{bench[~bench['is_baseline']]['MAE'].min():.3f}</td></tr>")
+        _reco = recommend(bench)
+        _rid = float(bench.loc[bench["model"] == "2.Ridge", "MAE"].iloc[0]) \
+            if (bench["model"] == "2.Ridge").any() else float("nan")
+        _best = float(bench[~bench["is_baseline"]]["MAE"].min())
+        # 추천 1위와 확정 모델(Ridge)이 사실상 동률이면 그 사실을 함께 적는다.
+        # (표에 추천만 적어 두면 "왜 추천과 다른 모델을 쓰나?" 로 읽힌다)
+        _same = abs(_rid - _best) < 0.005 if _rid == _rid else False
+        _note = ("<br><span class='muted'>확정 모델 <b>Ridge</b> "
+                 + (f"({_rid:.3f}, 1위와 <b>사실상 동률</b> — 데이터가 적을 땐 "
+                    "정규화가 있는 쪽이 안정적이라 유지)" if _same
+                    else f"({_rid:.3f})") + "</span>") if _rid == _rid else ""
+        reco_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td><b>{_reco}</b>{_note}</td>"
+                         f"<td>{_best:.3f}</td></tr>")
         # ⭐️ 관리도는 **리포트 기간 전체**의 시간별 야드 실측을 쓴다.
         #    모니터의 series 는 경보용 '최근 20% 감시창'이라, 그걸 쓰면 x축이 최근 며칠만
         #    나오고 규격내 비율도 그 구간 기준이 되어 기간 설정과 어긋난다(실제 발생 버그).
@@ -776,13 +828,20 @@ def main(start=None, end=None):
                  "<b>⚠️ 아래 그래프의 x축은 리포트 기간 전체가 아니라 <u>검증 구간(뒤 30%)</u>입니다</b> — "
                  "모델이 학습에 쓰지 않은 구간에서만 성적을 재기 때문입니다.<br>"
                  "<b>읽는 법:</b> <b>적중률</b>이 높고 <b>평균 오차</b>가 목표 0.5%p보다 작아야 "
-                 "'예측 보고 배합을 조절'할 수 있습니다. 아직 못 미치면 <b>조기경보 용도</b>로만 씁니다.")
+                 "'예측 보고 배합을 조절'할 수 있습니다. 아직 못 미치면 <b>조기경보 용도</b>로만 씁니다.<br>"
+                 "<b>❓ 평균 오차가 0.9인데 ±0.5 적중률이 37%? 모순 아닌가요?</b> 아닙니다. "
+                 "<b>평균은 크게 빗나간 몇 번에 끌려 올라갑니다.</b> 그래서 오차의 "
+                 "<b>절반 지점(중앙값)</b>을 함께 적었습니다 — 보통 때는 그 정도로 맞힙니다.<br>"
+                 "<b>❗ 아래 '참고: 최적 모델 벤치마크' 표의 숫자와 다릅니다.</b> 여기는 "
+                 "<b>마지막 30% 한 구간</b>만 본 성적이고, 벤치마크는 <b>구간을 옮겨가며 여러 번</b> "
+                 "잰 평균이라 기준이 다릅니다. <b>공식 성적은 벤치마크(여러 번 잰 쪽)</b>이며, "
+                 "여기 표는 '실제로 어떻게 틀렸는지' 그래프와 함께 보기 위한 것입니다.")
              + _tol_selector()
              + "<table><tr><th>라인</th><th>야드</th><th>모델 평균오차</th>"
                "<th>직전값 쓰기</th><th>±<span class='tolv'>" + f"{TOLS[0]}" + "</span> 적중률</th></tr>"
              + "".join(metric_rows) + "</table>"),
             *_expand(pred_secs, "예측 성적"),
-            ("(참고) 최적 모델 벤치마크 — 10개 기법 비교",
+            ("(참고) 최적 모델 벤치마크 — 10개 기법 비교" + MODEL,
              cap("<b>어떤 기법을 쓸지 고른 근거</b>입니다(기술 검토용). 여러 예측기법을 같은 조건에서 겨뤄 "
                  "오차를 비교했고, 데이터가 적을 때는 단순한 선형(Ridge)이 가장 안정적이었습니다.<br>"
                  "<b>※ 위 성적표와 숫자가 다른 이유:</b> 위는 <b>마지막 30% 한 구간</b>으로 시험한 값이고, "
@@ -804,8 +863,15 @@ def main(start=None, end=None):
              cap("현재 상태를 <b>신호등</b>으로. 🔴=규격 이탈/지속, 🟡=주의, 🟢=정상, <b>⏸️=가동 중지·데이터 갱신 중단</b>. 각 라인의 <b>📅 기준 시각</b>을 함께 표기하므로 언제 기준 상태인지 바로 알 수 있습니다.")
              + "".join(cards))]},
         {"name": "⚗️ 섞기 계획 (앞으로)", "sections": [
-            ("배합 최적화 (향후 로드맵)",
-             cap("목표 품위(44.6%)를 맞추려면 <b>각 구역에서 몇 톤을 섞을지</b> 역산. 지금은 방향성 가이드, 데이터 축적 시 정밀 처방.")
+            ("언제쯤 할 수 있나 — 남은 거리" + LIVE.replace("기간 따라 바뀜", "데이터 쌓이면 바뀜"),
+             cap("목표 품위(44.6%)를 맞추려면 <b>어느 구역에서 몇 톤씩 섞을지</b> 계산해야 합니다.<br>"
+                 "그러려면 두 가지가 필요한데, <b>성격이 완전히 다릅니다</b> — 하나는 기다리면 되고, "
+                 "하나는 기다려도 안 됩니다.")
+             + _roadmap_block(mine, yc)),
+            ("지금 계산해 보면 (예시)",
+             cap("현재 아는 값으로 시험 삼아 계산한 결과입니다. "
+                 "<b>위 ②가 해결되기 전에는 이 숫자를 현장에 그대로 쓰면 안 됩니다</b> — "
+                 "구역 품위 자체의 오차가 목표보다 크기 때문입니다.")
              + f"<pre>{demo.summary()}</pre>")]},
     ]
 

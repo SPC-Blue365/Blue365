@@ -973,3 +973,39 @@ def test_surge_events_catch_whitespace_variants():
 
     ev = surge_events()
     assert int((ev["kind"] == SURGE_EMPTY).sum()) >= 8
+
+
+def test_roadmap_readiness_splits_solvable_from_unsolvable():
+    """배합 로드맵 요건은 두 갈래다 — 시간이 해결하는 것과 못 하는 것.
+
+    섞어 놓으면 "조금만 더 모으면 되겠네" 로 잘못 읽힌다(2026-08-05 사용자 질문).
+    """
+    from src.models.dataset import load_sources, load_yard_change
+    from src.models.roadmap import readiness, summary_text
+
+    mine, _, _ = load_sources(validate=False, verbose=False)
+    r = readiness(mine, load_yard_change())
+
+    assert set(r) >= {"zone", "cases", "se_ok", "ready"}
+    c, z = r["cases"], r["zone"]
+    # 갈래 A: 사례는 시간이 해결 → 남은 개월수가 유한해야 한다
+    assert c["need"] == z["n_major"] * 10
+    assert c["remain"] >= 0 and c["months"] == c["months"]      # NaN 아님
+    # 갈래 B: 구역 평균 오차가 허용폭보다 크면 se_ok=False, 그러면 ready 도 False
+    assert z["se_median"] > 0
+    if z["se_median"] > 0.5:
+        assert r["se_ok"] is False and r["ready"] is False
+    # 둘 다 충족될 때만 ready
+    assert r["ready"] == bool(c["ready"] and r["se_ok"])
+    assert summary_text(r)
+
+
+def test_roadmap_readiness_handles_empty_inputs():
+    """데이터가 없어도 터지지 않고 '아직 이르다'로 답한다."""
+    import pandas as pd
+
+    from src.models.roadmap import readiness, summary_text
+
+    r = readiness(pd.DataFrame(), pd.DataFrame())
+    assert r["ready"] is False
+    assert summary_text(r)

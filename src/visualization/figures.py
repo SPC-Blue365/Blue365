@@ -958,6 +958,7 @@ font-weight:700;color:#12395c;background:#fff;cursor:pointer}}
 .kpirow{{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}}
 .kpi{{flex:1;min-width:150px;background:#f7f9fb;border:1px solid #e2e8ee;border-radius:8px;padding:10px 14px}}
 .kpi .v{{font-size:1.5rem;font-weight:800;color:#12395c}}.kpi .l{{font-size:.82rem;color:#667}}
+.muted{{color:#667;font-size:.84rem}}
 .badge{{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;
 margin-left:8px;vertical-align:middle;white-space:nowrap}}
 .badge.live{{background:#e8f5e9;color:#1d7a1d;border:1px solid #9ccc9c}}

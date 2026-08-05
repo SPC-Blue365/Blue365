@@ -17,6 +17,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from config.paths import OUTPUTS_DIR, ensure_dirs
+from src.models.roadmap import readiness, summary_text
 from src.models.dataset import all_lines
 from src.monitoring import log_statuses, monitor_all
 from src.monitoring.alerts import Level
@@ -62,11 +63,44 @@ def main() -> None:
         sections.append(("", card))
         sections.append(("", fig))
 
+    # ⭐️ 배합 최적화 착수 조건 알람 (사용자 요청) — 데이터 갱신 때마다 자동 판정
+    from src.models.dataset import load_sources, load_yard_change
+    try:
+        _mine, _, _ = load_sources(validate=False, verbose=False)
+        ready = print_roadmap_alarm(_mine, load_yard_change())
+    except Exception as exc:                     # 알람 실패가 모니터를 막지 않게
+        print(f"[로드맵] 준비도 계산 실패: {exc}")
+        ready = False
+
     html = V.assemble_html("운영 모니터 — 야드 CaO 상태·경보", sections)
     out = OUTPUTS_DIR / "monitor_status.html"
     out.write_text(html, encoding="utf-8")
     print("=" * 60)
     print(f"[OK] 상태 리포트: {out}")
+
+
+
+def print_roadmap_alarm(mine, yc) -> bool:
+    """배합 최적화 착수 조건이 충족되면 **눈에 띄게 알린다** (사용자 요청 알람).
+
+    세션은 매번 새로 시작하므로 상시 감시는 불가능하다. 대신 데이터를 갱신해
+    이 스크립트(또는 run_all)를 돌릴 때마다 자동 판정해 알린다.
+    """
+    r = readiness(mine, yc)
+    line = "=" * 60
+    if r["ready"]:
+        print(f"\n{line}\n🎉🎉  배합 최적화 착수 조건 충족  🎉🎉\n{line}")
+        print(summary_text(r))
+        print("→ 다음 행동: scripts/run_all.py 재실행 후 '섞기 계획' 탭 확인,")
+        print("             구역별 배합 처방을 현장 검증 단계로 올릴 것.")
+        print(line)
+    else:
+        c = r["cases"]
+        print(f"\n[로드맵] 배합 최적화 준비도 — 검증 사례 {c['have']}/{c['need']}건"
+              f" ({c['have']/max(c['need'],1)*100:.0f}%)"
+              f" · 남은 기간 약 {c['months']:.1f}개월")
+        print(f"         {summary_text(r)}")
+    return bool(r["ready"])
 
 
 if __name__ == "__main__":
