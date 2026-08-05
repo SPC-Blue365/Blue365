@@ -85,6 +85,66 @@ def _surge_note(bal: dict, cyc) -> str:
 
 
 
+# ── 기간 반응 배지 ────────────────────────────────────────────────────────
+# 상단 '기간 직접설정'을 바꿨을 때 그 숫자가 같이 바뀌는지를 제목 옆에 표시한다.
+# 예전엔 표시가 없어, 기간을 바꿔도 안 바뀌는 값을 버그로 오해하기 쉬웠다.
+LIVE = " <span class='badge live'>🔄 기간 따라 바뀜</span>"
+FIXED = " <span class='badge fixed'>📌 전체 기간 고정</span>"
+MODEL = " <span class='badge fixed'>📌 모델 기준(기간 무관)</span>"
+NOW = " <span class='badge fixed'>📌 지금 상태 기준</span>"
+
+BADGE_LEGEND = (
+    "<div class='legendbar'>"
+    "<b>제목 옆 표시를 먼저 보세요.</b><br>"
+    "<span class='badge live'>🔄 기간 따라 바뀜</span> 위에서 기간을 바꾸면 이 숫자도 같이 바뀝니다.<br>"
+    "<span class='badge fixed'>📌 전체 기간 고정</span> 기간을 바꿔도 <b>안 바뀝니다</b>. "
+    "항상 전체 기간(리포트를 만든 기간) 기준입니다.</div>"
+)
+
+
+
+def _grade_gap_note(mine, yc) -> str:
+    """광산 품위 > 야드 품위 인 이유를 실제 수치로 설명한다 (사용자 질문, 2026-08-05).
+
+    광산에서 45%대가 나왔는데 야드에서 44%대가 나오는 것은 계산 오류가 아니다.
+    **야드에 쌓인 물량이 광산에서 캔 물량보다 훨씬 많고**, 그 차이분의 품위가 낮다.
+    물질수지로 그 '미기록 유입분'의 품위를 역산해 함께 보인다(값을 지어내지 않는다, §2-1).
+    """
+    if mine is None or yc is None or not len(mine) or not len(yc):
+        return ""
+
+    def wavg(df, col, w):
+        d = df[[col, w]].dropna()
+        d = d[d[w] > 0]
+        return float(np.average(d[col], weights=d[w])) if len(d) else float("nan")
+
+    parts = []
+    for ln in S.YARD_PAIR:
+        m, y = mine[mine["line"] == ln], yc[yc["line"] == ln]
+        if not len(m) or not len(y):
+            continue
+        mt, yt = float(m["tonnage"].sum()), float(y["tonnage"].sum())
+        mc, ycao = wavg(m, "cao", "tonnage"), wavg(y, "cao", "tonnage")
+        if not (mt > 0 and yt > mt) or mc != mc or ycao != ycao:
+            continue
+        xt = yt - mt
+        xc = (ycao * yt - mc * mt) / xt
+        parts.append(f"<b>{ln}</b>: 광산 {mc:.2f}%({mt:,.0f}톤) → 야드 {ycao:.2f}%({yt:,.0f}톤). "
+                     f"야드가 <b>{xt:,.0f}톤 더 많고</b>, 그 차이분의 품위는 <b>약 {xc:.1f}%</b>")
+    if not parts:
+        return ""
+    return ("<br><br><b>❓ 광산은 45%대인데 야드는 44%대입니다. 왜 그럴까요?</b> "
+            "<span class='badge fixed'>📌 전체 기간 고정</span><br>"
+            "계산이 틀린 게 아닙니다. <b>야드에 쌓인 양이 광산에서 캔 양보다 훨씬 많기 때문</b>입니다.<br>"
+            "물병에 비유하면 — 45도 술을 부었는데 병에 물이 미리 들어 있으면 도수가 내려가는 것과 같습니다. "
+            "그 '미리 들어 있던 것'의 품위를 계산으로 되짚으면:<br>"
+            + "<br>".join("&nbsp;&nbsp;· " + p for p in parts) +
+            "<br><b>두 라인이 서로 독립인데 둘 다 41%대로 같게 나옵니다</b> — 우연으로 보기 어렵습니다. "
+            "광산 기록에 잡히지 않은 <b>저품위 원석이 야드로 함께 들어오고 있다</b>는 뜻입니다. "
+            "<b>⚠️ 그 유입원이 무엇인지는 현장 확인이 필요합니다.</b>")
+
+
+
 def _verdict(mae, mae_persist, gain, tol) -> tuple[str, str]:
     """허용폭별 판정 문장 + 스타일. 실제 검증 수치에서만 생성한다 (§2-1).
 
@@ -383,6 +443,7 @@ def main(start=None, end=None):
 
     # ── 예측·벤치마크 ──
     pred_secs, bench_secs, ctrl_secs, metric_rows, reco_rows, kpi_rows = [], [], [], [], [], []
+    kpi_agg: dict = {}          # 라인별 [날짜, 시간수, 규격내 시간수] — 기간 재계산용
     pred_stats: dict[str, dict] = {}   # 라인 → 허용폭별 적중률·판정 (HTML 내 JS가 전환)
     skipped: list[str] = []
     for ln, ld in lines.items():
@@ -437,8 +498,14 @@ def main(start=None, end=None):
         cx, act = ys.index, ys.values
         fin = act[np.isfinite(act)]
         insp = float(np.mean((fin >= cfg.lo) & (fin <= cfg.hi)) * 100) if len(fin) else 0.0
-        kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td><td>{insp:.0f}%</td>"
-                        f"<td>{len(fin):,}시간</td></tr>")
+        kpi_rows.append(f"<tr><td>{ln}→{ld.alias}</td>"
+                        f"<td><b><span id='kpiRate-{ln}'>{insp:.0f}</span>%</b></td>"
+                        f"<td><span id='kpiHrs-{ln}'>{len(fin):,}</span>시간</td></tr>")
+        # 기간 재계산용 일별 집계 — [날짜, 시간수, 규격내 시간수]
+        _d = pd.DataFrame({"dt": cx, "v": act}).dropna()
+        _d["day"] = pd.to_datetime(_d["dt"]).dt.strftime("%Y-%m-%d")
+        _d["ok"] = ((_d["v"] >= cfg.lo) & (_d["v"] <= cfg.hi)).astype(int)
+        kpi_agg[ln] = [[k, int(len(g)), int(g["ok"].sum())] for k, g in _d.groupby("day")]
         ctrl_secs.append(("", V.control_chart(cx, act, cfg.lo, cfg.hi,
                           f"{ln} → {ld.alias} 관리도 (규격내 {insp:.0f}% · {len(fin):,}시간)")))
 
@@ -449,8 +516,12 @@ def main(start=None, end=None):
         f"원본 <code>{S.DATA_FILE}</code>({_n_sheets()}시트).</p>"
         "<table><tr><th>항목</th><th>값</th></tr>"
         f"<tr><td>품질 목표</td><td>CaO {S.TARGET.cao_mean}±{S.TARGET.tol}%</td></tr>"
-        f"<tr><td>야드 CNA(신설) 평균/표준편차</td><td>{ycna.mean():.2f} / {ycna.std():.2f}</td></tr>"
-        f"<tr><td>야드 45Q(기존) 평균/표준편차</td><td>{y45.mean():.2f} / {y45.std():.2f}</td></tr>"
+        f"<tr><td>야드 CNA(신설) 평균 / 들쭉날쭉 정도</td>"
+        f"<td><span id='ovNewMean'>{ycna.mean():.2f}</span> / "
+        f"<span id='ovNewStd'>{ycna.std():.2f}</span></td></tr>"
+        f"<tr><td>야드 45Q(기존) 평균 / 들쭉날쭉 정도</td>"
+        f"<td><span id='ovOldMean'>{y45.mean():.2f}</span> / "
+        f"<span id='ovOldStd'>{y45.std():.2f}</span></td></tr>"
         f"<tr><td>확정 예측모델</td><td>Ridge (선형, AR 피처)</td></tr>"
         "</table>"
         '<div class="ok"><b>핵심:</b> 평균은 목표에 근접, 과제는 <b>변동성(표준편차) 축소</b>. '
@@ -528,7 +599,10 @@ def main(start=None, end=None):
         "a.forEach(function(r){if(r[0]>=s&&r[0]<=e){n+=r[1];su+=r[2];ss+=r[3];}});"
         "var m=null,sd=null;if(n>0){m=su/n;sd=Math.sqrt(Math.max(0,ss/n-m*m));}res[p[1]]={m:m,sd:sd};"
         "var em=document.getElementById('sum'+p[1]+'Mean'),es=document.getElementById('sum'+p[1]+'Std');"
-        "if(em)em.innerText=(m==null?'-':m.toFixed(1));if(es)es.innerText=(sd==null?'-':sd.toFixed(1));});"
+        "if(em)em.innerText=(m==null?'-':m.toFixed(1));if(es)es.innerText=(sd==null?'-':sd.toFixed(1));"
+        # 개요 표에도 같은 값이 또 있다 — 함께 갱신하지 않으면 위아래가 어긋난다(실제 발생 버그)
+        "var om=document.getElementById('ov'+p[1]+'Mean'),os=document.getElementById('ov'+p[1]+'Std');"
+        "if(om)om.innerText=(m==null?'-':m.toFixed(2));if(os)os.innerText=(sd==null?'-':sd.toFixed(2));});"
         # 핵심 진단(규칙 기반): 기간별 최대 표준편차/목표(0.5) 비율로 문장 자동 생성
         "var dg=document.getElementById('sumDiag');if(dg){"
         "var sds=[res.New.sd,res.Old.sd].filter(function(x){return x!=null;});"
@@ -540,10 +614,30 @@ def main(start=None, end=None):
         "else{var meanTxt=nearMean?'평균은 목표(44.6)에 근접하나':'평균이 목표(44.6)와 다소 차이가 있으나';"
         "var v=(ratio<=2.0)?'<b>안정화 진행 필요</b>':'<b>변동성 축소(안정화)가 최우선 과제</b>';"
         "dg.innerHTML='<b>핵심 진단:</b> '+meanTxt+' 시점별 변동성(표준편차) 최대 ±'+mx.toFixed(1)+' — 목표(0.5)의 <b>약 '+ratio.toFixed(1)+'배</b> → '+v+'.';}}}"
-        "};</script>"
+        "};"
+        # ⭐️ 규격내 시간 비율(KPI)도 기간에 따라 다시 계산한다.
+        #    예전엔 생성 시점 값이 그대로 박혀 있어, 기간을 바꾸면 그래프만 바뀌고
+        #    비율은 그대로였다(사용자 발견 버그).
+        "window.KPIAGG=" + json.dumps(kpi_agg, ensure_ascii=False) + ";"
+        "window.recomputeKPI=function(s,e){s=s||'0000';e=e||'9999';"
+        "Object.keys(window.KPIAGG||{}).forEach(function(ln){"
+        "  var a=window.KPIAGG[ln]||[],n=0,ok=0;"
+        "  a.forEach(function(r){if(r[0]>=s&&r[0]<=e){n+=r[1];ok+=r[2];}});"
+        "  var er=document.getElementById('kpiRate-'+ln),eh=document.getElementById('kpiHrs-'+ln);"
+        "  if(er)er.innerText=(n>0?Math.round(ok/n*100):'-');"
+        "  if(eh)eh.innerText=n.toLocaleString();"
+        # 관리도 제목에도 같은 값이 들어 있으므로 함께 갱신한다
+        "  document.querySelectorAll('.plotly-graph-div').forEach(function(g){"
+        "    var t=(g.layout&&g.layout.title&&g.layout.title.text)||'';"
+        "    if(t.indexOf('관리도')<0||t.indexOf(ln)!==0){return;}"
+        "    var base=t.split(' 관리도')[0];"
+        "    if(window.Plotly)Plotly.relayout(g,{'title.text':base+' 관리도 (규격내 '"
+        "      +(n>0?Math.round(ok/n*100):'-')+'% · '+n.toLocaleString()+'시간)'});"
+        "  });"
+        "});};</script>"
     )
     exec_summary = (
-        '<div class="exec">'
+        BADGE_LEGEND + '<div class="exec">'
         f'<h2 style="border:none;margin:10px 0 4px">📌 경영 요약</h2>'
         f'<p style="font-size:1.05rem"><b>현재 상태: {ov_icon} {ov_label}</b> &nbsp;({status_line})</p>'
         f'<p style="color:#245;background:#eef5ff;padding:6px 10px;border-radius:4px;font-size:.86rem;margin:6px 0">'
@@ -568,44 +662,44 @@ def main(start=None, end=None):
     guide = (
         '<h2>이 대시보드 읽는 법</h2>'
         '<ul>'
-        '<li><b>🌊 추적 흐름</b> — 캔 원석이 어느 라인·야드로, 언제 흘렀는지(물류·품위)</li>'
-        '<li><b>📈 변경일자별 추이</b> — 시간에 따른 품위 변화와 변동성(표준편차)</li>'
-        '<li><b>🤖 예측·모델</b> — 야드 품위를 얼마나 정확히 미리 맞히는지</li>'
-        '<li><b>📊 관리도</b> — 규격 이탈 여부를 감시(품질관리 표준 차트)</li>'
-        '<li><b>🚨 모니터·경보</b> — 지금 상태를 신호등으로 즉시 확인</li>'
-        '<li><b>⚗️ 배합 최적화</b> — 향후 목표품위 자동 배합(로드맵)</li>'
+        '<li><b>🌊 어디서 왔나 (추적)</b> — 캔 돌이 <b>어느 길로 어디에</b> 갔는지</li>'
+        '<li><b>📈 시간에 따른 변화</b> — 품질이 <b>날짜가 갈수록 어떻게</b> 변했는지</li>'
+        '<li><b>🤖 미리 맞히기 (예측)</b> — 앞으로 나올 품질을 <b>얼마나 잘 맞히는지</b></li>'
+        '<li><b>📊 합격·불합격 감시</b> — 품질이 <b>합격 범위 안에 있었는지</b></li>'
+        '<li><b>🚨 지금 상태·경보</b> — <b>지금 이 순간</b> 괜찮은지 신호등으로</li>'
+        '<li><b>⚗️ 섞기 계획 (앞으로)</b> — 목표 품질을 맞추려면 <b>어떻게 섞을지</b></li>'
         '</ul>'
         '<p style="color:#667;font-size:.9rem">※ 각 그래프 위 날짜창·버튼으로 원하는 기간만 확대해 볼 수 있습니다.</p>'
     )
     glossary = (
         '<h2>용어 (간단 풀이)</h2>'
         '<dl class="glossary">'
-        '<dt>표준편차</dt><dd>값들이 평균에서 얼마나 흩어졌는지. 작을수록 일정(안정). 목표 0.5.</dd>'
-        '<dt>예측 오차(MAE)</dt><dd>예측이 실제와 평균 몇 %p 어긋나는지. 작을수록 정확.</dd>'
-        '<dt>관리도(UCL/LCL)</dt><dd>공정이 정상 범위(관리 상·하한) 안에 있는지 보는 품질관리 차트.</dd>'
-        '<dt>Sankey(흐름도)</dt><dd>물량·흐름의 크기를 띠 굵기로 보여주는 그림.</dd>'
-        '<dt>예측 모델(Ridge)</dt><dd>여러 기법 비교 후 채택한, 데이터가 적을 때 가장 안정적인 예측 방식.</dd>'
+        '<dt>표준편차</dt><dd>숫자들이 <b>얼마나 들쭉날쭉한지</b>. 작을수록 일정해서 좋습니다. 목표는 0.5입니다.</dd>'
+        '<dt>예측 오차(MAE)</dt><dd>미리 맞힌 값이 <b>실제와 평균 얼마나 빗나갔는지</b>. 작을수록 잘 맞힌 것입니다.</dd>'
+        '<dt>관리도(UCL/LCL)</dt><dd>품질이 <b>정상 범위 안에 있는지</b> 한눈에 보는 그림입니다. 선 밖으로 나가면 이상 신호.</dd>'
+        '<dt>Sankey(흐름도)</dt><dd><b>얼마나 많이 흘렀는지를 띠 굵기</b>로 보여주는 그림. 굵을수록 많이 흘렀습니다.</dd>'
+        '<dt>예측 모델(Ridge)</dt><dd>여러 방법을 겨뤄 본 뒤 고른 <b>가장 안정적인 예측 방법</b>입니다.</dd>'
         '</dl>'
     )
 
     tabs = [
-        {"name": "📋 개요", "sections": [
+        {"name": "📋 한눈에 보기", "sections": [
             ("", exec_summary), ("", guide), ("", glossary),
             ("프로젝트 개요 & 세부 지표", overview)]},
-        {"name": "🌊 추적 흐름", "sections": [
-            ("특정 야드변경 구간만 보기",
+        {"name": "🌊 어디서 왔나 (추적)", "sections": [
+            ("특정 야드변경 구간만 보기" + LIVE,
              cap("아래에서 <b>야드변경 구간</b>을 고르면 두 Sankey가 <b>그 라인 · 그 구간만</b>으로 다시 계산됩니다. "
                  "데이터는 라인별로 구분되어 있으므로 <b>다른 라인의 흐름은 제외</b>됩니다(제목에 '○○ 라인만' 표시).<br>"
                  "<b>구간은 라인별입니다</b> — 기존(9회)과 신설(24회)은 변경 시점이 거의 겹치지 않아 "
                  "'두 라인 공통의 야드변경 기간'은 존재하지 않습니다.")
              + _seg_selector(segments)),
-            ("야드 변경 타임라인 (언제 어느 야드로) — CaO/MgO 버튼",
+            ("야드 변경 타임라인 (언제 어느 야드로) — CaO/MgO 버튼" + LIVE,
              cap("각 라인이 <b>언제 어느 야드(Y1/Y2)</b>를 썼는지와 그때 품위. 막대 색이 진할수록 CaO 높음(우측 범례). 상단 날짜창·버튼으로 기간 확대.")),
             ("", V.yardchange_gantt(yc, "CaO")),
-            ("야드변경 기반 Sankey (라인→야드)",
+            ("야드변경 기반 Sankey (라인→야드)" + LIVE,
              cap("라인별로 두 야드에 실린 <b>물량(띠 굵기)</b>과 <b>평균 품위(색)</b>. CaO/MgO 버튼으로 성분 전환. <b>상단 기간을 적용하면 그 기간 기준으로 다시 계산</b>되며 제목에 기간이 표시됩니다.")),
             ("", V.build_yardchange_sankey(yc, "CaO")),
-            ("물류 개요 Sankey (광산→OSP→야드)",
+            ("물류 개요 Sankey (광산→OSP→야드)" + LIVE,
              cap("광산(49Q·47Q)에서 캔 원석이 <b>어느 라인·야드로 얼마나</b> 흘렀는지 한눈에. 굵을수록 물량 많음. "
                  "<b>상단 기간·구간에 따라 재계산</b>됩니다(제목에 표시).<br>"
                  "<b>⚠️ 좌우 물량 합이 일치하지 않는 것이 정상입니다.</b> 왼쪽은 광산에서 OSP로 <b>적재한 양</b>, "
@@ -613,9 +707,10 @@ def main(start=None, end=None):
                  "그 사이 <b>OSP가 재고(버퍼)</b> 역할을 하므로 차이가 곧 <b>재고 증감</b>입니다."
                  + _balance_note(mine, osp_exp) +
                  "<br>ℹ️ 광산 물량은 <b>채굴 교대 시각</b>(1차 08~16 · 2차 16~24 · 3차 00~08의 중점)과 "
-                 "47Q의 <b>실측 시작·종료 시각</b>으로 시간축에 배치됩니다.")),
+                 "47Q의 <b>실측 시작·종료 시각</b>으로 시간축에 배치됩니다."
+                 + _grade_gap_note(mine, yc))),
             ("", V.build_tracking_sankey(mine, osp_exp, yards)),
-            ("OSP 재고 증감 추이 (적재 − 인출 누적)",
+            ("OSP 재고 증감 추이 (적재 − 인출 누적)" + FIXED,
              cap("위 Sankey 의 좌우 차이가 <b>시간에 따라 어떻게 쌓였는지</b>. "
                  "<b>선이 내려가면 쓴 양이 들어온 양보다 많아 재고가 줄고 있다는 뜻</b>이고, "
                  "올라가면 재고가 늘고 있다는 뜻입니다. "
@@ -632,7 +727,7 @@ def main(start=None, end=None):
                  + _stock_gap_note(stock_p, mine, osp_exp)
                  + _calib_note(calib))),
             ("", V.stock_trend(stock_p, mine, osp_exp, calibrations=calib)),
-            ("인출 벨트스케일 지시 배율 추이 (교정 시점 판단)",
+            ("인출 벨트스케일 지시 배율 추이 (교정 시점 판단)" + FIXED,
              cap("인출량은 <b>벨트스케일</b>로 계량합니다(사용자 확인). 벨트스케일 오차는 "
                  "<b>통과 물량에 비례</b>하므로 배율 β 로 나타내는 것이 물리적으로 맞습니다.<br>"
                  "<b>β = 실제 ÷ 계량기 지시값</b> — <b>1.0이면 정확</b>, 1.0보다 낮으면 "
@@ -641,7 +736,7 @@ def main(start=None, end=None):
                  "노이즈로 설명되지 않습니다."
                  + _drift_note(calib_win))),
             ("", V.calibration_drift(calib_win)),
-            ("수항(사일로) 재고 — 어디까지 알 수 있나",
+            ("수항(사일로) 재고 — 어디까지 알 수 있나" + FIXED,
              cap("광산 채굴분이 OSP 로 가는 길은 둘입니다 — <b>수항(사일로, 1만톤)→G/C</b> 또는 "
                  "<b>H/C 직송</b>. 동시 가동이라도 <b>OSP 로 가는 벨트가 1개</b>라 거기서 만나 "
                  "적치되며, 이것이 동시 가동 능력이 합산되지 않는 이유입니다.<br>"
@@ -649,26 +744,32 @@ def main(start=None, end=None):
                  + _surge_note(surge_bal, surge_cyc))),
             ("", V.surge_timeline(surge_ev, surge_cyc)),
         ]},
-        {"name": "📈 변경일자별 추이", "sections": [
-            ("변경일자별 야드 CaO·MgO 추이",
-             cap("야드 변경 시점마다 <b>CaO(실선·왼쪽축)·MgO(점선·오른쪽축)</b>가 어떻게 움직였는지. 초록 띠=목표 규격, 마커 클수록 물량 많음.")),
+        {"name": "📈 시간에 따른 변화", "sections": [
+            ("야드를 바꿀 때마다 품위가 어떻게 변했나" + FIXED,
+             cap("야드를 바꿀 때마다 <b>CaO(실선·왼쪽 눈금)</b> 와 <b>MgO(점선·오른쪽 눈금)</b> 가 "
+                 "어떻게 움직였는지 보여줍니다.<br>초록 띠 안에 들어와야 합격이고, "
+                 "<b>동그라미가 클수록 그때 실은 물량이 많았다</b>는 뜻입니다.")),
             ("", V.yardchange_trend(yc)),
-            ("야드별 표준편차 (변경데이터)",
-             cap("<b>품위가 얼마나 들쭉날쭉한지</b>(표준편차, 막대 낮을수록 안정). 초록 점선=목표 0.5.")),
+            ("야드별 들쭉날쭉 정도" + FIXED,
+             cap("품위가 <b>얼마나 들쭉날쭉한지</b>를 보는 숫자입니다(표준편차). "
+                 "<b>막대가 낮을수록 일정하고 좋습니다.</b> 초록 점선(0.5)이 목표선입니다.")),
             ("", V.yardchange_std_summary(yc, "yard")),
-            ("라인별 표준편차 (변경데이터)",
-             cap("위와 같되 <b>라인(기존/신설) 단위</b>로 묶어 본 변동성.")),
+            ("라인별 들쭉날쭉 정도" + FIXED,
+             cap("위와 같은 그림인데, 야드가 아니라 <b>라인(기존/신설) 단위</b>로 묶어 본 것입니다.")),
             ("", V.yardchange_std_summary(yc, "line")),
-            ("라인별 표준편차 (연속 야드측정 CNA/45Q)",
-             cap("<b>실시간 분석기 실측</b> 기준 변동성 — 대표값(위)보다 실제 변동이 훨씬 큼(목표 0.5와 큰 격차). <b>이 격차 축소가 핵심 과제.</b>")),
+            ("라인별 들쭉날쭉 정도 — 실시간 분석기 실측" + FIXED,
+             cap("위 두 그림은 야드를 바꿀 때 <b>한 번씩 적은 대표값</b> 기준이고, "
+                 "이 그림은 <b>분석기가 2분마다 잰 실제 값</b> 기준입니다.<br>"
+                 "<b>실제로 재보니 훨씬 더 들쭉날쭉합니다</b>(목표 0.5보다 한참 큼). "
+                 "<b>이 들쭉날쭉함을 줄이는 것이 이 프로젝트의 가장 큰 숙제입니다.</b>")),
             ("", V.continuous_std_summary(yards)),
             ("변경일자별 상세", "<table><tr><th>변경일시</th><th>라인</th><th>야드</th><th>CaO</th><th>MgO</th><th>야드물량</th></tr>"
              + "".join(f"<tr><td>{r.datetime:%Y/%m/%d %H:%M}</td><td>{r.line}</td><td>{r.yard}</td>"
                       f"<td>{r.cao:.2f}</td><td>{r.mgo:.2f}</td><td>{r.tonnage:,.0f}</td></tr>"
                       for r in yc.sort_values('datetime').itertuples()) + "</table>"),
         ]},
-        {"name": "🤖 예측·모델", "sections": [
-            ("이 예측, 실제로 쓸 만한가? (라인별 성적)",
+        {"name": "🤖 미리 맞히기 (예측)", "sections": [
+            ("이 예측, 실제로 쓸 만한가? (라인별 성적)" + MODEL,
              cap("<b>질문:</b> 1시간 뒤 야드 CaO를 미리 맞출 수 있는가?<br>"
                  "<b>방법:</b> 데이터를 시간순으로 놓고 <b>앞 70%만 학습</b>시킨 뒤, "
                  "<b>모델이 못 본 뒤 30% 구간</b>에서 예측값과 실제 측정값을 비교했습니다.<br>"
@@ -690,19 +791,19 @@ def main(start=None, end=None):
              + "".join(reco_rows) + "</table>"),
             *_expand(bench_secs, "벤치마크"),
         ]},
-        {"name": "📊 관리도", "sections": [
-            ("규격내 시간 비율 (KPI)",
-             cap("품위가 <b>규격(44.1~45.1%) 안에 머문 시간 비율</b>. 높을수록 안정.<br>"
-                 "<b>리포트 기간 전체</b>의 시간별 야드 실측 기준입니다(상단 기간을 바꾸면 다시 생성해야 반영).")
+        {"name": "📊 합격·불합격 감시", "sections": [
+            ("품질 합격 시간 비율" + LIVE,
+             cap("품위가 <b>규격(44.1~45.1%) 안에 머문 시간 비율</b>입니다. 100%에 가까울수록 좋습니다.<br>"
+                 "시간별 야드 실측 기준이며, <b>상단에서 기간을 바꾸면 이 표와 아래 그래프가 함께 다시 계산</b>됩니다.")
              + "<table><tr><th>라인→야드</th><th>규격내 비율</th><th>집계 시간</th></tr>"
              + "".join(kpi_rows) + "</table>"),
             *_expand(ctrl_secs, "관리도"),
         ]},
-        {"name": "🚨 모니터·경보", "sections": [
-            ("라인별 실시간 상태",
+        {"name": "🚨 지금 상태·경보", "sections": [
+            ("라인별 지금 상태" + NOW,
              cap("현재 상태를 <b>신호등</b>으로. 🔴=규격 이탈/지속, 🟡=주의, 🟢=정상, <b>⏸️=가동 중지·데이터 갱신 중단</b>. 각 라인의 <b>📅 기준 시각</b>을 함께 표기하므로 언제 기준 상태인지 바로 알 수 있습니다.")
              + "".join(cards))]},
-        {"name": "⚗️ 배합 최적화", "sections": [
+        {"name": "⚗️ 섞기 계획 (앞으로)", "sections": [
             ("배합 최적화 (향후 로드맵)",
              cap("목표 품위(44.6%)를 맞추려면 <b>각 구역에서 몇 톤을 섞을지</b> 역산. 지금은 방향성 가이드, 데이터 축적 시 정밀 처방.")
              + f"<pre>{demo.summary()}</pre>")]},

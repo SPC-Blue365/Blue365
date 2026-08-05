@@ -958,6 +958,12 @@ font-weight:700;color:#12395c;background:#fff;cursor:pointer}}
 .kpirow{{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}}
 .kpi{{flex:1;min-width:150px;background:#f7f9fb;border:1px solid #e2e8ee;border-radius:8px;padding:10px 14px}}
 .kpi .v{{font-size:1.5rem;font-weight:800;color:#12395c}}.kpi .l{{font-size:.82rem;color:#667}}
+.badge{{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;
+margin-left:8px;vertical-align:middle;white-space:nowrap}}
+.badge.live{{background:#e8f5e9;color:#1d7a1d;border:1px solid #9ccc9c}}
+.badge.fixed{{background:#f0f2f5;color:#5a6472;border:1px solid #c8cfd8}}
+.legendbar{{background:#eef5ff;border:1px solid #cfe0f2;border-radius:8px;padding:9px 14px;
+margin:10px 0 16px;font-size:.86rem;line-height:1.7}}
 .glossary dt{{font-weight:700;color:#12395c;margin-top:8px}}.glossary dd{{margin:0 0 2px 12px;color:#445;font-size:.92rem}}
 pre{{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto}}code{{background:#f4f4f4;padding:1px 5px;border-radius:3px}}</style></head>
 <body><header><h1>{title}</h1></header>
@@ -1061,12 +1067,14 @@ function applyRange(){{
   if(!s||!e){{return;}}
   _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.range':[s+' 00:00:00', e+' 23:59:59']}});}});
   if(window.recomputeSummary){{window.recomputeSummary(s,e);}}
+  if(window.recomputeKPI){{window.recomputeKPI(s,e);}}
   recomputeSankeys(s,e);
 }}
 function resetRange(){{
   document.getElementById('drS').value=DR_MIN; document.getElementById('drE').value=DR_MAX;
   _timeGraphs().forEach(function(g){{Plotly.relayout(g,{{'xaxis.autorange':true}});}});
   if(window.recomputeSummary){{window.recomputeSummary(DR_MIN,DR_MAX);}}
+  if(window.recomputeKPI){{window.recomputeKPI(DR_MIN,DR_MAX);}}
   recomputeSankeys(DR_MIN,DR_MAX);
 }}
 function showTab(i){{
@@ -1088,6 +1096,7 @@ function _hookSankeyToggle(){{
 window.addEventListener('load',function(){{
   showTab(0);
   if(window.recomputeSummary){{recomputeSummary(DR_MIN,DR_MAX);}}
+  if(window.recomputeKPI){{recomputeKPI(DR_MIN,DR_MAX);}}
   _hookSankeyToggle();
 }});
 </script></body></html>"""
