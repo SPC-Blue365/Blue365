@@ -257,10 +257,9 @@ def stock_trend(stock, mine, osp_exp, title: str = "", calibrations: dict | None
             showlegend=(i == 1), mode="lines", line=dict(color=color, width=2.2),
             hovertemplate="%{x|%m/%d %H시}<br>실사 재고 %{y:,.0f}톤<extra></extra>"),
             row=i, col=1)
-        fig.add_annotation(x=g["datetime"].iloc[-1], y=g["stock_ton"].iloc[-1],
-                           text=f"실사 {g['stock_ton'].iloc[-1]:,.0f}t", showarrow=False,
-                           xanchor="left", xshift=6, font=dict(color=color, size=11),
-                           row=i, col=1)
+        # 끝점 라벨은 두 곡선(실사·흐름)의 y 가 가까우면 겹친다 → 아래에서 한꺼번에 배치한다.
+        end_labels = [dict(x=g["datetime"].iloc[-1], y=float(g["stock_ton"].iloc[-1]),
+                           text=f"실사 {g['stock_ton'].iloc[-1]:,.0f}t", color=color)]
 
         # 흐름 계산: **흐름 데이터가 시작되는 시점의 실사값**을 출발점으로 (적재−인출) 누적.
         # (전체 실사의 첫 값에 붙이면 2년 전 값에서 출발해 선이 엉뚱한 곳으로 간다)
@@ -286,9 +285,8 @@ def stock_trend(stock, mine, osp_exp, title: str = "", calibrations: dict | None
                     line=dict(color="#8c8c89", width=2.0, dash="dash"),
                     hovertemplate="%{x|%m/%d}<br>보정 흐름 %{y:,.0f}톤<extra></extra>"),
                     row=i, col=1)
-                fig.add_annotation(x=idx[-1], y=ycal[-1], text=f"보정 {ycal[-1]:,.0f}t",
-                                   showarrow=False, xanchor="left", xshift=6,
-                                   font=dict(color="#6b6b68", size=11), row=i, col=1)
+                end_labels.append(dict(x=idx[-1], y=float(ycal[-1]),
+                                       text=f"보정 {ycal[-1]:,.0f}t", color="#6b6b68"))
                 y = ycal      # 0선 경고 판단은 보정 후 기준
             else:
                 fig.add_trace(go.Scatter(
@@ -297,11 +295,21 @@ def stock_trend(stock, mine, osp_exp, title: str = "", calibrations: dict | None
                     line=dict(color="#8c8c89", width=1.8, dash="dash"),
                     hovertemplate="%{x|%m/%d}<br>흐름 계산 %{y:,.0f}톤<extra></extra>"),
                     row=i, col=1)
-                fig.add_annotation(x=idx[-1], y=y[-1], text=f"계산 {y[-1]:,.0f}t",
-                                   showarrow=False, xanchor="left", xshift=6,
-                                   font=dict(color="#6b6b68", size=11), row=i, col=1)
+                end_labels.append(dict(x=idx[-1], y=float(y[-1]),
+                                       text=f"계산 {y[-1]:,.0f}t", color="#6b6b68"))
             if np.nanmin(y) < 0:
                 fig.add_hline(y=0, line=dict(color="#d03b3b", width=1, dash="dot"), row=i, col=1)
+        # 끝점 라벨 배치 — 두 값이 가까우면 픽셀 단위로 벌려 글자가 겹치지 않게 한다.
+        end_labels.sort(key=lambda d: -d["y"])
+        span = max(float(np.nanmax(g["stock_ton"])) - float(np.nanmin(g["stock_ton"])), 1.0)
+        shifts = [0] * len(end_labels)
+        if len(end_labels) == 2 and abs(end_labels[0]["y"] - end_labels[1]["y"]) < span * 0.12:
+            shifts = [9, -9]            # 위 라벨은 위로, 아래 라벨은 아래로
+        for lb, sh in zip(end_labels, shifts):
+            fig.add_annotation(x=lb["x"], y=lb["y"], text=lb["text"], showarrow=False,
+                               xanchor="left", xshift=6, yshift=sh,
+                               font=dict(color=lb["color"], size=11), row=i, col=1)
+
         fig.update_yaxes(title_text="재고 (톤)", row=i, col=1, tickformat=",",
                          showgrid=True, gridcolor="#eceff2", zeroline=False)
 

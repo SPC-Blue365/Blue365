@@ -11,6 +11,8 @@ data_v1.xlsx 각 시트를 매칭 가능한 정돈된 형태로 변환한다.
 
 from __future__ import annotations
 
+import warnings
+
 import re
 from typing import Optional
 
@@ -127,6 +129,24 @@ def _combine(day, t):
     return pd.NaT
 
 
+def split_line_label(raw) -> list[str]:
+    """복합 `공정구분` 라벨 → 실제 라인 리스트 (§S.LINE_SPLIT_DELIM 규칙).
+
+    "기존" -> ["기존"] · "운휴/기존" -> ["기존"] · "기존/신설" -> ["기존","신설"]
+    "운휴" -> []  (가동 안 함 — 실물량 없음)
+    알 수 없는 라벨은 그대로 돌려보내 검증 게이트가 잡도록 둔다(조용히 버리지 않는다).
+    """
+    if raw is None or (isinstance(raw, float) and np.isnan(raw)) or pd.isna(raw):
+        return []
+    parts = [p.strip() for p in str(raw).split(S.LINE_SPLIT_DELIM) if p.strip()]
+    real = [p for p in parts if p != S.LINE_IDLE]
+    if not real:
+        return []                      # 전부 운휴
+    known = [p for p in real if p in (S.LINE_OLD, S.LINE_NEW)]
+    return known if known else real    # 미상 라벨은 남겨 검증 게이트가 보고하게 한다
+
+
+
 def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
     """49Q XRF: 교대 단위 → (일자, 라인, 구역, CaO, MgO, 톤) 구역 전개 long."""
     rows = []
@@ -140,12 +160,16 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
             if pd.isna(tonnage) or tonnage <= 0:
                 continue          # 운휴 등 실물량 없는 행만 건너뛴다
             zones = [np.nan]
-        per_ton = tonnage / len(zones) if pd.notna(tonnage) else np.nan
+        lines = split_line_label(r.get("공정구분"))
+        if not lines:                   # 전부 운휴 → 실물량 없음
+            continue
+        per_ton = tonnage / (len(zones) * len(lines)) if pd.notna(tonnage) else np.nan
         for z in zones:
+          for _ln in lines:
             rows.append(
                 dict(
                     date=pd.to_datetime(r.get("채굴일자"), errors="coerce"),
-                    line=str(r.get("공정구분")),
+                    line=_ln,
                     zone=z,
                     cao=pd.to_numeric(r.get("CaO품위"), errors="coerce"),
                     mgo=pd.to_numeric(r.get("MgO품위"), errors="coerce"),
@@ -159,22 +183,67 @@ def clean_mine_49Q(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def apply_line_overrides(df: pd.DataFrame, raw: pd.DataFrame, source: str) -> pd.DataFrame:
+    """사용자 확정 라인 귀속 정정을 적용한다 (`S.MINE_LINE_OVERRIDES`).
+
+    원본 시트의 `공정구분` 이 실사 재고와 배치되어 사용자가 바로잡은 건만 담긴다.
+    정정은 **라인 라벨만** 바꾼다 — 물량·품위·시각은 원본 그대로다.
+
+    ⚠️ 규칙이 한 건도 맞지 않으면(원본이 바뀌었다는 뜻) 조용히 넘어가지 않고 경고한다.
+       원본이 현장에서 바로잡히면 `S.MINE_LINE_OVERRIDES` 를 비워야 한다.
+    """
+    rules = [r for r in getattr(S, "MINE_LINE_OVERRIDES", []) if r["source"] == source]
+    if not rules or df.empty:
+        return df
+    key = (pd.to_datetime(raw.get("채굴일자"), errors="coerce").dt.strftime("%Y-%m-%d")
+           + "|" + _hhmm(raw.get("시작시간")) + "|" + _hhmm(raw.get("종료시간")))
+    applied = 0
+    for r in rules:
+        want = f"{r['date']}|{r['start']}|{r['end']}"
+        hit = key[key == want].index
+        if len(hit) == 0:
+            warnings.warn(
+                f"[라인 귀속 정정] {source} {want} 에 해당하는 원본 행이 없습니다 — "
+                "원본이 갱신되었다면 config/schema.MINE_LINE_OVERRIDES 를 재검토하세요.",
+                stacklevel=2)
+            continue
+        m = df["_raw_idx"].isin(hit)
+        applied += int(m.sum())
+        df.loc[m, "line"] = r["line"]
+    df.attrs["line_overrides_applied"] = applied
+    return df
+
+
+def _hhmm(series) -> pd.Series:
+    """시각 컬럼을 'HH:MM' 문자열로 (정정 규칙 대조용)."""
+    t = pd.to_timedelta(pd.Series(series).astype(str), errors="coerce")
+    h = (t.dt.total_seconds() // 3600).astype("Int64")
+    m = ((t.dt.total_seconds() % 3600) // 60).astype("Int64")
+    return h.astype(str).str.zfill(2) + ":" + m.astype(str).str.zfill(2)
+
+
+
 def clean_mine_47Q(df: pd.DataFrame) -> pd.DataFrame:
     """47Q 감마레이: 구간(시작~종료) 단위 → 구역 전개 long."""
     rows = []
-    for _, r in df.iterrows():
+    for idx, r in df.iterrows():
         zones = parse_zone_codes(r.get("OSP적재구역"))
         tonnage = pd.to_numeric(r.get("이송물량(톤)"), errors="coerce")
         if not zones:                       # 49Q 와 동일 규칙 (물량 보존)
             if pd.isna(tonnage) or tonnage <= 0:
                 continue
             zones = [np.nan]
-        per_ton = tonnage / len(zones) if pd.notna(tonnage) else np.nan
+        lines = split_line_label(r.get("공정구분"))
+        if not lines:
+            continue
+        per_ton = tonnage / (len(zones) * len(lines)) if pd.notna(tonnage) else np.nan
         for z in zones:
+          for _ln in lines:
             rows.append(
                 dict(
+                    _raw_idx=idx,
                     date=pd.to_datetime(r.get("채굴일자"), errors="coerce"),
-                    line=str(r.get("공정구분")),
+                    line=_ln,
                     zone=z,
                     cao=pd.to_numeric(r.get("CaO품위"), errors="coerce"),
                     mgo=pd.to_numeric(r.get("MgO품위"), errors="coerce"),
@@ -185,7 +254,8 @@ def clean_mine_47Q(df: pd.DataFrame) -> pd.DataFrame:
                     datetime=_time_midpoint(r.get("채굴일자"), r.get("시작시간"), r.get("종료시간")),
                 )
             )
-    return pd.DataFrame(rows)
+    out = apply_line_overrides(pd.DataFrame(rows), df, "47Q")
+    return out.drop(columns=["_raw_idx"], errors="ignore")
 
 
 def build_zone_grade_table(mine_long: pd.DataFrame) -> pd.DataFrame:

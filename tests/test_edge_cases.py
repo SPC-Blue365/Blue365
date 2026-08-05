@@ -669,3 +669,114 @@ def test_zone_codes_split_on_comma():
     assert parse_zone_codes("50/55") == [50.0, 55.0]
     assert parse_zone_codes("100-0") == [100.0, 0.0]
     assert parse_zone_codes("운휴") == []
+
+
+def _ovr_raw():
+    """정정 규칙 대조용 최소 원본 프레임 (시각·라인만 다루므로 품위는 임의값 아님 — None)."""
+    import pandas as pd
+    return pd.DataFrame([
+        # 규칙에 걸리는 행 / 걸리지 않는 행을 함께 둔다
+        {"채굴일자": pd.Timestamp("2026-07-27"), "시작시간": "08:40:00", "종료시간": "16:00:00",
+         "OSP적재구역": "100", "공정구분": "기존", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 6379.0},
+        {"채굴일자": pd.Timestamp("2026-07-27"), "시작시간": "16:00:00", "종료시간": "18:00:00",
+         "OSP적재구역": "100", "공정구분": "신설", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 1017.6},
+    ])
+
+
+def test_line_override_flips_only_the_listed_block():
+    """사용자 확정 라인 귀속 정정은 해당 블록의 라인만 바꾸고 물량은 건드리지 않는다."""
+    from config import schema as S
+    from src.data.clean import clean_mine_47Q
+
+    raw = _ovr_raw()
+    out = clean_mine_47Q(raw)
+    before = float(raw["이송물량(톤)"].sum())
+
+    assert abs(float(out["tonnage"].sum()) - before) < 1e-6, "정정이 물량을 바꾸면 안 된다"
+    got = out.groupby("line")["tonnage"].sum().to_dict()
+    # 07/27 08:40~16:00 은 규칙에 따라 기존 → 신설 로 바뀐다
+    assert got.get(S.LINE_OLD, 0.0) == 0.0
+    assert abs(got[S.LINE_NEW] - before) < 1e-6
+    assert out.attrs.get("line_overrides_applied") == 1
+
+
+def test_line_override_warns_when_rule_matches_nothing():
+    """원본이 바뀌어 규칙이 안 맞으면 조용히 넘어가지 않고 경고한다 (§2-1)."""
+    import warnings as _w
+
+    import pandas as pd
+
+    from src.data.clean import clean_mine_47Q
+
+    raw = pd.DataFrame([{  # 규칙 날짜와 무관한 행만 담는다
+        "채굴일자": pd.Timestamp("2026-06-01"), "시작시간": "08:00:00", "종료시간": "16:00:00",
+        "OSP적재구역": "50", "공정구분": "신설", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 100.0,
+    }])
+    with _w.catch_warnings(record=True) as rec:
+        _w.simplefilter("always")
+        out = clean_mine_47Q(raw)
+    msgs = [str(x.message) for x in rec if "라인 귀속 정정" in str(x.message)]
+    assert msgs, "규칙이 하나도 안 맞으면 반드시 경고해야 한다"
+    assert out.attrs.get("line_overrides_applied", 0) == 0
+
+
+def test_line_override_does_not_touch_49Q():
+    """정정은 47Q 에만 적용된다 — 49Q 는 원본 라인을 그대로 유지."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import clean_mine_49Q
+
+    raw = pd.DataFrame([{
+        "채굴일자": pd.Timestamp("2026-07-27"), "채굴시간(교대)": "1차",
+        "OSP적재구역": "50", "공정구분": "기존", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 500.0,
+    }])
+    out = clean_mine_49Q(raw)
+    assert out["line"].tolist() == [S.LINE_OLD]
+
+
+def test_composite_line_labels_are_split_not_dropped():
+    """복합 `공정구분`("운휴/기존","기존/신설")이 라인별 집계에서 빠지면 안 된다.
+
+    2026-08-05 실측: 이 결함으로 7행 21,065톤(광산 총량 1.7%)이 조용히 사라지고 있었다.
+    """
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import clean_mine_49Q, split_line_label
+
+    assert split_line_label("기존") == [S.LINE_OLD]
+    assert split_line_label("운휴/기존") == [S.LINE_OLD]      # 운휴는 실물량 없음 → 기존으로
+    assert split_line_label("운휴/신설") == [S.LINE_NEW]
+    assert split_line_label("기존/신설") == [S.LINE_OLD, S.LINE_NEW]   # 균등 배분 대상
+    assert split_line_label("운휴") == []                      # 전부 운휴 → 행 제외
+    assert split_line_label(None) == []
+
+    raw = pd.DataFrame([
+        {"채굴일자": pd.Timestamp("2026-07-02"), "채굴시간(교대)": "2차", "OSP적재구역": "45/70",
+         "공정구분": "기존/신설", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 5762.0},
+        {"채굴일자": pd.Timestamp("2026-06-25"), "채굴시간(교대)": "1차", "OSP적재구역": "55",
+         "공정구분": "운휴/기존", "CaO품위": None, "MgO품위": None, "이송물량(톤)": 1891.0},
+    ])
+    out = clean_mine_49Q(raw)
+    assert set(out["line"]) <= {S.LINE_OLD, S.LINE_NEW}, "미상 라벨이 남으면 집계에서 빠진다"
+    assert abs(float(out["tonnage"].sum()) - 7653.0) < 1e-6, "물량 총합이 보존돼야 한다"
+    by = out.groupby("line")["tonnage"].sum()
+    assert abs(by[S.LINE_OLD] - (5762.0 / 2 + 1891.0)) < 1e-6   # 균등배분 + 운휴/기존 전량
+    assert abs(by[S.LINE_NEW] - 5762.0 / 2) < 1e-6
+
+
+def test_validation_flags_unknown_line_label():
+    """알 수 없는 라인 라벨은 물량과 함께 ERROR 로 보고된다 (조용히 빠지지 않게)."""
+    import pandas as pd
+
+    from src.data import validation as V
+
+    mine = pd.DataFrame({
+        "date": pd.to_datetime(["2026-07-01"]), "line": ["미상라인"], "zone": [50.0],
+        "cao": [45.0], "tonnage": [1234.0],
+    })
+    rep = V.validate_pipeline(mine, None, {})["광산"]
+    hits = [i for i in rep.issues if i.check == "line_unknown"]
+    assert hits, "미상 라인 라벨을 반드시 보고해야 한다"
+    assert "1,234" in hits[0].message

@@ -236,7 +236,18 @@ def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, Val
 
     reports: dict[str, ValidationReport] = {}
     if mine is not None:
-        reports["광산"] = validate_source(mine, S.SPEC_MINE)
+        rep = validate_source(mine, S.SPEC_MINE)
+        # ⭐️ 라인 라벨 점검 — 알 수 없는 라벨은 라인별 집계에서 통째로 빠지므로
+        #    조용히 넘기지 않고 물량과 함께 보고한다(2026-08-05 실제로 21,065톤이 빠져 있었다).
+        if "line" in mine:
+            unknown = mine[~mine["line"].isin([S.LINE_OLD, S.LINE_NEW])]
+            if len(unknown):
+                ton = float(pd.to_numeric(unknown.get("tonnage"), errors="coerce").sum())
+                rep.issues.append(Issue(
+                    "line_unknown", Severity.ERROR,
+                    f"알 수 없는 라인 라벨 {sorted(set(unknown['line']))[:5]} — "
+                    f"{ton:,.0f}톤이 라인별 집계에서 제외됩니다", len(unknown)))
+        reports["광산"] = rep
     if osp is not None:
         reports["OSP인출"] = validate_source(osp, S.SPEC_OSP)
     for line, ydf in (yards or {}).items():
