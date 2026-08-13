@@ -298,6 +298,35 @@ def _stock_gap_note(stock, mine, osp_exp) -> str:
               "맞다고 단정하지 않고 <b>둘 다 표시</b>합니다(§2-1).")
 
 
+def _grade_source_note(osp_exp) -> str:
+    """부여된 품위 중 '실측 기반'과 '대체값'의 비율 — 가짜 정밀도를 드러낸다."""
+    from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE
+
+    if osp_exp is None or GRADE_SOURCE not in getattr(osp_exp, "columns", []):
+        return ""
+    LABEL = {SRC_ZONE: "그 구역의 실제 적재 이력",
+             "line_mean": "구역 이력이 아직 없어 라인 평균으로 대체",
+             "no_zone": "인출 구역 자체가 미기재"}
+    parts, sub_tot, all_tot = [], 0.0, 0.0
+    for ln in S.YARD_PAIR:
+        o = osp_exp[osp_exp["line"] == ln]
+        tot = float(pd.to_numeric(o["withdrawn_ton"], errors="coerce").sum())
+        if tot <= 0:
+            continue
+        g = o.groupby(GRADE_SOURCE)["withdrawn_ton"].sum().sort_values(ascending=False)
+        sub = float(g.drop(index=SRC_ZONE, errors="ignore").sum())
+        sub_tot += sub; all_tot += tot
+        parts.append(f"<b>{ln}</b> — " + " · ".join(
+            f"{LABEL.get(k, k)} {v:,.0f}톤({v / tot * 100:.1f}%)" for k, v in g.items()))
+    if not parts:
+        return ""
+    return ("<br><br><b>⚠️ 부여한 품위가 전부 실측 기반은 아닙니다</b><br>" + "<br>".join(parts)
+            + f"<br>합계 <b>{sub_tot:,.0f}톤({sub_tot / all_tot * 100:.1f}%)</b>이 "
+              "<b>대체값</b>입니다. 구역별 적재 기록이 <b>뒤늦게 시작</b>해, 그 전에 뽑아 쓴 "
+              "물량은 어느 구역 품위인지 알 수 없어 라인 평균으로 채웠습니다. "
+              "<b>물량은 한 톤도 버리지 않되, 정밀도는 실측분보다 낮다</b>고 보셔야 합니다.")
+
+
 def _grade_balance_note(stock, mine, osp_exp) -> str:
     """CaO·MgO 품위 수지 검증 결과 — 매칭이 맞는지, 아니면 물량이 문제인지 가른다."""
     from src.matching.balance import combined_mass_gap, component_coherence, grade_balance
@@ -353,6 +382,7 @@ def _grade_balance_note(stock, mine, osp_exp) -> str:
     out.append("<br><br><b>결론</b> — 품위 부여(매칭) 자체는 <b>CaO·MgO 모두 100% 채워졌고</b>, "
                "물량 결손을 보정하면 <b>남은 재고 품위가 모두 물리적으로 가능한 범위</b>에 들어옵니다. "
                "즉 <b>지금 남은 문제는 품위 매칭이 아니라 물량 계량</b>입니다.")
+    out.append(_grade_source_note(osp_exp))
     return "".join(out)
 
 

@@ -160,6 +160,15 @@ def build_matched_dataset(
 #: 인출에 시간인지 매칭할 성분 — {광산 컬럼: OSP 인출 컬럼}
 GRADE_COLS = {"cao": "expected_cao", "mgo": "expected_mgo"}
 
+#: 부여된 품위의 출처 — 실측 기반인지 대체값인지 구별한다 (§6-0-13)
+GRADE_SOURCE = "grade_source"
+SRC_ZONE = "zone_history"      # 그 구역의 실제 적재 이력에서 가져옴 (신뢰)
+SRC_LINE_MEAN = "line_mean"    # 구역 적재 이력이 아직 없어 라인 평균으로 대체 (미상)
+SRC_NO_ZONE = "no_zone"        # 인출 구역 자체가 미기재 (미상)
+
+#: 실측 기반으로 볼 수 있는 출처 (나머지는 '미상' 물량으로 집계)
+TRUSTED_SOURCES = (SRC_ZONE,)
+
 
 def assign_expected_cao_timeaware(
     osp: pd.DataFrame, mine_long: pd.DataFrame
@@ -202,6 +211,13 @@ def assign_expected_cao_timeaware(
             )
         parts.append(g)
     out = pd.concat(parts, ignore_index=True)
+    # ⭐️ 대체값을 채우기 **전에** 출처를 기록한다. 채운 뒤에는 실측 기반인지
+    #    라인 평균으로 때운 것인지 구별할 방법이 없어, 12.9% 의 물량에 가짜 정밀도가 붙는다.
+    ref = GRADE_COLS[have[0]] if have else None
+    if ref:
+        out[GRADE_SOURCE] = np.where(
+            out[ref].notna(), SRC_ZONE,
+            np.where(out["zone"].isna(), SRC_NO_ZONE, SRC_LINE_MEAN))
     for c in have:
         out[GRADE_COLS[c]] = out[GRADE_COLS[c]].fillna(out["line"].map(line_glob[c]))
     return out

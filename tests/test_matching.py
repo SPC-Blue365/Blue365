@@ -98,6 +98,28 @@ def test_timeaware_mgo_fallback_leaves_no_gap():
     assert out["withdrawn_ton"].sum() == 800.0     # 물량은 한 톤도 버리지 않는다
 
 
+def test_grade_source_marks_substituted_values():
+    """대체값으로 채운 물량은 '실측 기반'과 구별돼야 한다 (가짜 정밀도 방지)."""
+    from src.matching.pipeline import (
+        GRADE_SOURCE, SRC_LINE_MEAN, SRC_NO_ZONE, SRC_ZONE,
+    )
+    mine = _mine([[pd.Timestamp("2026-06-05"), S.LINE_NEW, 50.0, 45.0, 2.5, 100, "49Q", None]])
+    osp = _osp([
+        [pd.Timestamp("2026-06-06 09:00"), S.LINE_NEW, 50.0, 100.0],   # 구역 이력 있음
+        [pd.Timestamp("2026-06-06 10:00"), S.LINE_NEW, 99.0, 200.0],   # 이력 없는 구역
+        [pd.Timestamp("2026-06-06 11:00"), S.LINE_NEW, np.nan, 300.0],  # 구역 미기재
+        [pd.Timestamp("2026-06-01 09:00"), S.LINE_NEW, 50.0, 400.0],   # 적재 이전 인출
+    ])
+    out = assign_expected_cao_timeaware(osp, mine).set_index("withdrawn_ton")
+    assert out.loc[100.0, GRADE_SOURCE] == SRC_ZONE
+    assert out.loc[200.0, GRADE_SOURCE] == SRC_LINE_MEAN
+    assert out.loc[300.0, GRADE_SOURCE] == SRC_NO_ZONE
+    assert out.loc[400.0, GRADE_SOURCE] == SRC_LINE_MEAN    # 이력보다 앞선 인출도 대체값
+    # 대체값이라도 품위는 채워져 물량은 보존된다
+    assert out["expected_cao"].notna().all()
+    assert out.index.to_series().sum() == 1000.0
+
+
 def test_osp_hourly_carries_mgo():
     """시간창 집계가 MgO 도 톤가중으로 실어 나른다."""
     osp_exp = pd.DataFrame({
