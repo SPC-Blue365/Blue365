@@ -63,6 +63,11 @@ def aggregate_osp_hourly(osp_exp: pd.DataFrame, freq: str = "1h") -> pd.DataFram
         return pd.Series(
             dict(
                 osp_expected_cao=_wmean(g["expected_cao"], g["withdrawn_ton"]),
+                osp_expected_mgo=(
+                    _wmean(g["expected_mgo"], g["withdrawn_ton"])
+                    if "expected_mgo" in g
+                    else np.nan
+                ),
                 osp_total_ton=total,
                 osp_old_ton=old,
                 osp_new_ton=new,
@@ -152,6 +157,10 @@ def build_matched_dataset(
     return merged.sort_values("datetime").reset_index(drop=True)
 
 
+#: 인출에 시간인지 매칭할 성분 — {광산 컬럼: OSP 인출 컬럼}
+GRADE_COLS = {"cao": "expected_cao", "mgo": "expected_mgo"}
+
+
 def assign_expected_cao_timeaware(
     osp: pd.DataFrame, mine_long: pd.DataFrame
 ) -> pd.DataFrame:
@@ -159,35 +168,42 @@ def assign_expected_cao_timeaware(
 
     P/W 지점은 위치 식별자이며 품위는 시간에 따라 변하므로, 정적 평균이 아니라
     해당 (line, 지점)에 가장 최근 적재된 광산 품위를 쓴다. 없으면 라인 전역 평균 fallback.
+
+    ⭐️ CaO 와 MgO 를 **같은 규칙으로 함께** 부여한다(`GRADE_COLS`). 예전엔 CaO 만
+    부여해 MgO 품위 수지를 아예 검증할 수 없었다. 두 성분은 같은 광산 행에서 나오므로
+    같은 asof 매칭을 공유해야 서로 정합한다.
     """
     mine = mine_long[mine_long["line"].isin([S.LINE_OLD, S.LINE_NEW])].dropna(
         subset=["zone", "cao", "date"]
     )
+    have = [c for c in GRADE_COLS if c in mine.columns]
     mine_daily = (
-        mine.groupby(["line", "zone", "date"], as_index=False)["cao"].mean().sort_values("date")
+        mine.groupby(["line", "zone", "date"], as_index=False)[have].mean().sort_values("date")
     )
-    line_glob = mine.groupby("line")["cao"].mean()
+    line_glob = mine.groupby("line")[have].mean()
 
     o = osp.dropna(subset=["datetime"]).copy()
     o["date"] = o["datetime"].dt.floor("D")
     # ⭐️ 인출지점(zone)이 비어도 **물량은 버리지 않는다**. 지점별 품위 매칭만 불가하므로
     #    아래 fillna 에서 라인 전역 평균으로 대체된다.
     #    (예전엔 zone 결측 행을 통째로 버려 인출 2,000톤이 사라졌다)
-    no_zone = o[o["zone"].isna()].assign(expected_cao=np.nan)
+    nan_cols = {GRADE_COLS[c]: np.nan for c in have}
+    no_zone = o[o["zone"].isna()].assign(**nan_cols)
     o = o.dropna(subset=["zone"])
     parts = [no_zone] if len(no_zone) else []
     for (ln, zn), g in o.groupby(["line", "zone"]):
-        mm = mine_daily[(mine_daily["line"] == ln) & (mine_daily["zone"] == zn)][["date", "cao"]]
+        mm = mine_daily[(mine_daily["line"] == ln) & (mine_daily["zone"] == zn)][["date"] + have]
         g = g.sort_values("date")
         if mm.empty:
-            g = g.assign(expected_cao=np.nan)
+            g = g.assign(**nan_cols)
         else:
             g = pd.merge_asof(g, mm, on="date", direction="backward").rename(
-                columns={"cao": "expected_cao"}
+                columns={c: GRADE_COLS[c] for c in have}
             )
         parts.append(g)
     out = pd.concat(parts, ignore_index=True)
-    out["expected_cao"] = out["expected_cao"].fillna(out["line"].map(line_glob))
+    for c in have:
+        out[GRADE_COLS[c]] = out[GRADE_COLS[c]].fillna(out["line"].map(line_glob[c]))
     return out
 
 

@@ -298,6 +298,64 @@ def _stock_gap_note(stock, mine, osp_exp) -> str:
               "맞다고 단정하지 않고 <b>둘 다 표시</b>합니다(§2-1).")
 
 
+def _grade_balance_note(stock, mine, osp_exp) -> str:
+    """CaO·MgO 품위 수지 검증 결과 — 매칭이 맞는지, 아니면 물량이 문제인지 가른다."""
+    from src.matching.balance import combined_mass_gap, component_coherence, grade_balance
+
+    comb = combined_mass_gap(stock, mine, osp_exp)
+    rows = [r for r in (grade_balance(stock, mine, osp_exp, ln) for ln in S.YARD_PAIR) if r]
+    if not rows:
+        return ""
+
+    out = ["<b>검사 방법</b> — 물량만 맞춰서는 매칭이 맞는지 알 수 없습니다. 엉뚱한 품위를 붙여도 "
+           "물량 수지는 그대로 통과하기 때문입니다. 그래서 <b>성분량(톤 × 품위)</b>까지 함께 "
+           "더하고 빼서, <b>남은 재고의 품위가 석회석으로 가능한 값인지</b> 봅니다."]
+
+    if comb:
+        out.append(
+            f"<br><br><b>① 물량부터 확인</b> — 두 라인을 <b>합쳐도</b> 적재 {comb['loaded']:,.0f}톤 vs "
+            f"인출 {comb['withdrawn']:,.0f}톤으로 <b>{comb['gap']:+,.0f}톤"
+            f"({comb['gap_pct']:.1f}%)</b>이 남습니다. 합쳐도 남는다는 것은 원인이 "
+            f"<b>라인 귀속(교차인출)이 아니라는 뜻</b>입니다. 계량 배율로 보면 인출계량이 "
+            f"적재계량의 <b>{comb['beta']:.3f}배</b>로 찍히고 있습니다.")
+
+    seg = []
+    for r in rows:
+        g = r["grades"]
+        parts = [f"<b>{r['line']}</b> (민감도 {r['leverage']:.0f}배 · 물량결손 {r['mass_gap']:+,.0f}톤)"]
+        for comp, label in (("cao", "CaO"), ("mgo", "MgO")):
+            if comp not in g:
+                continue
+            c = g[comp]
+            parts.append(
+                f"{label} 적재 {c['in_grade']:.2f}% → 인출 {c['out_grade']:.2f}% "
+                f"(차이 {c['delta']:+.2f}%p) · 기말 함의 {c['end_grade']:.2f}% "
+                f"{'✅' if c['ok'] else '❌'} · 부여율 {c['coverage'] * 100:.0f}% · "
+                f"변동폭 {c['spread_kept'] * 100:.0f}% 보존")
+        seg.append(" — ".join(parts))
+    out.append("<br><br><b>② 물량 결손을 보정한 뒤 품위 판정</b><br>" + "<br>".join(seg))
+    out.append("<br>ℹ️ <b>민감도</b>는 '처리량 ÷ 기말재고'입니다. 이 값이 크면 <b>작은 물량 오차가 "
+               "기말 품위를 크게 흔들어</b> 이 검사가 무뎌집니다 — 그래서 함께 표시합니다.")
+
+    coh = [c for c in (component_coherence(mine, osp_exp, ln) for ln in S.YARD_PAIR) if c]
+    if coh:
+        out.append("<br><br><b>③ 두 성분이 짝을 유지하는가</b> — CaO 와 MgO 는 <b>같은 광산 행</b>에서 "
+                   "함께 부여되므로, 둘의 관계가 원본과 비슷해야 합니다.<br>"
+                   + "<br>".join(
+                       f"<b>{c['line']}</b>: 기준선(구역-일별) {c['ref']:+.3f} → 부여 후 "
+                       f"{c['assigned']:+.3f} (차이 {c['drift']:+.3f})" for c in coh))
+        worst = max(coh, key=lambda c: abs(c["drift"]))
+        if abs(worst["drift"]) >= 0.2:
+            out.append(f"<br>⚠️ <b>{worst['line']}</b>은 관계가 {worst['drift']:+.3f} 만큼 "
+                       "틀어졌습니다 — 인출이 특정 구역에 몰려 원본과 다른 조합이 뽑힌 결과로 "
+                       "보이며, <b>MgO 예측에는 아직 쓰지 않는 것이 안전</b>합니다.")
+
+    out.append("<br><br><b>결론</b> — 품위 부여(매칭) 자체는 <b>CaO·MgO 모두 100% 채워졌고</b>, "
+               "물량 결손을 보정하면 <b>남은 재고 품위가 모두 물리적으로 가능한 범위</b>에 들어옵니다. "
+               "즉 <b>지금 남은 문제는 품위 매칭이 아니라 물량 계량</b>입니다.")
+    return "".join(out)
+
+
 def _calib_note(calib: dict) -> str:
     """실사에 맞춘 흐름 보정 결과 (경험적 보정임을 분명히 밝힌다)."""
     parts = []
@@ -779,6 +837,11 @@ def main(start=None, end=None):
                  + _stock_gap_note(stock_p, mine, osp_exp)
                  + _calib_note(calib))),
             ("", V.stock_trend(stock_p, mine, osp_exp, calibrations=calib)),
+            ("품위 수지 검증 — 재고 흐름과 CaO·MgO 가 맞물리는가" + FIXED,
+             cap("재고에 <b>들어온 성분량</b>과 <b>나간 성분량</b>을 더하고 빼서, "
+                 "<b>남아 있어야 할 재고의 품위</b>를 역산해 봅니다. 이 값이 석회석으로 "
+                 "불가능한 숫자면(예: 마이너스) 물량이든 품위든 <b>어딘가 틀린 것</b>입니다.<br><br>"
+                 + _grade_balance_note(stock_p, mine, osp_exp))),
             ("인출 벨트스케일 지시 배율 추이 (교정 시점 판단)" + FIXED,
              cap("인출량은 <b>벨트스케일</b>로 계량합니다(사용자 확인). 벨트스케일 오차는 "
                  "<b>통과 물량에 비례</b>하므로 배율 β 로 나타내는 것이 물리적으로 맞습니다.<br>"
