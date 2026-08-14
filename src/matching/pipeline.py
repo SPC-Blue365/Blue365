@@ -160,6 +160,28 @@ def build_matched_dataset(
 #: 인출에 시간인지 매칭할 성분 — {광산 컬럼: OSP 인출 컬럼}
 GRADE_COLS = {"cao": "expected_cao", "mgo": "expected_mgo"}
 
+def _weighted_daily(df: pd.DataFrame, keys: list[str], cols: list[str]) -> pd.DataFrame:
+    """`cols` 를 `keys` 별 **톤가중 평균**으로 집계한다.
+
+    물량이 없거나 합이 0 인 그룹은 단순평균으로 물러선다(가중치를 만들 수 없으므로).
+    groupby.apply 대신 합계 연산으로 처리해 대용량에서도 빠르다.
+    """
+    d = df.copy()
+    # 물량 컬럼이 아예 없는 입력(테스트·부분 데이터)에서는 균등 가중 = 단순평균으로 동작한다
+    w = (pd.to_numeric(d["tonnage"], errors="coerce").fillna(0.0).clip(lower=0.0)
+         if "tonnage" in d.columns else pd.Series(1.0, index=d.index))
+    out = None
+    for c in cols:
+        v = pd.to_numeric(d[c], errors="coerce")
+        ok = v.notna() & (w > 0)
+        num = (v.where(ok, 0.0) * w.where(ok, 0.0)).groupby([d[k] for k in keys]).sum()
+        den = w.where(ok, 0.0).groupby([d[k] for k in keys]).sum()
+        plain = v.groupby([d[k] for k in keys]).mean()
+        s = (num / den.replace(0, np.nan)).fillna(plain).rename(c)
+        out = s.to_frame() if out is None else out.join(s, how="outer")
+    return out.reset_index()
+
+
 #: 부여된 품위의 출처 — 실측 기반인지 대체값인지 구별한다 (§6-0-13)
 GRADE_SOURCE = "grade_source"
 SRC_ZONE = "zone_history"      # 그 구역의 실제 적재 이력에서 가져옴 (신뢰)
@@ -186,10 +208,11 @@ def assign_expected_cao_timeaware(
         subset=["zone", "cao", "date"]
     )
     have = [c for c in GRADE_COLS if c in mine.columns]
-    mine_daily = (
-        mine.groupby(["line", "zone", "date"], as_index=False)[have].mean().sort_values("date")
-    )
-    line_glob = mine.groupby("line")[have].mean()
+    # ⭐️ 톤가중 평균이어야 한다. 한 구역·하루에 여러 번 적재되면 인출 시 **톤 비율대로** 섞이므로,
+    #    10,000톤 적재와 500톤 적재를 1:1 로 평균하면 소량 기록에 과도한 무게가 실린다.
+    #    (실제로 구역-일 296건 중 26건이 0.3%p 이상, 최대 1.61%p 어긋났다 — §6-0-15)
+    mine_daily = _weighted_daily(mine, ["line", "zone", "date"], have).sort_values("date")
+    line_glob = _weighted_daily(mine, ["line"], have).set_index("line")
 
     o = osp.dropna(subset=["datetime"]).copy()
     o["date"] = o["datetime"].dt.floor("D")

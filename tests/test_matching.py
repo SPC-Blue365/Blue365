@@ -98,6 +98,34 @@ def test_timeaware_mgo_fallback_leaves_no_gap():
     assert out["withdrawn_ton"].sum() == 800.0     # 물량은 한 톤도 버리지 않는다
 
 
+def test_zone_daily_grade_is_tonnage_weighted():
+    """한 구역·하루에 물량이 크게 다른 적재가 섞이면 **톤 비율대로** 평균해야 한다.
+
+    인출 시 실제로 톤 비율대로 섞여 나오므로, 단순평균은 소량 기록에 과도한 무게를 준다.
+    """
+    mine = _mine([
+        [pd.Timestamp("2026-06-05"), S.LINE_NEW, 90.0, 50.0, 3.0, 500, "49Q", None],
+        [pd.Timestamp("2026-06-05"), S.LINE_NEW, 90.0, 45.0, 3.0, 9500, "47Q", None],
+    ])
+    osp = _osp([[pd.Timestamp("2026-06-06 09:00"), S.LINE_NEW, 90.0, 100.0]])
+    out = assign_expected_cao_timeaware(osp, mine)
+    got = float(out["expected_cao"].iloc[0])
+    assert abs(got - 45.25) < 1e-6, f"톤가중 45.25 이어야 하는데 {got}"
+    assert abs(got - 47.5) > 1.0, "단순평균(47.5)이면 안 된다"
+
+
+def test_weighted_daily_falls_back_without_tonnage():
+    """물량이 0이거나 없으면 단순평균으로 물러서되, 결측을 만들지 않는다."""
+    mine = _mine([
+        [pd.Timestamp("2026-06-05"), S.LINE_NEW, 50.0, 44.0, 2.0, 0, "49Q", None],
+        [pd.Timestamp("2026-06-05"), S.LINE_NEW, 50.0, 46.0, 4.0, 0, "49Q", None],
+    ])
+    osp = _osp([[pd.Timestamp("2026-06-06 09:00"), S.LINE_NEW, 50.0, 100.0]])
+    out = assign_expected_cao_timeaware(osp, mine)
+    assert abs(float(out["expected_cao"].iloc[0]) - 45.0) < 1e-6
+    assert abs(float(out["expected_mgo"].iloc[0]) - 3.0) < 1e-6
+
+
 def test_grade_source_marks_substituted_values():
     """대체값으로 채운 물량은 '실측 기반'과 구별돼야 한다 (가짜 정밀도 방지)."""
     from src.matching.pipeline import (

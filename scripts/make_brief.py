@@ -291,6 +291,8 @@ def build() -> str:
 
     zn = rd["zone"]
     cs = rd["cases"]
+    stock_max = [float(stock.loc[stock["line"] == ln, "stock_ton"].max())
+                 for ln in (S.LINE_OLD, S.LINE_NEW)]
     period = (f"{min(v['lo'] for v in ystats.values()):%Y-%m-%d}"
               f" ~ {max(v['hi'] for v in ystats.values()):%Y-%m-%d}")
 
@@ -429,8 +431,17 @@ footer {{ border-top:1px solid var(--rule); padding-top:18px; font-size:12.5px;
   <div class="card">{source_svg(osp)}</div>
   <p class="note">추정값이 생기는 이유는 <b>구역별 적재 기록이 뒤늦게 시작</b>하기 때문입니다.
     어떤 구역에서 물량을 뽑아 썼는데 그 구역에 쌓았다는 기록이 아직 없으면, 품위를 알 수 없어
-    라인 평균으로 대신 넣습니다. <b>구역별 기초 재고량과 그 품위</b>를 받으면 이 부분이
-    실측 기반으로 바뀝니다.</p>
+    라인 평균으로 대신 넣습니다.</p>
+  <div class="said"><span class="lbl">현장 확인 (적치장 구조)</span>
+    <b>구역별 재고는 측정하지 않습니다.</b> 6월 10일 기준 라인 합계만 있습니다
+    (기존 36,000톤 · 신설 30,000톤). 또 구역은 <b>칸</b>으로 나뉘어 있는데
+    <b>칸 높이 이상 쌓이면 옆 칸으로 흘러 들어가</b>, 잔량은 추정에 의존합니다.</div>
+  <p class="note">이 답변으로 <b>두 가지가 분명해졌습니다.</b> 첫째, 위 추정 {est_pct:.0f}%는
+    <b>기록을 더 받아서 메울 수 있는 것이 아닙니다</b> — 구역별 재고라는 데이터가 애초에
+    존재하지 않습니다. 둘째, 칸이 넘쳐 옆으로 흘러든다면 <b>구역 이름표 자체가 근사값</b>이며,
+    이것이 구역 단위로 품위를 따지는 방식의 <b>정밀도 한계</b>가 됩니다.
+    실제로 기존 라인 35번 구역은 쌓은 기록 없이 1,250톤이 인출됐는데, 옆 칸에서 흘러든 것으로
+    설명됩니다.</p>
 </section>
 
 <section>
@@ -460,7 +471,14 @@ footer {{ border-top:1px solid var(--rule); padding-top:18px; font-size:12.5px;
   <div class="card">{beta_tbl}</div>
   <p class="note"><b>두 라인이 6월→7월에 같은 방향으로 움직였습니다.</b> 월마감 조정이
     공장 전체에 적용된다는 설명과 맞습니다. 따라서 계량 보정은 <b>월 단위로 따로</b> 잡아야 하며,
-    여러 달을 뭉뚱그린 평균은 의미가 없습니다.</p>
+    여러 달을 뭉뚱그린 평균은 의미가 없습니다. (월 경계 관측이 아직 한 번뿐이라
+    <b>정황 일치이지 확정은 아닙니다</b>.)</p>
+  <p class="note"><b>현장 수치와 기록이 서로 맞습니다.</b> 알려주신 만실 용량
+    {S.OSP_CAPACITY_TON:,}톤에 대해 실사 재고 최고치는 기존 {stock_max[0]:,.0f}톤 ·
+    신설 {stock_max[1]:,.0f}톤으로 <b>한 번도 넘지 않았고</b>, 6월 10일 기준 재고로 주신
+    기존 {S.OSP_OPENING_STOCK[S.LINE_OLD]:,}톤 · 신설 {S.OSP_OPENING_STOCK[S.LINE_NEW]:,}톤도
+    실사 기록의 그날 마지막 값과 <b>정확히 일치</b>합니다. 재고 기록을 라인 단위로는
+    믿고 쓸 수 있다는 뜻입니다.</p>
 </section>
 
 <section>
@@ -476,24 +494,33 @@ footer {{ border-top:1px solid var(--rule); padding-top:18px; font-size:12.5px;
     구역별 품위의 평균 오차가 <b>{zn['se_median']:.2f}%p</b>로 허용폭 {TOL}%p보다 큽니다.
     자를 대는 눈금이 맞추려는 폭보다 굵은 셈이라, 이 상태로는 배합을 계산해도 목표에
     들어간다고 보장할 수 없습니다.</p>
+  <p class="note">더 중요한 것은, 이 한계가 <b>표본을 더 모아서 넘을 수 있는 종류가 아니라는</b>
+    점입니다. 칸이 넘쳐 옆으로 흘러드는 이상 구역 이름표와 실제 내용물이 어긋나며, 이는
+    <b>기록의 문제가 아니라 물리적 현상</b>이기 때문입니다.
+    실제로 이웃 구역 품위를 섞어 보정해도 하류와의 일치는 나아지지 않았습니다
+    (같은 조건에서 비교 시 오히려 소폭 하락, 다만 노이즈 범위).</p>
 </section>
 
 <section>
   <h2>다 음</h2>
   <p class="q">무엇이 있어야 다음 단계로 가는가?</p>
   <ol class="asks">
-    <li><div><b>구역별 기초 재고량과 그 품위</b>
-      <span class="w">지금 추정으로 처리 중인 인출 {est_pct:.0f}%
-      ({tot_ton - meas_ton:,.0f}톤)를 실측 기반으로 바꿉니다. 현장 문의 중.</span></div></li>
-    <li><div><b>인출 지점에서 품위 직접 측정</b>
-      <span class="w">구역 평균 오차 {zn['se_median']:.2f}%p를 허용폭 {TOL}%p 아래로 낮추는
-      유일한 현실적 방법입니다. 표본만 늘려서는 구역당 {zn['need_per_zone']:,.0f}건
-      (현재 {zn['obs_median']:.0f}건, {zn['ratio']:.0f}배)이 필요해 사실상 불가능합니다.
-      설비 투자 판단 사항.</span></div></li>
-    <li><div><b>배합 최적화는 조건 충족 후 착수</b>
-      <span class="w">검증 사례 {cs['have']}/{cs['need']}건 확보(월 {cs['per_month']:.0f}건 →
+    <li><div><b>인출 지점에서 품위 직접 측정</b> <span class="w">
+      가장 중요합니다. 근거가 둘로 늘었습니다 — ① 구역 평균 오차 {zn['se_median']:.2f}%p가
+      허용폭 {TOL}%p보다 크고, ② 칸이 넘쳐 옆으로 흘러드는 이상 <b>구역 단위로는 원리적 한계</b>가
+      있습니다. 표본만 늘려서는 구역당 {zn['need_per_zone']:,.0f}건(현재 {zn['obs_median']:.0f}건,
+      {zn['ratio']:.0f}배)이 필요해 사실상 불가능합니다. 설비 투자 판단 사항.</span></div></li>
+    <li><div><b>월마감 때 정하는 계량 조정값 공유</b> <span class="w">
+      공장에서 매달 증량·감량을 정한다고 하셨는데, 그 <b>수치를 그대로 받으면</b> 계량 차이를
+      추정하지 않고 바로 알 수 있습니다. 지금은 재고 기록에서 거꾸로 추정하고 있어
+      재고 오차가 그대로 섞여 들어옵니다. <b>추가 설비 없이 바로 정확해지는 항목</b>입니다.</span></div></li>
+    <li><div><b>배합 최적화는 조건 충족 후 착수</b> <span class="w">
+      검증 사례 {cs['have']}/{cs['need']}건 확보(월 {cs['per_month']:.0f}건 →
       약 {cs['months']:.1f}개월 남음). 조건이 차면 시스템이 자동으로 알립니다.</span></div></li>
   </ol>
+  <p class="note">※ 종전에 요청드렸던 <b>‘구역별 기초 재고와 품위’는 목록에서 뺐습니다</b> —
+    구역별 측정을 하지 않으신다는 답변에 따라, 존재하지 않는 데이터를 요청한 것이었습니다.
+    추정 {est_pct:.0f}%는 <b>메우는 대신 표시해 두는 것</b>으로 처리합니다.</p>
 </section>
 
 <footer>
