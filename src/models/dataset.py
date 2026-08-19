@@ -47,6 +47,9 @@ def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bo
          C.clean_osp(pd.read_excel(xls, S.SHEET_OSP_NEW), S.LINE_NEW, S.PW_COLS_NEW)],
         ignore_index=True,
     )
+    # ⭐️ `신설60 기존50 1:1 인출` 표기를 실제 라인 분할로 반영하고, 두 시트에 중복 기록된
+    #    같은 인출을 제거한다(사용자 확정 2026-08-19). 두 시트를 합친 뒤에야 중복이 보인다.
+    osp = C.apply_cross_line_splits(osp)
     yards = {ln: C.clean_yard(pd.read_excel(xls, sh)) for ln, (sh, _) in S.YARD_PAIR.items()}
 
     # ⭐️ 검증 게이트: 매칭(조인) '전에' 무결성 검사 (CLAUDE.md §3)

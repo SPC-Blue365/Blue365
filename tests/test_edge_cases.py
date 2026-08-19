@@ -1082,3 +1082,76 @@ def test_report_tabs_work_without_javascript():
     assert re.search(r"#t1:checked~\.wrap #tab1\{display:block\}", html)
     assert re.search(r"#t1:checked~nav label\[for=t1\]", html)
     assert html.index('id="t0"') < html.index("<nav>") < html.index('id="tab0"')
+
+
+# ── 한 행이 두 라인에 걸치는 표기 (사용자 확정 2026-08-19) ─────────────────────
+def _osp_sheet(rows, pw):
+    """rows = [(일자, 시각, zoneA, zoneB, 톤, 비고)] → 원본 시트 모양"""
+    import pandas as pd
+    return pd.DataFrame([{
+        "일자": d, "인출시간": t, pw[0]: a, pw[1]: b, "인출량": ton, "비고": note
+    } for d, t, a, b, ton, note in rows])
+
+
+def test_cross_line_note_splits_tonnage_between_lines():
+    """`신설60 기존50 1:1 인출` 은 물량을 두 라인에 반씩 나눈다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp
+
+    df = _osp_sheet([("2026-08-09", "13:00", 60.0, 50.0, 3300.0, "신설60 기존50 1:1 인출")],
+                    S.PW_COLS_NEW)
+    out = apply_cross_line_splits(clean_osp(df, S.LINE_NEW, S.PW_COLS_NEW))
+    assert out["withdrawn_ton"].sum() == 3300.0          # 총량 보존
+    got = dict(zip(out["line"], out["withdrawn_ton"]))
+    assert got == {S.LINE_NEW: 1650.0, S.LINE_OLD: 1650.0}
+    # 구역은 시트 값을 그대로 쓴다 (비고 구역이 시트와 다를 수 있다)
+    assert set(out["zone"]) == {60.0, 50.0}
+
+
+def test_cross_line_keeps_sheet_zone_not_note_zone():
+    """비고의 구역이 시트와 다르면 **시트 값**을 신뢰한다 (08-13 16:00 실제 사례)."""
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp
+
+    df = _osp_sheet([("2026-08-13", "16:00", 95.0, 60.0, 4000.0, "신설95 기존65 1:1 인출")],
+                    S.PW_COLS_NEW)
+    out = apply_cross_line_splits(clean_osp(df, S.LINE_NEW, S.PW_COLS_NEW))
+    old = out[out["line"] == S.LINE_OLD]
+    assert float(old["zone"].iloc[0]) == 60.0, "비고의 65 가 아니라 시트의 60 이어야 한다"
+    assert float(old["withdrawn_ton"].iloc[0]) == 2000.0
+
+
+def test_duplicate_event_across_sheets_is_counted_once():
+    """같은 인출이 두 시트에 기록되면 **한 번만** 센다 (이중 계상 방지).
+
+    설명(비고)이 버려지는 쪽에만 있어도 살아남는 쪽으로 옮겨져 분할이 이뤄져야 한다.
+    """
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp
+
+    new = clean_osp(_osp_sheet([("2026-08-13", "11:20", 65.0, 65.0, 2250.0, None)],
+                               S.PW_COLS_NEW), S.LINE_NEW, S.PW_COLS_NEW)
+    old = clean_osp(_osp_sheet([("2026-08-13", "11:20", None, 65.0, 2250.0,
+                                 "신설65 기존65 1:1 인출")], S.PW_COLS_OLD),
+                    S.LINE_OLD, S.PW_COLS_OLD)
+    out = apply_cross_line_splits(pd.concat([old, new], ignore_index=True))
+    assert out["withdrawn_ton"].sum() == 2250.0, "두 시트 합산으로 4,500톤이 되면 안 된다"
+    assert dict(zip(out["line"], out["withdrawn_ton"])) == \
+        {S.LINE_NEW: 1125.0, S.LINE_OLD: 1125.0}
+
+
+def test_single_line_note_is_left_alone():
+    """`기존->신설 교차인출` 처럼 한쪽만 언급된 표기는 규칙 ⓐ 그대로 둔다."""
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp, parse_cross_line_note
+
+    assert parse_cross_line_note("기존->신설 교차인출") == []
+    df = _osp_sheet([("2026-08-09", "12:00", 50.0, None, 2800.0, "기존->신설 교차인출")],
+                    S.PW_COLS_OLD)
+    out = apply_cross_line_splits(clean_osp(df, S.LINE_OLD, S.PW_COLS_OLD))
+    assert set(out["line"]) == {S.LINE_OLD}
+    assert out["withdrawn_ton"].sum() == 2800.0

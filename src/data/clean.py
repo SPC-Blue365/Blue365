@@ -490,12 +490,85 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
         ts = pd.Series([r.get("인출시간")])
         dt = _combine_datetime(pd.Series([r.get("일자")]), ts).iloc[0]
         known = bool(time_is_known(ts).iloc[0])   # 시각을 실제로 아는 행인가
-        for z in zones:
+        note = str(r.get(S.COL_OSP_NOTE, "") or "")
+        for slot, z in enumerate(zones):
             rows.append(
                 dict(datetime=dt, line=line, zone=float(z) if pd.notna(z) else np.nan,
-                     withdrawn_ton=per, time_known=known)
+                     withdrawn_ton=per, time_known=known,
+                     sheet_line=line, slot=slot, row_ton=float(total) if pd.notna(total) else np.nan,
+                     note=note)
             )
     return pd.DataFrame(rows)
+
+
+#: 비고의 라인-구역 표기 (예: "신설60 기존50 1:1 인출")
+_LINE_ZONE = re.compile(r"(기존|신설)\s*(\d{1,3})")
+
+
+def parse_cross_line_note(note: str) -> list[tuple[str, float]]:
+    """비고에서 `[(라인, 구역), ...]` 을 순서대로 뽑는다.
+
+    **두 라인이 함께 언급된 경우에만** 유효한 교차분할로 본다
+    (`기존->신설 교차인출` 처럼 한쪽만 나오는 표기는 §6-0-13 규칙 ⓐ로 처리하므로 제외).
+    """
+    pairs = [(m.group(1), float(m.group(2))) for m in _LINE_ZONE.finditer(note or "")]
+    return pairs if len({p[0] for p in pairs}) >= 2 else []
+
+
+def apply_cross_line_splits(osp_long: pd.DataFrame) -> pd.DataFrame:
+    """`신설60 기존50 1:1 인출` 표기를 실제 라인 분할로 반영한다 (사용자 확정 2026-08-19).
+
+    순서가 중요하다 — **중복 제거를 먼저**, 그 다음 라인 재귀속이다.
+
+    1) **중복 제거** — 같은 인출이 **두 시트에 모두** 기록된 경우가 있다
+       (08-13 11:20 의 2,250톤이 기존·신설 시트에 각각). 그대로 두면 **물량이 이중 계상**된다.
+       슬롯이 더 많은(=양쪽 구역을 모두 담은) 기록을 남기되, **비고는 살아남는 쪽으로 옮긴다.**
+       설명이 반대쪽 시트에만 적혀 있는 경우가 있어, 옮기지 않으면 분할이 되지 않는다.
+    2) **라인 재귀속** — 비고에 적힌 순서대로 각 슬롯의 라인을 다시 붙인다.
+       물량은 이미 슬롯 수만큼 균등 분할돼 있어 자연히 1:1 이 된다.
+       ⚠️ **구역 번호는 시트 값을 그대로 둔다.** 비고의 구역이 시트와 다른 경우가 있고
+       (08-13 16:00: 비고 `기존65` vs 시트 `60`), 시트 값은 반대쪽 시트에서 교차 확인된다.
+       비고에서 가져오는 것은 **라인뿐**이다.
+
+    ⚠️ 규칙 ⓐ(기록된 시트 = 그 라인)는 그대로다. 이 함수는 **비고가 두 라인을 명시한 행**에만
+    적용된다(`기존->신설 교차인출` 처럼 한쪽만 나오는 표기는 대상이 아니다).
+    """
+    if "note" not in osp_long.columns or osp_long.empty:
+        return osp_long
+    df = osp_long.copy()
+    df["_cross"] = df["note"].fillna("").map(lambda n: len(parse_cross_line_note(n)) > 0)
+
+    # ① 중복 제거 — 같은 (시각, 원본 행 총량) 이 두 시트에 있고 한쪽이 교차분할 표기인 경우
+    ev = (df.groupby(["datetime", "row_ton", "sheet_line"], dropna=False)
+            .agg(n_slot=("slot", "size"), cross=("_cross", "any"),
+                 note=("note", "first")).reset_index())
+    drop_idx, note_fix = [], {}
+    for (dt, rt), g in ev.groupby(["datetime", "row_ton"], dropna=False):
+        if len(g) < 2 or not g["cross"].any():
+            continue
+        g = g.sort_values("n_slot", ascending=False)
+        keep = g["sheet_line"].iloc[0]
+        # 설명(비고)은 반대쪽에만 있을 수 있다 → 살아남는 쪽으로 옮긴다
+        src = g[g["cross"]]["note"].iloc[0]
+        note_fix[(dt, rt, keep)] = src
+        for sl in g["sheet_line"].iloc[1:]:
+            drop_idx += df.index[(df["datetime"] == dt) & (df["row_ton"] == rt)
+                                 & (df["sheet_line"] == sl)].tolist()
+    if drop_idx:
+        df = df.drop(index=drop_idx)
+    for (dt, rt, sl), note in note_fix.items():
+        m = (df["datetime"] == dt) & (df["row_ton"] == rt) & (df["sheet_line"] == sl)
+        df.loc[m, "note"] = note
+    df["_cross"] = df["note"].fillna("").map(lambda n: len(parse_cross_line_note(n)) > 0)
+
+    # ② 라인 재귀속 — 비고 순서와 슬롯 순서를 맞춘다 (구역은 시트 값 유지)
+    for _, g in df[df["_cross"]].groupby(["datetime", "sheet_line", "row_ton"], dropna=False):
+        pairs = parse_cross_line_note(g["note"].iloc[0])
+        if len(pairs) != len(g):
+            continue                      # 슬롯 수와 표기 수가 다르면 손대지 않는다(§2-2)
+        for (idx, _), (ln, _zone_in_note) in zip(g.sort_values("slot").iterrows(), pairs):
+            df.loc[idx, "line"] = ln
+    return df.drop(columns=["_cross"]).reset_index(drop=True)
 
 
 # --------------------------------------------------------------------------- #
