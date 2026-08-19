@@ -284,27 +284,43 @@ def surge_cycles(raw_file: str | None = None) -> pd.DataFrame:
     tph = 채운 양 ÷ 사이클 시간 = 그 사이클의 **평균 수항 인출률**.
     G/C 능력 상한을 넘으면 그 사이에 기록되지 않은 유입이 더 있었다는 뜻이므로
     `plausible=False` 로 표시한다(값을 지어내지 않고 한계를 드러낸다, §2-1).
+
+    ⚠️ **`fill_ton`(누적 채움)을 용량과 비교하면 안 된다.** 사이클이 길면 그동안 계속
+    빠져나가므로 누적 채움이 용량을 넘는 것이 정상이다(실제로 128시간 사이클에서 12,960톤).
+    용량과 비교해야 할 값은 **`peak_ton`(순간 최대 재고)** 이다 — 평균 인출률로 빼면서
+    누적한 추정치이며, 이 값이 용량을 넘으면 그때 비로소 모순이다.
     """
     ev = surge_events(raw_file)
-    cols = ["start", "end", "fill_ton", "n_fills", "hours", "tph", "plausible"]
+    cols = ["start", "end", "fill_ton", "n_fills", "hours", "tph", "peak_ton", "plausible"]
     if ev.empty:
         return pd.DataFrame(columns=cols)
     cap = float(S.CRUSHER_CAPACITY_TPH["G/C"][1])
-    rows, acc, n, since = [], 0.0, 0, None
+    rows, acc, n, since, fills = [], 0.0, 0, None, []
     for _, e in ev.iterrows():
         if e["kind"] == SURGE_FILL:
             if since is None:
                 since = e["datetime"]
             acc += float(e["ton"] or 0.0)
+            fills.append((e["datetime"], float(e["ton"] or 0.0)))
             n += 1
         elif e["kind"] == SURGE_EMPTY and acc > 0 and since is not None:
             hours = (e["datetime"] - since).total_seconds() / 3600
             tph = acc / hours if hours > 0 else np.nan
+            # 순간 최대 재고: 평균 인출률로 빼면서 채움을 누적한다 (용량과 비교할 값)
+            peak = cur = 0.0
+            prev = since
+            for t, ton in fills:
+                gap = (t - prev).total_seconds() / 3600
+                drawn = tph * gap if np.isfinite(tph) else 0.0
+                cur = max(cur - drawn, 0.0) + ton
+                peak = max(peak, cur)
+                prev = t
             rows.append(dict(start=since, end=e["datetime"], fill_ton=acc, n_fills=n,
                              hours=round(hours, 2),
                              tph=round(tph) if np.isfinite(tph) else np.nan,
+                             peak_ton=round(peak),
                              plausible=bool(np.isfinite(tph) and tph <= cap)))
-            acc, n, since = 0.0, 0, None
+            acc, n, since, fills = 0.0, 0, None, []
     return pd.DataFrame(rows, columns=cols)
 
 

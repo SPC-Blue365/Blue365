@@ -960,8 +960,12 @@ def test_surge_cycles_close_locally_and_stay_under_capacity():
     assert c["plausible"].all(), "인출률이 G/C 상한을 넘는 사이클이 있으면 안 된다"
     assert (c["tph"] <= S.CRUSHER_CAPACITY_TPH["G/C"][1]).all()
     assert (c["end"] > c["start"]).all()
-    # 누적 채움 최대가 수항 용량 근처여야 한다 (사용자 확인: 약 1만톤)
-    assert c["fill_ton"].max() <= S.SURGE_BIN_CAPACITY_TON * 1.1
+    # ⚠️ 용량과 비교할 값은 누적 채움(fill_ton)이 아니라 **순간 최대 재고(peak_ton)** 다.
+    #    사이클이 길면 그동안 계속 빠져나가므로 누적 채움은 용량을 넘는 것이 정상이다
+    #    (실제 128시간 사이클에서 12,960톤). 2026-08-19 데이터로 종전 가정이 반증됐다.
+    assert (c["peak_ton"] <= S.SURGE_BIN_CAPACITY_TON).all(), \
+        "순간 재고가 수항 용량을 넘으면 기록이나 해석이 틀린 것이다"
+    assert (c["peak_ton"] <= c["fill_ton"] + 1).all(), "순간 재고는 누적 채움을 넘을 수 없다"
 
 
 def test_surge_events_catch_whitespace_variants():

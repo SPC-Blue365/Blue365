@@ -81,8 +81,13 @@ def _surge_note(bal: dict, cyc) -> str:
             f"채움→고갈 사이클 <b>{len(cyc)}개</b>(전부 물리적으로 성립) — "
             f"평균 인출률 중앙 <b>{ok['tph'].median():,.0f} t/h</b>"
             f"(G/C 상한 1,600), 사이클 길이 중앙 {ok['hours'].median():.0f}시간, "
-            f"누적 채움 최대 <b>{cyc['fill_ton'].max():,.0f}톤</b> — "
-            f"사용자 확인 용량 10,000톤과 거의 일치합니다.")
+            f"<b>순간 최대 재고 {cyc['peak_ton'].max():,.0f}톤</b> "
+            f"(용량 {S.SURGE_BIN_CAPACITY_TON:,}톤의 "
+            f"{cyc['peak_ton'].max() / S.SURGE_BIN_CAPACITY_TON * 100:.0f}%) — "
+            "용량 안에 들어옵니다.<br>"
+            "ℹ️ 비교 대상은 <b>누적 채움이 아니라 순간 재고</b>입니다. 사이클이 길면 그동안 "
+            "계속 빠져나가므로 누적 채움(최대 "
+            f"{cyc['fill_ton'].max():,.0f}톤)은 용량을 넘는 것이 정상입니다.")
 
 
 
