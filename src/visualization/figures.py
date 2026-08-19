@@ -907,16 +907,24 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
                                full_html=False, config={"displayModeBar": False})
         return str(obj)
 
-    nav, panels = [], []
+    # ⭐️ 탭 전환은 **CSS만으로** 동작해야 한다.
+    #    예전엔 <button onclick="showTab(i)"> 였는데, showTab 정의가 4.7MB Plotly 블록 **뒤**에
+    #    있어 그 스크립트가 파싱될 때까지 수십 초간 탭 클릭이 완전히 먹통이었다.
+    #    숨은 라디오 + label 방식은 HTML 이 파싱되는 즉시 동작하고, JS 가 막힌 환경에서도 된다.
+    radios, nav, panels, rules = [], [], [], []
     for i, tab in enumerate(tabs):
-        act = " active" if i == 0 else ""
-        nav.append(f'<button class="tabbtn{act}" onclick="showTab({i})">{tab["name"]}</button>')
+        chk = " checked" if i == 0 else ""
+        radios.append(f'<input class="tabsel" type="radio" name="tabs" id="t{i}"{chk}>')
+        nav.append(f'<label class="tabbtn" for="t{i}" tabindex="0">{tab["name"]}</label>')
+        rules.append(f"#t{i}:checked~.wrap #tab{i}{{display:block}}"
+                     f"#t{i}:checked~nav label[for=t{i}]{{background:#12395c;color:#fff}}")
         body = []
         for heading, obj in tab["sections"]:
             if heading:
                 body.append(f"<h2>{heading}</h2>")
             body.append(render(obj))
-        panels.append(f'<div class="tabpanel{act}" id="tab{i}">{"".join(body)}</div>')
+        panels.append(f'<div class="tabpanel" id="tab{i}">{"".join(body)}</div>')
+    tabcss = "".join(rules)
 
     dmin, dmax = (date_range or ("", ""))
     daterow = ""
@@ -935,15 +943,17 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
 <style>body{{font-family:system-ui,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;margin:0;color:#1a1a1a;background:#f7f9fb}}
 header{{background:#12395c;color:#fff;padding:16px 22px}}header h1{{margin:0;font-size:1.35rem}}
 nav{{position:sticky;top:0;background:#fff;border-bottom:2px solid #12395c;padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;z-index:9}}
-.tabbtn{{border:none;background:#eef2f6;color:#12395c;padding:9px 14px;border-radius:7px 7px 0 0;cursor:pointer;font-size:.92rem;font-weight:600}}
-.tabbtn.active{{background:#12395c;color:#fff}}
+.tabbtn{{display:inline-block;border:none;background:#eef2f6;color:#12395c;padding:9px 14px;border-radius:7px 7px 0 0;cursor:pointer;font-size:.92rem;font-weight:600;user-select:none;line-height:1.2}}
 .daterow{{background:#eef2f6;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.9rem;border-bottom:1px solid #d5dde5}}
 .daterow input[type=date]{{padding:4px 6px;border:1px solid #b9c4cf;border-radius:5px;font-size:.88rem}}
 .daterow button{{background:#12395c;color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-weight:600}}
 .daterow button.ghost{{background:#fff;color:#12395c;border:1px solid #12395c}}
 .daterow .hint{{color:#667;font-size:.8rem;margin-left:6px}}
 .wrap{{max-width:1060px;margin:0 auto;padding:16px}}
-.tabpanel{{display:none}}.tabpanel.active{{display:block}}
+.tabpanel{{display:none}}
+.tabsel{{position:absolute;opacity:0;width:0;height:0;pointer-events:none}}
+.tabbtn:focus-visible,.tabsel:focus-visible+nav .tabbtn{{outline:2px solid #12395c;outline-offset:2px}}
+{tabcss}
 h2{{color:#12395c;margin-top:26px;border-left:5px solid #1f77b4;padding-left:10px}}
 table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:center}}th{{background:#eef2f6}}
 .ok{{background:#e8f5e9;border-left:4px solid #2ca02c;padding:10px 14px;margin:12px 0;border-radius:4px}}
@@ -968,6 +978,7 @@ margin:10px 0 16px;font-size:.86rem;line-height:1.7}}
 .glossary dt{{font-weight:700;color:#12395c;margin-top:8px}}.glossary dd{{margin:0 0 2px 12px;color:#445;font-size:.92rem}}
 pre{{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto}}code{{background:#f4f4f4;padding:1px 5px;border-radius:3px}}</style></head>
 <body><header><h1>{title}</h1></header>
+{"".join(radios)}
 <nav>{"".join(nav)}</nav>
 {daterow}
 <div class="wrap">{"".join(panels)}</div>
@@ -1078,11 +1089,26 @@ function resetRange(){{
   if(window.recomputeKPI){{window.recomputeKPI(DR_MIN,DR_MAX);}}
   recomputeSankeys(DR_MIN,DR_MAX);
 }}
-function showTab(i){{
-  document.querySelectorAll('.tabpanel').forEach((p,idx)=>p.classList.toggle('active',idx===i));
-  document.querySelectorAll('.tabbtn').forEach((b,idx)=>b.classList.toggle('active',idx===i));
-  document.querySelectorAll('#tab'+i+' .plotly-graph-div').forEach(d=>{{if(window.Plotly)Plotly.Plots.resize(d);}});
+// 탭 전환 자체는 CSS 가 한다. JS 는 '숨겨진 채 그려진 차트의 크기 보정' 만 보조한다.
+function _resizeTab(i){{
+  document.querySelectorAll('#tab'+i+' .plotly-graph-div').forEach(d=>{{
+    if(window.Plotly){{try{{Plotly.Plots.resize(d);}}catch(e){{}}}}
+  }});
 }}
+function showTab(i){{                       // 외부 호출 호환용
+  var r=document.getElementById('t'+i); if(r){{r.checked=true;}}
+  _resizeTab(i);
+}}
+document.querySelectorAll('.tabsel').forEach(function(r,i){{
+  r.addEventListener('change',function(){{if(r.checked)_resizeTab(i);}});
+}});
+// label 키보드 조작(Enter/Space) 지원 — 라디오가 시각적으로 숨겨져 있으므로 직접 연결한다
+document.querySelectorAll('.tabbtn').forEach(function(l){{
+  l.addEventListener('keydown',function(e){{
+    if(e.key==='Enter'||e.key===' '){{e.preventDefault();
+      var r=document.getElementById(l.getAttribute('for')); if(r){{r.checked=true;r.dispatchEvent(new Event('change'));}}}}
+  }});
+}});
 // Sankey CaO/MgO 버튼 클릭 시 현재 성분을 기록(기간 재계산이 성분 유지)
 function _hookSankeyToggle(){{
   document.querySelectorAll('.plotly-graph-div').forEach(function(gd){{

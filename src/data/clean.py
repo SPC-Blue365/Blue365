@@ -50,17 +50,37 @@ def parse_zone_codes(raw) -> list[float]:
     return zones
 
 
+#: 엑셀에서 '시각만' 입력된 셀이 날짜 없이 저장되면 1900년 epoch 로 읽힌다.
+#: 이런 셀은 **시각을 모르는 것**이지 자정이 아니다 — 조용히 00:00 으로 두면 안 된다.
+EXCEL_EPOCH_YEAR = 1900
+
+
+def time_is_known(time_series: pd.Series) -> pd.Series:
+    """시각 셀이 **실제 시각**인지 판정한다 (1900년 epoch·결측이면 False).
+
+    ⚠️ 이 판정이 없던 시절 `1900-01-01` 셀 17행(83,700톤 = 인출의 5.4%)이 전부 **00:00** 으로
+    들어가, 실제로는 시각을 모르는 물량이 3차 교대 시작 시각에 몰려 있었다. 시간축 매칭
+    (Time-Lag 추정·시간별 집계)을 왜곡하므로 **결과에 표시**하고 필요하면 제외할 수 있게 한다.
+    """
+    t = pd.to_datetime(time_series.astype(str), errors="coerce", format="mixed")
+    return t.notna() & (t.dt.year != EXCEL_EPOCH_YEAR)
+
+
 def _combine_datetime(date_series: pd.Series, time_series: pd.Series) -> pd.Series:
-    """일자(date) + 시각(time/str) → datetime. 파싱 실패는 NaT."""
+    """일자(date) + 시각(time/str) → datetime. 파싱 실패는 NaT.
+
+    시각을 모르는 셀은 날짜의 00:00 으로 두되, 호출부는 `time_is_known()` 으로 그 사실을
+    함께 기록해야 한다(값을 지어내지 않고 한계를 드러낸다, §2-1).
+    """
     d = pd.to_datetime(date_series, errors="coerce")
     t = pd.to_datetime(time_series.astype(str), errors="coerce", format="mixed")
-    # 시각의 시/분/초만 취해 날짜에 더함
+    ok = t.notna() & (t.dt.year != EXCEL_EPOCH_YEAR)
     delta = pd.to_timedelta(
         t.dt.hour.fillna(0).astype(int).astype(str) + "h"
     ) + pd.to_timedelta(
         t.dt.minute.fillna(0).astype(int).astype(str) + "m"
     )
-    return d + delta.where(t.notna(), pd.Timedelta(0))
+    return d + delta.where(ok, pd.Timedelta(0))
 
 
 def _to_numeric(series: pd.Series) -> pd.Series:
@@ -445,7 +465,12 @@ def build_zone_grade_table(mine_long: pd.DataFrame) -> pd.DataFrame:
 # ② OSP 인출 — 균등 배분으로 구역별 인출 long
 # --------------------------------------------------------------------------- #
 def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
-    """OSP 인출 시트 → (datetime, 라인, 구역, 인출톤(균등배분)) long."""
+    """OSP 인출 시트 → (datetime, 라인, 구역, 인출톤(균등배분), time_known) long.
+
+    `time_known=False` 는 **시각을 모르는 행**이다(엑셀에 날짜 없는 시각 셀 → 1900 epoch).
+    datetime 은 그날 00:00 으로 두지만, 실제 시각이 자정이라는 뜻이 아니므로 시간축 분석에서
+    구분할 수 있어야 한다(§6-0-18).
+    """
     rows = []
     for _, r in df.iterrows():
         zones = [
@@ -462,13 +487,13 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
                 continue
             zones = [np.nan]
         per = total / len(zones) if pd.notna(total) else np.nan
-        dt = _combine_datetime(
-            pd.Series([r.get("일자")]), pd.Series([r.get("인출시간")])
-        ).iloc[0]
+        ts = pd.Series([r.get("인출시간")])
+        dt = _combine_datetime(pd.Series([r.get("일자")]), ts).iloc[0]
+        known = bool(time_is_known(ts).iloc[0])   # 시각을 실제로 아는 행인가
         for z in zones:
             rows.append(
                 dict(datetime=dt, line=line, zone=float(z) if pd.notna(z) else np.nan,
-                     withdrawn_ton=per)
+                     withdrawn_ton=per, time_known=known)
             )
     return pd.DataFrame(rows)
 

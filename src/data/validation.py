@@ -249,7 +249,20 @@ def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, Val
                     f"{ton:,.0f}톤이 라인별 집계에서 제외됩니다", len(unknown)))
         reports["광산"] = rep
     if osp is not None:
-        reports["OSP인출"] = validate_source(osp, S.SPEC_OSP)
+        rep_o = validate_source(osp, S.SPEC_OSP)
+        # ⭐️ 시각 미상 물량 — 엑셀에 날짜 없는 시각 셀은 1900년 epoch 로 읽혀 그날 00:00 이 된다.
+        #    자정에 몰린 가짜 물량이 Time-Lag 추정을 뒤집으므로(신설 2h ↔ 11h) 반드시 표시한다.
+        if "time_known" in osp:
+            unk = osp[~osp["time_known"].fillna(True)]
+            if len(unk):
+                ton = float(pd.to_numeric(unk.get("withdrawn_ton"), errors="coerce").sum())
+                tot = float(pd.to_numeric(osp.get("withdrawn_ton"), errors="coerce").sum())
+                rep_o.issues.append(Issue(
+                    "time_unknown", Severity.WARNING,
+                    f"인출시각을 알 수 없는 행 — {ton:,.0f}톤"
+                    f"({ton / tot * 100:.1f}%)이 그날 00:00 으로 들어갑니다. "
+                    "물량 수지에는 쓰되 시간축 분석에서는 제외됩니다", len(unk)))
+        reports["OSP인출"] = rep_o
     for line, ydf in (yards or {}).items():
         reports[f"야드({line})"] = validate_source(ydf, S.SPEC_YARD)
     if yard_change is not None and len(yard_change):

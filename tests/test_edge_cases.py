@@ -1013,3 +1013,72 @@ def test_roadmap_readiness_handles_empty_inputs():
     r = readiness(pd.DataFrame(), pd.DataFrame())
     assert r["ready"] is False
     assert summary_text(r)
+
+
+# ── 시각 미상 행 (엑셀 1900 epoch) — 2026-08-19 발견 ───────────────────────────
+def test_excel_epoch_time_is_marked_unknown():
+    """날짜 없는 시각 셀(1900 epoch)은 '시각 미상'으로 표시돼야 한다.
+
+    예전엔 조용히 그날 00:00 으로 들어가, 실제로는 시각을 모르는 91,600톤(인출의 5.9%)이
+    자정에 몰려 Time-Lag 추정을 뒤집었다(신설 2h ↔ 11h).
+    """
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import clean_osp, time_is_known
+
+    df = pd.DataFrame({
+        "일자": ["2026-06-20", "2026-06-21"],
+        "인출시간": [pd.Timestamp("1900-01-01 00:00:00"), "08:30"],
+        " P/W3호": [60.0, 60.0], " P/W4호": [None, None],
+        "인출량": [1000.0, 500.0], "비고": [None, None],
+    })
+    out = clean_osp(df, S.LINE_NEW, [" P/W3호", " P/W4호"])
+    assert list(out["time_known"]) == [False, True]
+    # 물량은 한 톤도 버리지 않는다
+    assert out["withdrawn_ton"].sum() == 1500.0
+    # 시각 미상 행도 날짜는 살린다 (00:00 로 둠)
+    assert out.loc[~out["time_known"], "datetime"].iloc[0] == pd.Timestamp("2026-06-20 00:00")
+    assert list(time_is_known(pd.Series([pd.Timestamp("1900-04-09"), "13:00", None]))) == \
+        [False, True, False]
+
+
+def test_time_unknown_rows_excluded_from_lag_but_kept_in_tonnage():
+    """시각 미상 행은 시간축 집계에서 빠지되 물량 합계에는 남는다."""
+    import numpy as np
+    import pandas as pd
+
+    from config import schema as S
+    from src.models.dataset import build_line_data
+
+    idx = pd.date_range("2026-06-01", periods=200, freq="1h")
+    yard = pd.DataFrame({"datetime": idx, "cao": np.linspace(44, 46, len(idx)),
+                         "mgo": 3.0, "load": 100.0})
+    osp = pd.DataFrame({
+        "datetime": list(idx[::4]) + [pd.Timestamp("2026-06-02 00:00")] * 3,
+        "line": S.LINE_NEW,
+        "zone": 50.0,
+        "expected_cao": [45.0] * len(idx[::4]) + [99.0] * 3,   # 자정에 몰린 이상값
+        "withdrawn_ton": [100.0] * len(idx[::4]) + [500.0] * 3,
+        "time_known": [True] * len(idx[::4]) + [False] * 3,
+    })
+    ld = build_line_data(osp, {S.LINE_NEW: yard}, S.LINE_NEW)
+    # 자정의 99.0 이 시간축 집계에 섞이면 안 된다
+    assert ld.osp_hourly["impl"].max() < 50.0
+    # 물량 자체는 원본에 그대로 남아 있다 (수지 계산용)
+    assert osp["withdrawn_ton"].sum() == pytest.approx(len(idx[::4]) * 100.0 + 1500.0)
+
+
+def test_report_tabs_work_without_javascript():
+    """탭 전환이 CSS 만으로 동작해야 한다 (JS 정의가 4.7MB Plotly 뒤에 있어 먹통이던 버그)."""
+    import re
+
+    from src.visualization.figures import assemble_tabbed_html
+
+    html = assemble_tabbed_html("t", [{"name": "A", "sections": [("h", "<p>a</p>")]},
+                                      {"name": "B", "sections": [("h", "<p>b</p>")]}])
+    assert 'onclick="showTab(' not in html, "탭이 JS onclick 에 의존하면 안 된다"
+    assert html.count('type="radio"') == 2 and 'name="tabs"' in html
+    assert re.search(r"#t1:checked~\.wrap #tab1\{display:block\}", html)
+    assert re.search(r"#t1:checked~nav label\[for=t1\]", html)
+    assert html.index('id="t0"') < html.index("<nav>") < html.index('id="tab0"')

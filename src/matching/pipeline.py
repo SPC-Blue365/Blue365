@@ -52,8 +52,16 @@ def _wmean(values: pd.Series, weights: pd.Series) -> float:
 
 
 def aggregate_osp_hourly(osp_exp: pd.DataFrame, freq: str = "1h") -> pd.DataFrame:
-    """OSP 인출(예상 CaO 포함)을 시간창으로 집계."""
+    """OSP 인출(예상 CaO 포함)을 시간창으로 집계.
+
+    ⭐️ **시각을 모르는 행은 뺀다.** 엑셀에 날짜 없는 시각 셀은 1900 epoch 로 읽혀 그날 00:00
+    이 되는데, 그 가짜 자정 물량(인출의 약 6%)이 Time-Lag 추정을 뒤집는다(신설 2h ↔ 11h).
+    이 함수는 **시간창 집계 전용**이므로 여기서 걸러 모든 호출부가 일관되게 동작한다.
+    물량 수지·재고 계산은 원본 `osp` 를 그대로 쓰므로 톤 합계에는 영향이 없다(§6-0-18).
+    """
     df = osp_exp.dropna(subset=["datetime"]).copy()
+    if "time_known" in df.columns:
+        df = df[df["time_known"].fillna(True)]
     df["tbin"] = df["datetime"].dt.floor(freq)
 
     def agg(g: pd.DataFrame) -> pd.Series:

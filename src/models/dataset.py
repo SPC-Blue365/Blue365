@@ -108,6 +108,11 @@ def build_line_data(osp_exp, yards, line: str) -> LineData:
     y["h"] = y["datetime"].dt.floor("1h")
     ys = y.groupby("h")["cao"].mean().asfreq("1h")
     o = osp_exp[osp_exp["line"] == line].dropna(subset=["datetime"]).copy()
+    # ⭐️ 시각을 모르는 행(엑셀에 날짜 없는 시각 셀 → 그날 00:00 로 들어간 물량)은
+    #    **시간축 분석에서 뺀다.** 물량은 유효하므로 수지 계산에는 그대로 쓰지만,
+    #    시각이 가짜 자정이라 Time-Lag 추정을 망가뜨린다(신설 lag 이 2h ↔ 11h 로 뒤집혔다).
+    if "time_known" in o.columns:
+        o = o[o["time_known"].fillna(True)]
     o["h"] = o["datetime"].dt.floor("1h")
     oh = o.groupby("h").agg(impl=("expected_cao", "mean"), ton=("withdrawn_ton", "sum"))
     est = P.estimate_time_lag(
