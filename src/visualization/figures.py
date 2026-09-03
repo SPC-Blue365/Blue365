@@ -916,8 +916,10 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
         chk = " checked" if i == 0 else ""
         radios.append(f'<input class="tabsel" type="radio" name="tabs" id="t{i}"{chk}>')
         nav.append(f'<label class="tabbtn" for="t{i}" tabindex="0">{tab["name"]}</label>')
+        # 활성 탭은 밑줄로 표시한다 (첨부 스타일의 관제 대시보드 관례)
         rules.append(f"#t{i}:checked~.wrap #tab{i}{{display:block}}"
-                     f"#t{i}:checked~nav label[for=t{i}]{{background:#12395c;color:#fff}}")
+                     f"#t{i}:checked~nav label[for=t{i}]"
+                     f"{{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}}")
         body = []
         for heading, obj in tab["sections"]:
             if heading:
@@ -940,43 +942,81 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
 
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
-<style>body{{font-family:system-ui,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;margin:0;color:#1a1a1a;background:#f7f9fb}}
-header{{background:#12395c;color:#fff;padding:16px 22px}}header h1{{margin:0;font-size:1.35rem}}
-nav{{position:sticky;top:0;background:#fff;border-bottom:2px solid #12395c;padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;z-index:9}}
-.tabbtn{{display:inline-block;border:none;background:#eef2f6;color:#12395c;padding:9px 14px;border-radius:7px 7px 0 0;cursor:pointer;font-size:.92rem;font-weight:600;user-select:none;line-height:1.2}}
-.daterow{{background:#eef2f6;padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.9rem;border-bottom:1px solid #d5dde5}}
-.daterow input[type=date]{{padding:4px 6px;border:1px solid #b9c4cf;border-radius:5px;font-size:.88rem}}
-.daterow button{{background:#12395c;color:#fff;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-weight:600}}
-.daterow button.ghost{{background:#fff;color:#12395c;border:1px solid #12395c}}
-.daterow .hint{{color:#667;font-size:.8rem;margin-left:6px}}
-.wrap{{max-width:1060px;margin:0 auto;padding:16px}}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap');
+:root{{color-scheme:light;
+--ground:#f4f7fb;--surface:#ffffff;--surface-2:#eef4fc;--ink:#101c2c;--ink-2:#4d6076;--ink-3:#8496a9;
+--line:#dbe5f1;--line-2:#c6d5e8;--accent:#1c5cab;--accent-2:#2a78d6;--accent-soft:#e6effb;--accent-ink:#14477f;
+--good:#0ca30c;--warn:#a6740a;--bad:#d03b3b;--grid:#e9f0f8;--radius:10px;
+--shadow:0 1px 2px rgba(16,40,72,.06),0 8px 24px -16px rgba(16,40,72,.28)}}
+*{{box-sizing:border-box}}
+body{{font-family:'IBM Plex Sans KR','Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+margin:0;color:var(--ink);background:var(--ground);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}}
+.mono,.kpi .v,td.n{{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}}
+header{{background:var(--surface);color:var(--ink);padding:16px 22px;border-bottom:1px solid var(--line)}}
+header h1{{margin:0;font-size:19px;font-weight:600;letter-spacing:-.015em}}
+nav{{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);
+padding:0 12px;display:flex;flex-wrap:wrap;gap:2px;z-index:9}}
+.tabbtn{{display:inline-flex;align-items:center;gap:7px;border:0;border-bottom:2px solid transparent;
+background:none;color:var(--ink-2);padding:9px 16px 11px;cursor:pointer;font-size:13.5px;
+font-weight:500;user-select:none;line-height:1.2}}
+.tabbtn:hover{{color:var(--ink);background:var(--surface-2)}}
+.daterow{{background:var(--surface);padding:9px 14px;display:flex;flex-wrap:wrap;align-items:center;gap:7px;
+font-size:12.5px;border-bottom:1px solid var(--line);color:var(--ink-2)}}
+.daterow input[type=date]{{padding:4px 8px;border:1px solid var(--line-2);border-radius:6px;
+font-size:12.5px;font-family:'IBM Plex Mono',monospace;background:var(--surface);color:var(--ink)}}
+.daterow button{{background:var(--accent);color:#fff;border:none;padding:5px 13px;border-radius:6px;
+cursor:pointer;font-weight:600;font-size:12.5px}}
+.daterow button.ghost{{background:var(--surface);color:var(--accent);border:1px solid var(--line-2)}}
+.daterow .hint{{color:var(--ink-3);font-size:11.5px;margin-left:6px}}
+.wrap{{max-width:1080px;margin:0 auto;padding:20px 16px 48px}}
 .tabpanel{{display:none}}
 .tabsel{{position:absolute;opacity:0;width:0;height:0;pointer-events:none}}
-.tabbtn:focus-visible,.tabsel:focus-visible+nav .tabbtn{{outline:2px solid #12395c;outline-offset:2px}}
+.tabbtn:focus-visible,.tabsel:focus-visible+nav .tabbtn{{outline:2px solid var(--accent);outline-offset:-2px}}
 {tabcss}
-h2{{color:#12395c;margin-top:26px;border-left:5px solid #1f77b4;padding-left:10px}}
-table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:center}}th{{background:#eef2f6}}
-.ok{{background:#e8f5e9;border-left:4px solid #2ca02c;padding:10px 14px;margin:12px 0;border-radius:4px}}
-.note{{background:#fff8e1;border-left:4px solid #ffb300;padding:10px 14px;margin:12px 0;border-radius:4px}}
-.cap{{color:#334;font-size:.9rem;margin:2px 0 8px;background:#eef5ff;border-left:3px solid #1f77b4;padding:7px 11px;border-radius:4px;line-height:1.5}}
-.exec{{border:1px solid #d5dde5;border-radius:10px;padding:4px 18px 14px;margin:6px 0 18px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.06)}}
-.tolbar{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0;padding:8px 12px;
-background:#eef2f6;border:1px solid #d5dde5;border-radius:8px;font-size:.92rem}}
-.tolbar select{{padding:5px 10px;border:1px solid #b9c4cf;border-radius:6px;font-size:.95rem;
-font-weight:700;color:#12395c;background:#fff;cursor:pointer}}
-.tolbar .hint{{color:#667;font-size:.82rem}}
-.kpirow{{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}}
-.kpi{{flex:1;min-width:150px;background:#f7f9fb;border:1px solid #e2e8ee;border-radius:8px;padding:10px 14px}}
-.kpi .v{{font-size:1.5rem;font-weight:800;color:#12395c}}.kpi .l{{font-size:.82rem;color:#667}}
-.muted{{color:#667;font-size:.84rem}}
-.badge{{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;
-margin-left:8px;vertical-align:middle;white-space:nowrap}}
-.badge.live{{background:#e8f5e9;color:#1d7a1d;border:1px solid #9ccc9c}}
-.badge.fixed{{background:#f0f2f5;color:#5a6472;border:1px solid #c8cfd8}}
-.legendbar{{background:#eef5ff;border:1px solid #cfe0f2;border-radius:8px;padding:9px 14px;
-margin:10px 0 16px;font-size:.86rem;line-height:1.7}}
-.glossary dt{{font-weight:700;color:#12395c;margin-top:8px}}.glossary dd{{margin:0 0 2px 12px;color:#445;font-size:.92rem}}
-pre{{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto}}code{{background:#f4f4f4;padding:1px 5px;border-radius:3px}}</style></head>
+h2{{color:var(--ink);margin:30px 0 4px;font-size:15px;font-weight:600;letter-spacing:-.01em;
+padding-left:11px;border-left:3px solid var(--accent)}}
+table{{border-collapse:collapse;width:100%;margin:10px 0;font-size:12.5px;background:var(--surface);
+border:1px solid var(--line);border-radius:8px;overflow:hidden}}
+th,td{{border-bottom:1px solid var(--grid);padding:8px 10px;text-align:center;color:var(--ink-2)}}
+th{{background:var(--surface-2);color:var(--ink-3);font-size:10.5px;letter-spacing:.06em;
+text-transform:uppercase;font-weight:600}}
+tr:last-child td{{border-bottom:none}}
+.ok{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--good);
+padding:11px 15px;margin:12px 0;border-radius:var(--radius);font-size:13px}}
+.note{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);
+padding:11px 15px;margin:12px 0;border-radius:var(--radius);font-size:13px}}
+.cap{{color:var(--ink-2);font-size:12.5px;margin:4px 0 12px;background:var(--surface);
+border:1px solid var(--line);border-left:3px solid var(--accent-2);padding:10px 14px;
+border-radius:var(--radius);line-height:1.65}}
+.exec{{border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px 16px;
+margin:8px 0 20px;background:var(--surface);box-shadow:var(--shadow)}}
+.tolbar{{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:12px 0;padding:10px 14px;
+background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px}}
+.tolbar select{{padding:5px 11px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;
+font-weight:600;color:var(--accent);background:var(--surface);cursor:pointer}}
+.tolbar .hint{{color:var(--ink-3);font-size:11.5px}}
+.kpirow{{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}}
+.kpi{{flex:1;min-width:158px;background:var(--surface);border:1px solid var(--line);
+border-radius:var(--radius);padding:13px 15px 12px;box-shadow:var(--shadow)}}
+.kpi .v{{font-size:24px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1.15}}
+.kpi .u{{font-size:13px;font-weight:400;color:var(--ink-2);margin-left:2px;
+font-family:'IBM Plex Sans KR',sans-serif}}
+.kpi .l{{font-size:10.5px;color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;
+font-weight:600;margin-top:4px}}
+.muted{{color:var(--ink-3);font-size:11.5px}}
+.badge{{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:999px;
+margin-left:8px;vertical-align:middle;white-space:nowrap;letter-spacing:.02em}}
+.badge.live{{background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent-2)}}
+.badge.fixed{{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line-2)}}
+.legendbar{{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+padding:11px 15px;margin:10px 0 18px;font-size:12.5px;line-height:1.75;color:var(--ink-2)}}
+.glossary dt{{font-weight:600;color:var(--ink);margin-top:9px;font-size:13px}}
+.glossary dd{{margin:0 0 2px 12px;color:var(--ink-2);font-size:12.5px}}
+pre{{background:var(--surface-2);border:1px solid var(--line);padding:12px;border-radius:8px;overflow-x:auto}}
+code{{background:var(--surface-2);border:1px solid var(--line);padding:1px 5px;border-radius:4px;
+font-family:'IBM Plex Mono',monospace;font-size:11.5px}}
+</style></head>
 <body><header><h1>{title}</h1></header>
 {"".join(radios)}
 <nav>{"".join(nav)}</nav>
