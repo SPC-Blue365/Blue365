@@ -1155,3 +1155,74 @@ def test_single_line_note_is_left_alone():
     out = apply_cross_line_splits(clean_osp(df, S.LINE_OLD, S.PW_COLS_OLD))
     assert set(out["line"]) == {S.LINE_OLD}
     assert out["withdrawn_ton"].sum() == 2800.0
+
+
+# ── 시각 셀 타입 다양성 (2026-09-17 회귀) ─────────────────────────────────────
+def test_time_parses_every_type_excel_hands_us():
+    """같은 컬럼이 판마다 다른 타입으로 온다 — 전부 시각으로 읽혀야 한다.
+
+    2026-09-17 갱신본에서 기존 시트가 통째로 **timedelta** 로 바뀌어, 종전 파서가 170행을
+    전부 '시각 미상'으로 만들었다(시각 미상 6% → 48.5%, 중복키 0 → 251행).
+    """
+    import datetime as dt
+
+    import pandas as pd
+
+    from src.data.clean import time_is_known
+
+    ok = pd.Series([
+        dt.time(8, 20),                      # datetime.time
+        pd.Timedelta(hours=9, minutes=5),    # Timedelta (엑셀이 시각만 있는 열을 이렇게 준다)
+        dt.timedelta(hours=13),              # datetime.timedelta
+        pd.Timestamp("2026-06-20 16:40"),    # 완전한 datetime
+        "19:00",                             # 문자열
+        "7시 30",                            # 한글 표기
+    ])
+    assert list(time_is_known(ok)) == [True] * 6
+
+    bad = pd.Series([
+        pd.Timedelta(days=1),                # 24시간 = 날짜 없는 셀의 epoch 자리
+        pd.Timestamp("1900-01-01 00:00"),    # 1900 epoch
+        None, float("nan"), pd.NaT, "",      # 결측·빈값
+    ])
+    assert not time_is_known(bad).any()
+
+
+def test_combine_datetime_handles_timedelta_times():
+    """timedelta 로 온 시각도 날짜와 올바르게 결합돼야 한다."""
+    import datetime as dt
+
+    import pandas as pd
+
+    from src.data.clean import _combine_datetime
+
+    got = _combine_datetime(
+        pd.Series(["2026-06-20", "2026-06-21", "2026-06-22"]),
+        pd.Series([pd.Timedelta(hours=8, minutes=20), dt.time(14, 5), pd.Timedelta(days=1)]),
+    )
+    assert list(got) == [pd.Timestamp("2026-06-20 08:20"),
+                         pd.Timestamp("2026-06-21 14:05"),
+                         pd.Timestamp("2026-06-22 00:00")]   # 미상은 그날 00:00
+
+
+def test_yard_analyzer_dropout_is_removed_but_row_kept():
+    """CaO<30% 는 분석기 헛값이다 — 품위만 지우고 적재량은 남긴다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import clean_yard
+
+    df = pd.DataFrame({
+        "일자": ["2026-09-01"] * 4,
+        "시간": ["08:00", "08:01", "08:02", "08:03"],
+        "CaO": [45.2, 0.0, 28.4, 44.9],
+        "MgO": [2.1, 1.0, 1.5, 2.3],
+        "적재물량(TPH)": [35.0, 12.0, 15.0, 36.0],
+    })
+    out = clean_yard(df)
+    assert len(out) == 4, "행은 지우지 않는다 — '측정이 없던 시간'과 구분돼야 한다"
+    assert int(out["cao_dropout"].sum()) == 2
+    assert out["cao"].notna().tolist() == [True, False, False, True]
+    assert out["mgo"].notna().tolist() == [True, False, False, True]
+    assert out["load"].notna().all(), "적재량은 유효하므로 유지한다"
+    assert out["cao"].max() < 55 and out["cao"].min() >= S.YARD_CAO_MIN

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import warnings
 
+import datetime as _dt
 import re
 from typing import Optional
 
@@ -54,33 +55,60 @@ def parse_zone_codes(raw) -> list[float]:
 #: 이런 셀은 **시각을 모르는 것**이지 자정이 아니다 — 조용히 00:00 으로 두면 안 된다.
 EXCEL_EPOCH_YEAR = 1900
 
+#: 하루를 넘는 '시각' 은 시각이 아니다. 엑셀이 날짜 없는 시각 셀을 timedelta 로 넘길 때
+#: 1900-epoch 자리가 `1 day, 0:00:00` 으로 나타난다.
+_MAX_TIME = pd.Timedelta(hours=24)
+
+
+def _time_parts(v):
+    """어떤 모양으로 들어오든 (시, 분) 을 뽑는다. 모르면 None.
+
+    ⚠️ 엑셀·pandas 조합에 따라 같은 컬럼이 **판마다 다른 타입**으로 온다. 실제로 겪은 것만도
+    `datetime.time` · `Timedelta` · `datetime` · 문자열 · 결측 다섯 가지이며, 2026-09-17
+    갱신본에서는 기존 시트 전체가 **timedelta** 로 바뀌어 종전 파서가 170행을 통째로
+    '시각 미상' 으로 만들었다(6% → 48.5%). 그래서 타입별로 명시 처리한다.
+    """
+    if v is None or (isinstance(v, float) and not np.isfinite(v)) or v is pd.NaT:
+        return None
+    if isinstance(v, _dt.time):
+        return v.hour, v.minute
+    if isinstance(v, (pd.Timedelta, _dt.timedelta)):
+        td = pd.Timedelta(v)
+        if td < pd.Timedelta(0) or td >= _MAX_TIME:
+            return None                      # 24시간 이상 = 시각이 아니다 (epoch 자리)
+        return int(td.total_seconds() // 3600), int(td.total_seconds() % 3600 // 60)
+    if isinstance(v, (pd.Timestamp, _dt.datetime)):
+        return None if v.year == EXCEL_EPOCH_YEAR else (v.hour, v.minute)
+    m = re.match(r"^\s*(\d{1,2})\s*[:시]\s*(\d{1,2})", str(v))
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        return (h, mi) if 0 <= h < 24 and 0 <= mi < 60 else None
+    t = pd.to_datetime(str(v), errors="coerce")
+    if pd.isna(t) or t.year == EXCEL_EPOCH_YEAR:
+        return None
+    return t.hour, t.minute
+
 
 def time_is_known(time_series: pd.Series) -> pd.Series:
-    """시각 셀이 **실제 시각**인지 판정한다 (1900년 epoch·결측이면 False).
+    """시각 셀이 **실제 시각**인지 판정한다 (epoch·결측·24시간 초과면 False).
 
-    ⚠️ 이 판정이 없던 시절 `1900-01-01` 셀 17행(83,700톤 = 인출의 5.4%)이 전부 **00:00** 으로
-    들어가, 실제로는 시각을 모르는 물량이 3차 교대 시작 시각에 몰려 있었다. 시간축 매칭
-    (Time-Lag 추정·시간별 집계)을 왜곡하므로 **결과에 표시**하고 필요하면 제외할 수 있게 한다.
+    ⚠️ 이 판정이 없던 시절 `1900-01-01` 셀 다수가 **00:00** 으로 들어가, 실제로는 시각을
+    모르는 물량이 3차 교대 시작 시각에 몰려 있었다. 시간축 매칭(Time-Lag 추정·시간별 집계)을
+    왜곡하므로 **결과에 표시**하고 필요하면 제외할 수 있게 한다.
     """
-    t = pd.to_datetime(time_series.astype(str), errors="coerce", format="mixed")
-    return t.notna() & (t.dt.year != EXCEL_EPOCH_YEAR)
+    return time_series.map(lambda v: _time_parts(v) is not None)
 
 
 def _combine_datetime(date_series: pd.Series, time_series: pd.Series) -> pd.Series:
-    """일자(date) + 시각(time/str) → datetime. 파싱 실패는 NaT.
+    """일자(date) + 시각(time/str/timedelta) → datetime. 파싱 실패는 그날 00:00.
 
     시각을 모르는 셀은 날짜의 00:00 으로 두되, 호출부는 `time_is_known()` 으로 그 사실을
     함께 기록해야 한다(값을 지어내지 않고 한계를 드러낸다, §2-1).
     """
     d = pd.to_datetime(date_series, errors="coerce")
-    t = pd.to_datetime(time_series.astype(str), errors="coerce", format="mixed")
-    ok = t.notna() & (t.dt.year != EXCEL_EPOCH_YEAR)
-    delta = pd.to_timedelta(
-        t.dt.hour.fillna(0).astype(int).astype(str) + "h"
-    ) + pd.to_timedelta(
-        t.dt.minute.fillna(0).astype(int).astype(str) + "m"
-    )
-    return d + delta.where(ok, pd.Timedelta(0))
+    parts = time_series.map(_time_parts)
+    mins = parts.map(lambda p: p[0] * 60 + p[1] if p else 0)
+    return d + pd.to_timedelta(mins.astype(float), unit="m")
 
 
 def _to_numeric(series: pd.Series) -> pd.Series:
@@ -588,6 +616,11 @@ def clean_yard(df: pd.DataFrame, load_col: Optional[str] = None) -> pd.DataFrame
     out["cao"] = pd.to_numeric(df["CaO"], errors="coerce")
     out["mgo"] = pd.to_numeric(df["MgO"], errors="coerce")
     out["load"] = pd.to_numeric(df[load_col], errors="coerce") if load_col else np.nan
+    # ⭐️ 분석기 헛값 제거 — 석회석 CaO 가 30% 아래일 수 없다(S.YARD_CAO_MIN).
+    #    벨트에 물량이 적을 때 0 이나 25~29 가 찍힌다. **품위만 결측 처리하고 행은 남긴다** —
+    #    적재량 정보는 유효하고, 행을 지우면 '측정이 없었던 시간'과 구분되지 않는다.
+    out["cao_dropout"] = out["cao"].notna() & (out["cao"] < S.YARD_CAO_MIN)
+    out.loc[out["cao_dropout"], ["cao", "mgo"]] = np.nan
     return out.dropna(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
 
 

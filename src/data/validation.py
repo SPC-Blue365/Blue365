@@ -264,7 +264,18 @@ def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, Val
                     "물량 수지에는 쓰되 시간축 분석에서는 제외됩니다", len(unk)))
         reports["OSP인출"] = rep_o
     for line, ydf in (yards or {}).items():
-        reports[f"야드({line})"] = validate_source(ydf, S.SPEC_YARD)
+        rep_y = validate_source(ydf, S.SPEC_YARD)
+        # ⭐️ 분석기 헛값 — 벨트 물량이 적을 때 CaO 가 0 이나 25~29 로 찍힌다.
+        #    품위만 결측 처리했으므로 **얼마나 버렸는지**를 드러낸다(조용히 지우지 않는다).
+        if "cao_dropout" in ydf:
+            n = int(ydf["cao_dropout"].sum())
+            if n:
+                rep_y.issues.append(Issue(
+                    "cao_dropout", Severity.WARNING,
+                    f"분석기 헛값 {n}건({n / max(len(ydf), 1) * 100:.2f}%) — "
+                    f"CaO<{S.YARD_CAO_MIN:.0f}% 는 품위가 아니라 계측 오류로 보고 "
+                    "품위만 결측 처리했습니다(적재량은 유지)", n))
+        reports[f"야드({line})"] = rep_y
     if yard_change is not None and len(yard_change):
         reports["야드변경"] = validate_source(yard_change, S.SPEC_YARDCHANGE)
     return reports
