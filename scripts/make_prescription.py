@@ -28,6 +28,7 @@ from config import paths as P                                       # noqa: E402
 from config import schema as S                                      # noqa: E402
 from src.matching.inventory import zone_inventory                   # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources         # noqa: E402
+from src.matching import piles                                    # noqa: E402
 from src.optimization.prescribe import prescribe, zone_balance_health  # noqa: E402
 from src.visualization.webstyle import STYLE                        # noqa: E402
 
@@ -123,13 +124,15 @@ def build() -> str:
     mine, osp, yards = load_sources(verbose=False)
     stock = load_osp_stock()
 
-    lines, healths, invs = [], {}, {}
+    lines, healths, invs, feas, attrs = [], {}, {}, {}, {}
     for ln in S.YARD_PAIR:
         inv = zone_inventory(mine, osp, stock, ln)
         if inv is None:
             continue
         invs[ln] = inv
         healths[ln] = zone_balance_health(mine, osp, ln)
+        feas[ln] = piles.label_feasibility(mine, osp, ln)
+        attrs[ln] = piles.attribution_sd(mine, osp, ln)
         p = prescribe(mine, osp, stock, ln, hours=8, inv=inv)
         if p is not None and not p.allocation.empty:
             lines.append(p)
@@ -171,6 +174,18 @@ def build() -> str:
 
     bad = max(healths.values(), key=lambda h: h.get("bad_share", 0))
     bad_ln = [k for k, v in healths.items() if v is bad][0]
+
+    # ⭐️ 시간축을 넣은 검사 — 총량이 맞아도 '그 시점에' 재고가 없었으면 불가능하다(§6-0-22)
+    fv = [f for f in feas.values() if f]
+    feas_ton = sum(f["short_ton"] for f in fv)
+    feas_ask = sum(f["asked_ton"] for f in fv)
+    feas_pct = feas_ton / feas_ask * 100 if feas_ask else float("nan")
+    feas_txt = " · ".join(f"<b>{E(f['line'])} 라인 {f['short_share']:.0f}%</b>" for f in fv)
+    av = [a for a in attrs.values() if a]
+    attr_lo = min(a["band"][0] for a in av) if av else float("nan")
+    attr_hi = max(a["band"][1] for a in av) if av else float("nan")
+    attr_x_lo, attr_x_hi = attr_lo / TOL, attr_hi / TOL
+    orders_txt = "기록된 칸 근처 · 더미 전체 혼합 · 먼저 쌓은 것부터 · 나중 것부터"
 
     return f"""<title>배합 처방서</title>
 <style>{STYLE}
@@ -250,6 +265,17 @@ def build() -> str:
     인출은 60~90번에서 일어납니다. 또 <b>칸 높이를 넘으면 옆 칸으로 흘러</b>들고
     <b>구역별 재고는 측정하지 않으므로</b>, 구역 번호는 위치 표시일 뿐 그 안의 품위를
     특정하지 못합니다.</div>
+  <p class="a" style="margin-top:22px">더 강하게 말할 수 있습니다 —
+    <strong>기록을 시간 순서대로 재생하면 그 인출은 아예 불가능합니다.</strong></p>
+  <p class="note">위 그래프는 기간 <b>전체</b>의 쌓은 양과 뽑은 양을 견준 것입니다. 총량이 맞아도
+    <b>뽑는 그 시점에</b> 그 칸에 물량이 없었다면 그 기록은 성립하지 않습니다. 재고를 시간순으로
+    따라가 보면 {feas_txt} — 합쳐서 <b>인출의 {feas_pct:.0f}%({feas_ton:,.0f}톤)</b>가
+    <b>기록된 칸의 재고로는 설명되지 않습니다</b>. 품위 가정이 전혀 섞이지 않은 물량 계산이라
+    해석의 여지가 없습니다.</p>
+  <p class="note">그래서 위 표의 <b>‘품위 오차’ 에는 이 몫이 포함돼 있습니다.</b>
+    뽑는 순서를 네 가지({orders_txt})로 달리 가정해도 오차 크기는
+    <b>{attr_lo:.1f}~{attr_hi:.1f}%p</b> 로 거의 변하지 않습니다 — 허용폭 {TOL}%p 의
+    <b>{attr_x_lo:.0f}~{attr_x_hi:.0f}배</b>입니다. 가정을 바꿔서 줄일 수 있는 오차가 아니라는 뜻입니다.</p>
 </section>
 
 <section>

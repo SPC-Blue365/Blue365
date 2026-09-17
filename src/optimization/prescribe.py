@@ -21,6 +21,7 @@ import pandas as pd
 from scipy.stats import norm
 
 from config import schema as S
+from src.matching import piles
 from src.matching.inventory import ZoneInventory, withdrawal_rate, zone_inventory
 from src.optimization.blend import BlendSource, recommend_blend
 
@@ -57,8 +58,8 @@ class Prescription:
                 f"CaO 약 {self.achieved_cao:.2f}% (MgO {self.achieved_mgo:.2f}%) 가 됩니다.")
 
 
-def _zone_se(mine: pd.DataFrame, line: str) -> dict[float, float]:
-    """구역별 품위의 표준오차 — 같은 구역 안에서도 품위가 흔들리는 정도."""
+def _sampling_se(mine: pd.DataFrame, line: str) -> dict[float, float]:
+    """구역별 품위의 **표본오차** — 같은 구역에 쌓은 물량끼리도 품위가 흔들리는 정도."""
     m = mine[(mine["line"] == line)].dropna(subset=["zone", "cao"])
     out: dict[float, float] = {}
     for z, g in m.groupby("zone"):
@@ -66,6 +67,36 @@ def _zone_se(mine: pd.DataFrame, line: str) -> dict[float, float]:
         sd = float(g["cao"].std()) if n > 1 else float("nan")
         out[float(z)] = max(sd / np.sqrt(n), MIN_ZONE_SE) if np.isfinite(sd) else float("nan")
     return out
+
+
+def _zone_se(mine: pd.DataFrame, line: str, osp_exp: pd.DataFrame | None = None
+             ) -> tuple[dict[float, float], dict]:
+    """구역 품위의 **전체** 불확실성 = 표본오차 ⊕ 귀속오차.
+
+    ⭐️ 표본오차만 쓰면 "뽑은 물량은 그 구역에 쌓은 물량" 이라는 전제가 깔린다. 기록을 시간
+       순서대로 재생해 보면 그 전제는 인출의 32~43% 에서 성립하지 않는다(§6-0-22) — 그 구역에
+       그만한 재고가 애초에 없었다. 그래서 **귀속오차를 함께 더한다.**
+
+       결과는 처방의 적중 확률을 **더 낮게** 만들 수 있다. 그것이 맞다 —
+       "확률 없는 처방은 내지 않는다" 는 원칙은 **정확한 확률**을 뜻하지 낙관적 확률이 아니다.
+
+    반환: (구역별 SE, 귀속오차 진단 dict). `osp_exp` 가 없으면 표본오차만 쓴다(구 동작).
+    """
+    base = _sampling_se(mine, line)
+    if osp_exp is None or not len(osp_exp):
+        return base, {}
+    attr = piles.attribution_sd(mine, osp_exp, line)
+    if not attr:
+        return base, {}
+    med = attr.get("median", np.nan)
+    out = {}
+    for z in set(base) | set(attr["per_zone"]):
+        s = base.get(z, np.nan)
+        s = s if np.isfinite(s) else MIN_ZONE_SE
+        a = attr["per_zone"].get(z, med)
+        a = a if np.isfinite(a) else 0.0
+        out[z] = float(np.sqrt(s ** 2 + a ** 2))
+    return out, attr
 
 
 def prescribe(mine: pd.DataFrame, osp_exp: pd.DataFrame, stock: pd.DataFrame, line: str,
@@ -91,7 +122,12 @@ def prescribe(mine: pd.DataFrame, osp_exp: pd.DataFrame, stock: pd.DataFrame, li
                             float("nan"), float("nan"), False, False,
                             "품위를 아는 구역 재고가 없습니다", ["구역 품위 미상"], caveats)
 
-    ses = _zone_se(mine, line)
+    ses, attr = _zone_se(mine, line, osp_exp)
+    if attr:
+        caveats.append(
+            f"구역 귀속 오차 ±{attr['overall_sd']:.1f}%p 를 불확실성에 반영했습니다 — "
+            f"인출 기록의 구역 번호가 적재 위치를 가리키지 않아(라벨 구역에서 나온 물량 "
+            f"{attr['same_zone_pct']:.0f}%), 적중 확률이 그만큼 낮게 나옵니다(§6-0-22).")
     sources = [BlendSource(name=str(int(r.zone)), grade_cao=float(r.cao),
                            available_ton=float(r.ton)) for r in cand.itertuples()]
     res = recommend_blend(sources, demand_ton=demand, target_cao=target, tol=tol)
@@ -114,6 +150,13 @@ def prescribe(mine: pd.DataFrame, osp_exp: pd.DataFrame, stock: pd.DataFrame, li
                   - norm.cdf((target - tol - res.achieved_cao) / blend_se))
     else:
         p = 1.0 if abs(res.achieved_cao - target) <= tol else 0.0
+    # ⚠️ 배합 자체가 규격을 벗어난 경우, 불확실성이 커지면 적중 확률은 **올라간다**(정규 근사의
+    #    꼬리가 규격 안으로 더 들어오므로). 정확해져서가 아니므로 오해하지 않게 밝힌다(§2-1).
+    if abs(res.achieved_cao - target) > tol:
+        caveats.append(
+            f"배합 자체가 규격 밖입니다(예상 {res.achieved_cao:.2f}% vs 목표 {target}±{tol}%). "
+            "이때 적중 확률은 불확실성이 클수록 오히려 높게 나오므로, 이 숫자를 '정확도' 로 "
+            "읽으면 안 됩니다 — 재고 조합으로 목표에 닿지 못한다는 뜻입니다.")
 
     out = alloc.rename(columns={"ton_take": "ton_take"})[
         ["zone", "ton_take", "cao", "mgo", "ton"]].rename(

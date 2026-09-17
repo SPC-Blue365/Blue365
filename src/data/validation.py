@@ -262,6 +262,32 @@ def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, Val
                     f"인출시각을 알 수 없는 행 — {ton:,.0f}톤"
                     f"({ton / tot * 100:.1f}%)이 그날 00:00 으로 들어갑니다. "
                     "물량 수지에는 쓰되 시간축 분석에서는 제외됩니다", len(unk)))
+        # ⭐️ 구역 귀속 검사 — 기록된 구역 재고만으로 그 인출이 가능했는가.
+        #    총량 비교보다 강하다: 총량이 맞아도 **그 시점에** 재고가 없었으면 불가능하다.
+        #    품위 가정이 전혀 섞이지 않는 순수 물량 수지다(§6-0-22).
+        if mine is not None and {"zone", "datetime", "line"} <= set(osp.columns):
+            try:
+                from src.matching import piles
+                tot_short = tot_ask = 0.0
+                parts = []
+                for ln in (S.LINE_OLD, S.LINE_NEW):
+                    f = piles.label_feasibility(mine, osp, ln)
+                    if not f or not f["asked_ton"]:
+                        continue
+                    tot_short += f["short_ton"]
+                    tot_ask += f["asked_ton"]
+                    parts.append(f"{ln} {f['short_share']:.0f}%")
+                if tot_ask > 0 and tot_short > 0:
+                    sev = Severity.ERROR if tot_short / tot_ask > 0.2 else Severity.WARNING
+                    rep_o.issues.append(Issue(
+                        "zone_infeasible", sev,
+                        f"인출의 {tot_short / tot_ask * 100:.0f}%"
+                        f"({tot_short:,.0f}톤)가 **기록된 구역 재고로 설명되지 않습니다** "
+                        f"({' · '.join(parts)}). 구역 번호가 적재 위치가 아니라 인출 설비 위치로 "
+                        f"쓰이는 것으로 보입니다 — 구역 품위의 불확실성이 그만큼 커집니다(§6-0-22)"))
+            except Exception as exc:          # 검사 실패가 파이프라인을 막지 않게
+                rep_o.issues.append(Issue(
+                    "zone_check_failed", Severity.WARNING, f"구역 귀속 검사 실행 실패: {exc}"))
         reports["OSP인출"] = rep_o
     for line, ydf in (yards or {}).items():
         rep_y = validate_source(ydf, S.SPEC_YARD)
