@@ -493,7 +493,10 @@ def build_zone_grade_table(mine_long: pd.DataFrame) -> pd.DataFrame:
 # ② OSP 인출 — 균등 배분으로 구역별 인출 long
 # --------------------------------------------------------------------------- #
 def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
-    """OSP 인출 시트 → (datetime, 라인, 구역, 인출톤(균등배분), time_known) long.
+    """OSP 인출 시트 → (datetime, line, dest_line, zone, withdrawn_ton, time_known) long.
+
+    `line` 은 **출처 OSP**(시트 identity — 규칙 ⓐ), `dest_line` 은 **목적지 라인**(`공정구분`)이다.
+    재고 계산은 `line`, 야드 품위 매칭은 `dest_line` 을 쓴다.
 
     `time_known=False` 는 **시각을 모르는 행**이다(엑셀에 날짜 없는 시각 셀 → 1900 epoch).
     datetime 은 그날 00:00 으로 두지만, 실제 시각이 자정이라는 뜻이 아니므로 시간축 분석에서
@@ -519,9 +522,16 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
         dt = _combine_datetime(pd.Series([r.get("일자")]), ts).iloc[0]
         known = bool(time_is_known(ts).iloc[0])   # 시각을 실제로 아는 행인가
         note = str(r.get(S.COL_OSP_NOTE, "") or "")
+        # ⭐️ 출처(line)와 목적지(dest_line)를 나눈다 (사용자 확정 2026-09-17).
+        #    `공정구분` 은 현장이 **목적지 라인**을 적는 칸이다 — 기존 OSP 에서 뽑아 신설
+        #    라인으로 보내는 물량이 2026-09 기준 100% 다. 재고는 출처에서 빠지고 품위는
+        #    목적지 야드로 가므로, 하나의 컬럼으로는 둘 다 맞출 수 없다(§6-0-21).
+        proc = str(r.get(S.COL_OSP_PROCESS, "") or "").strip()
+        dest = proc if proc in (S.LINE_OLD, S.LINE_NEW) else line
         for slot, z in enumerate(zones):
             rows.append(
-                dict(datetime=dt, line=line, zone=float(z) if pd.notna(z) else np.nan,
+                dict(datetime=dt, line=line, dest_line=dest,
+                     zone=float(z) if pd.notna(z) else np.nan,
                      withdrawn_ton=per, time_known=known,
                      sheet_line=line, slot=slot, row_ton=float(total) if pd.notna(total) else np.nan,
                      note=note)
@@ -529,42 +539,81 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-#: 비고의 라인-구역 표기 (예: "신설60 기존50 1:1 인출")
+#: 비고의 라인-구역 표기 (구 표기, 예: "신설60 기존50 1:1 인출")
 _LINE_ZONE = re.compile(r"(기존|신설)\s*(\d{1,3})")
+
+#: 비고의 **화살표 교차인출** 표기 (2026-09 갱신본, 예: "기존->신설 교차인출 (1:1 인출)")
+#: 현장이 구 표기를 이 형식으로 바꿨다 — 구역 숫자가 빠지고 출처→목적지만 남았다(§6-0-21).
+_CROSS_ARROW = re.compile(r"(기존|신설)\s*(?:->|→|=>)\s*(기존|신설)")
+#: "1:1 인출" — 이벤트 총량을 **두 라인에서 반씩** 뽑았다는 표시 (사용자 확정 2026-08-19)
+_ONE_TO_ONE = re.compile(r"1\s*:\s*1")
 
 
 def parse_cross_line_note(note: str) -> list[tuple[str, float]]:
-    """비고에서 `[(라인, 구역), ...]` 을 순서대로 뽑는다.
+    """비고에서 `[(라인, 구역), ...]` 을 순서대로 뽑는다 (구 표기 전용).
 
     **두 라인이 함께 언급된 경우에만** 유효한 교차분할로 본다
-    (`기존->신설 교차인출` 처럼 한쪽만 나오는 표기는 §6-0-13 규칙 ⓐ로 처리하므로 제외).
+    (`기존->신설 교차인출` 처럼 화살표만 있는 신 표기는 `parse_cross_arrow` 가 맡는다).
     """
     pairs = [(m.group(1), float(m.group(2))) for m in _LINE_ZONE.finditer(note or "")]
     return pairs if len({p[0] for p in pairs}) >= 2 else []
 
 
+def parse_cross_arrow(note) -> Optional[tuple[str, str, bool]]:
+    """`기존->신설 교차인출 (1:1 인출)` → `(출처라인, 목적지라인, 1:1여부)`.
+
+    화살표가 없으면 None. 출처와 목적지가 같으면(오기) 무시한다.
+    """
+    if note is None or (isinstance(note, float) and not np.isfinite(note)):
+        return None
+    txt = str(note)
+    m = _CROSS_ARROW.search(txt)
+    if not m or m.group(1) == m.group(2):
+        return None
+    return m.group(1), m.group(2), bool(_ONE_TO_ONE.search(txt))
+
+
 def apply_cross_line_splits(osp_long: pd.DataFrame) -> pd.DataFrame:
-    """`신설60 기존50 1:1 인출` 표기를 실제 라인 분할로 반영한다 (사용자 확정 2026-08-19).
+    """두 시트에 걸친 **교차인출**을 실제 라인 분할로 정리한다.
 
-    순서가 중요하다 — **중복 제거를 먼저**, 그 다음 라인 재귀속이다.
+    현장 표기가 두 세대로 존재하므로 둘 다 처리한다.
 
-    1) **중복 제거** — 같은 인출이 **두 시트에 모두** 기록된 경우가 있다
-       (08-13 11:20 의 2,250톤이 기존·신설 시트에 각각). 그대로 두면 **물량이 이중 계상**된다.
-       슬롯이 더 많은(=양쪽 구역을 모두 담은) 기록을 남기되, **비고는 살아남는 쪽으로 옮긴다.**
-       설명이 반대쪽 시트에만 적혀 있는 경우가 있어, 옮기지 않으면 분할이 되지 않는다.
-    2) **라인 재귀속** — 비고에 적힌 순서대로 각 슬롯의 라인을 다시 붙인다.
-       물량은 이미 슬롯 수만큼 균등 분할돼 있어 자연히 1:1 이 된다.
-       ⚠️ **구역 번호는 시트 값을 그대로 둔다.** 비고의 구역이 시트와 다른 경우가 있고
-       (08-13 16:00: 비고 `기존65` vs 시트 `60`), 시트 값은 반대쪽 시트에서 교차 확인된다.
-       비고에서 가져오는 것은 **라인뿐**이다.
+    **A. 구 표기** — 한 시트의 비고에 두 라인이 함께 적힌 경우(`신설60 기존50 1:1 인출`).
+       ① **중복 제거**: 같은 인출이 두 시트에 모두 있으면 물량이 이중 계상된다. 슬롯이 더
+          많은 기록을 남기되 **비고는 살아남는 쪽으로 옮긴다**(설명이 반대쪽에만 있을 수 있다).
+       ② **라인 재귀속**: 비고 순서대로 각 슬롯의 라인을 다시 붙인다. 물량은 이미 슬롯 수만큼
+          균등 분할돼 있어 자연히 1:1 이 된다.
+          ⚠️ **구역 번호는 시트 값을 유지한다** (08-13 16:00: 비고 `기존65` vs 시트 `60`).
 
-    ⚠️ 규칙 ⓐ(기록된 시트 = 그 라인)는 그대로다. 이 함수는 **비고가 두 라인을 명시한 행**에만
-    적용된다(`기존->신설 교차인출` 처럼 한쪽만 나오는 표기는 대상이 아니다).
+    **B. 신 표기** — 화살표(`기존->신설 교차인출`)가 쓰이고, 같은 이벤트가 두 시트에
+       나뉘어 적힌 경우. 같은 (시각, 원본 행 총량) 이 양 시트에 있을 때만 다룬다.
+       · `1:1 인출` 이 함께 적혀 있으면 → **이벤트 총량을 두 라인에서 반씩** 뽑은 것이다.
+         양쪽 기록을 모두 남기고 **각각의 물량을 절반으로** 줄인다(구역은 각 시트 값 유지).
+       · `1:1` 표기가 없으면 → **같은 인출이 두 번 적힌 것**으로 본다. 화살표가 가리키는
+         **출처 시트만 남기고** 반대쪽을 버린다.
+       두 경우 모두 `dest_line` 을 화살표의 **목적지**로 맞춘다.
+
+    ⚠️ 화살표가 어느 쪽에도 없으면 손대지 않는다 — 총량만 우연히 같은 별개 인출이 실제로
+       있다(08-03 16:00 의 1,000톤: 기존 `L-slag` 40번 vs 신설 70·90번). 지어내지 않는다(§2-1).
+    ⚠️ 규칙 ⓐ(기록된 시트 = 그 라인의 인출)는 그대로다. 여기서 바꾸는 것은 **비고가 명시적으로
+       교차를 말한 행뿐**이다.
     """
     if "note" not in osp_long.columns or osp_long.empty:
         return osp_long
     df = osp_long.copy()
+    if "dest_line" not in df.columns:
+        df["dest_line"] = df["line"]
+    df = _apply_legacy_cross(df)
+    df = _apply_arrow_cross(df)
+    return df.reset_index(drop=True)
+
+
+def _apply_legacy_cross(df: pd.DataFrame) -> pd.DataFrame:
+    """A. 구 표기 — 한 시트에 두 라인이 함께 적힌 경우 (§6-0-19)."""
+    df = df.copy()
     df["_cross"] = df["note"].fillna("").map(lambda n: len(parse_cross_line_note(n)) > 0)
+    if not df["_cross"].any():
+        return df.drop(columns=["_cross"])
 
     # ① 중복 제거 — 같은 (시각, 원본 행 총량) 이 두 시트에 있고 한쪽이 교차분할 표기인 경우
     ev = (df.groupby(["datetime", "row_ton", "sheet_line"], dropna=False)
@@ -596,8 +645,56 @@ def apply_cross_line_splits(osp_long: pd.DataFrame) -> pd.DataFrame:
             continue                      # 슬롯 수와 표기 수가 다르면 손대지 않는다(§2-2)
         for (idx, _), (ln, _zone_in_note) in zip(g.sort_values("slot").iterrows(), pairs):
             df.loc[idx, "line"] = ln
-    return df.drop(columns=["_cross"]).reset_index(drop=True)
+    return df.drop(columns=["_cross"])
 
+
+def _apply_arrow_cross(df: pd.DataFrame) -> pd.DataFrame:
+    """B. 신 표기 — 화살표 교차인출이 두 시트에 나뉘어 적힌 경우 (§6-0-21).
+
+    이 함수가 손대는 행 수·물량은 `attrs["arrow_cross"]` 로 남겨 리포트가 밝힐 수 있게 한다.
+    """
+    df = df.copy()
+    arrow = df["note"].map(parse_cross_arrow)
+    if not arrow.notna().any():
+        df.attrs["arrow_cross"] = dict(halved=0, dropped=0, dropped_ton=0.0, events=0)
+        return df
+
+    drop_idx, halve_idx, n_halved, n_dropped, dropped_ton = [], [], 0, 0, 0.0
+    for (dt, rt), g in df.groupby(["datetime", "row_ton"], dropna=False):
+        sheets = set(g["sheet_line"])
+        if len(sheets) < 2:
+            continue
+        info = [a for a in arrow.loc[g.index] if a is not None]
+        if not info:
+            continue                      # 화살표가 없으면 별개 인출로 본다 (§2-1)
+        src, dest, one2one = info[0]
+        if one2one:
+            # 이벤트 총량을 반씩 — 양쪽 기록을 남기고 각각 절반으로 줄인다
+            halve_idx += list(g.index)
+            n_halved += 1
+        elif src in sheets:
+            # 같은 인출이 두 번 적힌 것 — 출처 시트만 남긴다
+            other = g.index[g["sheet_line"] != src]
+            drop_idx += list(other)
+            dropped_ton += float(pd.to_numeric(
+                df.loc[other, "withdrawn_ton"], errors="coerce").sum())
+            n_dropped += 1
+        else:
+            continue                      # 출처 시트가 없으면 판단 불가 → 그대로 둔다
+        df.loc[g.index, "dest_line"] = dest
+        # 설명이 한쪽 시트에만 있을 수 있다 → 양쪽에 같은 비고를 남겨 추적 가능하게 한다
+        has = g.index[arrow.loc[g.index].notna()]
+        df.loc[g.index, "note"] = str(df.loc[has[0], "note"])
+
+    if halve_idx:
+        df.loc[halve_idx, "withdrawn_ton"] = pd.to_numeric(
+            df.loc[halve_idx, "withdrawn_ton"], errors="coerce") / 2.0
+    if drop_idx:
+        df = df.drop(index=drop_idx)
+    df.attrs["arrow_cross"] = dict(halved=n_halved, dropped=n_dropped,
+                                   dropped_ton=dropped_ton,
+                                   events=n_halved + n_dropped)
+    return df
 
 # --------------------------------------------------------------------------- #
 # ③ 야드 CNA — 최종 목표 기준

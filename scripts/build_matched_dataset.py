@@ -52,7 +52,7 @@ def main() -> None:
     # ③ 라인별 야드 정제 + Time-Lag 추정 + 통합
     for line, (sheet, alias) in S.YARD_PAIR.items():
         yard = C.clean_yard(pd.read_excel(xls, sheet))
-        osp_h = P.aggregate_osp_hourly(osp_exp[osp_exp["line"] == line])
+        osp_h = P.aggregate_osp_hourly(P.osp_to_yard(osp_exp, line))   # 목적지 기준(§6-0-21)
         yard_h = P.aggregate_yard_hourly(yard)
         lag = P.estimate_time_lag(osp_h, yard_h, max_lag_hours=24)
         matched = P.build_line_dataset(osp_exp, yard, line, lag.best_lag_hours)

@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import paths as P                                    # noqa: E402
 from config import schema as S                                   # noqa: E402
 from src.matching.balance import combined_mass_gap, grade_balance  # noqa: E402
+from src.matching import pipeline as P2                        # noqa: E402
 from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE         # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                         # noqa: E402
@@ -212,6 +213,14 @@ def build() -> str:
     cm = combined_mass_gap(stock, mine, osp)
     gbs = {ln: r for ln in S.YARD_PAIR if (r := grade_balance(stock, mine, osp, ln))}
 
+    # ⭐️ 경로별(출처 OSP → 이 야드) 운반 시간 — 교차인출은 더 오래 걸린다(§6-0-21)
+    routes = []
+    for ln in S.YARD_PAIR:
+        rl = P2.estimate_route_lags(osp, yards[ln], ln)
+        for src, lag in sorted(rl.lags.items(), key=lambda kv: -rl.ton[kv[0]]):
+            routes.append((src, ln, rl.ton[src], lag, rl.corr.get(src, float("nan")),
+                           src in rl.fallback))
+
     maes = {}
     for ln in S.YARD_PAIR:
         f = P.MODELS_DIR / f"ridge_{ln}.joblib"
@@ -289,6 +298,15 @@ def build() -> str:
         f"<tr><td>{E(ln)}</td><td class='n'>{mae:.2f}</td><td class='n'>{TOL:.2f}</td>"
         f"<td class='n'>{lag}시간</td><td class='n'>{n:,}</td></tr>"
         for ln, (mae, n, lag) in maes.items())
+
+    route_rows = "".join(
+        f"<tr><td>{E(src)} OSP → {E(dst)} 야드"
+        + ('  <span style="color:var(--muted)">(교차인출)</span>' if src != dst else "")
+        + f"</td><td class='n'>{ton:,.0f}</td><td class='n'>{lag}시간"
+        + ("*" if fb else "")
+        + f"</td><td class='n'>{('—' if corr != corr else f'{corr:+.2f}')}</td></tr>"
+        for src, dst, ton, lag, corr, fb in routes)
+    route_fallback = any(fb for *_, fb in routes)
 
     zn = rd["zone"]
     cs = rd["cases"]
@@ -398,6 +416,17 @@ def build() -> str:
     <thead><tr><th>라인</th><th class="n">평균 오차</th><th class="n">목표</th>
       <th class="n">이송 지연</th><th class="n">학습 시간</th></tr></thead>
     <tbody>{pred_rows}</tbody></table></div>
+  <p class="a" style="margin-top:22px">물량이 <strong>어느 적치장에서 나와 어느 야드로 갔는지</strong>를
+    나눠서 보면, 경로마다 걸리는 시간이 다릅니다.</p>
+  <div class="card"><table class="t">
+    <thead><tr><th>경로</th><th class="n">물량(톤)</th><th class="n">이송 시간</th>
+      <th class="n">상류-야드 일치도</th></tr></thead>
+    <tbody>{route_rows}</tbody></table></div>
+  <p class="note">기존 적치장에서 <b>신설 야드로 보내는 교차인출</b>이 가장 오래 걸리고,
+    동시에 <b>상류 신호가 가장 잘 맞는 경로</b>입니다. 예전에는 이 셋을 한 덩어리로 묶어
+    평균 시간 하나만 썼기 때문에 서로를 흐리고 있었습니다.
+    {"경로 표본이 적어 대표 시간을 빌려 쓴 경로는 *로 표시했습니다. " if route_fallback else ""}
+    이송 시간은 현장 확인 대상으로 문의서에 올려 두었습니다.</p>
   <p class="note">막고 있는 것은 모델이 아니라 <b>들어가는 정보의 정밀도</b>입니다.
     구역별 품위의 평균 오차가 <b>{zn['se_median']:.2f}%p</b>로 허용폭 {TOL}%p보다 큽니다.
     자를 대는 눈금이 맞추려는 폭보다 굵은 셈이라, 이 상태로는 배합을 계산해도 목표에

@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import paths as P                                   # noqa: E402
 from config import schema as S                                  # noqa: E402
+from src.matching import pipeline as MP                         # noqa: E402
 from src.matching.inventory import zone_inventory               # noqa: E402
 from src.models.dataset import RAW_DIR, load_osp_stock, load_sources  # noqa: E402
 from src.visualization import dashboard_data as D               # noqa: E402
@@ -42,6 +43,15 @@ def build() -> str:
     mine, osp, yards = load_sources(verbose=False)
     stock = load_osp_stock()
     invs = {ln: zone_inventory(mine, osp, stock, ln) for ln in S.YARD_PAIR}
+
+    # ⭐️ 경로별 이송 시간 — 하드코딩하지 않고 매 실행마다 데이터에서 추정한다(§2-4)
+    route_lags = {}
+    for ln in S.YARD_PAIR:
+        rl = MP.estimate_route_lags(osp, yards[ln], ln)
+        for src, lag in rl.lags.items():
+            route_lags[f"{src}→{ln}"] = int(lag)
+    route_txt = " · ".join(f"{k} 약 {v}시간" for k, v in
+                           sorted(route_lags.items(), key=lambda kv: -kv[1]))
 
     # 교차인출은 원본 시트의 `공정구분` 을 봐야 하므로 원본을 다시 읽는다
     xls = pd.ExcelFile(RAW_DIR / S.DATA_FILE)
@@ -175,7 +185,10 @@ def build() -> str:
 
 <div class="grid wide">
   <div class="panel">
-    <h3>교차인출 — 기존 OSP 에서 뽑아 신설로 보낸 물량 <span class="tag warn">확인 필요</span></h3>
+    <h3>교차인출 — 기존 OSP 에서 뽑아 신설로 보낸 물량 <span class="tag">반영됨</span></h3>
+    <p class="hint">재고는 <b>기존</b> 적치장에서 빠지고, 품위는 <b>신설</b> 야드로 갑니다 —
+      두 가지를 따로 귀속시켜 계산합니다. 데이터로 추정한 경로별 이송 시간:
+      <b>{E(route_txt)}</b>.</p>
     <div id="c-cross"></div>
     <p class="hint" id="cross-note"></p>
   </div>

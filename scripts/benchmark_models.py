@@ -31,7 +31,7 @@ def build_features_for(xls, osp_exp, line, sheet):
     y = C.clean_yard(pd.read_excel(xls, sheet)).dropna(subset=["datetime"]).copy()
     y["h"] = y["datetime"].dt.floor("1h")
     ys = y.groupby("h")["cao"].mean().asfreq("1h")
-    o = osp_exp[osp_exp["line"] == line].dropna(subset=["datetime"]).copy()
+    o = P.osp_to_yard(osp_exp, line).dropna(subset=["datetime"]).copy()  # 목적지 기준(§6-0-21)
     o["h"] = o["datetime"].dt.floor("1h")
     oh = o.groupby("h").agg(impl=("expected_cao", "mean"), ton=("withdrawn_ton", "sum"))
     lag = P.estimate_time_lag(

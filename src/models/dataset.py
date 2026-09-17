@@ -28,6 +28,7 @@ class LineData:
     lag_hours: int
     features: pd.DataFrame      # 예측 피처 프레임
     lag_corr: float = float("nan")   # 그 lag 에서의 상류-야드 상관 (매칭 파이프라인과 동일 값)
+    routes: "P.RouteLags | None" = None   # 경로별(출처→이 야드) Time-Lag (§6-0-21)
 
 
 def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bool = True):
@@ -110,7 +111,13 @@ def build_line_data(osp_exp, yards, line: str) -> LineData:
     y = yards[line].dropna(subset=["datetime"]).copy()
     y["h"] = y["datetime"].dt.floor("1h")
     ys = y.groupby("h")["cao"].mean().asfreq("1h")
-    o = osp_exp[osp_exp["line"] == line].dropna(subset=["datetime"]).copy()
+    # ⭐️ 야드 품위를 맞추는 것이므로 **목적지 기준**으로 고른다 — 기존 OSP 에서 뽑아
+    #    신설로 보낸 물량을 출처로 고르면 반대쪽 야드에 통째로 매칭된다(§6-0-21).
+    # ⭐️ 나아가 **출처마다 운반 시간이 다르므로**(신설→신설 2h vs 기존→신설 10h) 경로별
+    #    lag 을 먼저 추정해 시각을 맞춘 뒤 하나의 흐름으로 합친다. 합쳐 놓고 단일 lag 을
+    #    찾으면 두 경로가 서로를 흐려 상관이 +0.21 → +0.17 로 떨어진다(§6-0-21).
+    routes = P.estimate_route_lags(osp_exp, yards[line], line)
+    o = P.align_routes(osp_exp, line, routes).dropna(subset=["datetime"]).copy()
     # ⭐️ 시각을 모르는 행(엑셀에 날짜 없는 시각 셀 → 그날 00:00 로 들어간 물량)은
     #    **시간축 분석에서 뺀다.** 물량은 유효하므로 수지 계산에는 그대로 쓰지만,
     #    시각이 가짜 자정이라 Time-Lag 추정을 망가뜨린다(신설 lag 이 2h ↔ 11h 로 뒤집혔다).
@@ -124,7 +131,7 @@ def build_line_data(osp_exp, yards, line: str) -> LineData:
     )
     lag = est.best_lag_hours
     feats = F.build_features(ys, oh, lag)
-    return LineData(line, alias, ys, oh, lag, feats, float(est.best_corr))
+    return LineData(line, alias, ys, oh, lag, feats, float(est.best_corr), routes)
 
 
 def all_lines(raw_file: str | None = None) -> dict[str, LineData]:

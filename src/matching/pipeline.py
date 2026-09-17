@@ -22,6 +22,29 @@ import pandas as pd
 from config import schema as S
 
 
+#: 목적지 라인 컬럼 — `clean_osp` 가 `공정구분` 에서 뽑는다 (§6-0-21)
+DEST_LINE = "dest_line"
+
+
+def osp_to_yard(osp_exp: pd.DataFrame, line: str) -> pd.DataFrame:
+    """그 야드 라인으로 **들어간** 인출만 고른다 (⭐️ 목적지 기준).
+
+    출처(`line`)와 목적지(`dest_line`)는 다르다. 기존 OSP 에서 뽑아 신설 라인으로 보낸
+    물량이 2026-08 이후 상당하므로, **야드 품위를 맞출 때는 목적지로 골라야 한다** —
+    출처로 고르면 그 물량이 통째로 반대쪽 야드에 매칭된다(§6-0-21).
+
+    재고·물량 수지는 반대다: 재고는 **출처**에서 빠지므로 `line` 으로 골라야 한다.
+    구 버전 데이터(목적지 컬럼 없음)는 `line` 으로 자동 대체한다.
+    """
+    col = DEST_LINE if DEST_LINE in osp_exp.columns else "line"
+    return osp_exp[osp_exp[col] == line]
+
+
+def osp_from_source(osp_exp: pd.DataFrame, line: str) -> pd.DataFrame:
+    """그 OSP 에서 **빠져나간** 인출만 고른다 (출처 기준 — 재고·수지용)."""
+    return osp_exp[osp_exp["line"] == line]
+
+
 # --------------------------------------------------------------------------- #
 # 1) OSP 인출 → 예상 CaO 부여 (광산 구역-품위 매칭)
 # --------------------------------------------------------------------------- #
@@ -152,6 +175,90 @@ def estimate_time_lag(
 
 
 # --------------------------------------------------------------------------- #
+# 4-b) 경로별 Time-Lag — 출처×목적지 조합마다 운반 시간이 다르다 (§6-0-21)
+# --------------------------------------------------------------------------- #
+#: 경로 lag 을 따로 추정하려면 그 경로에 최소한 이만큼의 겹친 시간 표본이 있어야 한다.
+#: 표본이 적으면 상관 최대점이 노이즈를 좇으므로 주 경로 lag 으로 물러선다(§2-1).
+MIN_ROUTE_SAMPLES = 30
+
+
+@dataclass
+class RouteLags:
+    """한 야드로 들어오는 **경로별** Time-Lag.
+
+    `lags[출처]` = 그 출처 OSP 에서 뽑아 이 야드에 닿기까지의 시간(시간).
+    `base` 는 물량이 가장 많은 주 경로이며, `base_lag` 이 그 라인의 대표 lag 이다.
+    """
+    dest: str
+    base: str
+    base_lag: int
+    lags: dict
+    corr: dict
+    ton: dict
+    n: dict
+    fallback: tuple = ()      # 표본 부족으로 주 경로 lag 을 빌려 쓴 출처들
+
+    @property
+    def is_multi(self) -> bool:
+        return len({v for v in self.lags.values()}) > 1
+
+    def summary(self) -> str:
+        parts = [f"{src}→{self.dest} {lag}h" + ("*" if src in self.fallback else "")
+                 for src, lag in sorted(self.lags.items(), key=lambda kv: -self.ton[kv[0]])]
+        return " / ".join(parts)
+
+
+def estimate_route_lags(osp_exp: pd.DataFrame, yard: pd.DataFrame, dest: str,
+                        max_lag_hours: int = 24, freq: str = "1h") -> RouteLags:
+    """이 야드로 들어오는 인출을 **출처별로 쪼개** 각각의 Time-Lag 을 추정한다.
+
+    ⭐️ 왜 나눠야 하나: 같은 야드에 들어오는 물량이라도 **어느 OSP 에서 왔는지에 따라
+       운반 시간이 다르다.** 실제로 신설 야드는 신설 OSP 에서 2시간, 기존 OSP(교차인출)에서
+       10시간이 걸린다. 이 둘을 한 lag 으로 묶으면 서로를 흐려 상관이 +0.21 → +0.17 로
+       떨어진다 — 경로를 나누면 교차인출 경로만은 상관이 +0.30 으로 가장 높다(§6-0-21).
+
+    표본이 `MIN_ROUTE_SAMPLES` 미만인 경로는 추정하지 않고 주 경로 lag 을 쓴다.
+    """
+    yh = aggregate_yard_hourly(yard, freq=freq)
+    d = osp_to_yard(osp_exp, dest)
+    lags, corr, ton, nn = {}, {}, {}, {}
+    for src in (S.LINE_OLD, S.LINE_NEW):
+        part = d[d["line"] == src]
+        t = float(pd.to_numeric(part["withdrawn_ton"], errors="coerce").sum())
+        if not len(part) or t <= 0:
+            continue
+        oh = aggregate_osp_hourly(part, freq=freq)
+        est = estimate_time_lag(oh, yh, max_lag_hours=max_lag_hours)
+        n = int(est.curve.loc[est.curve["lag_hours"] == est.best_lag_hours, "n"].max())
+        lags[src], corr[src], ton[src], nn[src] = est.best_lag_hours, est.best_corr, t, n
+    if not lags:
+        return RouteLags(dest, dest, 0, {}, {}, {}, {})
+    base = max(ton, key=ton.get)                      # 물량이 가장 많은 경로가 그 라인의 대표
+    fallback = tuple(s for s in lags if nn[s] < MIN_ROUTE_SAMPLES and s != base)
+    for s in fallback:
+        lags[s] = lags[base]
+    return RouteLags(dest, base, int(lags[base]), lags, corr, ton, nn, fallback)
+
+
+def align_routes(osp_exp: pd.DataFrame, dest: str, rl: RouteLags) -> pd.DataFrame:
+    """경로별 lag 차이를 **인출 시각에 미리 반영**해 주 경로 기준으로 맞춘다.
+
+    반환 프레임은 "주 경로에서 뽑았다면 언제였을 시각"으로 옮겨져 있으므로, 이후 단계는
+    지금까지처럼 **단일 lag(`rl.base_lag`)** 만 다루면 된다 — 집계·피처·리포트의 계약이
+    그대로 유지되면서 경로별 운반 시간차는 이미 보정된 상태가 된다.
+
+    ⚠️ 옮기는 것은 `datetime` 뿐이다. 물량·품위·구역은 건드리지 않는다.
+    """
+    out = osp_to_yard(osp_exp, dest).copy()
+    if not rl.lags or not rl.is_multi:
+        return out
+    shift = out["line"].map({s: rl.lags.get(s, rl.base_lag) - rl.base_lag for s in rl.lags})
+    out["route_shift_h"] = shift.fillna(0).astype(float)
+    out["datetime"] = out["datetime"] + pd.to_timedelta(out["route_shift_h"], unit="h")
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # 5) 통합 데이터셋 (최적 지연 정렬)
 # --------------------------------------------------------------------------- #
 def build_matched_dataset(
@@ -257,8 +364,11 @@ def assign_expected_cao_timeaware(
 def build_line_dataset(
     osp_exp: pd.DataFrame, yard: pd.DataFrame, line: str, lag_hours: int, freq: str = "1h"
 ) -> pd.DataFrame:
-    """한 라인(기존/신설)의 OSP 피처를 해당 야드(목표)와 lag 정렬한 통합셋."""
-    osp_h = aggregate_osp_hourly(osp_exp[osp_exp["line"] == line], freq=freq)
+    """한 라인(기존/신설)의 OSP 피처를 해당 야드(목표)와 lag 정렬한 통합셋.
+
+    ⭐️ 야드 목표에 맞추는 것이므로 **목적지 기준**으로 인출을 고른다(`osp_to_yard`).
+    """
+    osp_h = aggregate_osp_hourly(osp_to_yard(osp_exp, line), freq=freq)
     yard_h = aggregate_yard_hourly(yard, freq=freq)
     osp_h["datetime"] = osp_h["datetime"] + pd.Timedelta(hours=lag_hours)
     merged = yard_h.merge(osp_h, on="datetime", how="inner")

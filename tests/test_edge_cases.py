@@ -1157,6 +1157,180 @@ def test_single_line_note_is_left_alone():
     assert out["withdrawn_ton"].sum() == 2800.0
 
 
+# ── 출처(OSP) vs 목적지(라인) 분리 (사용자 확정 2026-09-17, §6-0-21) ───────────
+def _osp_sheet2(rows, pw):
+    """rows = [(일자, 시각, zoneA, zoneB, 톤, 비고, 공정구분)] → `공정구분` 포함 시트 모양"""
+    import pandas as pd
+
+    from config import schema as S
+    return pd.DataFrame([{
+        "일자": d, "인출시간": t, pw[0]: a, pw[1]: b, "인출량": ton, "비고": note,
+        S.COL_OSP_PROCESS: proc,
+    } for d, t, a, b, ton, note, proc in rows])
+
+
+def test_dest_line_comes_from_process_column():
+    """`공정구분` 은 **목적지 라인**이다 — 출처(시트)와 따로 실려야 한다."""
+    from config import schema as S
+    from src.data.clean import clean_osp
+
+    df = _osp_sheet2([("2026-09-01", "10:00", 60.0, None, 2000.0, None, S.LINE_NEW)],
+                     S.PW_COLS_OLD)
+    out = clean_osp(df, S.LINE_OLD, S.PW_COLS_OLD)
+    assert set(out["line"]) == {S.LINE_OLD}, "출처는 기록된 시트(규칙 ⓐ)"
+    assert set(out["dest_line"]) == {S.LINE_NEW}, "목적지는 공정구분"
+
+
+def test_dest_line_falls_back_to_sheet_when_process_missing():
+    """`공정구분` 이 없거나 알 수 없는 값이면 목적지 = 출처로 둔다 (구 버전 데이터 호환)."""
+    from config import schema as S
+    from src.data.clean import clean_osp
+
+    for proc in (None, "", "기타"):
+        df = _osp_sheet2([("2026-09-01", "10:00", 60.0, None, 2000.0, None, proc)],
+                         S.PW_COLS_OLD)
+        out = clean_osp(df, S.LINE_OLD, S.PW_COLS_OLD)
+        assert set(out["dest_line"]) == {S.LINE_OLD}, f"proc={proc!r}"
+    # 컬럼 자체가 없는 구 버전 시트
+    df = _osp_sheet([("2026-09-01", "10:00", 60.0, None, 2000.0, None)], S.PW_COLS_OLD)
+    assert set(clean_osp(df, S.LINE_OLD, S.PW_COLS_OLD)["dest_line"]) == {S.LINE_OLD}
+
+
+def test_parse_cross_arrow_reads_source_dest_and_ratio():
+    """`기존->신설 교차인출 (1:1 인출)` → (출처, 목적지, 1:1 여부)."""
+    from config import schema as S
+    from src.data.clean import parse_cross_arrow
+
+    assert parse_cross_arrow("기존->신설 교차인출") == (S.LINE_OLD, S.LINE_NEW, False)
+    assert parse_cross_arrow("기존->신설 교차인출 (1:1 인출)") == (S.LINE_OLD, S.LINE_NEW, True)
+    assert parse_cross_arrow("신설 → 기존 교차인출") == (S.LINE_NEW, S.LINE_OLD, False)
+    assert parse_cross_arrow("수항채움") is None
+    assert parse_cross_arrow(None) is None
+    assert parse_cross_arrow(float("nan")) is None
+    assert parse_cross_arrow("기존->기존") is None, "출처=목적지 오기는 무시"
+
+
+def test_arrow_one_to_one_halves_both_sheets():
+    """양 시트에 같은 이벤트가 `(1:1 인출)` 로 적히면 **총량이 두 배가 되면 안 된다**.
+
+    2026-09 갱신본에서 현장 표기가 `신설60 기존50 1:1 인출` → `기존->신설 교차인출 (1:1 인출)`
+    로 바뀌면서 구 파서가 먹통이 됐다(4건 10,250톤이 이중 계상). 실제 08-13 16:00 사례.
+    """
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp
+
+    note = "기존->신설 교차인출 (1:1 인출)"
+    old = clean_osp(_osp_sheet2([("2026-08-13", "16:00", 60.0, None, 4000.0, note, S.LINE_OLD)],
+                                S.PW_COLS_OLD), S.LINE_OLD, S.PW_COLS_OLD)
+    new = clean_osp(_osp_sheet2([("2026-08-13", "16:00", 95.0, None, 4000.0, note, S.LINE_NEW)],
+                                S.PW_COLS_NEW), S.LINE_NEW, S.PW_COLS_NEW)
+    out = apply_cross_line_splits(pd.concat([old, new], ignore_index=True))
+    assert out["withdrawn_ton"].sum() == 4000.0, "8,000톤으로 이중 계상되면 안 된다"
+    assert dict(zip(out["line"], out["withdrawn_ton"])) == {S.LINE_OLD: 2000.0, S.LINE_NEW: 2000.0}
+    assert set(out["dest_line"]) == {S.LINE_NEW}, "양쪽 절반 모두 목적지는 신설"
+    assert set(out["zone"]) == {60.0, 95.0}, "구역은 각 시트 값을 유지"
+    assert out.attrs["arrow_cross"]["halved"] == 1
+
+
+def test_arrow_copy_keeps_only_the_source_sheet():
+    """`1:1` 표기가 없으면 **같은 인출이 두 번 적힌 것** — 화살표의 출처 시트만 남긴다.
+
+    실제 08-02 03:00 사례: 두 시트가 톤(3,600)·구역(55·90)까지 똑같고 비고는 기존 쪽에만 있다.
+    """
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp
+
+    old = clean_osp(_osp_sheet2([("2026-08-02", "03:00", 55.0, 90.0, 3600.0,
+                                  "기존->신설 교차인출", S.LINE_NEW)], S.PW_COLS_OLD),
+                    S.LINE_OLD, S.PW_COLS_OLD)
+    new = clean_osp(_osp_sheet2([("2026-08-02", "03:00", 55.0, 90.0, 3600.0, None, S.LINE_NEW)],
+                                S.PW_COLS_NEW), S.LINE_NEW, S.PW_COLS_NEW)
+    out = apply_cross_line_splits(pd.concat([old, new], ignore_index=True))
+    assert out["withdrawn_ton"].sum() == 3600.0
+    assert set(out["line"]) == {S.LINE_OLD}, "출처는 화살표가 가리키는 기존"
+    assert set(out["dest_line"]) == {S.LINE_NEW}
+    assert out.attrs["arrow_cross"]["dropped"] == 1
+
+
+def test_same_tonnage_without_arrow_is_left_alone():
+    """총량만 우연히 같은 별개 인출은 건드리지 않는다 (08-03 16:00 실제 사례, §2-1)."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_cross_line_splits, clean_osp
+
+    old = clean_osp(_osp_sheet2([("2026-08-03", "16:00", 40.0, None, 1000.0, "L-slag", S.LINE_OLD)],
+                                S.PW_COLS_OLD), S.LINE_OLD, S.PW_COLS_OLD)
+    new = clean_osp(_osp_sheet2([("2026-08-03", "16:00", 70.0, 90.0, 1000.0, None, S.LINE_NEW)],
+                                S.PW_COLS_NEW), S.LINE_NEW, S.PW_COLS_NEW)
+    out = apply_cross_line_splits(pd.concat([old, new], ignore_index=True))
+    assert out["withdrawn_ton"].sum() == 2000.0, "서로 다른 인출이므로 합쳐서 2,000톤"
+    assert out.attrs["arrow_cross"]["events"] == 0
+
+
+def test_osp_to_yard_selects_by_destination():
+    """야드 매칭은 목적지, 재고는 출처 — 두 선택자가 서로 다른 행을 골라야 한다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.matching import pipeline as P
+
+    df = pd.DataFrame({
+        "line": [S.LINE_OLD, S.LINE_OLD, S.LINE_NEW],
+        "dest_line": [S.LINE_OLD, S.LINE_NEW, S.LINE_NEW],
+        "withdrawn_ton": [100.0, 200.0, 300.0],
+    })
+    assert P.osp_to_yard(df, S.LINE_NEW)["withdrawn_ton"].sum() == 500.0
+    assert P.osp_from_source(df, S.LINE_OLD)["withdrawn_ton"].sum() == 300.0
+    # 목적지 컬럼이 없는 구 버전 데이터는 출처로 물러선다
+    legacy = df.drop(columns=["dest_line"])
+    assert P.osp_to_yard(legacy, S.LINE_OLD)["withdrawn_ton"].sum() == 300.0
+
+
+def test_align_routes_shifts_only_the_secondary_route():
+    """경로별 lag 차이는 **시각에만** 반영한다 — 물량·구역은 그대로여야 한다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.matching import pipeline as P
+
+    df = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-08-01 00:00", "2026-08-01 00:00"]),
+        "line": [S.LINE_NEW, S.LINE_OLD],
+        "dest_line": [S.LINE_NEW, S.LINE_NEW],
+        "zone": [60.0, 50.0],
+        "withdrawn_ton": [1000.0, 200.0],
+    })
+    rl = P.RouteLags(dest=S.LINE_NEW, base=S.LINE_NEW, base_lag=2,
+                     lags={S.LINE_NEW: 2, S.LINE_OLD: 10},
+                     corr={}, ton={S.LINE_NEW: 1000.0, S.LINE_OLD: 200.0}, n={})
+    out = P.align_routes(df, S.LINE_NEW, rl).set_index("line")
+    assert out.loc[S.LINE_NEW, "datetime"] == pd.Timestamp("2026-08-01 00:00"), "주 경로는 그대로"
+    assert out.loc[S.LINE_OLD, "datetime"] == pd.Timestamp("2026-08-01 08:00"), "차이 8h 만큼 이동"
+    assert out["withdrawn_ton"].sum() == 1200.0 and set(out["zone"]) == {60.0, 50.0}
+
+
+def test_align_routes_noop_when_single_route():
+    """경로가 하나뿐이면 아무것도 옮기지 않는다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.matching import pipeline as P
+
+    df = pd.DataFrame({
+        "datetime": pd.to_datetime(["2026-08-01 00:00"]),
+        "line": [S.LINE_OLD], "dest_line": [S.LINE_OLD], "withdrawn_ton": [100.0],
+    })
+    rl = P.RouteLags(S.LINE_OLD, S.LINE_OLD, 6, {S.LINE_OLD: 6}, {}, {S.LINE_OLD: 100.0}, {})
+    assert not rl.is_multi
+    out = P.align_routes(df, S.LINE_OLD, rl)
+    assert out["datetime"].iloc[0] == pd.Timestamp("2026-08-01 00:00")
+
+
 # ── 시각 셀 타입 다양성 (2026-09-17 회귀) ─────────────────────────────────────
 def test_time_parses_every_type_excel_hands_us():
     """같은 컬럼이 판마다 다른 타입으로 온다 — 전부 시각으로 읽혀야 한다.
