@@ -1,5 +1,9 @@
 .streamlit/secrets.toml
 
+# QMS 운영 데이터(DB·사용자 기준·알림 설정) — 저장소에 올리지 않음
+data/*
+!data/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

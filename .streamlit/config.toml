@@ -1,0 +1,12 @@
+[client]
+toolbarMode = "viewer"
+
+[server]
+maxUploadSize = 50
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+# 빨강은 '위험' 상태색으로만 쓰기 위해 강조색을 파랑으로 지정
+primaryColor = "#2a78d6"
