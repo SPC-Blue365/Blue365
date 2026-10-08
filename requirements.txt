@@ -1,4 +1,4 @@
-streamlit>=1.45
+streamlit>=1.55          # 1.55 미만은 화면 일부(버튼 width·metric delta_arrow)가 동작하지 않음
 pandas>=2.2
 numpy>=1.26
 scipy>=1.11

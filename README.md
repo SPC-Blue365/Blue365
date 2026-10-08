@@ -23,10 +23,19 @@ KS 규격·사내 관리기준·SPC 판정규칙을 벗어나면 **자동으로 
 
 ## 빠른 시작
 
+필요 환경: **Python 3.11 이상**(3.11·3.13에서 확인), Streamlit 1.55 이상(requirements.txt로 자동 설치).
+
 ```bash
+# Windows (명령 프롬프트)                     # macOS·Linux
+py -3.11 -m venv .venv                       # python3 -m venv .venv
+.venv\Scripts\activate                        # source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run streamlit_app.py
+streamlit run streamlit_app.py               # 브라우저에서 http://localhost:8501 자동 열림 (종료: Ctrl+C)
 ```
+
+- 설치 없이 보려면: GitHub 저장소에서 **Code → Codespaces → Create codespace**(설정 파일 `.devcontainer` 포함, 자동 설치·실행). 클라우드이므로 실데이터는 올리지 마세요.
+- 사내망에서 같이 보려면: `streamlit run streamlit_app.py --server.address 0.0.0.0` 후 다른 PC에서 `http://<실행 PC IP>:8501`(방화벽 8501 허용).
+- `streamlit` 명령을 찾지 못하면 가상환경을 활성화하거나 `python -m streamlit run streamlit_app.py`로 실행하세요.
 
 처음 실행하면 **데모 데이터**(가상 공장 120일, 이상 시나리오 7종)가 자동 생성됩니다(이전 버전 데모 DB는 자동 갱신).
 실제 데이터는 `📥 데이터 관리 → 입력 템플릿`으로 업로드하거나 `🔗 LIMS 연동`으로 자동 반영하세요.
