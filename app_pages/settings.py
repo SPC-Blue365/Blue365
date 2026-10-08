@@ -3,16 +3,32 @@
 import pandas as pd
 import streamlit as st
 
-from qms.notify import NotifyConfig, format_message, load_config, save_config, send_email, send_webhook
+from qms import llm
+from qms.notify import (
+    NotifyConfig,
+    format_message,
+    load_config,
+    save_config,
+    send_email,
+    send_webhook,
+)
 from qms.spc import RULE_NAMES
-from qms.standards import DEFAULT_SETTINGS, KS_ISO679, KS_L5201, USER_STANDARDS_PATH, Limits, save_registry, save_settings
+from qms.standards import (
+    DEFAULT_SETTINGS,
+    KS_ISO679,
+    KS_L5201,
+    USER_STANDARDS_PATH,
+    Limits,
+    save_registry,
+    save_settings,
+)
 from qms.ui import get_ctx, refresh, sidebar
 
 ctx = get_ctx()
 sidebar(ctx)
 reg = ctx.registry
 st.title("⚙️ 기준·알림 설정")
-tab1, tab2, tab3, tab4 = st.tabs(["사내 관리기준", "SPC·진단 설정", "알림 채널", "KS 규격 근거"])
+tab1, tab2, tab3, tab5, tab4 = st.tabs(["사내 관리기준", "SPC·진단 설정", "알림 채널", "AI(LLM)", "KS 규격 근거"])
 
 with tab1:
     st.markdown("**사내 관리기준(하한·상한·목표)** 을 공장 기준으로 수정하세요. KS 값은 규격이므로 수정할 수 없습니다. "
@@ -124,6 +140,52 @@ with tab3:
     st.markdown("**자동 감시(무인 운영)** — 서버에서 아래 명령을 10~30분 주기로 실행(cron·작업 스케줄러)하면 "
                 "새 데이터 반영 → 이상 감지 → 알림 발송이 자동으로 이뤄집니다.")
     st.code("python qms_monitor.py --import-dir ./inbox --since-hours 24", language="bash")
+
+with tab5:
+    acfg = llm.load_llm_config()
+    st.markdown("**AI 솔루션 보고서(Claude API)** — 강도·응결 제어, 6가크롬 저감, 배합 검토 화면에서 계산 결과를 근거로 "
+                "보고서를 작성합니다. 숫자는 시스템이 계산하고 AI는 해설·조치 계획만 씁니다(사실/추정/경험칙 구분 표기).")
+    st.warning("**데이터 보안**: AI 보고서를 만들면 계산 결과 요약(JSON)이 외부 API(Anthropic)로 전송됩니다. 원 데이터 DB·개인정보는 "
+               "보내지 않지만 공정 정보가 포함되므로 **사내 정보보안 승인 후** 사용하세요. 각 화면의 'AI에 전달되는 데이터 보기'에서 "
+               "전송 내용을 확인할 수 있습니다.", icon="🔐")
+    with st.form("llm_form"):
+        a1, a2, a3 = st.columns([1, 1.6, 1])
+        en = a1.toggle("AI 보고서 사용", value=acfg.enabled)
+        model = a2.selectbox("모델", list(llm.MODELS), index=list(llm.MODELS).index(acfg.model),
+                             format_func=lambda m: f"{llm.MODELS[m]['label']} — 입력 ${llm.MODELS[m]['in']:g}/출력 ${llm.MODELS[m]['out']:g} (100만 토큰)")
+        effort = a3.selectbox("추론 깊이(effort)", llm.EFFORTS, index=llm.EFFORTS.index(acfg.effort),
+                              help="높을수록 깊이 검토하지만 시간·비용 증가. 보고서 용도는 high 권장")
+        b1, b2, b3, b4 = st.columns(4)
+        max_tok = b1.number_input("최대 출력 토큰", 2000, 64000, int(acfg.max_tokens), step=1000)
+        fb = b2.toggle("응답 거부 시 대체 모델 사용", value=acfg.use_fallbacks,
+                       help="안전 정책으로 응답이 거부되면 서버가 권장 대체 모델로 다시 시도(Haiku 제외)")
+        krw = b3.number_input("환율(원/$, 비용 표시용)", 500.0, 3000.0, float(acfg.usd_krw), step=10.0)
+        base = b4.text_input("API 주소(사내 게이트웨이 시)", acfg.base_url, placeholder="비우면 기본 API")
+        if st.form_submit_button("저장", type="primary"):
+            llm.save_llm_config(llm.LLMConfig(en, model, effort, int(max_tok), fb, base.strip(), acfg.timeout, float(krw)))
+            st.success("저장했습니다.")
+            st.rerun()
+    ok_key, src = llm.credential_status()
+    ready, msg = llm.ai_ready(acfg)
+    st.caption(f"API 키: {'설정됨 — ' + src if ok_key else '없음'} · anthropic 패키지: {'설치됨' if llm.sdk_available() else '미설치'} · "
+               f"상태: {msg}")
+    st.markdown("API 키는 화면에 저장하지 않습니다. 서버 환경변수 `ANTHROPIC_API_KEY` 또는 `.streamlit/secrets.toml`의 "
+                "`[anthropic]` 섹션 `api_key`에 넣으세요(저장소에 올라가지 않음).")
+    est = pd.DataFrame([{"모델": llm.MODELS[m]["label"], "1회 예상 비용($)": llm.estimate_call_cost(m),
+                         "1회 예상 비용(원)": llm.estimate_call_cost(m) * acfg.usd_krw,
+                         "월 100회(원)": llm.estimate_call_cost(m) * acfg.usd_krw * 100} for m in llm.MODELS])
+    st.markdown("**비용 추정**(입력 약 9천 토큰 중 지식베이스 6천 캐시 + 출력 약 4천 토큰 가정 — 추정)")
+    st.dataframe(est, hide_index=True, column_config={"1회 예상 비용($)": st.column_config.NumberColumn(format="%.4f"),
+                                                      "1회 예상 비용(원)": st.column_config.NumberColumn(format="%,.0f"),
+                                                      "월 100회(원)": st.column_config.NumberColumn(format="%,.0f")})
+    logs = llm.read_log()
+    if logs:
+        lg = pd.DataFrame([{"일시": e.get("ts"), "용도": llm.KINDS.get(e.get("kind"), e.get("kind")), "모델": e.get("served_model"),
+                            "입력": (e.get("usage") or {}).get("input_tokens"), "출력": (e.get("usage") or {}).get("output_tokens"),
+                            "비용($)": e.get("cost_usd"), "종료": e.get("stop_reason"), "오류": e.get("error") or ""}
+                           for e in reversed(logs)])
+        st.markdown(f"**사용 기록**(최근 {len(lg)}건, 합계 ${lg['비용($)'].fillna(0).sum():.3f}) — data/ai_log.jsonl")
+        st.dataframe(lg, hide_index=True)
 
 with tab4:
     st.markdown(f"""

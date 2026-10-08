@@ -7,9 +7,21 @@ from pptx import Presentation
 from qms.alerts import events_frame
 from qms.diagnosis import diagnose
 from qms.notify import NotifyConfig, dispatch, format_message, send_email
-from qms.reports import build_excel_report, build_issue_ppt, build_management_ppt, capability_table
+from qms.reports import (
+    build_excel_report,
+    build_issue_ppt,
+    build_management_ppt,
+    capability_table,
+)
 from qms.standards import SpecRegistry
-from qms.store import (load_alert_status, load_raw, parse_upload, save_raw, template_workbook, update_alert_status)
+from qms.store import (
+    load_alert_status,
+    load_raw,
+    parse_upload,
+    save_raw,
+    template_workbook,
+    update_alert_status,
+)
 
 
 def test_save_load_roundtrip_and_upsert(demo_raw, tmp_path):
@@ -24,11 +36,25 @@ def test_save_load_roundtrip_and_upsert(demo_raw, tmp_path):
     assert (raw["clinker"].head(3)["clk_fcao"] == 9.99).all()
 
 
+def test_upsert_is_column_wise_so_late_results_keep_earlier_columns(demo_raw, tmp_path):
+    db = tmp_path / "qms.db"
+    lots = demo_raw["physical"].head(4).copy()
+    first = lots.drop(columns=["phy_s28"])                       # 1~7일 결과 먼저 입력
+    save_raw({"physical": first}, path=db, replace=True)
+    late = lots[["timestamp", "product"]].assign(phy_s28=[50.1, 50.2, 50.3, 50.4])   # 28일 결과만 나중에
+    save_raw({"physical": late}, path=db)
+    got = load_raw(db)["physical"]
+    assert len(got) == 4
+    assert got["phy_s28"].tolist() == [50.1, 50.2, 50.3, 50.4]
+    assert got["phy_s3"].round(3).tolist() == lots["phy_s3"].round(3).tolist()   # 먼저 들어온 값 유지
+    assert got["sand_lot"].tolist() == lots["sand_lot"].tolist()
+
+
 def test_template_upload_roundtrip(demo_raw):
     data = template_workbook(SpecRegistry(), {k: v.head(5) for k, v in demo_raw.items()})
     res = parse_upload(data, "template.xlsx")
     assert not res.errors
-    assert set(res.tables) == {"raw_meal", "kiln", "clinker", "cement", "physical"}
+    assert set(res.tables) == {"raw_meal", "kiln", "clinker", "cement", "physical", "xrd"}
     assert len(res.tables["cement"]) == 5 and "product" in res.tables["cement"]
 
 

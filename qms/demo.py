@@ -12,6 +12,11 @@
 | S5   | 70 (1로트)  | 강도 양생수조 온도 이탈(17 ℃) → 해당 로트 28일 강도만 저하(시험오차)          |
 | S4   | 88 ~ 90     | 석고 정량공급기 이상 → 시멘트 SO3↑(KS 3.5% 근접·초과) → 응결 지연·강도↓       |
 | S3   | 100 ~ 105   | 세퍼레이터 회전수 저하 → 분말도↓·45μm 잔사↑ → 3·7일 강도↓ → 28일 예측 경보    |
+| S7   | 108 ~ 112   | 철질원을 고Cr 제강슬래그 Lot로 대체 → 클링커 총Cr↑ → 시멘트 6가크롬 상승       |
+
+XRD(일 1회 대표 시료)·크롬(클링커 총Cr·Cr⁶⁺, 시멘트 Cr⁶⁺)·생료 강열감량·석회석 혼합률은 별도 난수열(seed+101)로 생성해
+기존 항목 값과 시나리오 재현성을 그대로 유지한다. XRD 광물량은 Bogue 계산값에 문헌상 경향
+(알라이트는 Bogue보다 높고 벨라이트는 낮게 정량되는 경향)을 반영한 가정 오프셋을 더했다.
 
 ※ 모든 수치·계수는 시연용 가정값(추정)이며 실제 공장 특성과 다르다.
 """
@@ -23,6 +28,8 @@ from datetime import date, datetime, timedelta
 import numpy as np
 import pandas as pd
 
+from . import chemistry as chem
+
 SCENARIOS = {
     "S1": {"days": (40, 46), "title": "석탄 발열량 저하 → 소성 부족(f-CaO↑, C3S↓) → 28일 강도 저하"},
     "S6": {"days": (50, 56), "title": "석회석 백운석 혼입 → MgO↑ → 오토클레이브 팽창도 상승"},
@@ -30,6 +37,7 @@ SCENARIOS = {
     "S5": {"days": (70, 70), "title": "양생수조 온도 이탈 → 단일 로트 28일 강도 저하(시험오차)"},
     "S4": {"days": (88, 90), "title": "석고 정량공급기 이상 → 시멘트 SO3 과다 → 응결 지연"},
     "S3": {"days": (100, 105), "title": "세퍼레이터 이상 → 분말도 저하 → 조기강도↓·28일 예측 경보"},
+    "S7": {"days": (108, 112), "title": "철질원 대체(고Cr 제강슬래그 Lot) → 클링커 총Cr↑ → 시멘트 6가크롬 상승"},
 }
 
 ASH = {"sio2": 55.0, "al2o3": 25.0, "fe2o3": 7.0, "cao": 5.0, "mgo": 1.5}
@@ -218,13 +226,70 @@ def generate_demo_data(end: date | None = None, days: int = 120, seed: int = 7) 
         df[num] = df[num].round(nd)
         return df
 
+    # ── 추가 항목(별도 난수열: 위 항목 값은 바뀌지 않음) ────────────────
+    rng2 = np.random.default_rng(seed + 101)
+    rm["rm_loi"] = rm["rm_cao"] * 0.785 + rm["rm_mgo"] * 1.092 + 0.6 + rng2.normal(0, 0.08, m)
+    ls_base = np.where(is3, 1.37, 1.10)     # 석고 결정수·클링커 강열감량분(가정)
+    cem.insert(cem.columns.get_loc("cem_mgo") + 1, "cem_ls",
+               np.clip((cem["cem_loi"] - ls_base) / 0.42 + rng2.normal(0, 0.12, m), 0.0, 6.0))
+    xrd = _xrd_daily(clk, rng2, days)
+    _add_chromium(xrd, phy, cem, kiln, clk, rng2, days)
+
     return {
         "raw_meal": _round(rm),
         "kiln": _round(kiln),
         "clinker": _round(clk),
         "cement": _round(cem),
         "physical": _round(phy),
+        "xrd": _round(xrd),
     }
+
+
+def _add_chromium(xrd: pd.DataFrame, phy: pd.DataFrame, cem: pd.DataFrame, kiln: pd.DataFrame, clk: pd.DataFrame,
+                  rng: np.random.Generator, days: int) -> None:
+    """크롬 데이터(가정 모델). 전환율 = 12% × (1 + 0.20·(O₂ − 3)) × (1 + 1.2·(Na₂Oeq − 0.70)) — 산화 분위기·알칼리↑ 시 증가.
+
+    시멘트 제품 Cr⁶⁺ = (클링커 비율 × 사용 클링커 Cr⁶⁺ + 0.2) − 환원제 능력(약 3 mg/kg) + 오차.
+    """
+    n = len(xrd)
+    t = np.arange(n, dtype=float)
+    s7a, s7b = _scn("S7")
+    total = 65 + _ar1(n, 0.6, 5.0, rng) + _bump(t, s7a, s7b, 150, ramp=0.8)
+    day = pd.DatetimeIndex(xrd["timestamp"]).normalize()
+    o2 = kiln.set_index("timestamp")["kiln_o2"].resample("1D").mean().reindex(day).to_numpy()
+    na2oeq = (clk["clk_na2o"] + 0.658 * clk["clk_k2o"]).groupby(clk["timestamp"].dt.normalize()).mean().reindex(day).to_numpy()
+    conv = 0.12 * (1 + 0.20 * (o2 - 3.0)) * (1 + 1.2 * (na2oeq - 0.70)) * np.exp(rng.normal(0, 0.08, n))
+    xrd["clk_cr"] = np.clip(total, 10, None)
+    xrd["clk_crvi"] = np.clip(xrd["clk_cr"] * conv + rng.normal(0, 0.3, n), 0.2, None)
+    crvi_daily = pd.Series(xrd["clk_crvi"].to_numpy(), index=day)
+    full = pd.date_range(day.min() - pd.Timedelta(days=2), day.max() + pd.Timedelta(days=2), freq="1D")
+    used = crvi_daily.reindex(full).shift(1).rolling(2, min_periods=1).mean()
+    ls_daily = cem.set_index("timestamp")["cem_ls"].resample("1D").mean()
+    lot_day = phy["timestamp"].dt.normalize()
+    cf = 1 - ls_daily.reindex(lot_day).to_numpy() / 100 - 0.05            # 클링커 비율(석고 약 5% 가정)
+    before = cf * used.reindex(lot_day).to_numpy() + 0.2                 # 분쇄매체 기여 약 0.2(가정)
+    after = np.clip(before - 3.0 + rng.normal(0, 0.6, len(phy)), 0.3, None)
+    after = np.where(np.arange(len(phy)) + 1 > days - 1, np.nan, after)   # 결과 익일 확정
+    phy.insert(phy.columns.get_loc("phy_s28") + 1, "phy_crvi", after)
+
+
+def _xrd_daily(clk: pd.DataFrame, rng: np.random.Generator, days: int) -> pd.DataFrame:
+    """일 대표 클링커 시료의 XRD-Rietveld 정량값(가정 모델). 당일 결과는 익일 확정 → 마지막 날 제외."""
+    ph = chem.bogue(clk["clk_cao"], clk["clk_sio2"], clk["clk_al2o3"], clk["clk_fe2o3"], clk["clk_so3"],
+                    clk["clk_fcao"])
+    d = pd.DataFrame({"timestamp": clk["timestamp"], "c3s": ph["C3S"], "c2s": ph["C2S"], "c3a": ph["C3A"],
+                      "c4af": ph["C4AF"], "fcao": clk["clk_fcao"], "mgo": clk["clk_mgo"]})
+    daily = d.set_index("timestamp").resample("1D").mean().iloc[: max(days - 1, 0)]
+    n = len(daily)
+    return pd.DataFrame({
+        "timestamp": daily.index + pd.Timedelta(hours=8),
+        "xrd_alite": daily["c3s"].to_numpy() + 6.5 + rng.normal(0, 1.2, n),
+        "xrd_belite": np.clip(daily["c2s"].to_numpy() - 5.5 + rng.normal(0, 1.0, n), 1.0, None),
+        "xrd_c3a": np.clip(daily["c3a"].to_numpy() - 1.2 + rng.normal(0, 0.5, n), 0.5, None),
+        "xrd_c4af": daily["c4af"].to_numpy() + 0.8 + rng.normal(0, 0.5, n),
+        "xrd_fcao": np.clip(0.9 * daily["fcao"].to_numpy() + rng.normal(0, 0.12, n), 0.05, None),
+        "xrd_periclase": np.clip(np.maximum(daily["mgo"].to_numpy() - 1.6, 0.1) + rng.normal(0, 0.15, n), 0.05, None),
+    })
 
 
 def scenario_table(start: date) -> pd.DataFrame:

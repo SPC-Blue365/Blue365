@@ -1,7 +1,8 @@
 """데이터 저장소 (SQLite) 및 엑셀 업로드 처리.
 
 - 원 데이터(산화물·운전값·시험값)만 저장하고, LSF·Bogue 등 파생값은 불러올 때 계산한다.
-- 업로드 시 (timestamp[, product]) 기준으로 중복을 덮어쓴다(upsert).
+- 업로드 시 (timestamp[, product]) 기준으로 열 단위 병합한다(upsert). 새 값이 있는 칸만 덮어쓰고
+  빈 칸은 기존 값을 유지하므로, LIMS 결과가 시험 항목별로 늦게 들어와도 먼저 들어온 값이 지워지지 않는다.
 - 알림 처리 상태(확인/조치중/종결, 담당자, 메모, 발송 여부)도 같은 DB에 저장한다.
 """
 
@@ -26,20 +27,23 @@ ALERT_DB_PATH = DATA_DIR / "alerts.db"   # 알림 처리상태는 별도 DB(데�
 # 업로드·저장 대상 원 데이터 열(파생값 제외)
 RAW_COLUMNS: dict[str, list[str]] = {
     "raw_meal": ["rm_cao", "rm_sio2", "rm_al2o3", "rm_fe2o3", "rm_mgo", "rm_so3", "rm_k2o", "rm_na2o",
-                 "rm_r90", "rm_r200"],
+                 "rm_r90", "rm_r200", "rm_loi"],
     "kiln": ["kiln_feed", "coal_rate", "kiln_bzt", "kiln_o2", "kiln_co", "kiln_torque", "kiln_calc_temp",
              "kiln_sec_air"],
     "clinker": ["clk_cao", "clk_sio2", "clk_al2o3", "clk_fe2o3", "clk_mgo", "clk_so3", "clk_k2o", "clk_na2o",
                 "clk_fcao", "clk_lw"],
-    "cement": ["product", "cem_blaine", "cem_r45", "cem_so3", "cem_loi", "cem_mgo", "cem_mill_feed",
+    "cement": ["product", "cem_blaine", "cem_r45", "cem_so3", "cem_loi", "cem_mgo", "cem_ls", "cem_mill_feed",
                "cem_mill_temp"],
     "physical": ["product", "phy_ist", "phy_fst", "phy_autoclave", "phy_s1", "phy_s3", "phy_s7", "phy_s28",
-                 "lab_temp", "lab_rh", "lab_cure_temp", "sand_lot", "operator"],
+                 "phy_crvi", "lab_temp", "lab_rh", "lab_cure_temp", "sand_lot", "operator"],
+    "xrd": ["xrd_alite", "xrd_belite", "xrd_c3a", "xrd_c4af", "xrd_fcao", "xrd_periclase", "clk_cr", "clk_crvi"],
 }
 TEXT_COLUMNS = {"product", "sand_lot", "operator"}
 
 # 엑셀 템플릿 시트명 ↔ 테이블
-SHEET_NAMES = {"raw_meal": "생료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성"}
+SHEET_NAMES = {"raw_meal": "생료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성",
+               "xrd": "클링커일일"}
+SHEET_ALIASES = {"XRD": "xrd", "클링커XRD": "xrd"}
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -130,8 +134,19 @@ def build_store(raw: dict[str, pd.DataFrame]) -> DataStore:
 
 
 # ── SQLite 입출력 ───────────────────────────────────────────────────────
+def merge_rows(old: pd.DataFrame | None, new: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
+    """같은 키(timestamp[, product])의 행을 열 단위로 병합한다. 새 값이 있는 칸만 덮어쓴다."""
+    frames = [f for f in (old, new) if f is not None and len(f)]
+    if not frames:
+        return new.iloc[0:0]
+    both = pd.concat(frames, ignore_index=True)
+    # GroupBy.last() 는 열마다 마지막 '비어있지 않은' 값을 취한다(skipna) → 늦게 들어온 일부 항목만 갱신
+    merged = both.groupby(keys, as_index=False, sort=False, dropna=False).last()
+    return merged.sort_values(keys).reset_index(drop=True)
+
+
 def save_raw(raw: dict[str, pd.DataFrame], path: Path = DB_PATH, replace: bool = False) -> dict[str, int]:
-    """원 데이터를 DB에 저장한다. replace=False 이면 기존 데이터와 병합(upsert)."""
+    """원 데이터를 DB에 저장한다. replace=False 이면 기존 데이터와 열 단위로 병합(upsert)."""
     counts = {}
     with closing(_connect(path)) as con:
         for name, df in raw.items():
@@ -140,15 +155,19 @@ def save_raw(raw: dict[str, pd.DataFrame], path: Path = DB_PATH, replace: bool =
             cols = ["timestamp"] + [c for c in RAW_COLUMNS[name] if c in df.columns]
             new = df[cols].copy()
             new["timestamp"] = pd.to_datetime(new["timestamp"])
+            old = None
             if not replace:
                 try:
                     old = pd.read_sql(f"SELECT * FROM {name}", con, parse_dates=["timestamp"])
-                    new = pd.concat([old, new], ignore_index=True)
                 except (pd.errors.DatabaseError, sqlite3.OperationalError):
-                    pass
-            keys = ["timestamp"] + (["product"] if "product" in new.columns else [])
-            new = new.drop_duplicates(subset=keys, keep="last").sort_values("timestamp")
-            new["timestamp"] = new["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+                    old = None
+            keys = ["timestamp"] + (["product"] if TABLES[name]["by_product"] else [])
+            if TABLES[name]["by_product"] and "product" not in new.columns:
+                if len(new):
+                    raise ValueError(f"[{SHEET_NAMES[name]}] product(품종) 열이 필요합니다.")
+                new["product"] = pd.Series(dtype=object)
+            new = merge_rows(old, new, keys)
+            new["timestamp"] = pd.to_datetime(new["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
             new.to_sql(name, con, if_exists="replace", index=False)
             counts[name] = len(new)
         con.commit()
@@ -216,7 +235,7 @@ def template_workbook(registry: SpecRegistry, sample: dict[str, pd.DataFrame] | 
     guide.append(["1. 시트별로 timestamp(측정일시, 예: 2026-10-07 14:00) 열은 필수입니다."])
     guide.append(["2. 시멘트·물성 시트는 product(품종: 1종/3종) 열이 필수입니다."])
     guide.append(["3. 2행(회색)은 항목 설명이며 업로드 시 자동으로 무시됩니다. 3행부터 입력하세요."])
-    guide.append(["4. 같은 timestamp(+품종)가 이미 있으면 업로드 값으로 덮어씁니다."])
+    guide.append(["4. 같은 timestamp(+품종)가 이미 있으면 값이 있는 칸만 덮어씁니다(빈 칸은 기존 값 유지)."])
     guide.append(["5. LSF·SM·IM·C3S 등 파생값은 시스템이 자동 계산하므로 입력하지 않습니다."])
     guide.column_dimensions["A"].width = 90
 
@@ -271,12 +290,12 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
     messages: list[str] = []
     errors: list[str] = []
     tables: dict[str, pd.DataFrame] = {}
-    name_by_sheet = {v: k for k, v in SHEET_NAMES.items()} | {k: k for k in SHEET_NAMES}
+    name_by_sheet = {v: k for k, v in SHEET_NAMES.items()} | {k: k for k in SHEET_NAMES} | SHEET_ALIASES
 
     if filename.lower().endswith(".csv"):
         target = next((t for t in RAW_COLUMNS if t in filename.lower()), None)
         if target is None:
-            return UploadResult({}, [], ["CSV 파일명에 테이블명(raw_meal/kiln/clinker/cement/physical)을 포함하세요."])
+            return UploadResult({}, [], ["CSV 파일명에 테이블명(raw_meal/kiln/clinker/cement/physical/xrd)을 포함하세요."])
         frames = {target: pd.read_csv(io.BytesIO(file_bytes))}
     else:
         try:
@@ -285,7 +304,7 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
             return UploadResult({}, [], [f"엑셀 파일을 읽을 수 없습니다: {exc}"])
         frames = {name_by_sheet[s]: df for s, df in sheets.items() if s in name_by_sheet}
         if not frames:
-            return UploadResult({}, [], ["인식 가능한 시트가 없습니다. 템플릿의 시트명(생료/킬른/클링커/시멘트/물성)을 사용하세요."])
+            return UploadResult({}, [], ["인식 가능한 시트가 없습니다. 템플릿의 시트명(생료/킬른/클링커/시멘트/물성/클링커일일)을 사용하세요."])
 
     for name, df in frames.items():
         if "timestamp" not in df.columns:

@@ -805,7 +805,8 @@ def build_issue_ppt(dx: Diagnosis, store: DataStore, registry: SpecRegistry, org
         lines = [{"name": item.name + ("" if daily else "(8h 평균)"), "values": ser.to_numpy(float), "color": d.SERIES[0],
                   "marker": daily}]
         for v, nm, col, dash in ((lim.usl, "사내 상한", d.WARN, True), (lim.lsl, "사내 하한", d.WARN, True),
-                                 (lim.ks_max, "KS 상한", d.DANGER, False), (lim.ks_min, "KS 하한", d.DANGER, False)):
+                                 (lim.ks_max, f"{item.ks_label} 상한", d.DANGER, False),
+                                 (lim.ks_min, f"{item.ks_label} 하한", d.DANGER, False)):
             if v is not None:
                 lines.append({"name": f"{nm} {v:g}", "values": [v] * len(cats), "color": col, "dash": dash, "width": 1.25})
         d.line_chart(s, cats, lines, 0.6, 1.7, 7.9, 5.15, y_title=item.unit, name="Item chart")

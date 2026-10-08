@@ -35,6 +35,9 @@ USER_STANDARDS_PATH = DATA_DIR / "standards_user.json"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 
 KS_L5201 = "KS L 5201 포틀랜드 시멘트"
+XRD_BASIS = "경험칙 초기값(XRD-Rietveld 정량 기준) — 공장 기준으로 교체 필요"
+LS_BASIS = "KS L 5201 소량 혼합성분 한도(석회석 미분말 5% 등, 2013 개정) — 원문 확인 필요, 사내 상한으로만 관리"
+CRVI_REF = "환경부–시멘트업계 자율협약 20 mg/kg 이하(수용성 Cr⁶⁺, KS L 5221 시험) — 법정 KS 기준 아님, 사내 경고 18"
 KS_ISO679 = "KS L ISO 679 강도 시험방법(ISO 679 시험조건)"
 EMPIRICAL = "경험칙 초기값 — 공장 기준으로 교체 필요"
 
@@ -54,6 +57,7 @@ TABLES: dict[str, dict] = {
     "clinker": {"label": "클링커", "freq": "2시간", "by_product": False, "spc_resample": "8h", "merge_gap": "12h"},
     "cement": {"label": "시멘트(밀 출구)", "freq": "2시간", "by_product": True, "spc_resample": "8h", "merge_gap": "12h"},
     "physical": {"label": "물성·강도(로트)", "freq": "1일", "by_product": True, "spc_resample": None, "merge_gap": "3D"},
+    "xrd": {"label": "클링커 일일 시료(XRD·크롬)", "freq": "1일", "by_product": False, "spc_resample": None, "merge_gap": "3D"},
 }
 
 QC_RULES = ("R1", "R2", "R3", "R5", "R6")  # 시험실 분석 항목에 적용 가능한 판정규칙
@@ -86,6 +90,7 @@ class ItemSpec:
     ks_is_method: bool = False         # 시험조건 기준(이탈 시 '경고', 결과 신뢰성 문제)
     prediction: bool = False           # 예측값(심각도 한 단계 하향)
     description: str = ""
+    ks_label: str = "KS"               # 상위 기준 이름(예: 6가크롬은 법정 KS가 아닌 '자율기준')
 
     def limits_for(self, product: str | None = None) -> Limits:
         if product and product in self.limits:
@@ -124,6 +129,8 @@ def _default_items() -> list[ItemSpec]:
                  description="조대 석영·방해석 입자 → 소성성 저하, f-CaO 상승"))
     add(ItemSpec("rm_r200", "생료 200μm 잔사", "원료(생료)", "raw_meal", "%", 2,
                  {"*": _L(usl=1.5, target=1.0)}, rules=("R1",)))
+    add(ItemSpec("rm_loi", "생료 강열감량", "원료(생료)", "raw_meal", "%", 2, basis="모니터링 항목(기준 미설정)",
+                 description="미측정 시 CO₂ 화학양론(0.785·CaO + 1.092·MgO)으로 추정해 클링커 예측에 사용"))
 
     # ── 소성(킬른 DCS) ────────────────────────────────────────────────────
     add(ItemSpec("kiln_feed", "원료 투입량", "소성(킬른)", "kiln", "t/h", 1, basis="운전 변수(기준 미설정)"))
@@ -172,6 +179,27 @@ def _default_items() -> list[ItemSpec]:
     add(ItemSpec("clk_na2oeq", "클링커 등가알칼리", "클링커", "clinker", "%", 2, {"*": _L(usl=0.90)},
                  rules=("R1",)))
 
+    # ── 클링커 XRD(일 1회 대표 시료, Rietveld 정량) ─────────────────────
+    add(ItemSpec("xrd_alite", "XRD 알라이트(C₃S)", "클링커", "xrd", "%", 1,
+                 {"*": _L(lsl=58.0, usl=70.0, target=64.0)}, basis=XRD_BASIS, rules=("R1", "R2", "R3"),
+                 description="실측 C₃S. Bogue 계산값보다 통상 높게 나옴(고용 불순물 영향) — 강도 예측의 핵심 입력"))
+    add(ItemSpec("xrd_belite", "XRD 벨라이트(C₂S)", "클링커", "xrd", "%", 1,
+                 {"*": _L(lsl=8.0, usl=20.0, target=14.0)}, basis=XRD_BASIS, rules=("R1",),
+                 description="장기강도(28일 이후) 기여 광물. 과다 시 조기강도 저하"))
+    add(ItemSpec("xrd_c3a", "XRD C₃A(입방+사방)", "클링커", "xrd", "%", 1,
+                 {"*": _L(usl=10.0, target=7.5)}, basis=XRD_BASIS, rules=("R1",),
+                 description="초기 수화·응결 속도와 석고 요구량을 좌우"))
+    add(ItemSpec("xrd_c4af", "XRD 페라이트(C₄AF)", "클링커", "xrd", "%", 1, basis="모니터링 항목(기준 미설정)"))
+    add(ItemSpec("xrd_fcao", "XRD 자유석회", "클링커", "xrd", "%", 2,
+                 {"*": _L(usl=1.8, target=1.0)}, basis=XRD_BASIS, rules=("R1",)))
+    add(ItemSpec("xrd_periclase", "XRD 페리클레이스(MgO)", "클링커", "xrd", "%", 2,
+                 {"*": _L(usl=2.0, target=1.0)}, basis=XRD_BASIS, rules=("R1",),
+                 description="결정질 MgO. 과다 시 오토클레이브 팽창(안정도) 위험"))
+    add(ItemSpec("clk_cr", "클링커 총 크롬", "클링커", "xrd", "mg/kg", 0, {"*": _L(usl=120.0, target=65.0)},
+                 rules=("R1",), description="원·부원료·연료·내화물에서 유입된 크롬(XRF/ICP). 6가크롬의 모체"))
+    add(ItemSpec("clk_crvi", "클링커 수용성 Cr⁶⁺", "클링커", "xrd", "mg/kg", 1, {"*": _L(usl=15.0, target=8.0)},
+                 rules=("R1",), description="킬른 산화 분위기·알칼리에서 Cr³⁺ → Cr⁶⁺ 전환(KS L 5221 방법 준용)"))
+
     # ── 시멘트(분쇄, 품종별) ─────────────────────────────────────────────
     add(ItemSpec("cem_blaine", "시멘트 분말도(Blaine)", "시멘트(분쇄)", "cement", "cm²/g", 0,
                  {"1종": _L(lsl=3250, usl=3700, target=3450, ks_min=2800),
@@ -189,6 +217,9 @@ def _default_items() -> list[ItemSpec]:
                  ks_ref=KS_L5201 + " (2016 개정 5.0%)", rules=("R1",)))
     add(ItemSpec("cem_mgo", "시멘트 MgO", "시멘트(분쇄)", "cement", "%", 2,
                  {"*": _L(usl=4.50, ks_max=5.0)}, ks_ref=KS_L5201, rules=("R1",)))
+    add(ItemSpec("cem_ls", "석회석 혼합률", "시멘트(분쇄)", "cement", "%", 1,
+                 {"1종": _L(usl=5.0, target=4.0), "3종": _L(usl=5.0, target=1.5)}, basis=LS_BASIS, rules=("R1",),
+                 description="클링커 희석 → 강도 저하(경험칙: 1%p당 28일 약 0.3~0.5 MPa), 6가크롬 희석 효과"))
     add(ItemSpec("cem_mill_feed", "시멘트밀 투입량", "시멘트(분쇄)", "cement", "t/h", 1,
                  basis="운전 변수(기준 미설정)"))
     add(ItemSpec("cem_mill_temp", "시멘트밀 출구 온도", "시멘트(분쇄)", "cement", "℃", 0,
@@ -205,6 +236,10 @@ def _default_items() -> list[ItemSpec]:
                  ks_ref=KS_L5201 + " (종결 10시간 이하)", rules=("R1",)))
     add(ItemSpec("phy_autoclave", "오토클레이브 팽창도", "제품 물성", "physical", "%", 2,
                  {"*": _L(usl=0.30, target=0.10, ks_max=0.80)}, ks_ref=KS_L5201 + " (안정도)", rules=("R1",)))
+    add(ItemSpec("phy_crvi", "시멘트 수용성 6가크롬", "제품 물성", "physical", "mg/kg", 1,
+                 {"*": _L(usl=18.0, target=8.0, ks_max=20.0)}, ks_ref=CRVI_REF, rules=("R1",), key_item=True,
+                 description="환원제 투입 후 제품값. 국내 자율기준 20 mg/kg, EU 2 mg/kg(EN 196-10, 시험법 상이)",
+                 ks_label="자율기준"))
     add(ItemSpec("phy_s1", "1일 압축강도", "제품 물성", "physical", "MPa", 1,
                  {"3종": _L(lsl=16.0, target=20.0, ks_min=10.0)}, ks_ref=KS_L5201, rules=QC_RULES))
     add(ItemSpec("phy_s3", "3일 압축강도", "제품 물성", "physical", "MPa", 1,

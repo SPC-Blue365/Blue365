@@ -4,8 +4,10 @@
   python qms_monitor.py --since-hours 24
   python qms_monitor.py --import-dir ./inbox --since-hours 24
   python qms_monitor.py --dry-run          # 발송하지 않고 대상만 출력
+  python qms_monitor.py --sync-lims        # LIMS 결과 증분 동기화 후 감시(🔗 LIMS 연동 화면에서 설정)
 
 --import-dir: LIMS·DCS가 내보낸 엑셀/CSV를 넣어두는 폴더. 처리한 파일은 processed/ 로 옮긴다.
+--sync-lims : data/lims.json 설정(SQL·REST·파일)으로 승인된 시험 결과를 가져와 열 단위로 병합 저장한다.
 """
 
 from __future__ import annotations
@@ -19,10 +21,17 @@ import pandas as pd
 
 from qms.alerts import detect_events
 from qms.diagnosis import diagnose
+from qms.lims import load_lims_config, sync
 from qms.notify import dispatch, load_config
 from qms.prediction import attach_predictions
 from qms.standards import load_registry, load_settings
-from qms.store import load_alert_status, load_store, parse_upload, save_raw, update_alert_status
+from qms.store import (
+    load_alert_status,
+    load_store,
+    parse_upload,
+    save_raw,
+    update_alert_status,
+)
 
 
 def import_folder(folder: Path) -> list[str]:
@@ -47,7 +56,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--import-dir", type=Path, help="자동 반영할 데이터 파일 폴더")
     ap.add_argument("--since-hours", type=float, default=24, help="최근 N시간 내 종료된 이벤트만 발송(기본 24)")
     ap.add_argument("--dry-run", action="store_true", help="발송하지 않고 대상만 출력")
+    ap.add_argument("--sync-lims", action="store_true", help="LIMS 결과 증분 동기화 후 감시")
     args = ap.parse_args(argv)
+
+    if args.sync_lims:
+        cfg = load_lims_config()
+        if not cfg.enabled:
+            print("[LIMS] 연동이 꺼져 있습니다(🔗 LIMS 연동 화면에서 사용 설정).")
+        else:
+            rep = sync(cfg, dry_run=args.dry_run)
+            print(f"[LIMS] {rep.summary_text()}")
+            for code in rep.unmapped[:10]:
+                print(f"    미매핑 시험코드: {code[0]}/{code[1]} {code[2]}건")
 
     if args.import_dir:
         for line in import_folder(args.import_dir):

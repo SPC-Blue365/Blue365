@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import functools
+import re
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 
 import numpy as np
@@ -9,14 +13,61 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from .alerts import SEVERITY_ICON, SEVERITY_ORDER, AlertEvent, detect_events, events_frame
+from .alerts import (
+    SEVERITY_ICON,
+    SEVERITY_ORDER,
+    AlertEvent,
+    detect_events,
+    events_frame,
+)
 from .demo import generate_demo_data
 from .prediction import FittedModel, attach_predictions
+from .rawmix import FcaoModel, XrdMap, fit_fcao_model, fit_xrd_map
 from .spc import baseline_stats, rule_flags
-from .standards import SETTINGS_PATH, TABLES, USER_STANDARDS_PATH, ItemSpec, SpecRegistry, load_registry, load_settings
-from .store import DB_PATH, DataStore, db_mtime, load_alert_status, load_store, save_raw
+from .standards import (
+    PRODUCTS,
+    SETTINGS_PATH,
+    TABLES,
+    USER_STANDARDS_PATH,
+    ItemSpec,
+    SpecRegistry,
+    load_registry,
+    load_settings,
+)
+from .store import DB_PATH, DataStore, clear_db, db_mtime, load_alert_status, load_store, save_raw
+from .strength import TARGETS, StrengthModels, fit_strength_models
 
 DEMO_FLAG = DB_PATH.parent / ".demo"
+_TILDE = re.compile(r"(?<!\\)~")
+
+
+def md_escape(text):
+    """한국어 범위 표기 '~'(예: 8~20%)가 마크다운 취소선으로 해석되지 않도록 이스케이프."""
+    return _TILDE.sub(r"\\~", text) if isinstance(text, str) and "~" in text else text
+
+
+def enable_tilde_escape() -> None:
+    """st.markdown·caption·info·warning·success·error 출력 시 '~'를 자동 이스케이프(앱 시작 시 1회 호출).
+
+    Streamlit 마크다운(GFM)은 '~텍스트~'를 취소선으로 렌더링하므로, '0.3~0.5 MPa … 1~2일'처럼 한 문단에 범위 표기가
+    두 번 나오면 사이 글자가 지워진 것처럼 보이는 문제를 막는다.
+    """
+    from streamlit.delta_generator import DeltaGenerator
+
+    if getattr(DeltaGenerator, "_qms_tilde_patched", False):
+        return
+    for name in ("markdown", "caption", "info", "warning", "success", "error"):
+        orig = getattr(DeltaGenerator, name)
+
+        def wrapper(self, body, *args, _orig=orig, **kwargs):
+            return _orig(self, md_escape(body), *args, **kwargs)
+
+        functools.update_wrapper(wrapper, orig)
+        setattr(DeltaGenerator, name, wrapper)
+        main = getattr(st, "_main", None)
+        if main is not None:
+            setattr(st, name, getattr(main, name))       # st.markdown 등은 import 시 묶인 메서드라 다시 연결
+    DeltaGenerator._qms_tilde_patched = True
 
 
 @dataclass
@@ -49,8 +100,21 @@ def _load(db_m: float, std_m: float, set_m: float, demo: bool) -> Ctx:
     return Ctx(store, registry, settings, models, events, demo)
 
 
+def _demo_outdated() -> bool:
+    """이전 버전 데모 DB(XRD·크롬 테이블 없음)이면 True — 데모 데이터만 자동 갱신 대상."""
+    if not (DB_PATH.exists() and DEMO_FLAG.exists()):
+        return False
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as con:
+            names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    except sqlite3.Error:
+        return False
+    return "xrd" not in names
+
+
 def init_demo_if_empty() -> None:
-    if not DB_PATH.exists():
+    if not DB_PATH.exists() or _demo_outdated():
+        clear_db()
         save_raw(generate_demo_data(), replace=True)
         DEMO_FLAG.parent.mkdir(parents=True, exist_ok=True)
         DEMO_FLAG.write_text("demo", encoding="utf-8")
@@ -59,6 +123,26 @@ def init_demo_if_empty() -> None:
 def get_ctx() -> Ctx:
     init_demo_if_empty()
     return _load(db_mtime(), _mtime(USER_STANDARDS_PATH), _mtime(SETTINGS_PATH), DEMO_FLAG.exists())
+
+
+@dataclass
+class DesignModels:
+    fcao: FcaoModel
+    xrd: XrdMap
+    strength: dict[str, StrengthModels]
+
+
+@st.cache_resource(show_spinner="배합·강도 예측 모델을 학습하는 중…", max_entries=3)
+def _design(db_m: float, std_m: float, set_m: float, demo: bool) -> DesignModels:
+    ctx = _load(db_m, std_m, set_m, demo)
+    xm = fit_xrd_map(ctx.store)
+    return DesignModels(fit_fcao_model(ctx.store), xm,
+                        {p: fit_strength_models(ctx.store, ctx.registry, p, xm) for p in PRODUCTS})
+
+
+def get_design() -> DesignModels:
+    init_demo_if_empty()
+    return _design(db_mtime(), _mtime(USER_STANDARDS_PATH), _mtime(SETTINGS_PATH), DEMO_FLAG.exists())
 
 
 def refresh() -> None:
@@ -75,10 +159,12 @@ def colors() -> dict:
     if dark:
         return {"series": "#3987e5", "pred": "#86b6ef", "band": "rgba(57,135,229,0.18)", "ks": "#d03b3b",
                 "spec": "#ec835a", "target": "#0ca30c", "cl": "#898781", "zone": "#2c2c2a", "muted": "#c3c2b7",
-                "violation": "#d03b3b", "event": "rgba(236,131,90,0.16)", "event_ks": "rgba(208,59,59,0.18)"}
+                "violation": "#d03b3b", "event": "rgba(236,131,90,0.16)", "event_ks": "rgba(208,59,59,0.18)",
+                "pos": "#3987e5", "neg": "#ec835a"}
     return {"series": "#2a78d6", "pred": "#6da7ec", "band": "rgba(42,120,214,0.14)", "ks": "#d03b3b",
             "spec": "#ec835a", "target": "#0ca30c", "cl": "#898781", "zone": "#e1e0d9", "muted": "#52514e",
-            "violation": "#d03b3b", "event": "rgba(236,131,90,0.14)", "event_ks": "rgba(208,59,59,0.14)"}
+            "violation": "#d03b3b", "event": "rgba(236,131,90,0.14)", "event_ks": "rgba(208,59,59,0.14)",
+            "pos": "#2a78d6", "neg": "#eb6834"}
 
 
 def fmt(v, nd: int = 2, unit: str = "") -> str:
@@ -121,7 +207,8 @@ def _base_layout(fig: go.Figure, title: str | None, height: int, unit: str = "")
 def add_limit_lines(fig: go.Figure, item: ItemSpec, product: str | None, show_target: bool = True):
     c = colors()
     lim = item.limits_for(product)
-    for v, label, col, dash in ((lim.ks_max, "KS 상한", c["ks"], "solid"), (lim.ks_min, "KS 하한", c["ks"], "solid"),
+    kl = item.ks_label
+    for v, label, col, dash in ((lim.ks_max, f"{kl} 상한", c["ks"], "solid"), (lim.ks_min, f"{kl} 하한", c["ks"], "solid"),
                                 (lim.usl, "사내 상한", c["spec"], "dash"), (lim.lsl, "사내 하한", c["spec"], "dash")):
         if v is not None:
             fig.add_hline(y=v, line=dict(color=col, width=1.5, dash=dash),
@@ -241,7 +328,8 @@ def histogram_figure(series: pd.Series, item: ItemSpec, product: str | None, hei
     fig.add_trace(go.Histogram(x=series.values, nbinsx=30, marker=dict(color=c["series"], line=dict(width=2, color="white")),
                                name=item.name, hovertemplate="%{x}<br>%{y}건<extra></extra>"))
     lim = item.limits_for(product)
-    for v, label, col, dash in ((lim.ks_max, "KS 상한", c["ks"], "solid"), (lim.ks_min, "KS 하한", c["ks"], "solid"),
+    kl = item.ks_label
+    for v, label, col, dash in ((lim.ks_max, f"{kl} 상한", c["ks"], "solid"), (lim.ks_min, f"{kl} 하한", c["ks"], "solid"),
                                 (lim.usl, "사내 상한", c["spec"], "dash"), (lim.lsl, "사내 하한", c["spec"], "dash"),
                                 (lim.target, "목표", c["target"], "dot")):
         if v is not None:
@@ -251,6 +339,88 @@ def histogram_figure(series: pd.Series, item: ItemSpec, product: str | None, hei
     fig.update_layout(showlegend=False, hovermode="closest", bargap=0.05)
     fig.update_xaxes(title=item.unit or None)
     fig.update_yaxes(title="빈도")
+    return fig
+
+
+def signed_bar_figure(labels: list[str], values: list[float], unit: str, height: int = 300,
+                      title: str | None = None) -> go.Figure:
+    """가로 막대(양수 = 파랑, 음수 = 주황). 기여도·민감도 표시용."""
+    c = colors()
+    order = np.argsort(np.abs(np.asarray(values, float)))
+    lab = [labels[i] for i in order]
+    val = [float(values[i]) for i in order]
+    fig = go.Figure(go.Bar(x=val, y=lab, orientation="h", marker=dict(color=[c["pos"] if v >= 0 else c["neg"] for v in val]),
+                           text=[f"{v:+.2f}" for v in val], textposition="outside", cliponaxis=False,
+                           hovertemplate="%{y}: %{x:+.2f} " + unit + "<extra></extra>"))
+    _base_layout(fig, title, height)
+    fig.update_layout(showlegend=False, hovermode="closest", margin=dict(l=10, r=40, t=42 if title else 12, b=10))
+    fig.update_xaxes(title=unit, zeroline=True, zerolinecolor=c["cl"], showgrid=True)
+    fig.update_yaxes(showgrid=False)
+    return fig
+
+
+def single_bar_figure(labels: list[str], values: list[float], unit: str, height: int = 300, title: str | None = None,
+                      fmt_str: str = "{:.1f}") -> go.Figure:
+    """단일 계열 가로 막대(파랑 한 색) — 비율·파레토 표시용(값이 큰 항목이 위)."""
+    c = colors()
+    lab, val = list(labels)[::-1], [float(v) for v in values][::-1]
+    fig = go.Figure(go.Bar(x=val, y=lab, orientation="h", marker=dict(color=c["series"]),
+                           text=[fmt_str.format(v) for v in val], textposition="outside", cliponaxis=False,
+                           hovertemplate="%{y}: %{x:.2f} " + unit + "<extra></extra>"))
+    _base_layout(fig, title, height)
+    fig.update_layout(showlegend=False, hovermode="closest", margin=dict(l=10, r=40, t=42 if title else 12, b=10))
+    fig.update_xaxes(title=unit, showgrid=True)
+    fig.update_yaxes(showgrid=False)
+    return fig
+
+
+def tornado_figure(df: pd.DataFrame, base: float, unit: str, height: int = 360) -> go.Figure:
+    """민감도(토네이도): 입력을 낮췄을 때(주황)·높였을 때(파랑) 결과."""
+    c = colors()
+    fig = go.Figure()
+    fig.add_trace(go.Bar(y=df["입력"], x=df["낮음"] - base, base=base, orientation="h", name="입력 −",
+                         marker=dict(color=c["neg"]), hovertemplate="%{y}<br>입력 감소 시 %{x:+.2f}<extra></extra>"))
+    fig.add_trace(go.Bar(y=df["입력"], x=df["높음"] - base, base=base, orientation="h", name="입력 +",
+                         marker=dict(color=c["pos"]), hovertemplate="%{y}<br>입력 증가 시 %{x:+.2f}<extra></extra>"))
+    fig.add_vline(x=base, line=dict(color=c["cl"], width=1.25, dash="dash"), annotation_text=f"기준 {base:.2f}",
+                  annotation_position="top", annotation_font=dict(size=11, color=c["muted"]))
+    _base_layout(fig, None, height)
+    fig.update_layout(barmode="overlay", hovermode="closest")
+    fig.update_xaxes(title=unit)
+    return fig
+
+
+def strength_curve_figure(pred: pd.DataFrame, registry: SpecRegistry, product: str, height: int = 360) -> go.Figure:
+    """재령별 강도 예측(점·95% 구간) + KS·사내 하한."""
+    c = colors()
+    rows = pred[pred["target"].isin([t for t, v in TARGETS.items() if v["age"]])].copy()
+    rows["age"] = rows["target"].map(lambda t: TARGETS[t]["age"])
+    rows = rows.sort_values("age")
+    fig = go.Figure()
+    if len(rows):
+        x = rows["age"].astype(str) + "일"
+        fig.add_trace(go.Scatter(x=list(x) + list(x[::-1]), y=list(rows["상한(95%)"]) + list(rows["하한(95%)"][::-1]),
+                                 fill="toself", fillcolor=c["band"], line=dict(width=0), name="예측구간(95%)",
+                                 mode="lines", hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=x, y=rows["예측"], mode="lines+markers+text", name="예측",
+                                 line=dict(color=c["series"], width=2), marker=dict(size=9),
+                                 text=[f"{v:.1f}" for v in rows["예측"]], textposition="middle left",
+                                 hovertemplate="%{x}: %{y:.1f} MPa<extra>예측</extra>"))
+        ks, spec = [], []
+        for t in rows["target"]:
+            lim = registry[t].limits_for(product) if t in registry else None
+            ks.append(lim.ks_min if lim else None)
+            spec.append(lim.lsl if lim else None)
+        if any(v is not None for v in ks):
+            fig.add_trace(go.Scatter(x=x, y=ks, mode="markers+lines", name="KS 하한", line=dict(color=c["ks"], width=1.5),
+                                     marker=dict(symbol="line-ew-open", size=14), connectgaps=False))
+        if any(v is not None for v in spec):
+            fig.add_trace(go.Scatter(x=x, y=spec, mode="markers+lines", name="사내 하한",
+                                     line=dict(color=c["spec"], width=1.5, dash="dash"),
+                                     marker=dict(symbol="line-ew-open", size=14), connectgaps=False))
+    _base_layout(fig, None, height, "MPa")
+    fig.update_layout(hovermode="closest")
+    fig.update_xaxes(title="재령")
     return fig
 
 

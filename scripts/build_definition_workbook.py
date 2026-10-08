@@ -41,12 +41,16 @@ WRAP = Alignment(wrap_text=True, vertical="top")
 CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
 SOURCE_BY_TABLE = {"raw_meal": "XRF(시험실/온라인)·잔사 시험", "kiln": "DCS(킬른 운전)", "clinker": "XRF·f-CaO·리터중량 시험",
-                   "cement": "XRF·분말도 시험 + DCS(밀 운전)", "physical": "물성 시험실(LIMS)"}
+                   "cement": "XRF·분말도 시험 + DCS(밀 운전)", "physical": "물성 시험실(LIMS)",
+                   "xrd": "클링커 일일 시료(XRD·크롬, LIMS)"}
 METHOD = {"cem_blaine": "KS L 5106(블레인)", "phy_ist": "KS L 5108(비카)", "phy_fst": "KS L 5108(비카)",
           "phy_autoclave": "KS L 5107(오토클레이브)", "phy_s1": "KS L ISO 679", "phy_s3": "KS L ISO 679",
           "phy_s7": "KS L ISO 679", "phy_s28": "KS L ISO 679", "cem_so3": "KS L 5120 / XRF", "cem_loi": "KS L 5120",
           "cem_mgo": "KS L 5120 / XRF", "lab_temp": "KS L ISO 679", "lab_rh": "KS L ISO 679",
-          "lab_cure_temp": "KS L ISO 679"}
+          "lab_cure_temp": "KS L ISO 679", "phy_crvi": "KS L 5221(수용성 6가크롬)", "clk_crvi": "KS L 5221 준용",
+          "clk_cr": "XRF / ICP(총 크롬)", "rm_loi": "KS L 5120(강열감량)", "cem_ls": "CO₂·강열감량 역산 / 공급기 실적",
+          **{k: "XRD-Rietveld 정량" for k in ("xrd_alite", "xrd_belite", "xrd_c3a", "xrd_c4af", "xrd_fcao",
+                                                "xrd_periclase")}}
 
 
 def header(ws, row: int, cols: list[str], widths: list[float] | None = None) -> None:
@@ -249,7 +253,8 @@ def build(path: Path) -> None:
                 put(wd, r, j, v)
             r += 1
     wd.cell(row=r + 1, column=1, value="※ LSF·SM·IM·C₃S·액상량 등 파생값은 시스템이 자동 계산하므로 입력하지 않음. "
-                                       "같은 측정일시(+품종)는 업로드 시 덮어씀.").font = F_SUB
+                                       "같은 측정일시(+품종)는 값이 있는 칸만 덮어씀(빈 칸은 기존 값 유지 — LIMS 결과 순차 반영)."
+            ).font = F_SUB
 
     # ── 8. KS 규격 근거 ────────────────────────────────────────────────
     wks = wb.create_sheet("KS규격_근거")
@@ -268,6 +273,10 @@ def build(path: Path) -> None:
         ("강열감량", "5.0% 이하", "5.0% 이하", "KS L 5201 (2016 개정 3.0→5.0%)", "웹 검색 확인(2026-10)"),
         ("강도 시험조건", "시험실 20±2 ℃·RH 50% 이상, 양생수 20±1 ℃, 재하 2,400±200 N/s", "동일", "KS L ISO 679 (ISO 679)",
          "ISO 679 규정값 적용 — KS 원문 대조 필요"),
+        ("수용성 6가크롬(참고)", "20 mg/kg 이하", "20 mg/kg 이하", "환경부–시멘트업계 자율협약(시험: KS L 5221) — KS L 5201 아님",
+         "웹 검색 확인(2026-10) · 협약 원문 확인 권장"),
+        ("수용성 6가크롬(EU 참고)", "2 mg/kg 이하", "2 mg/kg 이하", "EU REACH 부속서 XVII 47항(시험: EN 196-10)",
+         "시험법이 달라 국내 수치와 직접 비교 불가"),
     ]
     for i, row in enumerate(ks_rows, 2):
         for j, v in enumerate(row, 1):
@@ -285,11 +294,14 @@ def build(path: Path) -> None:
     road = [
         ("1단계 MVP", "완료", "모니터링·3단계 기준·알림·5축 원인진단·28일 예측·보고서(PPT/엑셀)·엑셀 업로드·데모 데이터",
          "Streamlit 시스템, 정의서, 구축 계획서", "품질 담당 1명 + 사내 PC 1대", "완료"),
-        ("2단계 실데이터 시범", "약 2~3개월", "실제 데이터 3개월 이상 적재 → 사내 기준·SPC 기준기간·예측 모델 보정, 알림 채널(메일/메신저) 연결, "
-         "LIMS·DCS 내보내기 폴더 자동 반영", "확정 관리기준, 시범 운영 보고", "IT 협조(서버·메일), DCS/LIMS 담당 협조", "예정"),
-        ("3단계 고도화", "약 3~6개월", "지식베이스 사내 사례 축적(조치 이력 → 가설 가중치 자동 학습), 예측 모델 고도화(PSD·XRD 반영), "
-         "원료 조합 최적화, AI 보조 분석(자연어 질의)", "고도화 기능, 효과 분석", "품질·생산·설비 협업", "계획"),
-        ("4단계 확산", "추후", "DB/OPC-UA 실시간 연계, 모바일 알림, 타 공정·타 공장 확산", "운영 표준·교육 자료", "IT 투자 검토", "계획"),
+        ("2단계 확장 기능", "완료", "원료 배합 최적화(LSF·SM·IM·C₃S, 원가 최소)·클링커 계수·XRD 광물 예측, 재령별 강도·응결 예측과 "
+         "제어 솔루션, 시멘트 6가크롬 물질수지·환원제 투입량, LIMS 연동(SQL·REST·파일), AI(Claude) 솔루션 보고서",
+         "배합 설계서·6가크롬 평가표(엑셀), 기능 확장 보고(PPT)", "품질 담당 1명", "개발 완료(실데이터 검증 필요)"),
+        ("3단계 실데이터 시범", "약 2~3개월", "LIMS 실연결(읽기 전용 계정)·실데이터 3개월 적재 → 사내 기준·예측 모델·킬른 전환율·환원제 과잉계수 보정, "
+         "알림 채널 연결, AI 보고서 보안 승인 후 시범 사용", "확정 관리기준, 시범 운영 보고", "IT·LIMS 담당 협조, 정보보안 승인", "예정"),
+        ("4단계 고도화", "약 3~6개월", "조치 이력 기반 지식베이스 학습, 입도분포(PSD) 반영 강도 모델, 원료 품위 예측 연계 배합 자동 보정",
+         "고도화 기능, 효과 분석", "품질·생산·설비 협업", "계획"),
+        ("5단계 확산", "추후", "DB/OPC-UA 실시간 연계, 모바일 알림, 타 공정·타 공장 확산", "운영 표준·교육 자료", "IT 투자 검토", "계획"),
     ]
     for i, row in enumerate(road, 2):
         for j, v in enumerate(row, 1):

@@ -38,6 +38,10 @@ RM_FOR_CEM = (14, 68)
 RM_FOR_CLK = (2, 8)
 KILN_FOR_CLK = (0, 4)
 AFTER = (-8, -2)
+# XRD는 일 대표 시료(08:00 표기, 당일 0~24시 클링커 혼합) → 같은 날 클링커·킬른·생료 구간을 본다
+XRD_DAY = (-16, 8)
+XRD_KILN = (-16, 12)
+XRD_RM = (-14, 16)
 
 
 @dataclass(frozen=True)
@@ -572,6 +576,152 @@ def _lab_out(name: str) -> Phenomenon:
         ("phy_s28", "phy_s7", "phy_s3"))
 
 
+def _h_xrd_error(prior=0.5) -> Hypothesis:
+    return Hypothesis(
+        "시험오차", "XRD 정량 오차(시료 조제·Rietveld 해석)",
+        "XRD-Rietveld 정량은 분쇄 입도·선택 배향·구조모델·내부표준 설정에 따라 ±1~2%p 오차가 생길 수 있다(경험칙). "
+        "XRF 기반 Bogue 계산값과 같은 방향으로 움직이지 않으면 분석 오차를 먼저 의심한다.",
+        (Check("__isolated", "high", SAME, 1.0),),
+        ("동일 시료 재분쇄·재측정", "표준 클링커(사내 기준시료)로 정량값 점검", "Rietveld 잔차(Rwp)·구조모델 변경 이력 확인"),
+        ("재측정 결과로 판정 확정",), ("XRD 정량 관리도(기준시료) 운영", "XRF Bogue와의 상관 정기 점검"),
+        prior, "경험칙", "품질(시험실)")
+
+
+def _xrd_phenomena() -> dict[tuple[str, str], Phenomenon]:
+    """XRD 광물 정량 이상 — 같은 날 클링커·킬른·생료 데이터를 근거로 평가."""
+    lsf_low = Hypothesis(
+        "원료", "LSF 저하(석회 부족)", "LSF가 낮으면 C₃S 생성량이 줄고 C₂S가 늘어난다.",
+        (Check("clk_lsf", "low", XRD_DAY, 1.0), Check("rm_lsf", "low", XRD_RM, 0.7)),
+        ("생료·클링커 LSF 추이 확인",), ("조합비 보정(석회석 비율↑)",), ("LSF 제어 정밀도 향상",), 1.0, "이론", "생산(원료)")
+    lsf_high = Hypothesis(
+        "원료", "생료 LSF 과다(석회 과포화)", "LSF가 높으면 결합되지 못한 CaO가 자유석회로 남는다.",
+        (Check("clk_lsf", "high", XRD_DAY, 1.0), Check("rm_lsf", "high", XRD_RM, 0.8)),
+        ("생료·클링커 LSF 추이 확인", "석회석 품위 변화 확인"), ("조합비 보정(석회석 비율↓)",),
+        ("석회석 품위 예측 기반 조합 관리",), 1.0, "이론+경험칙", "생산(원료)")
+    underburn = Hypothesis(
+        "공정", "소성 부족(소성대 온도·열량 부족)",
+        "소성 부족 시 C₂S + CaO → C₃S 반응이 덜 진행되어 알라이트↓·벨라이트↑·자유석회↑가 동시에 나타난다.",
+        (Check("clk_fcao", "high", XRD_DAY, 1.0), Check("kiln_bzt", "low", XRD_KILN, 0.8),
+         Check("clk_lw", "low", XRD_DAY, 0.5)),
+        ("킬른 운전 추이(소성대 온도·주모터 부하) 확인", "시간대별 f-CaO·리터중량 대조"),
+        ("소성 강화(연료·버너 조정)", "f-CaO 기준 초과 클링커 분리 저장"), ("f-CaO 기반 소성 피드백 운전 기준서",),
+        1.1, "이론+경험칙", "생산(소성)")
+    coarse = Hypothesis(
+        "원료", "생료 분말도 조대(90μm 잔사 증가)", "조대 석영·방해석은 반응성이 낮아 자유석회가 남는다.",
+        (Check("rm_r90", "high", XRD_RM, 1.0), Check("rm_r200", "high", XRD_RM, 0.6)),
+        ("생료 잔사 재측정",), ("원료밀 세퍼레이터 조정",), ("원료밀 분말도 관리기준 재설정",), 0.7, "문헌+경험칙", "생산(원료)")
+    cooling = Hypothesis(
+        "설비", "클링커 서랭(냉각기)", "서랭 시 알라이트 일부 분해, 페리클레이스·C₃A 결정 조대화가 나타날 수 있다.",
+        (Check("kiln_sec_air", "low", XRD_KILN, 0.6),),
+        ("냉각기 그레이트 속도·풍량 확인", "클링커 현미경 관찰"), ("냉각기 운전 조건 조정",), ("냉각기 정비 계획 반영",),
+        0.4, "문헌+경험칙", "설비")
+    mgo = Hypothesis(
+        "원료", "석회석 백운석 혼입(MgO↑)", "클링커 MgO가 고용 한계(약 1.5~2%, 경험칙)를 넘으면 페리클레이스로 정출된다.",
+        (Check("clk_mgo", "high", XRD_DAY, 1.0), Check("rm_mgo", "high", XRD_RM, 0.8)),
+        ("석회석 입고 MgO 분석", "채광 구역·벤치 확인"), ("고MgO 원료 블렌딩",), ("채광 계획 단계 MgO 품위 관리",),
+        1.3, "경험칙", "채광")
+    im_shift = Hypothesis(
+        "화학", "IM(철률) 변화", "IM이 높으면 C₃A가 늘고 C₄AF가 줄어든다.",
+        (Check("clk_im", "high", XRD_DAY, 1.0),), ("클링커 IM·철질원 투입량 확인",), ("철질원 비율 조정",),
+        ("IM 목표 범위 재설정",), 0.9, "이론", "생산(원료)")
+    return {
+        ("xrd_alite", "low"): Phenomenon(
+            "XRD 알라이트(C₃S) 저하", "실측 알라이트 감소 → 3~28일 강도 저하 위험(강도 예측 입력값 변화).",
+            (underburn, lsf_low, cooling, _h_xrd_error()), ("phy_s28", "phy_s7")),
+        ("xrd_belite", "high"): Phenomenon(
+            "XRD 벨라이트(C₂S) 증가", "알라이트 대신 벨라이트가 늘면 조기강도가 낮아진다.",
+            (underburn, lsf_low, _h_xrd_error()), ("phy_s3", "phy_s7")),
+        ("xrd_fcao", "high"): Phenomenon(
+            "XRD 자유석회 상승", "미반응 석회 증가 → C₃S 감소·안정도 불량 위험. 화학 분석 f-CaO와 함께 판단.",
+            (underburn, lsf_high, coarse, _h_xrd_error()), ("phy_s28", "phy_autoclave")),
+        ("xrd_periclase", "high"): Phenomenon(
+            "XRD 페리클레이스(결정질 MgO) 증가", "페리클레이스는 장기 수화 팽창으로 안정도(오토클레이브)를 악화시킨다.",
+            (mgo, cooling, _h_xrd_error()), ("phy_autoclave",)),
+        ("xrd_c3a", "high"): Phenomenon(
+            "XRD C₃A 증가", "C₃A 증가 → 초기 수화 가속·석고 요구량 증가, 응결 단축·위응결 위험.",
+            (im_shift, cooling, _h_xrd_error()), ("phy_ist",)),
+    }
+
+
+def _ls_high() -> Phenomenon:
+    return Phenomenon(
+        "석회석 혼합률 상승", "클링커 희석 → 강도 저하(경험칙: 1%p당 28일 약 0.3~0.5 MPa), KS 소량 혼합성분 한도 근접.",
+        (
+            Hypothesis("설비", "석회석 정량공급기 이상·설정 오류", "공급기 계량 오차나 설정 변경으로 혼합률이 늘 수 있다.",
+                       (Check("cem_loi", "high", DAY, 1.0),),
+                       ("공급기 교정·설정값 변경 이력 확인", "밀 투입 비율 실측(벨트 스케일)"),
+                       ("공급기 설정 원복·교정",), ("정량공급기 정기 교정·설정 변경 승인 절차",), 1.2, "경험칙", "생산(분쇄)"),
+            Hypothesis("화학", "혼합률 산정 오차(강열감량·CaCO₃ 분석)",
+                       "혼합률을 강열감량·CO₂로 역산하는 경우 석고 결정수·클링커 풍화 변동이 오차가 된다.",
+                       (), ("CO₂ 직접 분석(탄소분석기)으로 혼합률 확인", "석고 결정수 확인"), ("분석 방법 확인 후 판정",),
+                       ("혼합률 산정식·분석법 표준화",), 0.6, "경험칙", "품질"),
+            _h_isolated("석회석 혼합률"),
+        ),
+        ("phy_s28", "phy_s3"))
+
+
+def _cr_phenomena() -> dict[tuple[str, str], Phenomenon]:
+    """6가크롬 — 근거: Costeri(2016)·Hills & Johansen(PCA, 2007): 클링커 Cr의 약 8~20%가 6가로 전환,
+    산소·알칼리가 주 영향 인자. 환원제(FeSO₄)는 열·습기·저장기간에 따라 효과가 감소(문헌·제조사 자료)."""
+    src_up = Hypothesis(
+        "원료", "원·부원료·연료 크롬 투입 증가",
+        "크롬은 대부분 비휘발성이라 투입된 총 크롬이 거의 그대로 클링커에 남는다. 철질원 대체(제강슬래그)·석탄재·"
+        "슬러지 등 고Cr 원료 Lot 변경이 대표 원인.",
+        (Check("clk_cr", "high", CLK_FOR_CEM, 1.2),),
+        ("원·부원료·연료 Lot별 총 Cr 분석(XRF/ICP)", "입고 이력(철질원·대체원료 Lot 변경) 확인", "☢️ 6가크롬 화면에서 물질수지로 기여도 확인"),
+        ("고Cr 원료 사용 비율 축소·블렌딩", "환원제 투입량 일시 증량"),
+        ("원료·연료 입고 Cr 관리기준(mg/kg) 설정·성적서 확인", "Cr 물질수지 기반 사전 배합 검토"),
+        1.3, "문헌+경험칙", "생산(원료)")
+    oxid = Hypothesis(
+        "공정", "킬른 산화 분위기·알칼리 증가(전환율↑)",
+        "Cr³⁺ → Cr⁶⁺ 전환은 산소 과잉·알칼리 과잉 조건에서 촉진된다(알칼리 크롬산염 생성).",
+        (Check("kiln_o2", "high", (12, 64), 0.8), Check("clk_na2oeq", "high", CLK_FOR_CEM, 0.6)),
+        ("킬른 입구 O₂·과잉공기율 추이", "클링커 Na₂Oeq·SO₃/알칼리 비(황산화도)", "클링커 Cr⁶⁺/총Cr 비율 추이"),
+        ("O₂ 목표 범위 하향 운전(CO 상승 주의)",),
+        ("연소 제어(O₂·CO) 최적화", "알칼리 투입 관리·바이패스 운전 기준"),
+        0.8, "문헌", "생산(소성)")
+    reducer = Hypothesis(
+        "설비", "환원제 투입 부족·효과 저하",
+        "황산제1철(FeSO₄)은 고온(밀 출구)·습기·장기 저장에서 산화·열화되어 환원 능력이 떨어진다. 정량공급기 막힘·설정 오류도 원인.",
+        (Check("cem_mill_temp", "high", DAY, 0.6),),
+        ("환원제 정량공급기 투입량 실측(캘리브레이션)", "환원제 입고 Lot·보관기간·수분 상태 확인", "밀 출구 온도·투입 위치 확인"),
+        ("환원제 투입량 증량·공급기 정비", "투입 위치를 밀 출구 이후(저온부)로 조정 검토"),
+        ("환원제 선입선출·유효기간 관리", "투입량 자동 연동(Cr⁶⁺ 예측값 기반) 제어"),
+        1.0, "문헌+경험칙", "생산(분쇄)")
+    dilution = Hypothesis(
+        "화학", "클링커 비율 증가(희석 감소)", "석회석 등 혼합재 비율이 줄면 클링커 유래 Cr⁶⁺가 덜 희석된다.",
+        (Check("cem_ls", "low", DAY, 0.5),), ("혼합재 비율 확인",), ("-",), ("품종별 혼합재 비율 기준 관리",),
+        0.4, "이론", "품질")
+    test = Hypothesis(
+        "시험오차", "6가크롬 시험 오차(KS L 5221)",
+        "수용성 Cr⁶⁺는 시료 보관 기간·추출 조건·발색(DPC) 시간에 민감하다. 단발성이면 재시험을 먼저 한다.",
+        (Check("__isolated", "high", SAME, 1.0),),
+        ("보관 시료 재시험", "표준용액 검량선·블랭크 확인", "시료 채취 후 시험까지 경과시간 확인"),
+        ("재시험 결과로 판정 확정",), ("시험 절차 표준화·정도관리",), 0.5, "규격+경험칙", "품질(시험실)")
+    return {
+        ("phy_crvi", "high"): Phenomenon(
+            "시멘트 수용성 6가크롬 상승",
+            "국내 자율기준(20 mg/kg) 초과 시 출하 제한·대외 신뢰 문제. 피부 접촉 시 알레르기성 피부염(시멘트 피부염) 원인 물질.",
+            (src_up, reducer, oxid, dilution, test), ("phy_crvi",)),
+        ("clk_crvi", "high"): Phenomenon(
+            "클링커 수용성 Cr⁶⁺ 상승", "제품 6가크롬 상승의 선행 지표 — 환원제 증량 필요 여부 판단.",
+            (Hypothesis(src_up.axis, src_up.title, src_up.mechanism, (Check("clk_cr", "high", SAME, 1.2),), src_up.verify,
+                        src_up.short_term, src_up.root_cause, src_up.prior, src_up.basis, src_up.owner),
+             Hypothesis(oxid.axis, oxid.title, oxid.mechanism,
+                        (Check("kiln_o2", "high", XRD_KILN, 0.8), Check("clk_na2oeq", "high", XRD_DAY, 0.6)),
+                        oxid.verify, oxid.short_term, oxid.root_cause, oxid.prior, oxid.basis, oxid.owner),
+             _h_isolated("클링커 Cr⁶⁺")), ("phy_crvi",)),
+        ("clk_cr", "high"): Phenomenon(
+            "클링커 총 크롬 상승", "6가크롬 생성의 모체 증가 → 제품 6가크롬 상승 위험.",
+            (Hypothesis("원료", "고Cr 원·부원료 투입", "철질원 대체(제강슬래그)·석탄재·슬러지 등 Lot 변경.", (),
+                        src_up.verify, src_up.short_term, src_up.root_cause, 1.2, "경험칙", "생산(원료)"),
+             Hypothesis("설비", "크롬계 내화물 마모 증가", "마그네시아-크롬 벽돌 마모·탈락 시 클링커 Cr이 증가한다.", (),
+                        ("킬른 쉘 온도·내화물 점검 이력", "내화물 원단위(kg/t) 확인"), ("코팅 보호 운전",),
+                        ("크롬프리 내화물(마그네시아-스피넬) 전환 검토",), 0.6, "문헌", "설비"),
+             _h_isolated("총 크롬")), ("clk_crvi", "phy_crvi")),
+    }
+
+
 def build_kb() -> dict[tuple[str, str], Phenomenon]:
     kb: dict[tuple[str, str], Phenomenon] = {
         ("phy_s28", "low"): _strength_low("28일"),
@@ -617,6 +767,9 @@ def build_kb() -> dict[tuple[str, str], Phenomenon]:
                     ("클링커 LSF·SM 확인",), ("조합비 보정",), ("조합 목표 재설정",), 0.7, "이론", "생산(원료)"),
          _h_isolated("리터중량")),
         ("clk_fcao", "phy_s28"))
+    kb.update(_xrd_phenomena())
+    kb.update(_cr_phenomena())
+    kb[("cem_ls", "high")] = _ls_high()
     for lab in ("lab_cure_temp", "lab_temp", "lab_rh"):
         name = {"lab_cure_temp": "양생수 온도", "lab_temp": "시험실 온도", "lab_rh": "시험실 습도"}[lab]
         kb[(lab, "high")] = _lab_out(name)

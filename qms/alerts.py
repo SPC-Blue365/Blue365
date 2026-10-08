@@ -138,7 +138,9 @@ def detect_item_events(series: pd.Series, item, product: str | None, settings: d
                 rule = "KS"
                 sev = "경고" if item.ks_is_method else "위험"
                 lv = lim.ks_max if direction == "high" else lim.ks_min
-                desc = ("KS 시험조건 " if item.ks_is_method else "KS 규격 ") + ("상한 초과" if direction == "high" else "하한 미달")
+                label = getattr(item, "ks_label", "KS")
+                desc = (f"{label} 시험조건 " if item.ks_is_method else
+                        (f"{label} 규격 " if label == "KS" else f"{label} ")) + ("상한 초과" if direction == "high" else "하한 미달")
             else:
                 rule, sev = "SPEC", "경고"
                 lv = lim.usl if direction == "high" else lim.lsl

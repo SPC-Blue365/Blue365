@@ -37,7 +37,7 @@ VERDICT_ICON = {"데이터 지지": "✅", "부분 확인": "☑️", "데이터
 
 # 이벤트 테이블 → 하류 제품 항목을 볼 구간(lag, 시간). 음수 = 이벤트 이후
 DOWNSTREAM_LAG = {"raw_meal": (-72, -12), "kiln": (-60, -12), "clinker": (-60, -12), "cement": (-12, 12),
-                  "physical": (0, 0)}
+                  "physical": (0, 0), "xrd": (-60, -12)}
 
 
 @dataclass
@@ -282,7 +282,8 @@ def _quantify(event: AlertEvent, store: DataStore, registry: SpecRegistry, setti
     dur = q["duration_h"]
     dur_txt = f"{dur / 24:.1f}일" if dur >= 48 else f"{dur:.0f}시간" if dur > 0 else "단일 시점"
     prod = f"[{event.product}] " if event.product else ""
-    limit_word = "관리한계" if event.rule.startswith("R") else ("KS 기준" if event.rule == "KS" else "사내 관리기준")
+    ks_word = "KS 기준" if item.ks_label == "KS" else item.ks_label
+    limit_word = "관리한계" if event.rule.startswith("R") else (ks_word if event.rule == "KS" else "사내 관리기준")
     q["limit_word"] = limit_word
     q["text"] = (
         f"{prod}{item.name}이(가) {event.start:%Y-%m-%d %H:%M} ~ {event.end:%Y-%m-%d %H:%M} ({dur_txt}) 동안 "
@@ -310,7 +311,7 @@ def _ks_evaluation(event: AlertEvent, ph: Phenomenon, store: DataStore, registry
         if key == event.item_key:
             ws, we = event.start, event.end
         else:
-            ws, we = _window(event, DOWNSTREAM_LAG[ev_item.table])
+            ws, we = _window(event, DOWNSTREAM_LAG.get(ev_item.table, (-60, -12)))
         products = ([event.product] if (event.product and TABLES[item.table]["by_product"])
                     else registry.products_for(key))
         for product in products:
@@ -321,7 +322,9 @@ def _ks_evaluation(event: AlertEvent, ph: Phenomenon, store: DataStore, registry
             row = {"항목": item.name, "품종": product or "-", "평가 구간": f"{ws:%m/%d %H:%M} ~ {we:%m/%d %H:%M}",
                    "시료 수": len(win), "평균": _f(float(win.mean()), nd) if len(win) else "-",
                    "최소~최대": f"{_f(float(win.min()), nd)} ~ {_f(float(win.max()), nd)}" if len(win) else "-",
-                   "KS 기준": _limit_text(lim.ks_min, lim.ks_max, nd), "사내 기준": _limit_text(lim.lsl, lim.usl, nd),
+                   "KS 기준": ("" if item.ks_label == "KS" or (lim.ks_min is None and lim.ks_max is None)
+                              else f"{item.ks_label} ") + _limit_text(lim.ks_min, lim.ks_max, nd),
+                   "사내 기준": _limit_text(lim.lsl, lim.usl, nd),
                    "근거": item.ks_ref or item.basis}
             if len(win) == 0:
                 pred_note = ""
