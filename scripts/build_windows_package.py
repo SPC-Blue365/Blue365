@@ -171,8 +171,10 @@ def dist_info(site: Path) -> list[dict]:
         lic = meta.get("License-Expression") or ""
         if not lic:
             classifiers = [c.split("::")[-1].strip() for c in meta.get_all("Classifier") or [] if c.startswith("License ::")]
-            raw = (meta.get("License") or "").strip()
-            lic = ", ".join(classifiers) or (raw if raw and len(raw) <= 60 and "\n" not in raw else "")
+            lines = [x.strip() for x in (meta.get("License") or "").splitlines() if x.strip()]
+            if lines and len(lines[0]) <= 60:       # 라이선스 전문이 들어 있으면 제목·버전 줄만 사용
+                lines = lines[:2] if len(lines) > 1 and lines[1].lower().startswith("version") else lines[:1]
+            lic = ", ".join(classifiers) or " ".join(lines if lines and len(lines[0]) <= 60 else [])
         urls = [u.split(",", 1)[-1].strip() for u in meta.get_all("Project-URL") or []]
         tops = set()
         rec = di / "RECORD"
