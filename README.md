@@ -34,11 +34,33 @@ streamlit run streamlit_app.py               # 브라우저에서 http://localho
 ```
 
 - 설치 없이 보려면: GitHub 저장소에서 **Code → Codespaces → Create codespace**(설정 파일 `.devcontainer` 포함, 자동 설치·실행). 클라우드이므로 실데이터는 올리지 마세요.
-- 사내망에서 같이 보려면: `streamlit run streamlit_app.py --server.address 0.0.0.0` 후 다른 PC에서 `http://<실행 PC IP>:8501`(방화벽 8501 허용).
+- 사내망에서 같이 보려면: `streamlit run streamlit_app.py --server.address 0.0.0.0` 후 다른 PC에서 `http://<실행 PC IP>:8501`(방화벽 8501 허용, 접속 비밀번호 `[access] password` 설정 권장).
 - `streamlit` 명령을 찾지 못하면 가상환경을 활성화하거나 `python -m streamlit run streamlit_app.py`로 실행하세요.
 
 처음 실행하면 **데모 데이터**(가상 공장 120일, 이상 시나리오 7종)가 자동 생성됩니다(이전 버전 데모 DB는 자동 갱신).
 실제 데이터는 `📥 데이터 관리 → 입력 템플릿`으로 업로드하거나 `🔗 LIMS 연동`으로 자동 반영하세요.
+
+### 사내망 PC(인터넷 없음) — 오프라인 설치 패키지
+
+인터넷이 막힌 사내망 PC에는 **설치 패키지(분할 ZIP 3개, 약 152MB)**를 옮겨 설치합니다. Python과 구성요소가 모두 들어 있어
+**인터넷·관리자 권한·Python 설치가 필요 없습니다**(Windows 10/11 64비트).
+
+| 순서 | 할 일 |
+|---|---|
+| ① | ZIP 3개를 같은 폴더에 두고, 각 파일 속성에서 '차단 해제' |
+| ② | `1of3` ZIP만 `C:\`에 압축 해제 → `C:\Blue365_QMS` |
+| ③ | `1_SETUP.bat` 실행 — 나머지 ZIP을 SHA-256 확인 후 자동 결합 → 컴파일 → 구성요소 점검 → 13개 화면 자체 시험 |
+| ④ | `2_RUN.bat`(내 PC) 또는 `3_RUN_SHARE.bat`(사내망 공유, 처음 1회 `4_FIREWALL_ADMIN.bat` 관리자 실행) |
+
+그 밖에 `5_MONITOR_TASK.bat`(작업 스케줄러 자동 감시), `6_BACKUP.bat`(데이터 백업), `9_CHECK.bat`(환경 점검 보고서).
+자세한 안내는 패키지 안 `README.txt`([원본](packaging/windows/README.txt)).
+
+패키지 만들기(빌드 PC, 인터넷·[uv](https://docs.astral.sh/uv/) 필요): `python scripts/build_windows_package.py` → `dist/windows/`
+- Python: python.org 공식 NuGet 배포본(3.13.16)을 받아 NuGet 카탈로그의 SHA-512·게시자(Python Software Foundation)와 대조
+- 구성요소: `packaging/windows/requirements-windows.lock`(해시 고정, 테스트 통과 버전 `constraints-tested.txt` 기준)을
+  Windows 64비트용으로 미리 설치하고, 실행에 쓰지 않는 테스트·헤더 파일(약 81MB)은 정리
+- 결과: 분할 ZIP(파일당 95MB 이하, 사내 자료전송 용량 제한 대응) + `SHA256SUMS.txt` + `components.xlsx`(구성요소·라이선스·해시 명세, IT 보안 검토용)
+- 공유 실행 시 접속 비밀번호: `.streamlit/secrets.toml`의 `[access] password`(또는 환경변수 `QMS_ACCESS_PASSWORD`)
 
 ## 화면 구성
 
@@ -173,11 +195,14 @@ qms/
   lims.py                   LIMS 연동(SQL·REST·파일)·매핑·증분 동기화·데모 LIMS
   llm.py · ai_context.py · ui_ai.py   AI 보고서(Claude API)·입력 JSON·화면 패널
   notify.py · reports.py    이메일·웹훅 · 엑셀·PPT 보고서
+  access.py                 공유 실행용 접속 비밀번호(선택)
   demo.py                   데모 데이터(인과관계·시나리오 7종)
 qms_monitor.py              무인 감시(LIMS 동기화·감지·발송)
 scripts/build_definition_workbook.py   관리항목·기준 정의서(엑셀) 생성
+scripts/build_windows_package.py       사내망(오프라인) Windows 설치 패키지 빌드
+packaging/windows/          설치 도우미(qms_launcher.py)·자동 감시 실행기·배치 파일·안내서·잠금 파일
 docs/                       정의서·보고서·샘플·화면
-tests/                      자동 테스트 90건
+tests/                      자동 테스트 104건
 ```
 
 ## 근거·출처
@@ -208,7 +233,7 @@ tests/                      자동 테스트 90건
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q        # 90건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개
+python -m pytest -q        # 104건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지
 ```
 
 ## 로드맵

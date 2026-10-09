@@ -100,3 +100,14 @@ def test_reports_build_valid_files(demo):
     assert len(issue.slides) == 5
     cap = capability_table(store, reg, start, end, key_only=True)
     assert {"Cpk", "등급"} <= set(cap.columns) and len(cap) > 5
+
+
+def test_csv_upload_reads_korean_excel_cp949():
+    """한글 Windows 엑셀의 'CSV(쉼표로 분리)' 저장 파일(CP949)과 UTF-8(BOM) 파일을 모두 읽는다."""
+    df = pd.DataFrame({"timestamp": ["2026-10-01 08:00", "2026-10-01 16:00"], "product": ["1종", "3종"],
+                       "phy_s3": [29.1, 33.0]})
+    res = parse_upload(df.to_csv(index=False).encode("cp949"), "physical_202610.csv")
+    assert not res.errors, res.errors
+    assert list(res.tables["physical"]["product"]) == ["1종", "3종"]
+    res2 = parse_upload(df.to_csv(index=False).encode("utf-8-sig"), "physical.csv")
+    assert res2.tables["physical"]["phy_s3"].iloc[1] == 33.0

@@ -100,3 +100,14 @@ def test_password_never_saved_in_url(tmp_path):
     cfg.sql_url = "mssql+pyodbc://user:{password}@host/db"
     lims.save_lims_config(cfg, tmp_path / "lims.json")
     assert "secret" not in (tmp_path / "lims.json").read_text(encoding="utf-8")
+
+
+def test_file_mode_reads_cp949_csv(tmp_path):
+    exp = tmp_path / "exp"
+    exp.mkdir()
+    pd.DataFrame([{"sampled_at": "2026-10-07 10:00", "sample_point": "CLINKER", "test_code": "FCAO", "value": "1.31",
+                   "status": "APPROVED", "비고": "재시험"}]).to_csv(exp / "lims.csv", index=False, encoding="cp949")
+    cfg = lims.LimsConfig(enabled=True, mode="file", file_dir=str(exp))
+    assert lims.fetch_files(cfg)["비고"].iloc[0] == "재시험"
+    rep = lims.sync(cfg, db_path=tmp_path / "f.db", log_path=tmp_path / "log.jsonl", persist_watermark=False)
+    assert not rep.errors and rep.rows_by_table == {"clinker": 1}

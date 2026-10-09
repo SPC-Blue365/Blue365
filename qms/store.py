@@ -285,6 +285,19 @@ class UploadResult:
     errors: list[str]
 
 
+CSV_ENCODINGS = ("utf-8-sig", "cp949")   # 한글 Windows 엑셀의 'CSV(쉼표로 분리)' 저장 파일은 CP949
+
+
+def read_csv_bytes(data: bytes) -> pd.DataFrame:
+    """CSV를 UTF-8(BOM 포함) → CP949 순서로 시도해 읽는다(LIMS·엑셀 내보내기 파일 대응)."""
+    for enc in CSV_ENCODINGS[:-1]:
+        try:
+            return pd.read_csv(io.BytesIO(data), encoding=enc)
+        except UnicodeDecodeError:
+            continue
+    return pd.read_csv(io.BytesIO(data), encoding=CSV_ENCODINGS[-1])
+
+
 def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResult:
     """엑셀(시트=테이블) 또는 CSV(파일명에 테이블명 포함) 업로드를 검증·변환한다."""
     messages: list[str] = []
@@ -296,7 +309,10 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
         target = next((t for t in RAW_COLUMNS if t in filename.lower()), None)
         if target is None:
             return UploadResult({}, [], ["CSV 파일명에 테이블명(raw_meal/kiln/clinker/cement/physical/xrd)을 포함하세요."])
-        frames = {target: pd.read_csv(io.BytesIO(file_bytes))}
+        try:
+            frames = {target: read_csv_bytes(file_bytes)}
+        except Exception as exc:  # noqa: BLE001 - 사용자에게 원인 메시지 표시
+            return UploadResult({}, [], [f"CSV 파일을 읽을 수 없습니다: {exc}"])
     else:
         try:
             sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)

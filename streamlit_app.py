@@ -5,10 +5,13 @@
 
 import streamlit as st
 
+from qms.access import check_access
 from qms.ui import enable_tilde_escape
 
 st.set_page_config(page_title="Blue365 QMS", page_icon="🏭", layout="wide", initial_sidebar_state="expanded")
 enable_tilde_escape()   # '8~20%' 같은 범위 표기가 마크다운 취소선으로 바뀌지 않게 처리
+if not check_access():  # 공유 실행용 접속 비밀번호(설정한 경우에만)
+    st.stop()
 
 pages = {
     "모니터링": [

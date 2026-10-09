@@ -37,7 +37,7 @@ import numpy as np
 import pandas as pd
 
 from .standards import DATA_DIR, TABLES
-from .store import DB_PATH, RAW_COLUMNS, TEXT_COLUMNS, load_raw, save_raw
+from .store import DB_PATH, RAW_COLUMNS, TEXT_COLUMNS, load_raw, read_csv_bytes, save_raw
 
 LIMS_CONFIG_PATH = DATA_DIR / "lims.json"
 LIMS_LOG_PATH = DATA_DIR / "lims_log.jsonl"
@@ -219,7 +219,7 @@ def fetch_files(cfg: LimsConfig) -> pd.DataFrame:
     frames = []
     for f in sorted(folder.iterdir()):
         if f.suffix.lower() == ".csv":
-            frames.append(pd.read_csv(f))
+            frames.append(read_csv_bytes(f.read_bytes()))
         elif f.suffix.lower() in (".xlsx", ".xls"):
             frames.append(pd.read_excel(f))
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=STD_COLUMNS)

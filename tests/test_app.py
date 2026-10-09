@@ -32,3 +32,22 @@ def test_tilde_ranges_are_escaped_in_markdown(app):
     texts = [c.value for c in app.caption]
     hit = [t for t in texts if "셰일 20" in t]
     assert hit and "20\\~120" in hit[0]
+
+
+def test_access_password_gate(monkeypatch):
+    """공유 실행용 접속 비밀번호: 설정 시 로그인 전에는 화면 내용이 보이지 않는다."""
+    monkeypatch.setenv("QMS_ACCESS_PASSWORD", "blue365!")
+    at = AppTest.from_file(APP, default_timeout=240)
+    at.run()
+    assert not at.exception
+    assert [t.label for t in at.text_input] == ["접속 비밀번호"]
+    at.text_input[0].input("wrong")
+    at.button[0].click()
+    at.run()
+    assert at.error and "맞지 않습니다" in at.error[0].value
+    at.text_input[0].input("blue365!")
+    at.button[0].click()
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["_qms_access_ok"] and "접속 비밀번호" not in [t.label for t in at.text_input]
+    assert at.title and at.title[0].value != "🏭 Blue365 QMS"

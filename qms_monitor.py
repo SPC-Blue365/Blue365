@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     for r in results:
         print("-", r["subject"])
         for ch, ok, msg in r["channels"]:
-            print(f"    {ch}: {'성공' if ok else '실패'} — {msg}")
+            print(f"    {ch}: {'성공' if ok else '실패'} - {msg}")
         if r["sent"]:
             update_alert_status(r["event_id"], notified=1)
     if not args.dry_run and results and not (cfg.email_enabled or cfg.webhook_enabled):

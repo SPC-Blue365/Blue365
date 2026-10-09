@@ -1,0 +1,9 @@
+# 사내망 Windows 설치 패키지 구성요소 = 프로그램 요구사항 + LIMS DB 드라이버·파일 형식(선택 기능)
+# 버전 고정: requirements-windows.lock (python scripts/build_windows_package.py --relock — constraints-tested.txt 기준)
+-r ../../requirements.txt
+pyodbc>=5.1            # MS SQL Server(ODBC 드라이버 사용 — Windows 기본 'SQL Server' 드라이버 가능)
+pymssql>=2.3           # MS SQL Server(ODBC 드라이버 없이 접속)
+oracledb>=2.0          # Oracle(Thin 모드 — Oracle Client 설치 불필요)
+psycopg2-binary>=2.9   # PostgreSQL
+PyMySQL>=1.1           # MySQL·MariaDB
+xlrd>=2.0              # 구형 엑셀(.xls) 읽기 — LIMS·DCS 내보내기 파일
