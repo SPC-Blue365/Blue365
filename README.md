@@ -42,13 +42,13 @@ streamlit run streamlit_app.py               # 브라우저에서 http://localho
 
 ### 사내망 PC(인터넷 없음) — 오프라인 설치 패키지
 
-인터넷이 막힌 사내망 PC에는 **설치 패키지(분할 ZIP 3개, 약 152MB)**를 옮겨 설치합니다. Python과 구성요소가 모두 들어 있어
+인터넷이 막힌 사내망 PC에는 **설치 패키지(분할 ZIP, 파일당 28MB 이하·총 약 152MB)**를 옮겨 설치합니다. Python과 구성요소가 모두 들어 있어
 **인터넷·관리자 권한·Python 설치가 필요 없습니다**(Windows 10/11 64비트).
 
 | 순서 | 할 일 |
 |---|---|
-| ① | ZIP 3개를 같은 폴더에 두고, 각 파일 속성에서 '차단 해제' |
-| ② | `1of3` ZIP만 `C:\`에 압축 해제 → `C:\Blue365_QMS` |
+| ① | 받은 ZIP을 모두 같은 폴더에 두고, 각 파일 속성에서 '차단 해제' |
+| ② | `1ofN` ZIP(1번)만 `C:\`에 압축 해제 → `C:\Blue365_QMS` |
 | ③ | `1_SETUP.bat` 실행 — 나머지 ZIP을 SHA-256 확인 후 자동 결합 → 컴파일 → 구성요소 점검 → 13개 화면 자체 시험 |
 | ④ | `2_RUN.bat`(내 PC) 또는 `3_RUN_SHARE.bat`(사내망 공유, 처음 1회 `4_FIREWALL_ADMIN.bat` 관리자 실행) |
 
@@ -59,7 +59,8 @@ streamlit run streamlit_app.py               # 브라우저에서 http://localho
 - Python: python.org 공식 NuGet 배포본(3.13.16)을 받아 NuGet 카탈로그의 SHA-512·게시자(Python Software Foundation)와 대조
 - 구성요소: `packaging/windows/requirements-windows.lock`(해시 고정, 테스트 통과 버전 `constraints-tested.txt` 기준)을
   Windows 64비트용으로 미리 설치하고, 실행에 쓰지 않는 테스트·헤더 파일(약 81MB)은 정리
-- 결과: 분할 ZIP(파일당 95MB 이하, 사내 자료전송 용량 제한 대응) + `SHA256SUMS.txt` + `components.xlsx`(구성요소·라이선스·해시 명세, IT 보안 검토용)
+- 결과: 분할 ZIP(파일당 28MB 이하 — 메일·메신저·사내 자료전송 용량 제한 대응, `--max-part-mb`로 조정) + `SHA256SUMS.txt`
+  + `components.xlsx`(구성요소·라이선스·해시 명세, IT 보안 검토용). 한도를 넘는 큰 라이브러리(scipy 등)는 하위 폴더 단위로 나눠 담음
 - 공유 실행 시 접속 비밀번호: `.streamlit/secrets.toml`의 `[access] password`(또는 환경변수 `QMS_ACCESS_PASSWORD`)
 
 ## 화면 구성

@@ -4,7 +4,7 @@
 분할 ZIP으로 만든다. 설치 PC에는 인터넷·관리자 권한·Python 설치가 필요 없다.
 
 사용(빌드 PC: 인터넷 + uv 필요)
-  python scripts/build_windows_package.py                          # dist/windows/ 에 분할 ZIP(파일당 최대 95MB)
+  python scripts/build_windows_package.py                          # dist/windows/ 에 분할 ZIP(파일당 최대 28MB)
   python scripts/build_windows_package.py --max-part-mb 0          # 한 파일로 생성
   python scripts/build_windows_package.py --relock                 # 잠금 파일 갱신(constraints-tested.txt 버전 고정)
 
@@ -394,29 +394,43 @@ def build(args) -> None:
     dist_bytes = {k: sum(p.stat().st_size for p in v) for k, v in groups.items()}
     limit = int(args.max_part_mb * 1e6)
     big = {k: v for k, v in groups.items() if limit and k != "_unowned" and dist_bytes[k] >= CORE_GROUP_BYTES}
-    bins = pack({k: zsize(v) for k, v in big.items()}, limit) if big else []
+    fsize = {p: zsize([p]) for v in big.values() for p in v}          # 파일별 압축 후 크기(추정, 여유 포함)
+    units: dict[str, list[Path]] = {}
+    for k, v in big.items():
+        if sum(fsize[p] for p in v) <= limit * 0.9:
+            units[k] = v
+            continue
+        for p in v:                                                    # 한 파일 한도를 넘는 큰 라이브러리(예: scipy)는
+            rel = p.relative_to(site).parts                            # 하위 폴더 단위로 나눠 여러 파일에 담는다
+            units.setdefault(f"{k}::{'/'.join(rel[:2]) if len(rel) > 2 else rel[0]}", []).append(p)
+    bins = pack({u: sum(fsize[p] for p in v) for u, v in units.items()}, limit) if units else []
     n_parts = 1 + len(bins)
 
     def name(k: int) -> str:
         return f"{TOP}_win64_{tag}_{k}of{n_parts}.zip"
 
-    lib_files = {p for k in big for p in big[k]}
+    lib_files = {p for v in units.values() for p in v}
 
     log(f"[5/6] ZIP 생성({n_parts}개)")
-    parts, part_rows, dist_part, markers = [], [], {}, set()
+    parts, part_rows, in_part, markers = [], [], {}, set()
     for i, keys in enumerate(bins, 2):
-        entries = [(p, f"{TOP}/{p.relative_to(top).as_posix()}") for k in keys for p in big[k]]
+        entries = [(p, f"{TOP}/{p.relative_to(top).as_posix()}") for u in keys for p in units[u]]
         zpath = out / name(i)
         mark = write_marker(top, i, n_parts, zpath.name, version)
         markers.add(mark[0])
         write_zip(zpath, entries, mark)
-        names = sorted(k.split("-")[0] for k in keys)
+        dists_in = sorted({u.split("::")[0] for u in keys})
+        names = sorted({d.split("-")[0] for d in dists_in})
         parts.append({"file": zpath.name, "sha256": sha256(zpath), "size": zpath.stat().st_size, "files": len(entries) + 1,
                       "marker": mark[1][len(TOP) + 1:], "dists": names})
         part_rows.append({"order": f"{i}/{n_parts}", "file": zpath.name, "size": zpath.stat().st_size,
                           "sha256": parts[-1]["sha256"], "files": len(entries) + 1, "desc": "구성요소: " + ", ".join(names)})
-        dist_part.update({k: f"{i}" for k in keys})
+        for d in dists_in:
+            in_part.setdefault(d, []).append(i)
         log(f"  {zpath.name}: {zpath.stat().st_size / 1e6:.1f} MB · {len(entries):,}개 파일")
+        if zpath.stat().st_size > limit:
+            log(f"  [주의] 분할 한도({limit / 1e6:.0f}MB)를 넘었습니다 — --max-part-mb 를 줄여 다시 빌드하세요.")
+    dist_part = {d: "·".join(map(str, v)) for d, v in in_part.items()}
 
     manifest = {"name": "Blue365 QMS", "version": version, "tag": tag, "git_commit": commit,
                 "built_at": f"{now:%Y-%m-%d %H:%M} UTC", "python": py_info,
@@ -493,7 +507,8 @@ def validate(out: Path, top: Path, zips: list[Path], manifest: dict) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description="사내망(오프라인) Windows 설치 패키지 빌드")
     ap.add_argument("--out", default=str(ROOT / "dist" / "windows"), help="출력 폴더(기본 dist/windows)")
-    ap.add_argument("--max-part-mb", type=float, default=95, help="분할 파일 최대 크기(MB), 0이면 한 파일")
+    ap.add_argument("--max-part-mb", type=float, default=28,
+                    help="분할 파일 최대 크기(MB, 기본 28 — 메일·메신저·자료전송 30MB 제한 대응), 0이면 한 파일")
     ap.add_argument("--relock", action="store_true", help="잠금 파일(requirements-windows.lock) 갱신")
     ap.add_argument("-c", "--constraints", help="--relock 때 버전 고정 파일(기본 packaging/windows/constraints-tested.txt)")
     build(ap.parse_args())
