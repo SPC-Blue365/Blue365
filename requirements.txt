@@ -9,3 +9,4 @@ python-pptx>=1.0
 anthropic>=1.0        # AI 솔루션 보고서(Claude API)
 SQLAlchemy>=2.0       # LIMS DB 직접 조회(DB 드라이버는 별도 설치: pyodbc·oracledb·psycopg 등)
 requests>=2.31        # LIMS REST API 연동
+segno>=1.6            # 태블릿·휴대폰 접속용 QR 코드(없으면 주소만 표시)

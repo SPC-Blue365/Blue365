@@ -62,6 +62,19 @@ streamlit run streamlit_app.py               # 브라우저에서 http://localho
 - 결과: 분할 ZIP(파일당 28MB 이하 — 메일·메신저·사내 자료전송 용량 제한 대응, `--max-part-mb`로 조정) + `SHA256SUMS.txt`
   + `components.xlsx`(구성요소·라이선스·해시 명세, IT 보안 검토용). 한도를 넘는 큰 라이브러리(scipy 등)는 하위 폴더 단위로 나눠 담음
 - 공유 실행 시 접속 비밀번호: `.streamlit/secrets.toml`의 `[access] password`(또는 환경변수 `QMS_ACCESS_PASSWORD`)
+- 구성요소 ZIP(2번부터)은 내용이 같으면 매번 같은 파일(이름 `libs-<식별값>`, 같은 SHA-256)로 만들어집니다.
+  프로그램만 바뀐 업데이트는 **1번 ZIP만** 전달 → 기존 위치에 덮어쓰기 압축 해제 → `1_SETUP.bat`(구성요소는 건너뜀)
+
+### 태블릿·휴대폰에서 보기
+
+태블릿(iPad·갤럭시탭 등)에는 설치하지 않고, **공유 PC(`3_RUN_SHARE.bat`)의 화면을 태블릿 브라우저로 엽니다.**
+- 공유 PC 화면 왼쪽 메뉴 맨 아래 **📲 태블릿·휴대폰으로 보기** → QR 코드를 태블릿 카메라로 비추면 바로 열림
+  (주소 `http://<공유 PC IP>:8501/?view=tablet`). 태블릿이 같은 사내망(업무망)에 연결돼 있어야 합니다.
+- **📱 태블릿 보기**(자동: 태블릿 브라우저·QR 주소): 그래프의 '끌어서 확대'를 꺼서 그래프 위에서도 손가락 스크롤,
+  값은 탭으로 확인. PC 화면은 기존 그대로(끌어서 확대 유지).
+- 좁은 화면 대응: 숫자 카드는 같은 폭 바둑판(5개 → 5·4+1·3+2), 세로 화면에서는 여러 칸 배치와 그래프가 줄바꿈
+  (iPad·갤럭시탭 가로·세로와 PC 1440px에서 화면 확인)
+- Windows 태블릿(64비트)은 PC와 같이 설치 패키지를 그대로 사용할 수 있습니다.
 
 ## 화면 구성
 
@@ -196,14 +209,14 @@ qms/
   lims.py                   LIMS 연동(SQL·REST·파일)·매핑·증분 동기화·데모 LIMS
   llm.py · ai_context.py · ui_ai.py   AI 보고서(Claude API)·입력 JSON·화면 패널
   notify.py · reports.py    이메일·웹훅 · 엑셀·PPT 보고서
-  access.py                 공유 실행용 접속 비밀번호(선택)
+  access.py · share.py      공유 실행용 접속 비밀번호(선택) · 태블릿 접속 주소·QR 코드
   demo.py                   데모 데이터(인과관계·시나리오 7종)
 qms_monitor.py              무인 감시(LIMS 동기화·감지·발송)
 scripts/build_definition_workbook.py   관리항목·기준 정의서(엑셀) 생성
 scripts/build_windows_package.py       사내망(오프라인) Windows 설치 패키지 빌드
 packaging/windows/          설치 도우미(qms_launcher.py)·자동 감시 실행기·배치 파일·안내서·잠금 파일
 docs/                       정의서·보고서·샘플·화면
-tests/                      자동 테스트 104건
+tests/                      자동 테스트 109건
 ```
 
 ## 근거·출처
@@ -234,7 +247,7 @@ tests/                      자동 테스트 104건
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q        # 104건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지
+python -m pytest -q        # 109건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿
 ```
 
 ## 로드맵

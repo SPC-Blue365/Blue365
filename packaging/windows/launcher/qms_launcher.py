@@ -170,14 +170,17 @@ def path_issues(manifest: dict, root: Path | None = None) -> list[tuple[str, str
     return out
 
 
-def part_installed(part: dict, version: str | None = None, root: Path | None = None) -> bool:
-    """분할 파일 설치 완료 여부 - ZIP의 맨 마지막 항목인 완료 표식이 있고 버전이 같아야 완료로 본다
-    (압축 해제가 중간에 끊긴 경우·옛 버전 위에 덮어쓴 경우를 걸러냄)."""
+def part_installed(part: dict, root: Path | None = None) -> bool:
+    """분할 파일 설치 완료 여부 - ZIP의 맨 마지막 항목인 완료 표식이 있고, 표식 내용이 기대값(expect)과 같아야 완료.
+
+    구성요소 ZIP은 구성요소 묶음 식별값(libs), 1번 ZIP은 프로그램 버전으로 확인한다 — 압축 해제가 중간에 끊긴 경우·
+    다른 묶음 위에 덮어쓴 경우는 미완료로 보고, 구성요소가 같은 업데이트는 다시 풀지 않는다.
+    """
     try:
         mark = json.loads(((root or ROOT) / part["marker"]).read_text(encoding="utf-8"))
     except (OSError, ValueError, KeyError):
         return False
-    return version is None or mark.get("version") == version
+    return all(mark.get(k) == v for k, v in part.get("expect", {}).items())
 
 
 def sha256_file(path: Path) -> str:
@@ -244,8 +247,7 @@ def setup_done() -> bool:
     except (OSError, ValueError):
         return False
     man = load_manifest()
-    ver = man.get("version")
-    return mark.get("version") == ver and all(part_installed(p, ver) for p in man.get("parts", []))
+    return mark.get("version") == man.get("version") and all(part_installed(p) for p in man.get("parts", []))
 
 
 # ───────────────────────────── 점검 ─────────────────────────────
@@ -373,9 +375,8 @@ def cmd_setup(args) -> int:
         say.save("setup")
         return 2
 
-    ver = man.get("version")
-    core = {"marker": man.get("core_marker", "")}
-    if man.get("core_marker") and not part_installed(core, ver):
+    core = {"marker": man.get("core_marker", ""), "expect": man.get("core_expect", {})}
+    if man.get("core_marker") and not part_installed(core):
         say(f"  [중단] {man.get('core_file', '1번 ZIP')} 의 압축 해제가 끝나지 않았습니다. 같은 위치에 다시 압축을 푸세요(덮어쓰기).")
         say.save("setup")
         return 2
@@ -384,7 +385,7 @@ def cmd_setup(args) -> int:
     say(f"1단계: 구성요소 파일 확인 (분할 파일 {len(parts)}개)")
     missing = []
     for part in parts:
-        if part_installed(part, ver):
+        if part_installed(part):
             say(f"  - {part['file']}: 이미 설치됨")
             continue
         z = find_part_file(part)
@@ -399,7 +400,7 @@ def cmd_setup(args) -> int:
             continue
         say("    압축 해제 중…")
         extract_part(z, say)
-        if not part_installed(part, ver):
+        if not part_installed(part):
             say("    [오류] 압축을 풀었지만 일부 파일이 없습니다(보안 프로그램 차단 여부 확인).")
             missing.append(part["file"])
     if missing:
@@ -562,6 +563,8 @@ def cmd_run(args) -> int:
         for i, ip in enumerate(ips):
             print(f"   {'다른 PC에서 접속 :' if i == 0 else ' ' * 18} http://{ip}:{port}")
         print(f"   {'다른 PC에서 접속 :' if not ips else ' ' * 18} http://{socket.gethostname()}:{port}")
+        if ips:
+            print(f"   태블릿·휴대폰    : http://{ips[0]}:{port}/?view=tablet  (QR 코드: 프로그램 왼쪽 메뉴 맨 아래)")
         print(f"   접속 비밀번호    : {'설정됨' if access_password_set() else '미설정 - 사내망 누구나 접속·설정 변경 가능(README 6항)'}")
         print("   접속이 안 되면   : 4_FIREWALL_ADMIN.bat(관리자) 실행 또는 IT에 TCP 인바운드 허용 요청")
     print(f"   종료             : 이 창을 닫거나 Ctrl+C\n{line}\n", flush=True)
@@ -599,7 +602,7 @@ def cmd_check(args) -> int:
         say(f"  설치 상태  : 완료({mark.get('at')}){'' if setup_done() else ' - 단, 버전이 바뀌어 1_SETUP.bat 재실행 필요'}")
     except (OSError, ValueError):
         say("  설치 상태  : 미완료 - 1_SETUP.bat 을 실행하세요")
-    missing = [p["file"] for p in man.get("parts", []) if not part_installed(p, man.get("version"))]
+    missing = [p["file"] for p in man.get("parts", []) if not part_installed(p)]
     if missing:
         say(f"  분할 파일  : 미설치 {', '.join(missing)}")
     say("  구성요소:")

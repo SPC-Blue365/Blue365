@@ -40,24 +40,24 @@ def fake_root(tmp_path, monkeypatch):
     return root
 
 
-def _part_zip(path: Path, version: str, files: list[tuple[str, str]]) -> dict:
+def _part_zip(path: Path, libs: str, files: list[tuple[str, str]]) -> dict:
     with zipfile.ZipFile(path, "w") as z:
         for arc, data in files:
             z.writestr(arc, data)
-        z.writestr("Blue365_QMS/tools/parts/2of2.done", json.dumps({"version": version}))
-    return {"file": path.name, "marker": "tools/parts/2of2.done", "size": path.stat().st_size}
+        z.writestr("Blue365_QMS/tools/parts/2of2.done", json.dumps({"libs": libs}))
+    return {"file": path.name, "marker": "tools/parts/2of2.done", "size": path.stat().st_size, "expect": {"libs": libs}}
 
 
-def test_extract_part_writes_inside_root_only_and_checks_marker_version(fake_root, tmp_path):
-    zp = tmp_path / "Blue365_QMS_win64_vX_2of2.zip"
-    part = _part_zip(zp, "v1", [("Blue365_QMS/py/Lib/site-packages/foo/__init__.py", "x = 1"),
-                                ("Blue365_QMS/../evil.txt", "bad"), ("other/evil2.txt", "bad")])
-    assert not L.part_installed(part, "v1")
+def test_extract_part_writes_inside_root_only_and_checks_marker(fake_root, tmp_path):
+    zp = tmp_path / "Blue365_QMS_win64_libs-aaaa_2of2.zip"
+    part = _part_zip(zp, "aaaa", [("Blue365_QMS/py/Lib/site-packages/foo/__init__.py", "x = 1"),
+                                  ("Blue365_QMS/../evil.txt", "bad"), ("other/evil2.txt", "bad")])
+    assert not L.part_installed(part)
     assert L.extract_part(zp, say=lambda m: None) == 2
     assert (fake_root / "py/Lib/site-packages/foo/__init__.py").read_text() == "x = 1"
     assert not (tmp_path / "evil.txt").exists() and not (fake_root / "other").exists()   # 폴더 밖 경로 무시
-    assert L.part_installed(part, "v1")
-    assert not L.part_installed(part, "v2")          # 옛 버전 위에 덮어쓴 경우는 미설치로 판단 → 다시 결합
+    assert L.part_installed(part)
+    assert not L.part_installed({**part, "expect": {"libs": "bbbb"}})   # 다른 구성요소 묶음이면 다시 결합
 
 
 def test_find_part_file_handles_browser_renamed_download(tmp_path):
@@ -84,8 +84,8 @@ def test_path_issues_flags_long_install_path(monkeypatch):
 def test_setup_done_requires_matching_versions(fake_root):
     (fake_root / "tools/parts").mkdir()
     (fake_root / "tools/manifest.json").write_text(json.dumps(
-        {"version": "v2", "parts": [{"file": "p2.zip", "marker": "tools/parts/2of2.done"}]}))
-    (fake_root / "tools/parts/2of2.done").write_text(json.dumps({"version": "v2"}))
+        {"version": "v2", "parts": [{"file": "p2.zip", "marker": "tools/parts/2of2.done", "expect": {"libs": "L1"}}]}))
+    (fake_root / "tools/parts/2of2.done").write_text(json.dumps({"libs": "L1"}))
     (fake_root / "tools/setup_ok.json").write_text(json.dumps({"version": "v1"}))
     assert not L.setup_done()                         # 새 버전으로 바뀌면 설치 점검을 다시 한다
     (fake_root / "tools/setup_ok.json").write_text(json.dumps({"version": "v2"}))
@@ -176,3 +176,22 @@ def test_app_files_exclude_dev_files_and_secrets():
     assert {"streamlit_app.py", "qms/access.py", ".streamlit/config.toml", ".streamlit/secrets.toml.example"} <= set(files)
     assert not [f for f in files if f.startswith(("tests/", "scripts/", "packaging/", "data/", "docs/src/"))]
     assert not [f for f in files if f.endswith("secrets.toml")]
+
+
+def test_library_zips_are_reproducible(tmp_path):
+    """같은 내용이면 파일 시각이 달라도 같은 ZIP(같은 SHA-256) — 구성요소가 그대로인 업데이트는 1번 파일만 전달."""
+    import os
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.py").write_text("print(1)\n")
+    (src / "b.dll").write_bytes(bytes(range(256)) * 50)
+    (src / "m.done").write_text('{"libs": "x"}')
+    entries = [(src / "b.dll", "Blue365_QMS/py/b.dll"), (src / "a.py", "Blue365_QMS/py/a.py")]
+    B.write_zip(tmp_path / "1.zip", entries, (src / "m.done", "Blue365_QMS/tools/parts/2of2.done"))
+    os.utime(src / "a.py", (1_000_000_000, 1_000_000_000))                 # 시각만 바꿈
+    B.write_zip(tmp_path / "2.zip", list(reversed(entries)), (src / "m.done", "Blue365_QMS/tools/parts/2of2.done"))
+    assert B.sha256(tmp_path / "1.zip") == B.sha256(tmp_path / "2.zip")
+    with zipfile.ZipFile(tmp_path / "1.zip") as z:
+        assert z.namelist()[-1] == "Blue365_QMS/tools/parts/2of2.done"     # 완료 표식은 맨 마지막
+    assert B.libs_id(entries, 28_000_000) == B.libs_id(list(reversed(entries)), 28_000_000)
+    assert B.libs_id(entries, 28_000_000) != B.libs_id(entries, 95_000_000)  # 분할 한도가 다르면 다른 묶음

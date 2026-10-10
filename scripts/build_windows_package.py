@@ -247,18 +247,34 @@ def pack(sizes: dict[str, int], limit: int) -> list[list[str]]:
         n += 1
 
 
+ZIP_TIME = (2026, 1, 1, 0, 0, 0)               # 고정 시각 — 같은 내용이면 같은 ZIP(같은 SHA-256)
+
+
 def write_zip(path: Path, entries: list[tuple[Path, str]], last: tuple[Path, str]) -> None:
-    """항목을 경로순으로 쓰고, 완료 표식(last)은 맨 마지막에 쓴다 — 표식이 있으면 앞의 파일이 모두 풀린 것."""
+    """항목을 경로순으로 쓰고, 완료 표식(last)은 맨 마지막에 쓴다 — 표식이 있으면 앞의 파일이 모두 풀린 것.
+
+    파일 시각·권한을 고정해 내용이 같으면 매번 같은 ZIP이 되게 한다(구성요소가 그대로인 업데이트는 1번 파일만 전달).
+    """
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        for src, arc in sorted(entries, key=lambda t: t[1]):
-            z.write(src, arc)
-        z.write(*last)
+        for src, arc in sorted(entries, key=lambda t: t[1]) + [last]:
+            info = zipfile.ZipInfo(arc, ZIP_TIME)
+            info.external_attr = 0o644 << 16
+            info.create_system = 0
+            z.writestr(info, src.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
 
 
-def write_marker(top: Path, k: int, n: int, zip_name: str, version: str) -> tuple[Path, str]:
+def libs_id(files: list[tuple[Path, str]], limit: int) -> str:
+    """구성요소 묶음 식별값 — 구성요소 파일 내용·경로·분할 한도가 같으면 같은 값."""
+    h = hashlib.sha256(f"limit={limit}\n".encode())
+    for src, arc in sorted(files, key=lambda t: t[1]):
+        h.update(f"{arc}\0{hashlib.sha256(src.read_bytes()).hexdigest()}\n".encode())
+    return h.hexdigest()[:8]
+
+
+def write_marker(top: Path, k: int, n: int, content: dict) -> tuple[Path, str]:
     rel = f"tools/parts/{k}of{n}.done"
     (top / rel).parent.mkdir(parents=True, exist_ok=True)
-    (top / rel).write_text(json.dumps({"part": zip_name, "version": version}, ensure_ascii=False), encoding="utf-8")
+    (top / rel).write_text(json.dumps(content, ensure_ascii=False, sort_keys=True), encoding="utf-8")
     return top / rel, f"{TOP}/{rel}"
 
 
@@ -406,23 +422,25 @@ def build(args) -> None:
     bins = pack({u: sum(fsize[p] for p in v) for u, v in units.items()}, limit) if units else []
     n_parts = 1 + len(bins)
 
-    def name(k: int) -> str:
-        return f"{TOP}_win64_{tag}_{k}of{n_parts}.zip"
-
     lib_files = {p for v in units.values() for p in v}
+    lid = libs_id([(p, f"{TOP}/{p.relative_to(top).as_posix()}") for p in lib_files], limit) if lib_files else ""
+
+    def name(k: int) -> str:
+        """1번(핵심)은 프로그램 버전, 2번부터(구성요소)는 구성요소 묶음 식별값으로 이름을 짓는다."""
+        return f"{TOP}_win64_{tag}_1of{n_parts}.zip" if k == 1 else f"{TOP}_win64_libs-{lid}_{k}of{n_parts}.zip"
 
     log(f"[5/6] ZIP 생성({n_parts}개)")
     parts, part_rows, in_part, markers = [], [], {}, set()
     for i, keys in enumerate(bins, 2):
         entries = [(p, f"{TOP}/{p.relative_to(top).as_posix()}") for u in keys for p in units[u]]
         zpath = out / name(i)
-        mark = write_marker(top, i, n_parts, zpath.name, version)
+        mark = write_marker(top, i, n_parts, {"part": zpath.name, "libs": lid})
         markers.add(mark[0])
         write_zip(zpath, entries, mark)
         dists_in = sorted({u.split("::")[0] for u in keys})
         names = sorted({d.split("-")[0] for d in dists_in})
         parts.append({"file": zpath.name, "sha256": sha256(zpath), "size": zpath.stat().st_size, "files": len(entries) + 1,
-                      "marker": mark[1][len(TOP) + 1:], "dists": names})
+                      "marker": mark[1][len(TOP) + 1:], "expect": {"libs": lid}, "dists": names})
         part_rows.append({"order": f"{i}/{n_parts}", "file": zpath.name, "size": zpath.stat().st_size,
                           "sha256": parts[-1]["sha256"], "files": len(entries) + 1, "desc": "구성요소: " + ", ".join(names)})
         for d in dists_in:
@@ -435,8 +453,8 @@ def build(args) -> None:
     manifest = {"name": "Blue365 QMS", "version": version, "tag": tag, "git_commit": commit,
                 "built_at": f"{now:%Y-%m-%d %H:%M} UTC", "python": py_info,
                 "packages": [{"name": d["name"], "version": d["version"]} for d in dists],
-                "parts": parts, "core_file": name(1), "core_marker": f"tools/parts/1of{n_parts}.done",
-                "max_rel_path": max_rel_path(top)}
+                "libs_id": lid, "parts": parts, "core_file": name(1), "core_marker": f"tools/parts/1of{n_parts}.done",
+                "core_expect": {"version": version}, "max_rel_path": max_rel_path(top)}
     (top / "tools" / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
 
     core_rows = [{"order": f"1/{n_parts}", "file": name(1), "size": 0, "files": 0,
@@ -454,7 +472,7 @@ def build(args) -> None:
     (top / "README.txt").write_bytes(to_txt(readme))
     components_workbook(top / "tools" / "components.xlsx", dists, dist_part, dist_bytes, manifest, core_rows)
 
-    core_mark = write_marker(top, 1, n_parts, name(1), version)
+    core_mark = write_marker(top, 1, n_parts, {"part": name(1), "version": version})
     core_entries = [(p, f"{TOP}/{p.relative_to(top).as_posix()}") for p in top.rglob("*")
                     if p.is_file() and p not in lib_files and p not in markers and p != core_mark[0]]
     core = out / name(1)

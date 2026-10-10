@@ -20,6 +20,7 @@ from .alerts import (
     detect_events,
     events_frame,
 )
+from . import share
 from .demo import generate_demo_data
 from .prediction import FittedModel, attach_predictions
 from .rawmix import FcaoModel, XrdMap, fit_fcao_model, fit_xrd_map
@@ -68,6 +69,114 @@ def enable_tilde_escape() -> None:
         if main is not None:
             setattr(st, name, getattr(main, name))       # st.markdown 등은 import 시 묶인 메서드라 다시 연결
     DeltaGenerator._qms_tilde_patched = True
+
+
+# ── 태블릿·좁은 화면 대응 ──────────────────────────────────────────────────
+TABLET_UA = re.compile(r"iPad|iPhone|Android|Mobile|Tablet", re.IGNORECASE)
+_METRIC_ROW = ('[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] > [data-testid="stVerticalBlock"]'
+               ' > [data-testid="stElementContainer"] > [data-testid="stMetric"])')
+RESPONSIVE_CSS = f"""<style>
+/* 한글은 단어 중간에서 줄을 바꾸지 않음(예: '대시보/드' 방지) */
+[data-testid="stMarkdownContainer"], [data-testid="stHeading"], [data-testid="stMetricLabel"] {{
+  word-break: keep-all; overflow-wrap: break-word; }}
+/* 본문 폭 기준(container query) — 사이드바를 펼친 태블릿처럼 본문이 좁을 때만 적용, 넓은 PC 화면은 그대로 */
+[data-testid="stMainBlockContainer"] {{ container-type: inline-size; container-name: qms-main; }}
+{_METRIC_ROW} > [data-testid="stColumn"] {{ container-type: inline-size; container-name: qms-metric; }}
+/* 숫자 카드가 좁으면 잘림(…) 대신 줄바꿈, 더 좁으면 글자 크기도 줄임(넓은 PC 화면은 변화 없음) */
+@container qms-metric (max-width: 200px) {{
+  [data-testid="stMetricValue"] div, [data-testid="stMetricLabel"] div, [data-testid="stMetricLabel"] p,
+  [data-testid="stMetricDelta"] div, [data-testid="stMetricDelta"] p {{
+    white-space: normal; overflow: visible; text-overflow: clip; }}
+}}
+@container qms-metric (max-width: 160px) {{ [data-testid="stMetricValue"] {{ font-size: 1.5rem; }} }}
+/* 태블릿·소형 노트북: 본문 좌우 여백을 줄여 내용 폭 확보 */
+@media (min-width: 641px) and (max-width: 1280px) {{
+  [data-testid="stMainBlockContainer"] {{ padding-left: 1.5rem !important; padding-right: 1.5rem !important; }}
+}}
+/* 숫자 카드 줄: 같은 폭의 바둑판 배치(5개 → 넓으면 한 줄, 좁으면 4+1·3+2) */
+@container qms-main (max-width: 960px) {{
+  {_METRIC_ROW} {{ display: grid !important; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.75rem 1rem; }}
+  {_METRIC_ROW} > [data-testid="stColumn"] {{ width: auto !important; min-width: 0 !important; max-width: none !important; }}
+}}
+/* 세로 태블릿 등: 여러 칸 배치는 줄바꿈(한 칸 최소 14rem), 그래프는 한 줄에 하나 */
+@container qms-main (max-width: 720px) {{
+  [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; row-gap: 0.75rem; }}
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{ flex: 1 1 14rem !important; min-width: min(100%, 14rem) !important; }}
+  [data-testid="stHorizontalBlock"]:has([data-testid="stPlotlyChart"]) > [data-testid="stColumn"] {{ flex-basis: 100% !important; }}
+  h1 {{ font-size: 1.9rem !important; }}
+}}
+</style>"""
+
+
+def apply_responsive_css() -> None:
+    """태블릿·좁은 창에서 숫자 카드가 잘리거나 그래프가 비좁게 붙지 않도록 화면 서식을 보정(매 실행 시 호출)."""
+    st.html(RESPONSIVE_CSS)
+
+
+def tablet_mode() -> bool:
+    """태블릿 보기 여부 — 주소에 ?view=tablet(태블릿 접속 QR)이 있거나 모바일 브라우저면 처음에 자동으로 켠다.
+
+    iPad Safari 는 PC(Mac)처럼 자신을 알리므로 자동 판별이 안 될 수 있어, QR 주소와 사이드바 스위치를 함께 둔다.
+    """
+    ss = st.session_state
+    if "qms_tablet" not in ss:
+        try:
+            ua = st.context.headers.get("User-Agent", "") or ""
+        except Exception:  # noqa: BLE001 - 헤더를 못 읽는 환경(자동 시험 등)은 PC로 본다
+            ua = ""
+        ss["qms_tablet"] = st.query_params.get("view") == "tablet" or bool(TABLET_UA.search(ua))
+    return bool(ss["qms_tablet"])
+
+
+def enable_touch_charts() -> None:
+    """태블릿 보기일 때 그래프의 '끌어서 확대'를 끈다(앱 시작 시 1회 호출).
+
+    Plotly 기본값은 손가락으로 끌면 확대하므로, 그래프가 화면을 채운 페이지에서는 태블릿으로 스크롤이 되지 않는다.
+    dragmode=False 이면 그래프 위에서도 화면이 스크롤되고, 값은 탭해서 확인할 수 있다. PC 화면은 그대로 둔다.
+    """
+    from streamlit.delta_generator import DeltaGenerator
+
+    if getattr(DeltaGenerator, "_qms_touch_patched", False):
+        return
+    orig = DeltaGenerator.plotly_chart
+
+    def wrapper(self, figure_or_data, *args, _orig=orig, **kwargs):
+        if isinstance(figure_or_data, go.Figure) and tablet_mode():
+            figure_or_data.update_layout(dragmode=False)      # 그림은 실행마다 새로 만들므로(캐시 안 함) 직접 수정
+            kwargs["config"] = {**(kwargs.get("config") or {}), "displayModeBar": False}
+        return _orig(self, figure_or_data, *args, **kwargs)
+
+    functools.update_wrapper(wrapper, orig)
+    DeltaGenerator.plotly_chart = wrapper
+    main = getattr(st, "_main", None)
+    if main is not None:
+        st.plotly_chart = main.plotly_chart
+    DeltaGenerator._qms_touch_patched = True
+
+
+def tablet_access_panel() -> None:
+    """다른 기기(태블릿·휴대폰)에서 접속할 주소와 QR 코드."""
+    address = st.get_option("server.address") or ""
+    port = int(st.get_option("server.port") or 8501)
+    if not share.is_shared(address):
+        st.markdown("지금은 **이 PC에서만** 볼 수 있게 실행 중입니다.\n\n"
+                    "태블릿에서 보려면 실행 창을 닫고 **3_RUN_SHARE.bat**으로 다시 실행하세요"
+                    "(공유 PC에서 처음 1회 4_FIREWALL_ADMIN.bat).")
+        return
+    urls = share.share_urls(port, address)
+    if not urls:
+        st.warning("이 PC의 사내 IP를 찾지 못했습니다. 명령 프롬프트에서 ipconfig 로 IPv4 주소를 확인하세요.")
+        return
+    url = urls[0] + share.TABLET_QUERY
+    png = share.qr_png(url)
+    st.caption("태블릿 카메라로 QR 코드를 비추면 바로 열립니다(태블릿 보기 자동 켜짐).")
+    if png:
+        st.image(png, width=180)
+    st.code(url, language=None)
+    for other in urls[1:]:
+        st.caption(f"다른 주소: {other}")
+    st.caption("자주 보려면 Safari 공유 버튼 또는 Chrome 메뉴(⋮)에서 '홈 화면에 추가'를 누르세요.")
+    st.caption("열리지 않으면 태블릿이 사내망(업무망) Wi-Fi에 연결돼 있는지, 공유 PC의 방화벽이 허용돼 있는지 확인하세요.")
 
 
 @dataclass
@@ -426,6 +535,7 @@ def strength_curve_figure(pred: pd.DataFrame, registry: SpecRegistry, product: s
 
 # ── 사이드바 ────────────────────────────────────────────────────────────
 def sidebar(ctx: Ctx) -> None:
+    tablet_mode()                                     # 스위치를 만들기 전에 자동 판별값을 정해 둔다
     with st.sidebar:
         period = ctx.store.period()
         if period:
@@ -439,6 +549,11 @@ def sidebar(ctx: Ctx) -> None:
         if st.button("🔄 새로고침", width="stretch", help="데이터·기준을 다시 불러와 재분석합니다."):
             refresh()
             st.rerun()
+        st.toggle("📱 태블릿 보기", key="qms_tablet",
+                  help="그래프 위를 손가락으로 쓸어도 화면이 스크롤되도록 그래프의 '끌어서 확대'를 끕니다(값은 탭해서 확인). "
+                       "태블릿·휴대폰 브라우저나 QR 주소로 접속하면 자동으로 켜집니다.")
+        with st.popover("📲 태블릿·휴대폰으로 보기", width="stretch"):
+            tablet_access_panel()
 
 
 def recent_events(ctx: Ctx, days: int = 7, min_sev: str = "주의") -> list[AlertEvent]:
