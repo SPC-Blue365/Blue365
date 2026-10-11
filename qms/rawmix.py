@@ -57,6 +57,9 @@ DEC = {"LSF": 1, "SM": 2, "IM": 2, "C3S": 1}
 ASH_DEFAULT = {"SiO2": 55.0, "Al2O3": 25.0, "Fe2O3": 7.0, "CaO": 5.0, "MgO": 1.5, "K2O": 1.0, "Na2O": 0.4}
 
 
+MAX_PER_CATEGORY = 5             # 구분별 등록 가능한 후보 원료 수(권장 상한)
+
+
 def default_materials() -> pd.DataFrame:
     """예시 원료 5종(구분별 1종). 성분·단가는 예시값 — 공장 분석값으로 교체할 것."""
     rows = [
@@ -70,6 +73,49 @@ def default_materials() -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=MATERIAL_COLUMNS)
     df["fixed"] = df["fixed"].astype(float)
     return df
+
+
+def blank_row(category: str, name: str = "") -> dict:
+    """빈 후보 원료 한 줄(성분 0, 미사용). 사용자가 성분을 채우고 '사용'을 켜면 배합에 반영된다."""
+    row = {c: 0.0 for c in (*OXIDES, "LOI", "H2O", "Cr", "cost")}
+    row.update(use=False, name=name or f"{category} 후보", category=category, min=0.0, max=100.0, fixed=np.nan)
+    return {c: row[c] for c in MATERIAL_COLUMNS}
+
+
+def category_counts(mats: pd.DataFrame) -> dict[str, int]:
+    """구분별 등록된 원료 수(이름이 있는 행 기준)."""
+    if "category" not in mats or "name" not in mats:
+        return {}
+    named = mats[mats["name"].astype(str).str.strip() != ""]
+    return named.groupby("category").size().to_dict()
+
+
+def over_cap(mats: pd.DataFrame) -> list[str]:
+    """권장 상한(구분별 MAX_PER_CATEGORY)을 넘는 구분 목록."""
+    return [c for c, n in category_counts(mats).items() if c in CATEGORIES and n > MAX_PER_CATEGORY]
+
+
+def add_candidate(mats: pd.DataFrame, category: str) -> pd.DataFrame:
+    """해당 구분에 빈 후보 한 줄을 추가(권장 상한 이내일 때). 상한을 넘으면 그대로 돌려준다."""
+    df = mats.copy()
+    n = int(category_counts(df).get(category, 0))
+    if n >= MAX_PER_CATEGORY:
+        return df
+    name = f"{category} 후보{n + 1}" if n else category
+    return pd.concat([df, pd.DataFrame([blank_row(category, name)])], ignore_index=True)
+
+
+def fill_candidates(mats: pd.DataFrame, per: int = MAX_PER_CATEGORY,
+                    categories: list[str] | None = None) -> pd.DataFrame:
+    """각 구분이 per개(기본 5개)의 후보 줄을 갖도록 빈 줄을 채운다(기존 줄은 유지)."""
+    df = mats.copy()
+    counts = category_counts(df)
+    extra = []
+    for cat in (categories or CATEGORIES):
+        have = int(counts.get(cat, 0))
+        for i in range(have, min(per, MAX_PER_CATEGORY)):
+            extra.append(blank_row(cat, f"{cat} 후보{i + 1}" if i else cat))
+    return pd.concat([df, pd.DataFrame(extra)], ignore_index=True) if extra else df
 
 
 @dataclass

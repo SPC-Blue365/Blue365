@@ -39,7 +39,8 @@ tab1, tab2, tab3, tab4 = st.tabs(["① 원료·배합 계산", "② 클링커 �
 
 # ── ① 원료·배합 계산 ──────────────────────────────────────────────────
 with tab1:
-    st.markdown("**원료 성분표** (건조 기준 %) — 행 추가·삭제 가능. 하한·상한은 배합비(%) 제약, '고정'에 값을 넣으면 그 비율로 고정합니다.")
+    st.markdown("**원료 성분표** (건조 기준 %) — 구분별로 후보 원료를 **여러 개(최대 5종)** 등록할 수 있습니다. "
+                "'사용'을 켠 원료만 배합에 들어갑니다. 하한·상한은 배합비(%) 제약, '고정'에 값을 넣으면 그 비율로 고정합니다.")
     cfg_cols = {
         "use": st.column_config.CheckboxColumn("사용", width="small"),
         "name": st.column_config.TextColumn("원료", width="medium", required=True),
@@ -56,6 +57,28 @@ with tab1:
     }
     mats = st.data_editor(st.session_state["rm_mats"], key="rm_mats_editor", num_rows="dynamic", hide_index=True,
                           column_config=cfg_cols, width="stretch")
+
+    # 구분별 후보 원료 추가(실리카원·알루미나원·철질·기타 등 각 최대 5종, 수동 입력)
+    counts = rmx.category_counts(mats)
+    cnt_txt = " · ".join(f"{c} {counts.get(c, 0)}/{rmx.MAX_PER_CATEGORY}" for c in rmx.CATEGORIES)
+    a1, a2, a3, a4 = st.columns([1.1, 1.1, 1.3, 1.8])
+    add_cat = a1.selectbox("구분", rmx.CATEGORIES, index=1, key="rm_add_cat", label_visibility="collapsed")
+    full = int(counts.get(add_cat, 0)) >= rmx.MAX_PER_CATEGORY
+    if a2.button(f"➕ {add_cat} 후보 추가", disabled=full,
+                 help=f"선택한 구분에 빈 후보 한 줄을 추가합니다(구분별 최대 {rmx.MAX_PER_CATEGORY}종). 성분을 적고 '사용'을 켜세요."):
+        st.session_state["rm_mats"] = rmx.add_candidate(mats, add_cat)
+        st.session_state.pop("rm_mats_editor", None)
+        st.rerun()
+    if a3.button("구분별 5칸 채우기", help="각 구분이 5종이 되도록 빈 후보 줄을 한꺼번에 추가합니다(기존 줄은 유지)."):
+        st.session_state["rm_mats"] = rmx.fill_candidates(mats)
+        st.session_state.pop("rm_mats_editor", None)
+        st.rerun()
+    a4.caption(f"구분별 등록 수: {cnt_txt}")
+    if full:
+        st.caption(f"'{add_cat}'은 이미 {rmx.MAX_PER_CATEGORY}종입니다. 더 넣으려면 표에서 직접 행을 추가하세요(권장 상한 초과).")
+    for c in rmx.over_cap(mats):
+        st.caption(f"⚠️ '{c}'이 권장 상한({rmx.MAX_PER_CATEGORY}종)을 넘었습니다 — 계산은 되지만 후보를 줄이는 것을 권장합니다.")
+
     u1, u2, u3 = st.columns([1.2, 1.6, 2])
     if u1.button("기본 예시로 초기화", help="예시 원료 5종(구분별 1종)으로 되돌립니다."):
         st.session_state["rm_mats"] = rmx.default_materials()

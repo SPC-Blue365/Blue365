@@ -95,3 +95,32 @@ def test_design_workbook_roundtrip(mats):
     back = rmx.parse_materials(buf.getvalue(), "m.xlsx")
     assert back["name"].tolist() == mats["name"].tolist()
     assert back["CaO"].tolist() == pytest.approx(mats["CaO"].tolist())
+
+
+def test_add_candidate_respects_cap(mats):
+    df = rmx.default_materials()
+    assert rmx.category_counts(df)["실리카원"] == 1
+    for i in range(10):
+        df = rmx.add_candidate(df, "실리카원")
+    assert rmx.category_counts(df)["실리카원"] == rmx.MAX_PER_CATEGORY      # 상한에서 멈춤
+    assert not rmx.over_cap(df)
+    names = df[df["category"] == "실리카원"]["name"].tolist()
+    assert names[0] == "규석" and names[1] == "실리카원 후보2" and len(set(names)) == len(names)
+
+
+def test_fill_candidates_makes_five_each():
+    df = rmx.fill_candidates(rmx.default_materials())
+    c = rmx.category_counts(df)
+    assert all(c[cat] == 5 for cat in ("실리카원", "알루미나원", "철질원", "기타"))
+    assert (~df[df["name"].str.contains("후보")]["use"]).all()      # 후보는 미사용 상태로 추가됨
+
+
+def test_solve_with_multiple_candidates_per_category(mats):
+    """실리카원 2종을 모두 '사용'으로 켜도 합계 1, 목표 LSF 달성."""
+    df = rmx.add_candidate(mats, "실리카원")
+    i = df.index[df["category"] == "실리카원"][-1]
+    df.loc[i, ["use", "name", "SiO2", "Al2O3", "Fe2O3", "CaO", "LOI", "max"]] = [True, "규사2", 95.0, 2.0, 1.0, 0.5, 1.0, 15.0]
+    res = rmx.solve_mix(df, rmx.MixTargets(), rmx.KilnParams())
+    assert len(res.x) == 6 and res.x.sum() == pytest.approx(1.0, abs=1e-4)
+    assert abs(res.deviation["LSF"]) <= rmx.TOL["LSF"] + 1e-9
+    assert "규사2" in res.names
