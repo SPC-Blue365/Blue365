@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blue365 QMS 대시보드</title>
+<meta name="description" content="시멘트 품질관리 대시보드 — 설치 없이 브라우저로 여는 오프라인 단일 파일">
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><span class="logo">🏭</span><div>
+      <div class="title">Blue365 통합 품질관리 대시보드</div>
+      <div class="subtitle" id="subtitle">오프라인 단일 파일 · 설치 불필요</div>
+    </div></div>
+    <div class="databadge" id="databadge" title="현재 보고 있는 데이터"></div>
+  </header>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <main id="main">
+    <section class="tab" data-tab="overview"></section>
+    <section class="tab" data-tab="monitor"></section>
+    <section class="tab" data-tab="chem"></section>
+    <section class="tab" data-tab="rawmix"></section>
+    <section class="tab" data-tab="chromium"></section>
+    <section class="tab" data-tab="data"></section>
+  </main>
+
+  <footer class="foot">
+    <span>Blue365 QMS · 모든 예측은 <b>추정치</b>이며 공장 분석값으로 확인하세요. 기준: KS L 5201 / 사내 관리기준.</span>
+    <span id="buildinfo"></span>
+  </footer>
+</div>
+
+<script>/*__SHEETJS__*/</script>
+<script>/*__PLOTLY__*/</script>
+<script>window.__QMS_DATA__ = /*__DATA__*/;</script>
+<script>/*__CHEM__*/</script>
+<script>/*__APP__*/</script>
+</body>
+</html>

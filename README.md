@@ -65,6 +65,21 @@ streamlit run streamlit_app.py               # 브라우저에서 http://localho
 - 구성요소 ZIP(2번부터)은 내용이 같으면 매번 같은 파일(이름 `libs-<식별값>`, 같은 SHA-256)로 만들어집니다.
   프로그램만 바뀐 업데이트는 **1번 ZIP만** 전달 → 기존 위치에 덮어쓰기 압축 해제 → `1_SETUP.bat`(구성요소는 건너뜀)
 
+### 사내망 PC용 오프라인 HTML 대시보드 (무설치)
+
+Python 설치가 막힌 사내망 PC에서는 **단일 HTML 파일**(`dist/dashboard/Blue365_QMS_대시보드.html`, 약 2.3MB)을 더블클릭해
+브라우저로 바로 볼 수 있습니다. 설치·관리자 권한·인터넷이 필요 없고, 모든 처리는 그 PC 브라우저 안에서만 일어납니다.
+
+- 화면: 종합 현황 · 공정 모니터링(추이·SPC·분포) · 화학 계산기(LSF·SM·IM·Bogue) · **배합 설계(구분별 최대 5종 수동 입력)** ·
+  6가크롬 물질수지 · 데이터 불러오기
+- 데이터: LIMS·실험실에서 **내보낸 엑셀·CSV를 '데이터 불러오기'로 선택**하면 반영(반자동). 산화물 → 계수치(LSF·Bogue 등) 자동 계산
+- 한계(설치형 앱 전용): **자동 LIMS 동기화·무인 알림**, 원료 배합 **자동 최적화**, 재령별 강도 예측, AI 보고서
+  (브라우저는 DB 직접 접속·백그라운드 실행이 불가)
+- 계산식은 설치형 앱(Python)과 동일(`dashboard/src/chem.js` ↔ `qms/chemistry.py`·`rawmix.py`·`chromium.py`, 빌드 시 수치 대조)
+
+빌드(인터넷 필요): `python scripts/build_dashboard.py` → `dist/dashboard/Blue365_QMS_대시보드.html`
+- Plotly(그래프)·SheetJS(엑셀)를 `registry.npmjs.org`에서 받아 한 파일에 인라인, 데이터(`scripts/export_dashboard_data.py`)도 임베드
+
 ### 태블릿·휴대폰에서 보기
 
 태블릿(iPad·갤럭시탭 등)에는 설치하지 않고, **공유 PC(`3_RUN_SHARE.bat`)의 화면을 태블릿 브라우저로 엽니다.**
@@ -221,8 +236,10 @@ scripts/build_definition_workbook.py   관리항목·기준 정의서(엑셀) �
 scripts/build_windows_package.py       사내망(오프라인) Windows 설치 패키지 빌드
 scripts/build_lims_prep_workbook.py    LIMS 연동 준비서(엑셀) 생성
 packaging/windows/          설치 도우미(qms_launcher.py)·자동 감시 실행기·배치 파일·안내서·잠금 파일
+dashboard/src/              오프라인 HTML 대시보드 소스(index.html·styles.css·chem.js·app.js)
+scripts/build_dashboard.py  오프라인 HTML 대시보드 빌드(라이브러리·데이터 인라인)
 docs/                       정의서·보고서·샘플·화면
-tests/                      자동 테스트 113건
+tests/                      자동 테스트 120건
 ```
 
 ## 근거·출처
@@ -254,7 +271,7 @@ tests/                      자동 테스트 113건
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q        # 113건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿
+python -m pytest -q        # 120건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿·대시보드
 ```
 
 ## 로드맵
