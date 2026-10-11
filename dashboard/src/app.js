@@ -451,8 +451,8 @@
   // ── ⑥ 데이터 불러오기 ──
   function renderData(root) {
     root.appendChild(el("h2", {}, ["데이터 불러오기"]));
-    root.appendChild(el("div", { class: "note" }, [el("span", { html: "LIMS·실험실에서 <b>내보낸 엑셀·CSV</b>를 올리거나, 엑셀에서 복사해 <b>붙여넣기</b>하면 반영됩니다. 열 이름이 달라도 아래 <b>열 수동 지정</b>으로 맞출 수 있습니다. 모든 처리는 이 PC 브라우저 안에서만 일어나고 외부로 전송되지 않습니다." })]));
-    const fz = el("div", { class: "filezone", id: "filezone", html: "📂 <b>엑셀·CSV 파일 선택</b> 또는 여기로 끌어다 놓기<div class='small'>여러 시트(생료·클링커·물성…)도, 한 장짜리 표도 가능</div>" });
+    root.appendChild(el("div", { class: "note", html: "LIMS·실험실 <b>엑셀·CSV 파일</b>을 올리거나, 엑셀에서 표를 <b>복사→붙여넣기</b> 하세요. 열 이름이 회사마다 달라서, 넣으면 <b>‘열 지정’ 표</b>가 떠서 각 열이 무엇인지 한 번 고르면 됩니다. <b>한 번 지정하면 다음부터 자동</b>으로 적용됩니다. 모든 처리는 이 PC 브라우저 안에서만 일어납니다." }));
+    const fz = el("div", { class: "filezone", id: "filezone", html: "📂 <b>엑셀·CSV 파일 선택</b> 또는 여기로 끌어다 놓기<div class='small'>여러 시트도, 한 장짜리 표도, 제목 줄이 위에 있어도 OK</div>" });
     const fin = el("input", { type: "file", accept: ".xlsx,.xls,.csv", style: "display:none" });
     fin.addEventListener("change", (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ""; });
     fz.addEventListener("click", () => fin.click());
@@ -460,10 +460,9 @@
     fz.addEventListener("dragleave", () => fz.classList.remove("drag"));
     fz.addEventListener("drop", (e) => { e.preventDefault(); fz.classList.remove("drag"); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
     root.appendChild(fz); root.appendChild(fin);
-    // 붙여넣기(파일 선택이 막힌 PC 대비)
     const pcard = el("div", { class: "card", style: "margin-top:12px" });
-    pcard.appendChild(el("div", { class: "small", html: "또는 <b>엑셀에서 표를 복사(Ctrl+C) → 아래에 붙여넣기(Ctrl+V)</b> — 첫 줄은 열 이름" }));
-    const ta = el("textarea", { id: "paste-box", rows: "4", style: "width:100%;margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:inherit", placeholder: "일시\t클링커 자유석회\t클링커 LSF\n2026-11-01 08:00\t0.9\t95.1\n2026-11-01 16:00\t1.1\t94.6" });
+    pcard.appendChild(el("div", { class: "small", html: "또는 <b>엑셀에서 표 선택 → 복사(Ctrl+C) → 아래에 붙여넣기(Ctrl+V)</b> — 맨 윗줄은 열 이름" }));
+    const ta = el("textarea", { id: "paste-box", rows: "4", style: "width:100%;margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:8px;font-family:inherit", placeholder: "일시          유리석회   LSF\n2026-11-01 08:00   0.9    95.1\n2026-11-01 16:00   1.1    94.6" });
     pcard.appendChild(ta);
     pcard.appendChild(el("div", { class: "btnrow" }, [el("button", { class: "btn sec", onclick: () => loadPaste(ta.value) }, ["붙여넣은 표 불러오기"])]));
     root.appendChild(pcard);
@@ -474,9 +473,11 @@
       el("button", { class: "btn sec", onclick: () => { setData(deepCopy(RAW.sample), "sample"); STATE.loadedInfo = null; STATE.loadError = null; STATE.pending = null; refreshBadge(); renderLoadResult(); refreshCurrentData(); $("#map-panel").style.display = "none"; } }, ["샘플 데이터로 보기"]),
       el("button", { class: "btn ghost", onclick: downloadTemplate }, ["⬇️ 입력 템플릿(엑셀)"]),
       el("button", { class: "btn ghost", onclick: exportDataExcel }, ["⬇️ 현재 데이터 내보내기(엑셀)"]),
+      el("button", { class: "btn ghost", onclick: () => { try { Object.keys(localStorage).filter((k) => k.indexOf("qmsmap_") === 0).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* file:// 등 */ } note("기억된 열 지정을 모두 지웠습니다."); } }, ["기억된 열 지정 초기화"]),
     ]));
     root.appendChild(el("div", { class: "card", id: "current-data", style: "margin-top:12px" }));
     refreshCurrentData();
+    function note(msg) { STATE.loadedInfo = null; STATE.loadError = null; $("#load-result").innerHTML = ""; $("#load-result").appendChild(el("div", { class: "note" }, [msg])); }
   }
   function refreshCurrentData() {
     const info = $("#current-data"); if (!info) return; info.innerHTML = "";
@@ -491,9 +492,9 @@
     const res = $("#load-result"); if (!res) return; res.innerHTML = "";
     if (STATE.loadError) { res.appendChild(el("div", { class: "note warn" }, [STATE.loadError])); return; }
     const info = STATE.loadedInfo; if (!info) return;
-    res.appendChild(el("div", { class: "note", html: `<b>${esc(info.file)}</b> 불러오기 완료:<br>• ${info.report.map(esc).join("<br>• ")}` + (info.ignored && info.ignored.length ? `<br><span class="small">인식하지 못한 열: ${info.ignored.slice(0, 15).map(esc).join(", ")} — 필요하면 ‘열 수동 지정’으로 추가하세요.</span>` : "") }));
+    res.appendChild(el("div", { class: "note", html: `<b>${esc(info.file)}</b> 불러오기 완료:<br>• ${info.report.map(esc).join("<br>• ")}` }));
     const btns = [el("button", { class: "btn", onclick: () => show("overview") }, ["종합 현황 보기"]), el("button", { class: "btn sec", onclick: () => show("monitor") }, ["공정 모니터링 보기"])];
-    if (STATE.pending && STATE.pending.length) btns.push(el("button", { class: "btn ghost", onclick: () => openMapping("") }, ["열 수동 지정"]));
+    if (STATE.pending && STATE.pending.length) btns.push(el("button", { class: "btn ghost", onclick: () => openMapping("") }, ["열 지정 다시 하기"]));
     res.appendChild(el("div", { class: "btnrow" }, btns));
   }
 
@@ -501,17 +502,17 @@
   function nkey(s) { return String(s == null ? "" : s).trim().toLowerCase().replace(/\s+/g, "").replace(/[()₂₃₄·%\-_/,]/g, ""); }
   const LABEL2KEY = {}; SPEC.items.forEach((it) => { LABEL2KEY[nkey(it.key)] = it.key; LABEL2KEY[nkey(it.name)] = it.key; });
   const ALIASES = {
-    clk_fcao: ["fcao", "자유석회", "유리석회", "freelime", "clinkerfcao"], clk_lsf: ["lsf", "석회포화도", "clinkerlsf"], clk_sm: ["sm", "규산율"], clk_im: ["im", "철률", "알루미나율", "am"],
+    clk_fcao: ["fcao", "자유석회", "유리석회", "freelime", "f-cao", "에프카오"], clk_lsf: ["lsf", "석회포화도", "ls포화도", "포화도", "석회포화", "lime"], clk_sm: ["sm", "규산율", "실리카율"], clk_im: ["im", "철률", "알루미나율", "am"],
     clk_c3s: ["c3s", "알라이트", "alite", "에이라이트"], clk_c2s: ["c2s", "벨라이트", "belite"], clk_c3a: ["c3a"], clk_c4af: ["c4af"], clk_mgo: ["clinkermgo"],
-    rm_lsf: ["생료lsf"], rm_sm: ["생료sm"], rm_im: ["생료im"], rm_r90: ["r90", "90um", "90μm", "분말잔사", "생료잔사"],
-    phy_s1: ["cs1", "1일강도", "1일압축강도"], phy_s3: ["cs3", "3일강도", "3일압축강도"], phy_s7: ["cs7", "7일강도", "7일압축강도"], phy_s28: ["cs28", "28일강도", "28일압축강도", "압축강도28"],
-    phy_ist: ["초결", "초결시간", "ist", "initialset"], phy_fst: ["종결", "종결시간", "fst", "finalset"], phy_autoclave: ["오토클레이브", "팽창도", "autoclave"],
-    phy_crvi: ["6가크롬", "수용성6가크롬", "육가크롬", "cr6", "crvi", "수용성크롬", "cr6plus"], cem_blaine: ["분말도", "비표면적", "blaine", "ssa"], cem_so3: ["so3", "삼산화황"], cem_loi: ["강열감량", "loi", "ig손실"],
+    rm_lsf: ["생료lsf"], rm_sm: ["생료sm"], rm_im: ["생료im"], rm_r90: ["r90", "90um", "90μm", "분말잔사", "생료잔사", "잔사"],
+    phy_s1: ["cs1", "1일강도", "1일압축강도", "1일"], phy_s3: ["cs3", "3일강도", "3일압축강도", "3일"], phy_s7: ["cs7", "7일강도", "7일압축강도", "7일"], phy_s28: ["cs28", "28일강도", "28일압축강도", "28일", "압축강도28"],
+    phy_ist: ["초결", "초결시간", "ist", "initialset"], phy_fst: ["종결", "종결시간", "fst", "finalset"], phy_autoclave: ["오토클레이브", "팽창도", "autoclave", "안정도"],
+    phy_crvi: ["6가크롬", "수용성6가크롬", "육가크롬", "cr6", "crvi", "수용성크롬", "cr6plus", "6가"], cem_blaine: ["분말도", "비표면적", "blaine", "ssa", "브레인"], cem_so3: ["so3", "삼산화황"], cem_loi: ["강열감량", "loi", "ig손실", "작열감량"], cem_r45: ["r45", "45um", "잔분"],
     kiln_bzt: ["소성대온도", "버닝존온도", "bzt", "버닝존"], kiln_o2: ["o2", "산소"], kiln_co: ["co", "일산화탄소"],
   };
   const ALIAS2KEY = {}; for (const k in ALIASES) ALIASES[k].forEach((a) => { ALIAS2KEY[nkey(a)] = k; });
-  const TS_ALIASES = new Set(["timestamp", "일시", "시료일시", "채취일시", "시험일시", "sampledat", "date", "날짜", "일자", "시각", "생산일", "측정일"].map(nkey));
-  const PROD_ALIASES = new Set(["product", "품종", "종류", "제품", "type"].map(nkey));
+  const TS_ALIASES = new Set(["timestamp", "일시", "시료일시", "채취일시", "시험일시", "sampledat", "date", "datetime", "날짜", "일자", "시각", "생산일", "측정일", "제조일"].map(nkey));
+  const PROD_ALIASES = new Set(["product", "품종", "종류", "제품", "type", "규격"].map(nkey));
   const SHEET2TABLE = {}; for (const t in SPEC.tables) { SHEET2TABLE[nkey(SPEC.tables[t].sheet)] = t; SHEET2TABLE[nkey(t)] = t; SHEET2TABLE[nkey(SPEC.tables[t].label)] = t; }
   function guessKey(h) { const n = nkey(h); return n ? (LABEL2KEY[n] || ALIAS2KEY[n] || null) : null; }
   function roleOf(h) { const n = nkey(h); if (TS_ALIASES.has(n)) return "ts"; if (PROD_ALIASES.has(n)) return "product"; return guessKey(h) || ""; }
@@ -519,22 +520,26 @@
   function toISO(v) {
     if (v == null || v === "") return null;
     if (typeof v === "number") { const d = new Date(Math.round((v - 25569) * 86400 * 1000)); return isNaN(d) ? null : d.toISOString().slice(0, 16); }
-    const d = new Date(String(v).trim().replace(/\./g, "-").replace(/\//g, "-").replace(/-+$/, ""));
+    let s = String(v).trim().replace(/\s*년\s*/, "-").replace(/\s*월\s*/, "-").replace(/\s*일\s*/, " ").replace(/\s*시\s*/, ":").replace(/\s*분\s*/, "");
+    s = s.replace(/[./]/g, "-").replace(/-+/g, "-").replace(/[-:\s]+$/, "").trim();
+    let d = new Date(s); if (isNaN(d)) d = new Date(String(v).trim());
     return isNaN(d) ? null : new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   }
   function detectHeader(aoa) {
     let best = -1, bestScore = 0, bestTs = -1;
     const lim = Math.min(aoa.length, 14);
     for (let r = 0; r < lim; r++) {
-      const row = aoa[r] || []; let ts = -1, items = 0;
-      row.forEach((c, i) => { const n = nkey(c); if (ts < 0 && TS_ALIASES.has(n)) ts = i; if (guessKey(c) || PROD_ALIASES.has(n)) items++; });
-      const score = (ts >= 0 ? 4 : 0) + items;
+      const row = aoa[r] || []; let ts = -1, items = 0, textCells = 0;
+      row.forEach((c, i) => { const n = nkey(c); if (n) textCells++; if (ts < 0 && TS_ALIASES.has(n)) ts = i; if (guessKey(c) || PROD_ALIASES.has(n)) items++; });
+      const score = (ts >= 0 ? 4 : 0) + items + (textCells >= 2 ? 0.5 : 0);
       if (score > bestScore) { bestScore = score; best = r; bestTs = ts; }
     }
+    // 아무 열이름도 못 찾으면 '값이 아닌 글자가 가장 많은' 첫 행을 머리글로 추정
+    if (best < 0) { for (let r = 0; r < lim; r++) { const row = aoa[r] || []; if (row.some((c) => c != null && String(c).trim() && isNaN(+String(c).replace(/,/g, "")))) { best = r; break; } } }
     return { row: best < 0 ? 0 : best, score: bestScore, tsIdx: bestTs };
   }
   function buildFromAssign(aoa, headerRow, assign) {
-    const tsIdx = assign.indexOf("ts"); if (tsIdx < 0) return { tables: {}, report: [], unmatched: [] };
+    const tsIdx = assign.indexOf("ts"); if (tsIdx < 0) return { tables: {}, report: [] };
     const prodIdx = assign.indexOf("product");
     const groups = {};
     assign.forEach((a, i) => { if (a && a !== "ts" && a !== "product" && ITEM[a]) { const t = ITEM[a].table; (groups[t] = groups[t] || []).push({ i, k: a }); } });
@@ -550,20 +555,34 @@
         groups[t].forEach(({ i, k }) => { const raw = row[i]; let v = null; if (raw != null && raw !== "") { const s = String(raw).replace(/,/g, ""); v = TEXTCOLS.has(k) ? String(raw) : (isFinite(+s) ? +s : null); } if (v != null) any = true; out.push(v); });
         if (any) rows.push(out);
       }
-      if (rows.length) { tables[t] = { byProduct, columns: cols, rows }; report.push(`${SPEC.tables[t].label} — ${rows.length}행, 항목 ${cols.length}개`); }
+      if (rows.length) { tables[t] = { byProduct, columns: cols, rows }; report.push(`${SPEC.tables[t].label} — ${rows.length}행, 항목 ${cols.length}개(${cols.map((c) => ITEM[c].name).join(", ")})`); }
     }
-    const hdr = aoa[headerRow] || [];
-    const unmatched = assign.map((a, i) => (a ? null : hdr[i])).filter((h) => h != null && String(h).trim());
-    return { tables, report, unmatched };
+    return { tables, report };
   }
-  function autoSheet(name, aoa) {
-    const d = detectHeader(aoa); if (d.score < 2) return null;
+  // 저장된 열 지정(한 번 하면 다음부터 자동)
+  function sigOf(header) { return header.map((h) => nkey(h)).join("|"); }
+  function hashStr(s) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return "qmsmap_" + (h >>> 0).toString(36); }
+  function savedMap(sig) { try { return JSON.parse(localStorage.getItem(hashStr(sig)) || "null"); } catch (e) { return null; } }
+  function saveMap(sig, assign) { try { localStorage.setItem(hashStr(sig), JSON.stringify(assign)); } catch (e) { /* file:// 차단 시 무시 */ } }
+  function fullyConfident(aoa, d) {
+    d = d || detectHeader(aoa);
     const header = (aoa[d.row] || []).map((h) => String(h == null ? "" : h));
     const assign = header.map(roleOf);
     if (assign.indexOf("ts") < 0 && d.tsIdx >= 0) assign[d.tsIdx] = "ts";
     if (assign.indexOf("ts") < 0) return null;
-    const built = buildFromAssign(aoa, d.row, assign);
-    return Object.keys(built.tables).length ? built : null;
+    const unmatched = header.some((h, i) => String(h).trim() && !assign[i]);
+    return unmatched ? null : { headerRow: d.row, assign };
+  }
+  function resolveSheet(s) {
+    const d = detectHeader(s.aoa); if (d.score < 1 && d.row === 0) { /* 계속 시도 */ }
+    const header = (s.aoa[d.row] || []).map((h) => String(h == null ? "" : h));
+    const sig = sigOf(header);
+    let assign = savedMap(sig);
+    if (!(assign && assign.length === header.length && assign.indexOf("ts") >= 0)) {
+      const fc = fullyConfident(s.aoa, d); if (!fc) return null; assign = fc.assign;
+    }
+    const b = buildFromAssign(s.aoa, d.row, assign);
+    return Object.keys(b.tables).length ? b : null;
   }
   function sheetsFromBuffer(buf) {
     const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: false });
@@ -572,12 +591,12 @@
   function loadFile(file) {
     STATE.pendingName = file.name;
     const reader = new FileReader();
-    reader.onload = (e) => { try { ingest(sheetsFromBuffer(e.target.result)); } catch (err) { STATE.loadError = "파일을 읽지 못했습니다: " + err.message + " (손상되었거나 지원하지 않는 형식이면 ‘붙여넣기’를 사용해 보세요.)"; renderLoadResult(); } };
-    reader.onerror = () => { STATE.loadError = "파일을 읽지 못했습니다 — 회사 PC가 브라우저의 파일 접근을 막았을 수 있습니다. 위의 ‘붙여넣기’(엑셀에서 복사 → 붙여넣기)를 사용해 보세요."; renderLoadResult(); };
+    reader.onload = (e) => { try { ingest(sheetsFromBuffer(e.target.result)); } catch (err) { STATE.loadError = "파일을 읽지 못했습니다: " + err.message + " — 엑셀에서 표를 복사해 아래 ‘붙여넣기’를 써 보세요."; renderLoadResult(); } };
+    reader.onerror = () => { STATE.loadError = "파일을 읽지 못했습니다 — 회사 PC가 브라우저의 파일 접근을 막았을 수 있습니다. 위의 ‘붙여넣기’(엑셀에서 복사→붙여넣기)를 사용하세요."; renderLoadResult(); };
     reader.readAsArrayBuffer(file);
   }
   function loadPaste(text) {
-    if (!text || !text.trim()) { STATE.loadError = "붙여넣은 내용이 없습니다. 엑셀에서 표를 선택해 복사한 뒤 붙여넣으세요."; renderLoadResult(); return; }
+    if (!text || !text.trim()) { STATE.loadError = "붙여넣은 내용이 없습니다. 엑셀에서 표(열 이름 줄 포함)를 선택해 복사한 뒤 붙여넣으세요."; renderLoadResult(); return; }
     const sep = text.indexOf("\t") >= 0 ? "\t" : (text.indexOf(",") < 0 && text.indexOf(";") >= 0 ? ";" : ",");
     const aoa = text.replace(/\r/g, "").split("\n").filter((l) => l.length).map((l) => l.split(sep));
     STATE.pendingName = "붙여넣은 표";
@@ -585,22 +604,23 @@
   }
   function ingest(sheets) {
     STATE.pending = sheets.filter((s) => s.aoa && s.aoa.length >= 2);
-    const loaded = {}, report = [];
-    STATE.pending.forEach((s) => { const b = autoSheet(s.name, s.aoa); if (b) { Object.assign(loaded, b.tables); report.push(...b.report); } });
-    if (Object.keys(loaded).length) {
-      setData(loaded, "file"); STATE.loadError = null; STATE.loadedInfo = { file: STATE.pendingName, report, ignored: [] };
-      refreshBadge(); renderLoadResult(); refreshCurrentData(); $("#map-panel").style.display = "none";
-      window.scrollTo({ top: 0 });
+    if (!STATE.pending.length) { STATE.loadError = "표를 찾지 못했습니다. 맨 윗줄에 열 이름, 그 아래에 값이 있어야 합니다."; renderLoadResult(); $("#map-panel").style.display = "none"; return; }
+    const loaded = {}, report = []; let allAuto = true;
+    STATE.pending.forEach((s) => { const r = resolveSheet(s); if (r) { Object.assign(loaded, r.tables); report.push(...r.report); } else allAuto = false; });
+    STATE.partialLoaded = loaded;
+    if (allAuto && Object.keys(loaded).length) {
+      setData(loaded, "file"); STATE.loadError = null; STATE.loadedInfo = { file: STATE.pendingName, report };
+      refreshBadge(); renderLoadResult(); refreshCurrentData(); $("#map-panel").style.display = "none"; window.scrollTo({ top: 0 });
     } else {
       STATE.loadedInfo = null; STATE.loadError = null; renderLoadResult();
-      openMapping("자동 인식이 안 됐습니다. 각 열이 무엇인지 아래에서 직접 지정하세요(‘📅 일시’ 열은 꼭 포함).");
+      openMapping("각 열이 무엇인지 확인·지정한 뒤 ‘이 설정으로 불러오기’를 누르세요. ‘📅 일시’는 꼭 지정하세요. 한 번 지정하면 다음부터 자동 적용됩니다.");
     }
   }
   function roleSelect(val) {
-    const sel = el("select", { style: "min-width:12rem" });
+    const sel = el("select", { style: "min-width:13rem" });
     sel.appendChild(el("option", { value: "", ...(val === "" ? { selected: "selected" } : {}) }, ["— 무시 —"]));
-    sel.appendChild(el("option", { value: "ts", ...(val === "ts" ? { selected: "selected" } : {}) }, ["📅 일시"]));
-    sel.appendChild(el("option", { value: "product", ...(val === "product" ? { selected: "selected" } : {}) }, ["품종"]));
+    sel.appendChild(el("option", { value: "ts", ...(val === "ts" ? { selected: "selected" } : {}) }, ["📅 일시(날짜·시각)"]));
+    sel.appendChild(el("option", { value: "product", ...(val === "product" ? { selected: "selected" } : {}) }, ["품종(1종·3종)"]));
     [...new Set(SPEC.items.map((it) => it.stage))].forEach((stg) => {
       const og = el("optgroup", { label: stg });
       SPEC.items.filter((it) => it.stage === stg).forEach((it) => og.appendChild(el("option", { value: it.key, ...(val === it.key ? { selected: "selected" } : {}) }, [it.name + (it.unit ? ` (${it.unit})` : "")])));
@@ -613,50 +633,56 @@
     const panel = $("#map-panel"); if (!panel) return;
     if (!sheets.length) { panel.style.display = "none"; return; }
     panel.style.display = ""; panel.innerHTML = "";
-    const card = el("div", { class: "card" });
-    card.appendChild(el("h3", {}, ["열 수동 지정"]));
-    if (msg) card.appendChild(el("div", { class: "note warn" }, [msg]));
-    card.appendChild(el("p", { class: "hint" }, ["파일의 각 열이 무엇인지 골라 주세요. ‘📅 일시’ 1개는 꼭 필요하고, 품종은 시멘트·물성에만 씁니다. 한 장짜리 표에 여러 공정 항목이 섞여 있어도 공정별로 나눠 저장합니다."]));
+    const card = el("div", { class: "card", style: "border:2px solid var(--blue)" });
+    card.appendChild(el("h3", {}, ["열 지정 (각 열이 무엇인지 선택)"]));
+    if (msg) card.appendChild(el("div", { class: "note" }, [msg]));
     let si = 0;
     const body = el("div", { id: "map-body" });
-    if (sheets.length > 1) {
-      card.appendChild(el("label", { class: "field" }, [el("span", {}, ["시트"]), el("select", { style: "width:auto", onchange: (e) => { si = +e.target.value; drawMap(); } }, sheets.map((s, i) => el("option", { value: i }, [s.name])))]));
-    }
+    if (sheets.length > 1) card.appendChild(el("label", { class: "field" }, [el("span", {}, ["시트"]), el("select", { style: "width:auto", onchange: (e) => { si = +e.target.value; drawMap(); } }, sheets.map((s, i) => el("option", { value: i }, [s.name])))]));
     card.appendChild(body); panel.appendChild(card);
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
     function drawMap() {
       const aoa = sheets[si].aoa; body.innerHTML = "";
       const det = detectHeader(aoa); let headerRow = det.row;
       const hrOpts = aoa.slice(0, Math.min(aoa.length, 12)).map((r, i) => el("option", { value: i, ...(i === headerRow ? { selected: "selected" } : {}) }, [`${i + 1}행: ${(r || []).slice(0, 6).map((x) => String(x == null ? "" : x)).join(" | ").slice(0, 70)}`]));
-      body.appendChild(el("label", { class: "field" }, [el("span", {}, ["머리글(열 이름) 행"]), el("select", { style: "width:100%", onchange: (e) => { headerRow = +e.target.value; renderCols(); } }, hrOpts)]));
+      body.appendChild(el("label", { class: "field" }, [el("span", {}, ["열 이름이 있는 줄(머리글 행)"]), el("select", { style: "width:100%", onchange: (e) => { headerRow = +e.target.value; renderCols(); } }, hrOpts)]));
       const colsWrap = el("div", { id: "map-cols" }); body.appendChild(colsWrap);
       renderCols();
       function renderCols() {
         colsWrap.innerHTML = "";
         const header = (aoa[headerRow] || []).map((h) => String(h == null ? "" : h));
-        const assign = header.map(roleOf);
+        const saved = savedMap(sigOf(header));
+        const assign = (saved && saved.length === header.length) ? saved.slice() : header.map(roleOf);
         if (assign.indexOf("ts") < 0) { const d2 = detectHeader(aoa); if (d2.tsIdx >= 0 && d2.row === headerRow) assign[d2.tsIdx] = "ts"; }
-        const t = el("table"); t.appendChild(el("tr", {}, [el("th", { class: "txt" }, ["파일의 열"]), el("th", { class: "txt" }, ["지정"]), el("th", { class: "txt" }, ["미리보기"])]));
+        const t = el("table"); t.appendChild(el("tr", {}, [el("th", { class: "txt" }, ["파일의 열 이름"]), el("th", { class: "txt" }, ["이 열은 무엇?"]), el("th", { class: "txt" }, ["값 미리보기"])]));
         const selects = [];
+        const summary = el("div", { class: "small", id: "map-summary", style: "margin:8px 0" });
+        function updateSummary() { const a = selects.map((s) => s.value); const items = a.filter((x) => x && x !== "ts" && x !== "product").length; summary.textContent = `지정됨 — 📅 일시 ${a.filter((x) => x === "ts").length}개 · 품종 ${a.filter((x) => x === "product").length}개 · 항목 ${items}개 · 무시 ${a.filter((x) => !x).length}개` + (a.indexOf("ts") < 0 ? "  ⚠️ ‘일시’를 지정하세요" : ""); }
         header.forEach((h, i) => {
-          const sel = roleSelect(assign[i]); selects.push(sel);
+          const sel = roleSelect(assign[i]); selects.push(sel); sel.addEventListener("change", updateSummary);
           const sample = []; for (let r = headerRow + 1; r < Math.min(aoa.length, headerRow + 4); r++) sample.push(String((aoa[r] || [])[i] == null ? "" : (aoa[r] || [])[i]));
-          t.appendChild(el("tr", {}, [el("td", { class: "txt" }, [h || `(열 ${i + 1})`]), el("td", { class: "txt" }, [sel]), el("td", { class: "txt small" }, [sample.join(", ")])]));
+          t.appendChild(el("tr", {}, [el("td", { class: "txt" }, [el("b", {}, [h || `(열 ${i + 1})`])]), el("td", { class: "txt" }, [sel]), el("td", { class: "txt small" }, [sample.join(", ")])]));
         });
         colsWrap.appendChild(el("div", { class: "tablewrap" }, [t]));
+        colsWrap.appendChild(summary); updateSummary();
+        const remember = el("input", { type: "checkbox", checked: "checked", id: "map-remember" });
+        colsWrap.appendChild(el("label", { class: "chk", style: "margin:4px 0" }, [remember, " 이 열 구성을 기억해서 다음부터 자동으로 불러오기"]));
         colsWrap.appendChild(el("div", { class: "btnrow" }, [
-          el("button", { class: "btn", onclick: () => applyMapping(aoa, headerRow, selects.map((s) => s.value)) }, ["이 설정으로 불러오기"]),
+          el("button", { class: "btn", onclick: () => applyMapping(aoa, headerRow, selects.map((s) => s.value), remember.checked, header) }, ["✔ 이 설정으로 불러오기"]),
           el("button", { class: "btn ghost", onclick: () => { STATE.pending = null; $("#map-panel").style.display = "none"; } }, ["닫기"]),
         ]));
       }
     }
     drawMap();
   }
-  function applyMapping(aoa, headerRow, assign) {
+  function applyMapping(aoa, headerRow, assign, remember, header) {
     const b = buildFromAssign(aoa, headerRow, assign);
-    if (!Object.keys(b.tables).length) { STATE.loadError = "‘📅 일시’ 열 1개와 항목 1개 이상을 지정해야 합니다."; renderLoadResult(); return; }
-    setData(b.tables, "file"); STATE.loadError = null; STATE.loadedInfo = { file: STATE.pendingName || "수동 지정", report: b.report, ignored: b.unmatched };
-    refreshBadge(); renderLoadResult(); refreshCurrentData(); $("#map-panel").style.display = "none";
-    window.scrollTo({ top: 0 });
+    const merged = Object.assign({}, STATE.partialLoaded || {}, b.tables);
+    if (!Object.keys(merged).length) { STATE.loadError = "‘📅 일시’ 열 1개와 항목 1개 이상을 지정해야 합니다."; renderLoadResult(); return; }
+    if (remember && header) saveMap(sigOf(header), assign);
+    const report = (b.report || []).concat(Object.keys(STATE.partialLoaded || {}).filter((t) => !b.tables[t]).map((t) => `${SPEC.tables[t].label} — ${STATE.partialLoaded[t].rows.length}행(자동 인식)`));
+    setData(merged, "file"); STATE.loadError = null; STATE.loadedInfo = { file: STATE.pendingName || "수동 지정", report };
+    refreshBadge(); renderLoadResult(); refreshCurrentData(); $("#map-panel").style.display = "none"; window.scrollTo({ top: 0 });
   }
 
   // ── 엑셀 내보내기 ──
