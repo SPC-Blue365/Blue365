@@ -288,14 +288,14 @@ class UploadResult:
 CSV_ENCODINGS = ("utf-8-sig", "cp949")   # 한글 Windows 엑셀의 'CSV(쉼표로 분리)' 저장 파일은 CP949
 
 
-def read_csv_bytes(data: bytes) -> pd.DataFrame:
-    """CSV를 UTF-8(BOM 포함) → CP949 순서로 시도해 읽는다(LIMS·엑셀 내보내기 파일 대응)."""
+def read_csv_bytes(data: bytes, **kwargs) -> pd.DataFrame:
+    """CSV를 UTF-8(BOM 포함) → CP949 순서로 시도해 읽는다(LIMS·엑셀 내보내기 파일 대응). kwargs 는 pd.read_csv 로 전달."""
     for enc in CSV_ENCODINGS[:-1]:
         try:
-            return pd.read_csv(io.BytesIO(data), encoding=enc)
+            return pd.read_csv(io.BytesIO(data), encoding=enc, **kwargs)
         except UnicodeDecodeError:
             continue
-    return pd.read_csv(io.BytesIO(data), encoding=CSV_ENCODINGS[-1])
+    return pd.read_csv(io.BytesIO(data), encoding=CSV_ENCODINGS[-1], **kwargs)
 
 
 def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResult:

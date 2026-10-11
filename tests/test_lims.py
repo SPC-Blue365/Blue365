@@ -111,3 +111,83 @@ def test_file_mode_reads_cp949_csv(tmp_path):
     assert lims.fetch_files(cfg)["비고"].iloc[0] == "재시험"
     rep = lims.sync(cfg, db_path=tmp_path / "f.db", log_path=tmp_path / "log.jsonl", persist_watermark=False)
     assert not rep.errors and rep.rows_by_table == {"clinker": 1}
+
+
+def test_wide_export_file_sample_point_from_file_name(tmp_path):
+    """가로형(시료당 1행) 엑셀: 파일 이름의 지점 코드로 채취 지점을 채우고, '-' 로 지정한 열은 버린다."""
+    exp = tmp_path / "exp"
+    exp.mkdir()
+    pd.DataFrame([{"채취일시": "2026-10-07 10:00", "FCAO": 1.31, "LW": 1250, "비고": "재시험", "시료번호": "C-10"},
+                  {"채취일시": "2026-10-07 12:00", "FCAO": "<0.5", "LW": 1262, "비고": None, "시료번호": "C-12"}]
+                 ).to_excel(exp / "CLINKER_20261007.xlsx", index=False)
+    (exp / "~$CLINKER_20261007.xlsx").write_bytes(b"lock")                   # 엑셀이 열어 둔 잠금 파일은 무시
+    cfg = lims.LimsConfig(enabled=True, mode="file", file_dir=str(exp), column_map={"채취일시": "sampled_at", "시료번호": "-"})
+    ok, msg, _prev = lims.test_connection(cfg)
+    assert ok and "가로형" in msg, msg
+    rep = lims.sync(cfg, db_path=tmp_path / "w.db", log_path=tmp_path / "log.jsonl", persist_watermark=False)
+    assert not rep.errors, rep.errors
+    assert rep.rows_by_table == {"clinker": 2} and rep.n_censored == 1
+    assert ("CLINKER", "비고", 1) in rep.unmapped and all(tc != "시료번호" for _, tc, _ in rep.unmapped)
+    got = load_raw(tmp_path / "w.db")["clinker"].sort_values("timestamp")
+    assert got["clk_fcao"].tolist() == pytest.approx([1.31, 0.5]) and got["clk_lw"].tolist() == pytest.approx([1250, 1262])
+
+
+def test_missing_sample_point_needs_column_file_name_or_default(tmp_path):
+    exp = tmp_path / "exp"
+    exp.mkdir()
+    pd.DataFrame([{"sampled_at": "2026-10-07 10:00", "FCAO": 1.2}]).to_csv(exp / "export_1007.csv", index=False)
+    cfg = lims.LimsConfig(enabled=True, mode="file", file_dir=str(exp))
+    rep = lims.sync(cfg, db_path=tmp_path / "x.db", log_path=tmp_path / "log.jsonl", persist_watermark=False)
+    assert rep.errors and "채취 지점" in rep.errors[0]
+    ok, msg, _ = lims.test_connection(cfg)
+    assert not ok and "채취 지점" in msg
+    cfg.default_sample_point = "clinker"
+    rep = lims.sync(cfg, db_path=tmp_path / "x.db", log_path=tmp_path / "log.jsonl", persist_watermark=False)
+    assert not rep.errors and rep.rows_by_table == {"clinker": 1}
+
+
+def test_prep_workbook_mapping_sheet_roundtrip():
+    """준비서 ⑤ 시트에 회사 코드를 적어 올리면 그 행만 매핑으로 등록된다(단위 환산 계수 포함)."""
+    import io
+
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(lims.prep_workbook()))
+    assert wb.sheetnames == ["① 연동 절차", "② 연동 방식", "③ IT 요청서", "④ 표준 뷰 정의", "⑤ 시험항목 매핑표",
+                             "⑥ 코드 변환", "⑦ 검증 체크리스트"]
+    ws = wb["⑤ 시험항목 매핑표"]
+    header = [c.value for c in ws[1]]
+    col = {h: i + 1 for i, h in enumerate(header)}
+    filled = {}
+    for r in range(2, ws.max_row + 1):
+        key = ws.cell(r, col["QMS 항목 코드"]).value
+        if key in ("clk_fcao", "phy_s28", "cem_blaine"):
+            ws.cell(r, col["[입력] 회사 채취지점 코드"], {"clk_fcao": "K-CLK", "phy_s28": "C-LOT",
+                                                         "cem_blaine": "C-MILL"}[key])
+            ws.cell(r, col["[입력] 회사 시험코드"], {"clk_fcao": "F_CAO", "phy_s28": "comp28",
+                                                    "cem_blaine": "SSA"}[key])
+            if key == "cem_blaine":
+                ws.cell(r, col["계수"], 10)          # 예: m²/kg → cm²/g
+            filled[key] = r
+    assert len(filled) == 3
+    buf = io.BytesIO()
+    wb.save(buf)
+    rows, warns = lims.parse_mapping_table(buf.getvalue(), "LIMS_연동_준비서.xlsx")
+    assert not warns
+    got = {(m["sample_point"], m["test_code"]): (m["table"], m["column"], m["factor"]) for m in rows}
+    assert got == {("K-CLK", "F_CAO"): ("clinker", "clk_fcao", 1.0), ("C-LOT", "COMP28"): ("physical", "phy_s28", 1.0),
+                   ("C-MILL", "SSA"): ("cement", "cem_blaine", 10.0)}
+
+
+def test_mapping_csv_roundtrip_and_warnings():
+    csv = pd.DataFrame(lims.default_mapping()).to_csv(index=False).encode("utf-8-sig")
+    rows, warns = lims.parse_mapping_table(csv, "LIMS_매핑표.csv")
+    assert not warns and rows == lims.default_mapping()
+    bad = pd.DataFrame([{"채취 지점": "CLINKER", "시험코드": "FCAO", "QMS 항목(테이블.열)": "clinker.clk_fcao"},
+                        {"채취 지점": "CLINKER", "시험코드": "XX", "QMS 항목(테이블.열)": "clinker.nope"},
+                        {"채취 지점": "CLINKER", "시험코드": "FCAO", "QMS 항목(테이블.열)": "clinker.clk_fcao", "계수": "2"}])
+    rows, warns = lims.parse_mapping_table(bad.to_csv(index=False).encode("cp949"), "map.csv")
+    assert len(rows) == 1 and rows[0]["factor"] == 2.0
+    assert any("알 수 없는 QMS 항목" in w for w in warns) and any("중복" in w for w in warns)
+    with pytest.raises(ValueError):
+        lims.parse_mapping_table(pd.DataFrame({"a": [1]}).to_csv(index=False).encode(), "x.csv")

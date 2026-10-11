@@ -115,11 +115,16 @@ streamlit run streamlit_app.py               # 브라우저에서 http://localho
 
 ![LIMS 연동](docs/img/screen_lims.jpg)
 
-1. **연결 방식 선택**: DB 직접 조회(SQLAlchemy — MSSQL·Oracle·PostgreSQL 등, **읽기 전용 계정 권장**) / REST API / 내보내기 파일 폴더 / 데모
+0. **준비**: ② 탭 **📄 LIMS 연동 준비서(엑셀)**([docs/LIMS_연동_준비서.xlsx](docs/LIMS_연동_준비서.xlsx)) — 연동 절차·방식 비교·
+   IT 요청서·표준 뷰 정의(MS SQL·Oracle SQL 예시, 연결 주소 예시)·시험항목 매핑표·코드 변환·검증 체크리스트
+1. **연결 방식 선택**: DB 직접 조회(SQLAlchemy — MSSQL·Oracle·PostgreSQL·MySQL, **읽기 전용 계정 권장**) / REST API / 내보내기 파일 폴더 / 데모
 2. **조회문**: LIMS 결과를 표준 열 이름(`sampled_at, sample_point, test_code, value, product, status, unit, updated_at`)으로 AS 별칭, `:since` = 워터마크
-3. **시험코드 매핑**: (채취 지점, 시험코드) → QMS 항목, 계수·오프셋(단위 환산), 품종 코드(OPC→1종, HES→3종), 승인 상태 필터
-4. **동기화**: 미리보기 → 실행. 워터마크 이후 결과만 가져와 **열 단위 병합**(늦게 나온 28일 강도도 같은 로트 행에 채움). 미매핑 코드·부등호 값(`<0.1`) 보고
-5. **무인 운영**: `python qms_monitor.py --sync-lims --since-hours 24` 를 10~30분 주기로 실행 → 동기화 후 이상 감지·알림
+   - **가로형**(한 행 = 시료 1건, 열 = 시험항목 — 엑셀 성적서형)도 자동 변환(열 이름 = 시험코드). 시료번호·비고 같은 열은 열 이름 맞춤에서 `"-"` 로 제외
+   - 채취 지점 열이 없으면 파일 이름의 지점 코드(예: `CLINKER_1010.xlsx`) → '기본 채취 지점' 순으로 채움
+3. **시험코드 매핑**: (채취 지점, 시험코드) → QMS 항목, 계수·오프셋(단위 환산), 품종 코드(OPC→1종, HES→3종), 승인 상태 필터.
+   준비서 ⑤ 시트에 회사 코드를 적어 **매핑표 올리기**로 한 번에 등록(엑셀·CSV)
+4. **동기화**: 연결 테스트(형식 판별) → 미리보기 → 실행. 워터마크 이후 결과만 가져와 **열 단위 병합**(늦게 나온 28일 강도도 같은 로트 행에 채움). 미매핑 코드·부등호 값(`<0.1`) 보고
+5. **무인 운영**: 설치 패키지 `5_MONITOR_TASK.bat`(30분마다) 또는 `python qms_monitor.py --sync-lims --since-hours 24` → 동기화 후 이상 감지·알림
 
 비밀번호·토큰은 환경변수 `QMS_LIMS_PASSWORD` / `QMS_LIMS_TOKEN` 또는 `.streamlit/secrets.toml` `[lims]`에만 둡니다(설정 파일·저장소에 저장 안 함, URL에 평문 비밀번호가 있으면 저장 거부).
 
@@ -214,9 +219,10 @@ qms/
 qms_monitor.py              무인 감시(LIMS 동기화·감지·발송)
 scripts/build_definition_workbook.py   관리항목·기준 정의서(엑셀) 생성
 scripts/build_windows_package.py       사내망(오프라인) Windows 설치 패키지 빌드
+scripts/build_lims_prep_workbook.py    LIMS 연동 준비서(엑셀) 생성
 packaging/windows/          설치 도우미(qms_launcher.py)·자동 감시 실행기·배치 파일·안내서·잠금 파일
 docs/                       정의서·보고서·샘플·화면
-tests/                      자동 테스트 109건
+tests/                      자동 테스트 113건
 ```
 
 ## 근거·출처
@@ -241,13 +247,14 @@ tests/                      자동 테스트 109건
 
 - [QMS_구축계획_경영진보고.pptx](docs/QMS_구축계획_경영진보고.pptx) · [QMS_2단계_기능확장_보고.pptx](docs/QMS_2단계_기능확장_보고.pptx) — 경영진 보고용
 - [QMS_관리항목_기준정의서.xlsx](docs/QMS_관리항목_기준정의서.xlsx) — 관리항목·KS·협약 기준·사내기준(확정값 입력 칸)·알림규칙·지식베이스·로드맵
+- [LIMS_연동_준비서.xlsx](docs/LIMS_연동_준비서.xlsx) — LIMS 연동 절차·IT 요청서·표준 뷰(SQL 예시)·시험항목 매핑표(그대로 올려 등록)·검증 체크리스트
 - [samples/](docs/samples) — 자동 생성 샘플(경영진 보고 PPT, 이상 분석 PPT, 데이터 엑셀, **배합 설계서, 6가크롬 평가표**)
 
 ## 테스트
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q        # 109건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿
+python -m pytest -q        # 113건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿
 ```
 
 ## 로드맵

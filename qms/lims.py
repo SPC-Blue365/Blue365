@@ -12,6 +12,9 @@
   product       품종 코드(OPC, HES …, 시멘트·물성만)     status 결과 상태(승인된 결과만 반영)
   unit          단위                          updated_at    결과 확정·수정 일시(증분 동기화 기준)
   LIMS 열 이름이 다르면 column_map 으로 바꾸거나, SQL 조회문에서 AS 별칭으로 맞춘다.
+가로형  한 행 = 시료 1건, 열 = 시험항목(엑셀 성적서형)도 받는다 — test_code·value 열이 없으면 항목 열을 자동으로 긴 형식으로 바꾼다
+        (열 이름 = 시험코드). 시료번호·비고처럼 시험이 아닌 열은 column_map 에서 "-" 로 지정해 제외한다.
+채취 지점 열이 없으면 파일 이름의 지점 코드(예: CLINKER_1010.xlsx) → default_sample_point 순서로 채운다.
 
 매핑   (sample_point, test_code) → (QMS 테이블, 열, 환산계수, 오프셋)  — 화면에서 수정, data/lims.json 에 저장
 동기화 워터마크(updated_at 최댓값) 이후 결과만 조회 → 승인 필터 → 매핑 → 넓은 형식 → 열 단위 병합 저장(store.save_raw)
@@ -22,6 +25,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -44,6 +48,8 @@ LIMS_LOG_PATH = DATA_DIR / "lims_log.jsonl"
 LIMS_DEMO_DB = DATA_DIR / "lims_demo.db"
 SECRETS_PATH = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.toml"
 STD_COLUMNS = ["sampled_at", "sample_point", "test_code", "value", "product", "status", "unit", "updated_at"]
+FILE_COL = "__file__"                  # 내보내기 파일 이름(채취 지점 추론용 내부 열)
+SKIP_MARKS = {"-", "제외", "skip"}     # column_map 에서 이 값으로 지정한 열은 버린다(시료번호·비고 등)
 MODES = {"demo": "데모 LIMS(시연용 SQLite)", "sql": "DB 직접 조회(SQL)", "rest": "REST API", "file": "내보내기 파일 폴더"}
 
 SAMPLE_POINTS = {"raw_meal": "KILN_FEED", "clinker": "CLINKER", "xrd": "CLINKER_DAILY", "cement": "CEMENT_MILL",
@@ -101,7 +107,8 @@ class LimsConfig:
     rest_records_path: str = "data"    # 응답 JSON에서 결과 목록 위치(점 표기, 예: result.items)
     rest_since_param: str = "updated_since"
     file_dir: str = ""
-    column_map: dict = field(default_factory=dict)     # LIMS 열 이름 → 표준 열 이름
+    default_sample_point: str = ""     # 채취 지점 열이 없는 결과에 쓸 지점 코드(파일 이름에 지점 코드가 있으면 그것 우선)
+    column_map: dict = field(default_factory=dict)     # LIMS 열 이름 → 표준 열 이름("-" 이면 제외)
     product_map: dict = field(default_factory=lambda: {"OPC": "1종", "HES": "3종", "1종": "1종", "3종": "3종"})
     status_ok: list = field(default_factory=lambda: ["APPROVED", "승인", "A", "FINAL"])
     lookback_days: int = 35
@@ -218,10 +225,16 @@ def fetch_files(cfg: LimsConfig) -> pd.DataFrame:
         raise ValueError(f"내보내기 폴더가 없습니다: {cfg.file_dir}")
     frames = []
     for f in sorted(folder.iterdir()):
+        if f.name.startswith("~$") or not f.is_file():         # 엑셀이 열어 둔 파일의 잠금 파일
+            continue
         if f.suffix.lower() == ".csv":
-            frames.append(read_csv_bytes(f.read_bytes()))
+            df = read_csv_bytes(f.read_bytes())
         elif f.suffix.lower() in (".xlsx", ".xls"):
-            frames.append(pd.read_excel(f))
+            df = pd.read_excel(f)
+        else:
+            continue
+        df[FILE_COL] = f.stem                                    # 채취 지점 추론용(파일 이름)
+        frames.append(df)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=STD_COLUMNS)
 
 
@@ -280,9 +293,39 @@ class SyncReport:
                 f"미승인 제외 {self.n_status_skipped} · 미매핑 {self.n_unmapped} · 숫자 아님 {self.n_invalid}")
 
 
+def _infer_sample_point(d: pd.DataFrame, cfg: LimsConfig) -> pd.Series:
+    """채취 지점 열이 없을 때: 파일 이름에 들어 있는 지점 코드(매핑표 기준, 긴 코드 우선) → 기본 채취 지점."""
+    codes = sorted({str(m.get("sample_point", "")).strip().upper() for m in cfg.mapping or []} - {""}, key=len, reverse=True)
+    sp = pd.Series(None, index=d.index, dtype=object)
+    if FILE_COL in d.columns:
+        sp = d[FILE_COL].map(lambda stem: next((c for c in codes if c in str(stem).upper()), None))
+    default = (cfg.default_sample_point or "").strip().upper()
+    return sp.fillna(default) if default else sp
+
+
+def _to_long(d: pd.DataFrame, rep: SyncReport) -> pd.DataFrame:
+    """가로형(한 행 = 시료 1건, 열 = 시험항목) → 긴 형식(한 행 = 시험 결과 1건). 열 이름이 시험코드가 된다."""
+    ids = [c for c in ("sampled_at", "sample_point", "product", "status", "unit", "updated_at", FILE_COL) if c in d.columns]
+    items = [c for c in d.columns if c not in ids]
+    if not items:
+        raise ValueError("시험 결과 열이 없습니다(가로형이면 시험항목 열이 있어야 합니다).")
+    long = d.melt(id_vars=ids, value_vars=items, var_name="test_code", value_name="value")
+    long = long[long["value"].notna() & (long["value"].astype(str).str.strip() != "")]
+    rep.messages.append(f"가로형 결과(시료당 1행)로 인식해 항목 열 {len(items)}개를 시험 결과 {len(long)}건으로 바꿨습니다.")
+    return long
+
+
 def normalize(df: pd.DataFrame, cfg: LimsConfig, rep: SyncReport) -> pd.DataFrame:
     d = df.rename(columns={k: v for k, v in (cfg.column_map or {}).items() if k in df.columns}).copy()
+    d = d.loc[:, [str(c).strip() not in SKIP_MARKS for c in d.columns]]      # column_map 에서 "-" 로 지정한 열 제외
     d.columns = [str(c).strip().lower() for c in d.columns]
+    if "sample_point" not in d.columns:
+        d["sample_point"] = _infer_sample_point(d, cfg)
+        if d["sample_point"].isna().all():
+            raise ValueError("채취 지점(sample_point) 열이 없습니다 — 열을 추가하거나, 파일 이름에 지점 코드(예: CLINKER_1010.xlsx)를 "
+                             "넣거나, ① 연결 설정의 '기본 채취 지점'을 지정하세요.")
+    if "test_code" not in d.columns and "value" not in d.columns and "sampled_at" in d.columns:
+        d = _to_long(d, rep)
     missing = [c for c in ("sampled_at", "sample_point", "test_code", "value") if c not in d.columns]
     if missing:
         raise ValueError(f"LIMS 결과에 필수 열이 없습니다: {', '.join(missing)} (column_map 또는 SQL 별칭으로 맞추세요)")
@@ -291,7 +334,7 @@ def normalize(df: pd.DataFrame, cfg: LimsConfig, rep: SyncReport) -> pd.DataFram
             d[c] = None
     d["sampled_at"] = pd.to_datetime(d["sampled_at"], errors="coerce", format="mixed")
     d["updated_at"] = pd.to_datetime(d["updated_at"], errors="coerce", format="mixed")
-    d = d[d["sampled_at"].notna()].copy()
+    d = d[d["sampled_at"].notna() & d["sample_point"].notna()].copy()
     d["sample_point"] = d["sample_point"].astype(str).str.strip().str.upper()
     d["test_code"] = d["test_code"].astype(str).str.strip().str.upper()
     if cfg.status_ok:
@@ -450,11 +493,290 @@ def test_connection(cfg: LimsConfig, session=None) -> tuple[bool, str, pd.DataFr
         df = fetch(cfg, datetime.now() - timedelta(days=int(cfg.lookback_days)), session)
     except Exception as exc:  # noqa: BLE001
         return False, f"연결 실패 — {type(exc).__name__}: {exc}", pd.DataFrame()
-    cols = [str(c).lower() for c in df.rename(columns=cfg.column_map or {}).columns]
-    miss = [c for c in ("sampled_at", "sample_point", "test_code", "value") if c not in cols]
-    if miss:
-        return False, f"연결은 되었으나 필수 열이 없습니다: {', '.join(miss)}", df.head(20)
-    return True, f"연결 성공 — {len(df)}건 조회(최근 {cfg.lookback_days}일)", df.head(20)
+    if len(df) == 0:
+        return True, f"연결 성공 — 최근 {cfg.lookback_days}일 결과 없음(기간·조회문 확인)", df
+    rep = SyncReport(cfg.mode, "")
+    try:
+        d = normalize(df, cfg, rep)
+    except ValueError as exc:
+        return False, f"연결은 되었으나 형식을 맞춰야 합니다 — {exc}", df.drop(columns=[FILE_COL], errors="ignore").head(20)
+    fmt = "가로형(시료당 1행)" if any("가로형" in m for m in rep.messages) else "긴 형식(결과당 1행)"
+    return (True, f"연결 성공 — {len(df)}행 조회(최근 {cfg.lookback_days}일) · {fmt} · 시험 결과 {len(d)}건",
+            df.drop(columns=[FILE_COL], errors="ignore").head(20))
+
+
+# ── 매핑표 가져오기 ────────────────────────────────────────────────────────
+_MAP_HEADERS = {
+    "sample_point": {"sample_point", "채취지점", "회사채취지점코드", "채취지점코드", "lims채취지점코드"},
+    "test_code": {"test_code", "시험코드", "회사시험코드", "lims시험코드"},
+    "target": {"대상", "qms항목(테이블.열)", "table.column"},
+    "table": {"table", "테이블"},
+    "column": {"column", "qms항목코드", "qms열"},
+    "factor": {"factor", "계수", "환산계수"},
+    "offset": {"offset", "오프셋"},
+}
+
+
+def _norm_header(h) -> str:
+    return re.sub(r"\s+", "", re.sub(r"^\[[^\]]*\]", "", str(h)).strip().lower())
+
+
+def _cell(r: pd.Series, cols: dict, key: str) -> str:
+    v = r[cols[key]] if key in cols else None
+    return "" if v is None or (isinstance(v, float) and np.isnan(v)) or str(v).strip().lower() == "nan" else str(v).strip()
+
+
+def parse_mapping_table(data: bytes, filename: str) -> tuple[list[dict], list[str]]:
+    """매핑표(엑셀·CSV) → 매핑 목록과 경고. 'LIMS 연동 준비서' 엑셀의 시험항목 매핑표 시트, 화면에서 내려받은 매핑표 CSV를
+    그대로 쓸 수 있다. 회사 채취지점·시험코드가 비어 있는 행은 건너뛴다."""
+    if filename.lower().endswith(".csv"):
+        df = read_csv_bytes(data, dtype=str)
+    else:
+        sheets = pd.read_excel(io.BytesIO(data), sheet_name=None, dtype=str)
+        df = sheets[next((n for n in sheets if "매핑" in n), next(iter(sheets)))]
+    cols: dict[str, str] = {}
+    for c in df.columns:
+        key = next((k for k, names in _MAP_HEADERS.items() if _norm_header(c) in names), None)
+        if key and key not in cols:
+            cols[key] = c
+    if "sample_point" not in cols or "test_code" not in cols or not ({"target", "column"} & cols.keys()):
+        raise ValueError("매핑표에 '채취 지점'·'시험코드'·'QMS 항목' 열이 필요합니다"
+                         "(LIMS 연동 준비서의 매핑표 시트 또는 화면에서 내려받은 매핑표 CSV 형식).")
+    owner = {c: t for t, cs in RAW_COLUMNS.items() for c in cs if c != "product"}
+    rows: dict[tuple[str, str], dict] = {}
+    warns: list[str] = []
+    for i, r in df.iterrows():
+        sp, tc = _cell(r, cols, "sample_point").upper(), _cell(r, cols, "test_code").upper()
+        if not sp or not tc:
+            continue
+        target = _cell(r, cols, "target")
+        if "." in target:
+            table, column = target.split(".", 1)
+        else:
+            column = _cell(r, cols, "column")
+            table = _cell(r, cols, "table") or owner.get(column, "")
+        if column not in RAW_COLUMNS.get(table, []) or column == "product":
+            warns.append(f"{i + 2}행: 알 수 없는 QMS 항목 '{table}.{column}' — 건너뜀")
+            continue
+        try:
+            factor = float(_cell(r, cols, "factor") or 1.0)
+            offset = float(_cell(r, cols, "offset") or 0.0)
+        except ValueError:
+            warns.append(f"{i + 2}행: 계수·오프셋이 숫자가 아님 — 건너뜀")
+            continue
+        if (sp, tc) in rows:
+            warns.append(f"{i + 2}행: {sp}/{tc} 가 중복되어 아래 행 값으로 바꿈")
+        rows[(sp, tc)] = {"sample_point": sp, "test_code": tc, "table": table, "column": column,
+                          "factor": factor, "offset": offset}
+    return list(rows.values()), warns
+
+
+# ── LIMS 연동 준비서(엑셀) ──────────────────────────────────────────────────
+_TEXT_NAMES = {"sand_lot": ("표준사 Lot", ""), "operator": ("시험 조", "")}
+PREP_STEPS = [
+    ["1", "연동 방식 결정", "LIMS 업체·IT와 DB 조회 / REST API / 내보내기 파일 중 가능한 방식을 정한다(② 시트)",
+     "품질관리 + IT", "방식 결정", "1주"],
+    ["2", "IT 요청", "읽기 전용 계정·결과 뷰(④ 시트 형식)·QMS PC → DB 서버 방화벽 허용을 요청한다(③ 시트)",
+     "IT · LIMS 업체", "접속 정보", "1~3주"],
+    ["3", "시험항목 매핑표 작성", "⑤ 시트에 회사 LIMS의 채취지점·시험코드를 적고, QMS [🔗 LIMS 연동] ② 탭 '매핑표 올리기'로 등록",
+     "품질관리", "매핑표", "1~2일"],
+    ["4", "연결 설정·연결 테스트", "① 탭에 연결 주소·조회문(또는 폴더) 입력, 비밀번호는 secrets.toml [lims] → '연결 테스트'",
+     "품질관리(+IT)", "'연결 성공'", "1일"],
+    ["5", "미리보기 → 동기화", "③ 탭 '미리보기'로 미매핑·미승인 건수를 확인한 뒤 '동기화 실행'", "품질관리", "반영 건수", "1일"],
+    ["6", "값 대조 검증", "LIMS 화면 값과 QMS 값을 공정별 10건 이상 대조(⑦ 시트)", "품질관리", "체크리스트", "1~2일"],
+    ["7", "자동 동기화", "5_MONITOR_TASK.bat → 1번(30분마다 동기화·이상 감지·알림)", "품질관리", "작업 등록", "10분"],
+    ["8", "운영 전환", "1~2주 병행 운영(수기 입력과 비교) 후 수기 입력 중단", "품질관리", "운영 전환", "1~2주"],
+]
+PREP_MODES = [
+    ["DB 직접 조회(SQL)", "LIMS DB 읽기 전용 계정, 결과 뷰(View), QMS PC → DB 서버 포트(예: 1433·1521) 허용",
+     "30분 주기 자동 반영, 늦게 확정·수정된 결과도 자동 반영, 사람 손이 가지 않음",
+     "IT 보안 승인 필요. DB 드라이버(MS SQL·Oracle·PostgreSQL·MySQL)는 설치 패키지에 포함", "IT가 DB 조회를 허용할 때(가장 권장)"],
+    ["REST API", "LIMS 업체가 제공하는 API 주소·인증 토큰, 결과 JSON 형식 설명",
+     "DB 구조와 무관, 업체가 지원하면 깔끔", "LIMS 제품이 API를 제공해야 함(업체 개발 비용 가능 — 추정)", "최신 LIMS·업체가 API를 제공할 때"],
+    ["내보내기 파일", "LIMS의 엑셀·CSV 내보내기(자동 또는 수동) → 공유 폴더",
+     "IT 개발 없이 바로 시작, 성적서형(시료당 1행) 엑셀도 그대로 사용",
+     "사람이 내보내면 지연·누락 가능. 매번 폴더 전체를 다시 읽으므로 오래된 파일은 정리",
+     "DB 승인 전 임시 운영, 망분리로 DB 접근이 막혔을 때"],
+]
+PREP_IT = [
+    ["공통", "LIMS 제품명·버전", "", "(업체명) LIMS v3.2", ""],
+    ["공통", "담당자(IT·LIMS 업체)", "", "IT 홍길동 / 업체 김OO", ""],
+    ["DB", "DB 종류·버전", "", "MS SQL Server 2019 / Oracle 19c", "드라이버는 QMS 설치 패키지에 포함"],
+    ["DB", "서버 주소(호스트명 또는 IP)", "", "LIMS-DB01 / 10.10.20.5", ""],
+    ["DB", "포트", "", "1433(MS SQL) / 1521(Oracle)", ""],
+    ["DB", "DB 이름(Oracle은 서비스명)", "", "LIMSDB / ORCL", ""],
+    ["DB", "결과 뷰(View) 이름", "", "V_QMS_RESULT", "④ 시트 형식으로 생성 요청"],
+    ["DB", "읽기 전용 계정", "", "qms_reader", "뷰 SELECT 권한만"],
+    ["DB", "인증 방식", "", "SQL 로그인 / Windows 인증", "비밀번호는 QMS PC의 secrets.toml 에만 보관"],
+    ["네트워크", "QMS 공유 PC의 IP(출발지)", "", "10.10.30.21", "9_CHECK.bat 결과에 표시"],
+    ["네트워크", "방화벽 허용", "", "10.10.30.21 → 10.10.20.5 : 1433/TCP", ""],
+    ["코드", "결과 확정 상태 코드", "", "APPROVED / 승인 / F", "이 상태의 결과만 반영(⑥ 시트)"],
+    ["코드", "품종 코드", "", "OPC = 1종, HES = 3종", "⑥ 시트"],
+    ["코드", "채취 지점·시험항목 코드표", "", "CLINKER / FCAO …", "⑤ 시트에 기입"],
+    ["REST(대안)", "API 주소", "", "https://lims.company.local/api/results", ""],
+    ["REST(대안)", "인증 토큰", "", "Bearer 토큰", "secrets.toml [lims] token"],
+    ["REST(대안)", "증분 조회 매개변수·응답 예시", "", "updated_since=2026-10-01T00:00:00", "결과 목록 위치(예: data)"],
+    ["파일(대안)", "내보내기 폴더(공유 폴더)", "", r"\\FILESRV\LIMS_EXPORT", "QMS PC에서 읽기 가능해야 함"],
+    ["파일(대안)", "내보내기 주기·형식", "", "1시간마다, 엑셀(시료당 1행)", "파일 이름에 채취지점 코드 포함 권장"],
+]
+PREP_VIEW = [
+    ["sampled_at", "시료 채취 일시", "날짜시간(datetime)", "필수", "2026-10-07 10:00"],
+    ["sample_point", "채취 지점 코드", "문자", "필수(파일 방식은 파일 이름으로 대체 가능)", "CLINKER"],
+    ["test_code", "시험항목 코드", "문자", "필수", "FCAO"],
+    ["value", "결과값", "숫자 또는 문자('<0.1' 허용)", "필수", "1.31"],
+    ["product", "품종 코드", "문자", "시멘트·물성 결과는 필수", "OPC"],
+    ["status", "결과 상태", "문자", "권장", "APPROVED"],
+    ["unit", "단위", "문자", "선택", "%"],
+    ["updated_at", "결과 확정·수정 일시(증분 조회 기준)", "날짜시간(datetime)", "권장(DB·API)", "2026-10-07 11:05"],
+]
+PREP_SQL = [
+    ("MS SQL Server 뷰 예시(테이블·열 이름은 LIMS 제품마다 다름 — 업체 확인)", """CREATE VIEW dbo.V_QMS_RESULT AS
+SELECT s.SAMPLED_DATE      AS sampled_at,
+       s.SAMPLE_POINT_CODE AS sample_point,
+       r.TEST_CODE         AS test_code,
+       r.RESULT_VALUE      AS value,
+       s.PRODUCT_CODE      AS product,
+       r.STATUS            AS status,
+       r.UNIT              AS unit,
+       r.APPROVED_DATE     AS updated_at
+FROM LIMS_RESULT r
+JOIN LIMS_SAMPLE s ON s.SAMPLE_ID = r.SAMPLE_ID;
+GRANT SELECT ON dbo.V_QMS_RESULT TO qms_reader;"""),
+    ("Oracle 뷰 예시(날짜가 문자로 저장돼 있으면 TO_DATE 로 변환)", """CREATE OR REPLACE VIEW V_QMS_RESULT AS
+SELECT TO_DATE(s.SAMPLED_DT, 'YYYYMMDDHH24MISS') AS sampled_at,
+       s.SAMPLE_POINT_CODE AS sample_point,
+       r.TEST_CODE AS test_code, r.RESULT_VALUE AS value, s.PRODUCT_CODE AS product,
+       r.STATUS AS status, r.UNIT AS unit, r.APPROVED_DATE AS updated_at
+FROM LIMS_RESULT r JOIN LIMS_SAMPLE s ON s.SAMPLE_ID = r.SAMPLE_ID;
+GRANT SELECT ON V_QMS_RESULT TO qms_reader;"""),
+    ("QMS 조회문(① 탭 '조회문'에 입력, :since = 마지막 동기화 시점)", """SELECT sampled_at, sample_point, test_code, value, product, status, unit, updated_at
+FROM V_QMS_RESULT
+WHERE updated_at > :since
+ORDER BY updated_at"""),
+]
+PREP_URLS = [
+    ["MS SQL(Windows 기본 드라이버, 설치 불필요)", "mssql+pyodbc://qms_reader:{password}@LIMS-DB01/LIMSDB?driver=SQL+Server"],
+    ["MS SQL(ODBC Driver 18 설치 시)",
+     "mssql+pyodbc://qms_reader:{password}@LIMS-DB01/LIMSDB?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"],
+    ["MS SQL(ODBC 없이 — pymssql)", "mssql+pymssql://qms_reader:{password}@LIMS-DB01:1433/LIMSDB"],
+    ["MS SQL(Windows 인증 — 비밀번호 없음)", "mssql+pyodbc://LIMS-DB01/LIMSDB?driver=SQL+Server&trusted_connection=yes"],
+    ["Oracle(Oracle Client 설치 불필요)", "oracle+oracledb://qms_reader:{password}@10.10.20.5:1521/?service_name=ORCL"],
+    ["PostgreSQL", "postgresql+psycopg2://qms_reader:{password}@LIMS-DB01:5432/limsdb"],
+    ["MySQL·MariaDB", "mysql+pymysql://qms_reader:{password}@LIMS-DB01:3306/limsdb"],
+]
+PREP_CHECKS = [
+    ["1", "연결", "① 탭 '연결 테스트'", "'연결 성공'과 결과 형식 표시"],
+    ["2", "미매핑 시험코드", "③ 탭 '미리보기'의 미매핑 목록", "모니터링에 필요한 항목은 미매핑 0건"],
+    ["3", "미승인 제외", "미리보기 요약의 '미승인 제외' 건수", "LIMS의 승인 대기 건수와 일치"],
+    ["4", "값 대조", "LIMS 화면 값 ↔ QMS [📈 공정 모니터링] 값, 공정별 10건 이상", "100% 일치(단위 환산 포함)"],
+    ["5", "품종 구분", "시멘트·물성 결과의 품종", "1종·3종이 올바르게 나뉨"],
+    ["6", "늦게 확정된 결과", "28일 강도 확정 후 동기화", "같은 로트 행에 채워지고 기존 값 유지"],
+    ["7", "수정된 결과", "LIMS에서 값 수정·재승인 후 동기화", "새 값으로 갱신('변경 칸' 1 이상)"],
+    ["8", "자동 동기화", "5_MONITOR_TASK.bat → 4번(최근 실행 기록)", "30분마다 '조회 … 반영' 기록"],
+    ["9", "알림", "기준을 벗어난 결과가 반영될 때", "[🚨 알림 센터]·메일 발송 확인"],
+    ["10", "병행 운영", "1~2주 수기 입력과 비교", "차이 0건 확인 후 수기 입력 중단"],
+]
+
+
+def prep_workbook(registry=None) -> bytes:
+    """LIMS 연동 준비서(엑셀) — 절차·방식 비교·IT 요청서·표준 뷰 정의·시험항목 매핑표·코드 변환·검증 체크리스트.
+
+    매핑표 시트는 회사 코드를 적은 뒤 그대로 [🔗 LIMS 연동] ② 탭 '매핑표 올리기'에 올릴 수 있다.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    head_fill, head_font = PatternFill("solid", fgColor="1F4E79"), Font(bold=True, color="FFFFFF")
+    input_fill = PatternFill("solid", fgColor="FFF2CC")
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def sheet(ws, header, rows, widths, inputs=(), note=None):
+        ws.append(header)
+        for r in rows:
+            ws.append(r)
+        for c, w in enumerate(widths, 1):
+            ws.column_dimensions[ws.cell(1, c).column_letter].width = w
+        for row in ws.iter_rows(min_row=1, max_row=len(rows) + 1):
+            for cell in row:
+                cell.border = border
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+                if cell.row > 1 and cell.column in inputs:
+                    cell.fill = input_fill
+        for cell in ws[1]:
+            cell.fill, cell.font = head_fill, head_font
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.freeze_panes = "A2"
+        ws.page_setup.orientation = "landscape"                 # 인쇄: 가로, 한 페이지 너비에 맞춤
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_title_rows = "1:1"
+        if note:
+            ws.cell(len(rows) + 3, 1, note).font = Font(italic=True, color="595959")
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "① 연동 절차"
+    sheet(ws, ["단계", "할 일", "내용", "담당", "확인·산출물", "소요(추정)"], PREP_STEPS, [6, 20, 70, 16, 14, 11],
+          note="소요 기간은 일반적인 경우의 추정치입니다. 노란 칸은 입력하는 칸입니다(③·⑤·⑥·⑦ 시트).")
+    sheet(wb.create_sheet("② 연동 방식"), ["방식", "필요한 것", "장점", "주의", "이런 경우 권장"], PREP_MODES,
+          [18, 40, 40, 40, 28])
+    sheet(wb.create_sheet("③ IT 요청서"), ["구분", "항목", "내용(입력)", "예시", "비고"], PREP_IT, [12, 28, 34, 38, 34],
+          inputs=(3,))
+    ws4 = wb.create_sheet("④ 표준 뷰 정의")
+    sheet(ws4, ["열 이름", "의미", "형식", "필수 여부", "예시"], PREP_VIEW, [16, 34, 26, 34, 20])
+    r = len(PREP_VIEW) + 3
+    for title, sql in PREP_SQL:
+        ws4.cell(r, 1, title).font = Font(bold=True, color="1F4E79")
+        ws4.cell(r + 1, 1, sql).alignment = Alignment(wrap_text=True, vertical="top")
+        ws4.merge_cells(start_row=r + 1, start_column=1, end_row=r + 1, end_column=5)
+        ws4.row_dimensions[r + 1].height = 15 * (sql.count("\n") + 1)
+        ws4.cell(r + 1, 1).font = Font(name="Consolas", size=10)
+        r += 3
+    ws4.cell(r, 1, "연결 주소(SQLAlchemy) 예시 — {password} 자리는 그대로 두고 비밀번호는 secrets.toml [lims] password 에")\
+        .font = Font(bold=True, color="1F4E79")
+    for i, (label, url) in enumerate(PREP_URLS, r + 1):            # 설명(A~B) | 연결 주소(C~E)
+        ws4.cell(i, 1, label).alignment = Alignment(wrap_text=True, vertical="top")
+        ws4.merge_cells(start_row=i, start_column=1, end_row=i, end_column=2)
+        ws4.cell(i, 3, url).font = Font(name="Consolas", size=10)
+        ws4.cell(i, 3).alignment = Alignment(wrap_text=True, vertical="top")
+        ws4.merge_cells(start_row=i, start_column=3, end_row=i, end_column=5)
+        ws4.row_dimensions[i].height = 30
+    last = r + len(PREP_URLS) + 2
+    ws4.cell(last, 1, "날짜는 문자(YYYYMMDDHHMISS)가 아니라 날짜형으로 주세요. 값을 수정·재승인하면 updated_at 이 갱신돼야 다시 반영됩니다. "
+             "28일 강도처럼 늦게 확정되는 결과도 같은 시료(sampled_at)로 주세요.").font = Font(italic=True, color="595959")
+    ws4.cell(last, 1).alignment = Alignment(wrap_text=True, vertical="top")
+    ws4.merge_cells(start_row=last, start_column=1, end_row=last, end_column=5)
+    ws4.row_dimensions[last].height = 32
+
+    labels = {}
+    for c in [m["column"] for m in default_mapping()]:
+        if registry is not None and c in registry:
+            labels[c] = (registry[c].name, registry[c].unit)
+        else:
+            labels[c] = _TEXT_NAMES.get(c, (c, ""))
+    rows = []
+    for m in default_mapping():
+        name, unit = labels[m["column"]]
+        note = "문자값" if m["column"] in TEXT_COLUMNS else ("늦게 확정돼도 같은 시료 일시로" if m["column"] == "phy_s28" else "")
+        rows.append([TABLES[m["table"]]["label"], m["column"], name, unit, m["sample_point"], m["test_code"], "", "",
+                     m["factor"], m["offset"], note])
+    sheet(wb.create_sheet("⑤ 시험항목 매핑표"),
+          ["공정 단계", "QMS 항목 코드", "항목명", "단위", "기본 채취 지점(예시)", "기본 시험코드(예시)",
+           "[입력] 회사 채취지점 코드", "[입력] 회사 시험코드", "계수", "오프셋", "비고"],
+          rows, [16, 16, 30, 9, 16, 16, 20, 18, 7, 7, 26], inputs=(7, 8, 9, 10),
+          note="회사 코드를 적은 행만 등록됩니다. 단위가 다르면 계수·오프셋으로 환산(QMS 값 = LIMS 값 × 계수 + 오프셋, 예: g/kg → % 는 계수 0.1).")
+    sheet(wb.create_sheet("⑥ 코드 변환"), ["구분", "LIMS 코드(입력)", "QMS 값", "비고"],
+          [["품종", "OPC", "1종", "보통 포틀랜드 시멘트(예시)"], ["품종", "HES", "3종", "조강 포틀랜드 시멘트(예시)"],
+           ["품종", "", "", ""], ["결과 상태", "APPROVED", "반영", "승인·확정된 결과만 반영"],
+           ["결과 상태", "승인", "반영", ""], ["결과 상태", "PENDING", "제외", "승인 대기(예시)"], ["결과 상태", "", "", ""]],
+          [12, 22, 12, 40], inputs=(2, 3),
+          note="입력한 코드는 QMS [🔗 LIMS 연동] ① 탭의 '품종 코드 → QMS 품종', '반영할 결과 상태'에 넣습니다.")
+    sheet(wb.create_sheet("⑦ 검증 체크리스트"), ["순서", "확인 항목", "방법", "합격 기준", "결과(입력)", "확인자·일자(입력)"],
+          [row + ["", ""] for row in PREP_CHECKS], [6, 18, 44, 34, 16, 18], inputs=(5, 6))
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 # ── 데모 LIMS ───────────────────────────────────────────────────────────

@@ -39,6 +39,9 @@ with st.expander("연동 구조와 보안 원칙", expanded=not cfg.enabled):
 | ⑤ 저장 | 시료 일시(+품종) 기준 **열 단위 병합** — 늦게 나온 결과만 채우고 기존 값 유지 |
 | ⑥ 감시 | `python qms_monitor.py --sync-lims` 를 10~30분 주기로 실행 → 동기화 후 이상 감지·알림 자동 발송 |
 
+**처음 연동할 때**: ② 탭의 **📄 LIMS 연동 준비서(엑셀)** 를 내려받아 IT 요청서·표준 뷰 정의·시험항목 매핑표를 정리하세요.
+매핑표 시트에 회사 코드를 적어 그대로 올리면 등록됩니다.
+
 **보안**: DB 비밀번호·API 토큰은 화면·설정 파일에 저장하지 않습니다. 환경변수 `QMS_LIMS_PASSWORD` / `QMS_LIMS_TOKEN`
 또는 `.streamlit/secrets.toml`의 `[lims]` 섹션(password, token)에 두세요. LIMS DB에는 **읽기 전용 계정**과 결과 뷰(View)만 열어 두는 것을 권장합니다.
 """)
@@ -63,20 +66,24 @@ with tab1:
         rest_url = r1.text_input("API 주소", cfg.rest_url, placeholder="https://lims.company.local/api/results")
         rec_path = r2.text_input("결과 목록 위치(JSON)", cfg.rest_records_path, help="예: data 또는 result.items")
         since_param = r3.text_input("증분 조회 매개변수", cfg.rest_since_param)
-        st.markdown("**내보내기 파일**")
-        file_dir = st.text_input("폴더 경로(CSV·XLSX, 긴 형식)", cfg.file_dir, placeholder="D:/LIMS_EXPORT")
+        st.markdown("**내보내기 파일** — 긴 형식(결과당 1행)과 가로형(시료당 1행, 열 이름 = 시험코드) 모두 가능")
+        f1, f2 = st.columns([2, 1])
+        file_dir = f1.text_input("폴더 경로(CSV·XLSX)", cfg.file_dir, placeholder=r"\\FILESRV\LIMS_EXPORT 또는 D:/LIMS_EXPORT")
+        default_sp = f2.text_input("기본 채취 지점(지점 열이 없을 때)", cfg.default_sample_point, placeholder="CLINKER",
+                                   help="파일 이름에 지점 코드(예: CLINKER_1010.xlsx)가 있으면 그것을 먼저 씁니다.")
         st.markdown("**변환 규칙**")
         v1, v2, v3 = st.columns(3)
         status_ok = v1.text_input("반영할 결과 상태(쉼표 구분)", ", ".join(cfg.status_ok))
         prod_map = v2.text_area("품종 코드 → QMS 품종(JSON)", json.dumps(cfg.product_map, ensure_ascii=False), height=90)
         col_map = v3.text_area("LIMS 열 이름 → 표준 열 이름(JSON)", json.dumps(cfg.column_map, ensure_ascii=False), height=90,
-                               help='예: {"SAMPLE_DATE": "sampled_at", "ITEM": "test_code", "RESULT": "value"}')
+                               help='예: {"채취일시": "sampled_at", "ITEM": "test_code", "RESULT": "value", "시료번호": "-"} '
+                                    '— "-" 로 지정한 열은 버립니다(가로형 파일의 시료번호·비고 등).')
         if st.form_submit_button("저장", type="primary"):
             try:
                 cfg.enabled, cfg.mode, cfg.lookback_days = enabled, mode, int(lookback)
                 cfg.sql_url, cfg.sql_query = sql_url.strip(), sql_query
                 cfg.rest_url, cfg.rest_records_path, cfg.rest_since_param = rest_url.strip(), rec_path.strip(), since_param.strip()
-                cfg.file_dir = file_dir.strip()
+                cfg.file_dir, cfg.default_sample_point = file_dir.strip(), default_sp.strip().upper()
                 cfg.status_ok = [s.strip() for s in status_ok.split(",") if s.strip()]
                 cfg.product_map = json.loads(prod_map or "{}")
                 cfg.column_map = json.loads(col_map or "{}")
@@ -117,7 +124,7 @@ with tab2:
                                           "항목명": st.column_config.TextColumn("항목명(저장 후 갱신)", disabled=True),
                                           "factor": st.column_config.NumberColumn("계수", format="%.4g"),
                                           "offset": st.column_config.NumberColumn("오프셋", format="%.4g")})
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3, m4 = st.columns(4)
     if m1.button("매핑 저장", type="primary"):
         rows = []
         for _, r in mp_ed.dropna(subset=["sample_point", "test_code", "대상"]).iterrows():
@@ -136,6 +143,29 @@ with tab2:
         st.rerun()
     m3.download_button("매핑표 CSV", pd.DataFrame(cfg.mapping).to_csv(index=False).encode("utf-8-sig"),
                        file_name="LIMS_매핑표.csv", mime="text/csv")
+    m4.download_button("📄 LIMS 연동 준비서(엑셀)", lims.prep_workbook(ctx.registry), file_name="LIMS_연동_준비서.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       help="IT 요청서·표준 뷰 정의(SQL 예시)·시험항목 매핑표·코드 변환·검증 체크리스트")
+    st.markdown("**매핑표 올리기** — 준비서 ⑤ 시트에 회사 채취지점·시험코드를 적거나, 위 '매핑표 CSV'를 고쳐서 올리세요.")
+    up = st.file_uploader("매핑표(엑셀·CSV)", type=["xlsx", "csv"], key="lims_map_upload")
+    if up is not None:
+        try:
+            up_rows, up_warns = lims.parse_mapping_table(up.getvalue(), up.name)
+        except ValueError as exc:
+            st.error(str(exc))
+            up_rows, up_warns = [], []
+        for w in up_warns[:10]:
+            st.warning(w)
+        if up_rows:
+            st.dataframe(pd.DataFrame(up_rows), hide_index=True, height=220)
+            if st.button(f"가져오기 — 현재 매핑을 이 표({len(up_rows)}건)로 바꾸기", type="primary"):
+                cfg.mapping = up_rows
+                lims.save_lims_config(cfg)
+                st.session_state.pop("lims_map_editor", None)
+                st.success(f"매핑 {len(up_rows)}건을 등록했습니다.")
+                st.rerun()
+        elif not up_warns:
+            st.info("회사 채취지점·시험코드가 적힌 행이 없습니다(준비서 ⑤ 시트의 노란 칸).")
     st.caption("채취 지점 기본값: " + ", ".join(f"{lims.SAMPLE_POINTS[t]} = {TABLES[t]['label']}" for t in lims.SAMPLE_POINTS)
                + ". DCS 운전값(밀 투입량·온도)은 LIMS 대상이 아니어서 매핑하지 않습니다.")
 
@@ -175,5 +205,6 @@ with tab4:
                  "변경 칸": e.get("cells_changed"), "미승인 제외": e.get("n_status_skipped"), "미매핑": e.get("n_unmapped"),
                  "워터마크": e.get("watermark_after"), "오류": "; ".join(e.get("errors") or [])} for e in reversed(log)]
         st.dataframe(pd.DataFrame(rows), hide_index=True)
-    st.markdown("**무인 자동 동기화** — 서버 작업 스케줄러(cron/Windows)에 등록:")
+    st.markdown("**무인 자동 동기화** — 설치 패키지: `5_MONITOR_TASK.bat` → 1번(30분마다 동기화·이상 감지·알림). "
+                "직접 실행하는 경우 작업 스케줄러(cron/Windows)에 등록:")
     st.code("python qms_monitor.py --sync-lims --since-hours 24", language="bash")
