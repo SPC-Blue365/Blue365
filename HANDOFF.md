@@ -52,7 +52,7 @@
 **완료(4차): 설치형 앱 전체 화면 디자인 적용(사용자 선택: 시안 A+B 혼합, 색상은 포털과 동일, 모든 화면 한 번에)** — 사내 포털 스타일(상단 메뉴·남색 제목 띠·카드·탭 머리글).
 - `qms/theme.py`(CSS, 매 실행 `apply_theme()`), `assets/logo.svg·icon.svg`(자체 글자 로고, 포털 로고 사용 안 함), `.streamlit/config.toml` 테마(밝은 배경·진한 파랑), `streamlit_app.py` 상단 메뉴(`st.navigation(position="top")`, 평면 14개), `qms/ui.py page_header(ctx, title)` 가 모든 화면 맨 위 제목 띠(오늘 날짜·제목·데이터 기간·최근 알림 + 🛠 도구/📲 접속 팝오버)를 그린다. 기존 `sidebar()` 는 제거(새로고침·태블릿 보기·접속 안내는 팝오버로 이동) → 시험(`tests/test_tablet.py`)은 `at.toggle` 로 갱신.
 - 선택자는 Streamlit 1.65 DOM 기준(`data-testid="stTab"`, `role=tablist`, `.st-key-qms_hero`). Streamlit 업그레이드 시 `qms/theme.py` 확인.
-- 설치 패키지에는 **아직 반영하지 않음**(사용자가 실제 앱 캡처를 확인한 뒤 승인하면 `python scripts/build_windows_package.py` → 1번 ZIP 교체, IT 요청서 해시 갱신).
+- 설치 패키지 반영 완료(사용자 승인 후 재빌드): `Blue365_QMS_win64_v2026.10.13_1of6.zip`(SHA-256 ea4c0895…7797), 2~6번 구성요소 ZIP은 해시 동일 → **1번 ZIP만 교체**. IT 요청서 해시 갱신함. 아직 실제 Windows PC에서의 화면 확인은 못 함(사용자 확인 필요).
 
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
