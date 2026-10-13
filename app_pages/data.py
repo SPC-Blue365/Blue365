@@ -6,12 +6,12 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from qms import shipment
+from qms import ship_dest, shipment
 from qms.demo import SCENARIOS, generate_demo_data, scenario_table
 from qms.standards import TABLES
 from qms.store import SHEET_NAMES, clear_db, load_raw, parse_upload, save_raw, template_workbook
 from qms.ui import DEMO_FLAG, get_ctx, page_header, refresh
-from qms.ui_ship import parsed_panel
+from qms.ui_ship import dest_panel, parsed_panel
 
 ctx = get_ctx()
 reg, store = ctx.registry, ctx.store
@@ -38,6 +38,9 @@ with tab1:
     if up is not None and shipment.looks_like_shipment(up.getvalue(), up.name):
         st.info("LIMS **출하시멘트 일일 로트** 형식입니다. 전용 화면(🚢 출하시멘트)에서 관리하며, 아래에서 바로 저장할 수 있습니다.", icon="🚢")
         parsed_panel(up.getvalue(), up.name, key="data_ship")
+    elif up is not None and ship_dest.looks_like_dest(up.getvalue(), up.name):
+        st.info("**선박 양하지** 자료입니다(선박·양하지[·일자] 열). 출하시멘트 기록에 자동으로 연결됩니다.", icon="⚓")
+        dest_panel(up.getvalue(), up.name, key="data_dest")
     elif up is not None:
         res = parse_upload(up.getvalue(), up.name)
         for m in res.messages:

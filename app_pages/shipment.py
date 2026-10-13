@@ -1,4 +1,4 @@
-"""출하시멘트 모니터링(LIMS 일일 로트 표): 한눈에 판정 · 항목 상세 · 혼합재↔강도 · 연도별 관리기준 · 업로드."""
+"""출하시멘트 모니터링(LIMS 일일 로트 표): 한눈에 판정 · 항목 상세 · 혼합재↔강도 · 연도별 관리기준 · 양하지 · 업로드."""
 
 import io
 
@@ -8,18 +8,20 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from qms import ship_dest as D
 from qms import shipment as S
 from qms.spc import capability
 from qms.ui import colors, fmt, get_ctx, page_header
-from qms.ui_ship import parsed_panel
+from qms.ui_ship import dest_panel, parsed_panel
 
 ctx = get_ctx()
 page_header(ctx, "🚢 출하시멘트 모니터링")
 
 
 @st.cache_data(show_spinner=False)
-def _load(mtime: float) -> pd.DataFrame:
-    return S.load_shipment()
+def _load(mtime: float, dest_mtime: float) -> pd.DataFrame:
+    """출하 기록 + 양하지 자동 연결(양하지 기록·기본값이 바뀌면 다시 계산)."""
+    return D.attach_destinations(S.load_shipment())
 
 
 def _excel(sheets: dict[str, pd.DataFrame]) -> bytes:
@@ -31,7 +33,7 @@ def _excel(sheets: dict[str, pd.DataFrame]) -> bytes:
 
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-df_all = _load(S.shipment_mtime())
+df_all = _load(S.shipment_mtime(), D.dest_mtime())
 
 if df_all.empty:
     st.info("저장된 출하시멘트 자료가 없습니다. LIMS 출하시멘트 엑셀(채취일·첨가재명칭·석회석비율·강도·비고 등)을 올리면 형식을 자동으로 인식합니다.", icon="📥")
@@ -45,7 +47,7 @@ c = colors()
 first, last = df_all["date"].min(), df_all["date"].max()
 
 # ── 공통 필터 ───────────────────────────────────────────────────────────
-f1, f2, f3, f4 = st.columns([1.3, 1, 1.2, 1.2])
+f1, f2, f3, f4, f5 = st.columns([1.3, 1, 1.2, 1.2, 1])
 preset = f1.selectbox("기간", ["최근 90일", "최근 180일", "최근 1년", "전체", "직접 지정"], index=1)
 if preset == "직접 지정":
     rng = f1.date_input("기간 지정", value=(max(first, last - pd.Timedelta(days=180)).date(), last.date()), min_value=first.date(),
@@ -61,8 +63,13 @@ mode = f3.selectbox("모선 수", ["전체", "1모선 단독 시험만", "2모�
 kind = f4.selectbox("제품 구분", ["일반 제품만", "저염 포함 전체", "저염 제품만"],
                     help="비고에 ‘저염’이 표기된 날은 저염 제품 출하입니다. 일반 제품과 Cl 수준이 달라 기본은 분리해서 봅니다. "
                          "‘저염·일반 혼재’(저염 배와 일반 배가 같은 날 출항)는 ‘저염 포함 전체’에서만 보입니다.")
+dcount = df_all["dest"].value_counts()
+dest_opts = [d for d in dcount.index if d not in (D.MIXED, D.UNKNOWN, D.PARTIAL)] + [d for d in (D.MIXED, D.PARTIAL, D.UNKNOWN) if d in dcount]
+dest = f5.selectbox("양하지", ["전체", *dest_opts], format_func=lambda d: d if d == "전체" else f"{d} ({dcount.get(d, 0)})",
+                    help="선박별 양하지(운항 기록 → 비고 괄호 → 선박 기본값 순)로 자동 연결. 한 날짜에 양하지가 다른 배가 섞이면 ‘복수 양하지’.")
 add_sel = None if additive == "전체" else additive
-df = S.apply_filters(df_all, start, end, add_sel, mode, kind)
+dest_sel = None if dest == "전체" else dest
+df = S.apply_filters(df_all, start, end, add_sel, mode, kind, dest_sel)
 n_kind = df_all["product_kind"].value_counts().to_dict()
 st.caption(f"저장 자료 {len(df_all)}건 ({first:%Y-%m-%d} ~ {last:%Y-%m-%d}) → 현재 조건 **{len(df)}건**. "
            f"제품 구분: " + " · ".join(f"{k} {v}건" for k, v in n_kind.items()))
@@ -70,7 +77,7 @@ if df.empty:
     st.warning("조건에 맞는 자료가 없습니다. 기간·제품 구분 조건을 바꿔 보세요.")
     st.stop()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 한눈에", "📈 항목 상세", "🧱 혼합재·강도", "🎯 관리기준(연도별)", "📥 업로드·데이터"])
+tab1, tab2, tab3, tab4, tab6, tab5 = st.tabs(["📊 한눈에", "📈 항목 상세", "🧱 혼합재·강도", "🎯 관리기준(연도별)", "⚓ 양하지", "📥 업로드·데이터"])
 
 # ── 1) 한눈에 ──────────────────────────────────────────────────────────
 with tab1:
@@ -200,7 +207,7 @@ with tab2:
                 st.dataframe(tb.rename(columns={"date": "채취일", "additive": "첨가재", "ls": "석회석(%)", "addr": "첨가재(%)", "n_ship": "모선 수", "ships": "선박", "product_kind": "제품 구분", key: labels[key]}),
                              hide_index=True)
         if key == "cl":
-            cmp_ = S.apply_filters(df_all, start, end, add_sel, mode, "저염 포함 전체")
+            cmp_ = S.apply_filters(df_all, start, end, add_sel, mode, "저염 포함 전체", dest_sel)
             cmp_ = cmp_[cmp_["cl"].notna()].groupby("product_kind")["cl"].agg(["size", "mean", "min", "max"]).rename(
                 columns={"size": "건수", "mean": "평균(ppm)", "min": "최소", "max": "최대"})
             st.markdown("**제품 구분별 Cl(XRF)** — 저염 제품은 일반 제품과 분리해서 관리합니다.")
@@ -210,7 +217,7 @@ with tab2:
 with tab3:
     st.info(S.MIX_KNOWLEDGE, icon="🧱")
     use_all = st.checkbox("전체 기간 사용(권장: 배합이 여러 번 바뀐 전체 이력으로 비교)", value=True)
-    dm = S.apply_filters(df_all, None if use_all else start, None if use_all else end, add_sel, mode, kind)
+    dm = S.apply_filters(df_all, None if use_all else start, None if use_all else end, add_sel, mode, kind, dest_sel)
     dm = dm[dm["mix_total"].notna()]
     if len(dm) < 10:
         st.warning("비교에 필요한 자료가 부족합니다.")
@@ -303,6 +310,69 @@ with tab4:
         st.dataframe(hd, hide_index=True)
         st.download_button("⬇️ 연도별 관리기준(엑셀)", _excel({"연도별 사내기준": hd}), file_name="출하시멘트_연도별_관리기준.xlsx", mime=XLSX)
 
+# ── 6) 양하지 ──────────────────────────────────────────────────────────
+with tab6:
+    st.markdown("각 출하 기록의 **선박마다 양하지를 자동으로 연결**합니다. 우선순위: ① 운항(양하지) 기록 파일(같은 날짜, 없으면 앞뒤 1일) "
+                "→ ② LIMS 비고의 괄호 주석(예: 리나호(부산)) → ③ 선박 기본 양하지. 기록·기본값을 바꾸면 **저장된 모든 출하 기록에 바로 다시 연결**되고, "
+                "새로 올리는 LIMS 파일도 자동으로 연결됩니다. 값을 추정하지 않으며, 한 날짜에 양하지가 다른 배가 섞이면 ‘복수 양하지’로 둡니다.")
+    cv = D.coverage(S.apply_filters(df_all, start, end, add_sel, mode, kind))
+    m = st.columns(4)
+    m[0].metric("양하지 확정 건수", f"{cv['single']}건", delta=f"{cv['single'] / max(cv['n'], 1) * 100:.0f}%", delta_color="off",
+                help="그날 출항한 배들의 양하지가 하나로 정해진 날(1모선 포함)")
+    m[1].metric("복수 양하지", f"{cv['mixed']}건", help="양하지가 다른 배가 같은 날 출항 — 평균값이라 양하지별로 나누지 않음")
+    m[2].metric("미상·일부 미상", f"{cv['unknown'] + cv['partial']}건", help="운항 기록·비고·기본값 어디에도 양하지가 없는 선박이 있는 날")
+    m[3].metric("출처(건수)", " · ".join(f"{k} {v}" for k, v in cv["by_src"].items()), help="운항기록 / 비고 괄호 / 기본값")
+
+    st.markdown("##### 양하지별 품질(양하지가 하나로 정해진 날만)")
+    qkeys = [k for k in ("s1", "s3", "s7", "s28", "blaine", "r45", "so3", "cl", "loi", "mgo") if k in df_all]
+    dq = D.dest_quality(S.apply_filters(df_all, start, end, add_sel, mode, kind), qkeys)
+    if dq.empty:
+        st.info("아직 양하지가 확정된 출하 기록이 없습니다. 아래에서 운항(양하지) 기록을 올리거나 선박 기본 양하지를 입력하세요.")
+    else:
+        st.dataframe(dq.round(2), hide_index=True)
+        st.caption("단순 평균(추정·분해 없음). 양하지별 차이는 같은 시기의 배합·클링커 품질 차이와 섞여 있을 수 있으니 원인으로 단정하지 마세요.")
+
+    st.markdown("##### ① 운항(양하지) 기록 올리기")
+    st.caption("열 이름을 자동 인식합니다: 일자(출항일·선적일·일자) · 선박(선박명·모선·본선) · 양하지(양하지·양하항·도착항·하역지). "
+               "일자 열이 없는 표는 ‘선박 기본 양하지’로 저장합니다. 같은 날짜·선박은 새 값으로 갱신합니다.")
+    upd = st.file_uploader("운항(양하지) 기록 엑셀·CSV", type=["xlsx", "xls", "csv"], key="dest_up")
+    if upd is not None:
+        dest_panel(upd.getvalue(), upd.name, key="dest_up_p", known=set(D.ship_table(df_all)["ship"]))
+    voy = D.load_voyages()
+    if len(voy):
+        with st.expander(f"저장된 운항 기록 {len(voy)}건 ({voy['date'].min():%Y-%m-%d} ~ {voy['date'].max():%Y-%m-%d})"):
+            st.dataframe(voy.rename(columns={"date": "일자", "ship": "선박", "dest": "양하지", "source": "파일", "updated_at": "저장"}), hide_index=True,
+                         column_config={"일자": st.column_config.DatetimeColumn(format="YYYY-MM-DD")})
+            if st.checkbox("운항 기록을 모두 지웁니다", key="voy_clear_ok") and st.button("운항 기록 삭제"):
+                D.clear_voyages()
+                st.cache_data.clear()
+                st.rerun()
+
+    st.markdown("##### ② 선박 기본 양하지(늘 같은 곳으로 가는 배)")
+    st.caption("운항 기록이 없는 날에 쓰입니다. ‘비고에 적힌 양하지’는 LIMS 비고 괄호에서 찾은 횟수이며, 버튼으로 빈 칸에 추천값을 채울 수 있습니다(저장 전 확인).")
+    stb = D.ship_table(df_all)
+    stb = stb[(stb["출하 건수"] >= 3) | (stb["dest"] != "")].reset_index(drop=True)
+    if st.session_state.pop("_dest_fill", False):
+        stb["dest"] = [d or r for d, r in zip(stb["dest"], stb["추천"])]
+    ed = st.data_editor(stb, hide_index=True, key=f"dest_master_{D.dest_mtime()}", disabled=["ship", "출하 건수", "비고에 적힌 양하지", "추천"],
+                        column_config={"ship": st.column_config.TextColumn("선박"), "dest": st.column_config.TextColumn("기본 양하지", help="예: 부산, 평택"),
+                                       "note": st.column_config.TextColumn("메모")}, height=min(36 * (len(stb) + 1) + 4, 560))
+    b1, b2 = st.columns(2)
+    if b1.button("기본 양하지 저장", type="primary"):
+        n = D.save_master(ed[["ship", "dest", "note"]])
+        st.cache_data.clear()
+        st.success(f"{n}척의 기본 양하지를 저장했습니다. 모든 출하 기록에 다시 연결됩니다.")
+        st.rerun()
+    if b2.button("빈 칸에 비고 추천값 채우기(저장 전 확인)"):
+        st.session_state["_dest_fill"] = True
+        st.rerun()
+    left = S.apply_filters(df_all, start, end, add_sel, mode, kind)
+    left = left[left["dest"].isin([D.UNKNOWN, D.PARTIAL])]
+    if len(left):
+        with st.expander(f"양하지를 못 정한 출하 기록 {len(left)}건(현재 기간)"):
+            st.dataframe(left[["date", "ships", "dest_detail", "ship_raw"]].rename(columns={"date": "채취일", "ships": "선박", "dest_detail": "선박별 양하지", "ship_raw": "비고 원문"}),
+                         hide_index=True, column_config={"채취일": st.column_config.DatetimeColumn(format="YYYY-MM-DD")})
+
 # ── 5) 업로드·데이터 ───────────────────────────────────────────────────
 with tab5:
     st.markdown("LIMS에서 내보낸 **출하시멘트 엑셀을 그대로** 올리세요. 열 이름으로 형식을 자동 인식합니다. 같은 LOT는 갱신하고 새 날짜는 추가합니다.")
@@ -311,9 +381,8 @@ with tab5:
         parsed_panel(up.getvalue(), up.name, key="ship_up_main_p")
     st.divider()
     st.markdown(f"**저장 현황**: {len(df_all)}건, {first:%Y-%m-%d} ~ {last:%Y-%m-%d}")
-    st.caption("비고의 괄호 주석(부산·평택 등)은 ‘양하지 후보(dest_hint)’로 보관합니다. 선박별 양하지 자료를 올리면 그때 연결할 수 있습니다. "
-               "선박별 값 추정은 하지 않습니다.")
-    raw = df_all.drop(columns=["extra"], errors="ignore")
+    st.caption("양하지는 ‘⚓ 양하지’ 탭에서 운항 기록·기본값으로 자동 연결됩니다. 선박별 값 추정은 하지 않습니다.")
+    raw = df_all.drop(columns=["extra", "ship_hints"], errors="ignore")
     st.download_button("⬇️ 저장된 전체 자료(엑셀)", _excel({"출하시멘트": raw}), file_name="출하시멘트_저장자료.xlsx", mime=XLSX)
     ok = st.checkbox("저장된 출하시멘트 자료를 모두 삭제합니다(되돌릴 수 없음). 연도별 관리기준은 유지됩니다.")
     if st.button("출하시멘트 자료 삭제", disabled=not ok):

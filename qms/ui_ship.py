@@ -55,3 +55,30 @@ def parsed_panel(content: bytes, filename: str, key: str = "ship_up") -> bool:
         st.success(f"저장 완료 — 새로 추가 {r['added']}건 · 갱신 {r['updated']}건 · 전체 {r['total']}건")
         st.rerun()
     return False
+
+
+def dest_panel(content: bytes, filename: str, key: str = "dest_up", known: set[str] | None = None) -> None:
+    """운항(양하지) 기록 또는 선박 기본 양하지 파일을 읽어 보여 주고 저장한다."""
+    from . import ship_dest as D
+
+    p = D.parse_dest_upload(content, filename, known)
+    for e in p.errors:
+        st.error(e)
+    if p.errors:
+        return
+    st.success("운항(양하지) 기록으로 인식했습니다." if p.kind == "voyage" else "선박 기본 양하지 표로 인식했습니다(일자 열 없음).")
+    for m in p.messages:
+        st.write("•", m)
+    with st.expander("미리보기(앞 30행)"):
+        st.dataframe(p.records.head(30).rename(columns={"date": "일자", "ship": "선박", "dest": "양하지"}), hide_index=True)
+    if st.button("양하지 저장", type="primary", key=f"{key}_save"):
+        if p.kind == "voyage":
+            r = D.save_voyages(p.records, filename)
+            msg = f"운항 기록 저장 — 새로 추가 {r['added']}건 · 갱신 {r['updated']}건"
+        else:
+            cur = D.load_master()
+            merged = pd.concat([cur[["ship", "dest", "note"]], p.records.assign(note="")[["ship", "dest", "note"]]]).drop_duplicates("ship", keep="last")
+            msg = f"선박 기본 양하지 {D.save_master(merged)}척 저장"
+        st.cache_data.clear()
+        st.success(msg + ". 저장된 모든 출하 기록에 자동으로 다시 연결됩니다.")
+        st.rerun()

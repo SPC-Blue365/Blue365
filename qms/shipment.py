@@ -315,7 +315,7 @@ def _resolve_ships(raw_rows: list[list[dict]]) -> list[dict]:
     out = []
     for toks in raw_rows:
         seen: list[str] = []
-        ok, notes, lows = True, [], []
+        ok, notes, lows, hints = True, [], [], {}
         for t in toks:
             notes += t["notes"]
             lows.append(t["low"])
@@ -332,8 +332,23 @@ def _resolve_ships(raw_rows: list[list[dict]]) -> list[dict]:
             for x in names:
                 if x not in seen:
                     seen.append(x)
-        out.append({"ships": seen, "ok": ok and bool(seen), "notes": list(dict.fromkeys(notes)), "lows": lows})
+                d = dest_from_notes(t["notes"])
+                if d:
+                    hints[x] = d                     # 이 선박 이름 바로 뒤 괄호에 적힌 양하지(예: 리나호(부산))
+        out.append({"ships": seen, "ok": ok and bool(seen), "notes": list(dict.fromkeys(notes)), "lows": lows, "hints": hints})
     return out
+
+
+DEST_STOP = {"저염", "수분", "일반", "특수", "벌크", "포대", "샘플", "재시험", "평균"}
+
+
+def dest_from_notes(notes: list[str]) -> str:
+    """괄호 주석에서 양하지 후보(한글 2~5자 지명, 예: 부산·평택). 수분 등 시험 메모는 제외."""
+    for n in notes:
+        for w in re.split(r"[\s.,·/]+", n):
+            if re.fullmatch(r"[가-힣]{2,5}", w) and w not in DEST_STOP:
+                return w
+    return ""
 
 
 def _kind(lows: list[bool]) -> str:
@@ -453,7 +468,8 @@ def parse_aoa(aoa: list[list], overrides: dict | None = None, header_row: int | 
         rec["n_ship"] = len(rs["ships"])
         rec["ship_ok"] = bool(rs["ok"])
         rec["product_kind"] = _kind(rs["lows"])
-        rec["dest_hint"] = "/".join(rs["notes"])      # 괄호 주석(부산·평택 등) — 양하지 정보가 들어오면 연결할 후보
+        rec["dest_hint"] = "/".join(rs["notes"])      # 괄호 주석 원문(부산·평택·저염 등)
+        rec["ship_hints"] = json.dumps(rs["hints"], ensure_ascii=False)   # {선박: 주석의 양하지} — 양하지 자동 연결에 사용
         if rec["ship_raw"] and not rs["ok"]:
             unsure.append({"date": rec["date"].strftime("%Y-%m-%d"), "raw": rec["ship_raw"]})
         for n in rs["ships"]:
@@ -558,7 +574,9 @@ def save_shipment(new: pd.DataFrame) -> dict:
     """같은 LOT(없으면 날짜)는 새 파일 값으로 갱신하되, 새 파일에서 빈 칸(미시험)인 항목은 기존 값을 유지한다."""
     old = load_shipment_raw()
     cols = ["date", "lot", "additive", *ITEM_COLS, "mix_total", "n_ship", "ships", "ship_ok", "product_kind", "dest_hint",
-            "ship_raw", "extra"]
+            "ship_hints", "ship_raw", "extra"]
+    if "ship_hints" not in new:
+        new = new.assign(ship_hints="{}")
     new = new[cols].copy()
     new["_k"] = _key_series(new)
     if old.empty or "lot" not in old:
@@ -698,7 +716,7 @@ def limits_frame(std: dict, df: pd.DataFrame, key: str) -> pd.DataFrame:
 
 # ── 필터·판정·통계 ──────────────────────────────────────────────────────
 def apply_filters(df: pd.DataFrame, start=None, end=None, additive: str | None = None, mode: str = "전체",
-                  kind: str = "일반 제품만") -> pd.DataFrame:
+                  kind: str = "일반 제품만", dest: str | None = None) -> pd.DataFrame:
     m = pd.Series(True, index=df.index)
     if start is not None:
         m &= df["date"] >= pd.Timestamp(start)
@@ -714,6 +732,8 @@ def apply_filters(df: pd.DataFrame, start=None, end=None, additive: str | None =
         m &= df["product_kind"] == "일반"
     elif kind == "저염 제품만":
         m &= df["product_kind"] == "저염"
+    if dest and "dest" in df:
+        m &= df["dest"] == dest
     return df[m].reset_index(drop=True)
 
 

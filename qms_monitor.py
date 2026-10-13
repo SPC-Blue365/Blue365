@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from qms import ship_dest, shipment
 from qms.alerts import detect_events
 from qms.diagnosis import diagnose
 from qms.lims import load_lims_config, sync
@@ -41,7 +42,32 @@ def import_folder(folder: Path) -> list[str]:
     for f in sorted(folder.iterdir()):
         if f.suffix.lower() not in (".xlsx", ".xls", ".csv") or not f.is_file():
             continue
-        res = parse_upload(f.read_bytes(), f.name)
+        content = f.read_bytes()
+        if shipment.looks_like_shipment(content, f.name):          # LIMS 출하시멘트 일일 로트 표
+            p = shipment.parse_upload(content, f.name)
+            if p.errors:
+                logs.append(f"[오류] {f.name}: {'; '.join(p.errors)}")
+                continue
+            r = shipment.save_shipment(p.records)
+            shutil.move(str(f), done / f.name)
+            logs.append(f"[반영] {f.name}: 출하시멘트 추가 {r['added']}건·갱신 {r['updated']}건")
+            continue
+        if ship_dest.looks_like_dest(content, f.name):              # 선박 운항(양하지) 기록·기본 양하지
+            p = ship_dest.parse_dest_upload(content, f.name)
+            if p.errors:
+                logs.append(f"[오류] {f.name}: {'; '.join(p.errors)}")
+                continue
+            if p.kind == "voyage":
+                r = ship_dest.save_voyages(p.records, f.name)
+                msg = f"운항(양하지) 기록 추가 {r['added']}건·갱신 {r['updated']}건"
+            else:
+                cur = ship_dest.load_master()
+                merged = pd.concat([cur[["ship", "dest", "note"]], p.records.assign(note="")[["ship", "dest", "note"]]]).drop_duplicates("ship", keep="last")
+                msg = f"선박 기본 양하지 {ship_dest.save_master(merged)}척"
+            shutil.move(str(f), done / f.name)
+            logs.append(f"[반영] {f.name}: {msg}")
+            continue
+        res = parse_upload(content, f.name)
         if res.errors:
             logs.append(f"[오류] {f.name}: {'; '.join(res.errors)}")
             continue

@@ -173,3 +173,80 @@ def test_page_renders_empty_and_with_data():
     assert [t.label for t in at.tabs][:2] == ["📊 한눈에", "📈 항목 상세"]
     assert at.dataframe, "판정표가 있어야 함"
     S.clear_shipment()
+
+
+# ── 선박별 양하지 자동 연결 ─────────────────────────────────────────────
+def _dest_xlsx(rows, head=("출항일자", "선박명", "양하항")) -> bytes:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["운항 실적"])
+    ws.append(list(head))
+    for r in rows:
+        ws.append(list(r))
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_dest_from_notes_and_hints(parsed):
+    from qms import ship_dest as D
+    assert S.dest_from_notes(["부산 저염"]) == "부산" and S.dest_from_notes(["수분-0.34"]) == "" and S.dest_from_notes([""]) == ""
+    df = parsed.records
+    low = df[df["product_kind"] == "저염"].iloc[0]
+    assert '"삼표1호": "부산"' in low["ship_hints"]                     # 삼표1호(부산,저염) → 그 배의 양하지 = 부산
+    a = D.attach_destinations(df, master=D.load_master().iloc[0:0], voyages=D.load_voyages().iloc[0:0])
+    assert (a.loc[a["product_kind"] == "저염", "dest"] == "부산").all()
+    assert (a.loc[a["product_kind"] == "저염", "dest_src"] == "비고").all()
+
+
+def test_dest_upload_priority_and_auto_relink(tmp_path):
+    from qms import ship_dest as D
+    S.clear_shipment()
+    D.DEST_DB_PATH.unlink(missing_ok=True)
+    S.save_shipment(S.parse_upload(make_xlsx(), "a.xlsx").records)
+    df = S.load_shipment()
+    known = set(D.ship_table(df)["ship"])
+    # ① 기본 양하지(일자 없는 표) → 모든 날짜에 적용
+    p = D.parse_dest_upload(_dest_xlsx([("수성3", "평택"), ("리나호", "부산항"), ("수성1호", "부산"), ("삼표1호", "부산"), ("정진호", "광양")],
+                                       head=("선박", "양하지")), "m.xlsx", known)
+    assert p.kind == "master" and not p.errors and set(p.records["ship"]) >= {"수성3호", "리나호"}
+    assert dict(zip(p.records["ship"], p.records["dest"]))["리나호"] == "부산"     # '부산항' → '부산'
+    D.save_master(p.records.assign(note=""))
+    a = D.attach_destinations(df)
+    assert (a["dest"] == D.UNKNOWN).sum() == 0
+    two = a[a["ships"] == "수성3호,리나호"].iloc[0]
+    assert two["dest"] == D.MIXED and "수성3호→평택" in two["dest_detail"]          # 양하지가 다르면 나누지 않음
+    # ② 운항 기록이 기본값보다 우선(같은 날짜, ±1일 허용)
+    d0 = df[df["ships"] == "정진호"].iloc[0]["date"]
+    v = D.parse_dest_upload(_dest_xlsx([((d0 + pd.Timedelta(days=1)).strftime("%Y.%m.%d"), "정진호", "부산")]), "v.xlsx", known)
+    assert v.kind == "voyage" and len(v.records) == 1
+    assert D.save_voyages(v.records, "v.xlsx") == {"added": 1, "updated": 0}
+    assert D.save_voyages(v.records, "v.xlsx") == {"added": 0, "updated": 1}
+    a2 = D.attach_destinations(df)
+    r = a2[a2["date"] == d0].iloc[0]
+    assert r["dest"] == "부산" and r["dest_src"] == "운항기록"
+    other = a2[(a2["ships"] == "정진호") & (abs(a2["date"] - d0) > pd.Timedelta(days=1))]
+    assert (other["dest"] == "광양").all()                                            # 다른 날은 기본값
+    q = D.dest_quality(a2, ["s28"])
+    assert set(q["양하지"]) <= {"부산", "평택", "광양"} and q["건수"].sum() == (~a2["dest"].isin([D.MIXED, D.UNKNOWN, D.PARTIAL])).sum()
+    # 출하시멘트 LIMS 표는 양하지 표로 오인하지 않음
+    assert not D.looks_like_dest(make_xlsx(), "a.xlsx") and D.looks_like_dest(_dest_xlsx([("2026-01-01", "리나호", "부산")]), "v.xlsx")
+    S.clear_shipment()
+    D.DEST_DB_PATH.unlink(missing_ok=True)
+
+
+def test_monitor_import_folder_handles_shipment_and_dest(tmp_path):
+    import importlib
+
+    from qms import ship_dest as D
+    S.clear_shipment()
+    D.DEST_DB_PATH.unlink(missing_ok=True)
+    mon = importlib.import_module("qms_monitor")
+    (tmp_path / "lims_출하.xlsx").write_bytes(make_xlsx())
+    (tmp_path / "운항실적.xlsx").write_bytes(_dest_xlsx([("2025-06-01", "리나호", "부산")]))
+    logs = mon.import_folder(tmp_path)
+    assert any("출하시멘트" in x for x in logs) and any("운항(양하지)" in x for x in logs), logs
+    assert len(S.load_shipment()) == 240 and len(D.load_voyages()) == 1
+    assert sorted(p.name for p in (tmp_path / "processed").iterdir()) == ["lims_출하.xlsx", "운항실적.xlsx"]
+    S.clear_shipment()
+    D.DEST_DB_PATH.unlink(missing_ok=True)
