@@ -321,7 +321,8 @@ with tab6:
                 help="그날 출항한 배들의 양하지가 하나로 정해진 날(1모선 포함)")
     m[1].metric("복수 양하지", f"{cv['mixed']}건", help="양하지가 다른 배가 같은 날 출항 — 평균값이라 양하지별로 나누지 않음")
     m[2].metric("미상·일부 미상", f"{cv['unknown'] + cv['partial']}건", help="운항 기록·비고·기본값 어디에도 양하지가 없는 선박이 있는 날")
-    m[3].metric("출처(건수)", " · ".join(f"{k} {v}" for k, v in cv["by_src"].items()), help="운항기록 / 비고 괄호 / 기본값")
+    m[3].metric("운항 기록으로 연결", f"{cv['by_src']['운항기록']}건", help="운항(양하지) 기록 파일에서 찾은 날")
+    st.caption("연결 출처: " + " · ".join(f"{k} {v}건" for k, v in cv["by_src"].items()) + " (한 날짜에 출처가 여러 개일 수 있음)")
 
     st.markdown("##### 양하지별 품질(양하지가 하나로 정해진 날만)")
     qkeys = [k for k in ("s1", "s3", "s7", "s28", "blaine", "r45", "so3", "cl", "loi", "mgo") if k in df_all]

@@ -548,7 +548,16 @@ def cmd_run(args) -> int:
     t0 = time.time()
     while not health_ok(port):
         if proc.poll() is not None or time.time() - t0 > 240:
-            print(f"[오류] 시작하지 못했습니다. 기록 파일을 확인하세요: {log_path}")
+            print(f"[오류] 시작하지 못했습니다. 기록 파일: {log_path}")
+            time.sleep(1)
+            try:                                      # 원인을 바로 볼 수 있게 기록 끝부분을 화면에 표시
+                tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
+                print("----- 서버 기록 마지막 부분 -----")
+                print("\n".join(tail))
+                print("--------------------------------")
+            except OSError:
+                pass
+            print("해결이 안 되면 9_CHECK.bat 을 실행하고 logs 폴더의 check_*.txt 와 위 내용을 담당자에게 전달하세요.")
             if proc.poll() is None:
                 proc.terminate()
             return 1
