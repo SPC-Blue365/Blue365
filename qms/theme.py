@@ -51,6 +51,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] {{ border-color:var(--q-line); b
 
 /* 버튼 */
 .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {{ background:var(--q-blue); border-color:var(--q-blue); }}
+.stButton > button[kind="primary"]:disabled {{ background:#9fb3cc; border-color:#9fb3cc; color:#fff; opacity:.8; }}
 
 @media (max-width: 1100px) {{ :root {{ --q-pad:1.2rem; }} .st-key-qms_hero h1 {{ font-size:1.55rem; }} }}
 </style>"""
