@@ -72,9 +72,14 @@ Python 설치가 막힌 사내망 PC에서는 **단일 HTML 파일**(`dist/dashb
 
 - 화면: 종합 현황 · 공정 모니터링(추이·SPC·분포) · 화학 계산기(LSF·SM·IM·Bogue) · **배합 설계(구분별 최대 5종 수동 입력)** ·
   6가크롬 물질수지 · 데이터 불러오기
-- 데이터: LIMS·실험실 **엑셀·CSV 불러오기** 또는 **엑셀 복사→붙여넣기**(파일 선택이 막힌 PC 대비). 제목 행 자동 탐지.
-  열 이름이 회사마다 달라서, **모르는 열이 있으면 ‘열 지정’ 표가 떠서** 각 열이 무엇인지 고르면 되고(미리보기 포함),
-  **한 번 지정하면 기억**해 다음부터 자동 적용(localStorage). 한 장짜리 혼합 표는 공정별로 분리. 산화물 → 계수치 자동 계산
+- 데이터: LIMS·실험실 **엑셀·CSV 불러오기** 또는 **엑셀 복사→붙여넣기**(파일 선택이 막힌 PC 대비). 양식을 맞출 필요 없이
+  **파일 구조를 스스로 분석**합니다(`dashboard/src/ingest.js`): ① 제목 줄·머리글(한 줄/두 줄·병합 그룹 머리글)·**단위 줄** 탐지
+  ② **가로형(시료 1행)과 세로형(시험 1건=1행: 일시·시료·시험항목·결과값) 자동 판별** ③ 항목은 열 이름(한글/영문·첨자·단위 표기)과
+  **값의 범위**(예: f-CaO 0.3~3, LSF 90~100)·앞뒤 열 문맥으로 판단 ④ 날짜/시간 분리 열·엑셀 일련번호·오전/오후·`<0.1` 부등호 값 처리.
+  **확실한 것만 자동 반영**하고, 🔶 추정·❓ 후보 여럿인 열이 있으면 확인 표가 떠서 한 번 고르면 되며
+  **고른 구성은 기억**(localStorage)해 같은 양식은 다음부터 자동. 처리 결과(읽은 행 수·항목·무시한 열·건너뛴 행)는 항상 요약 표시하고
+  조용히 버리지 않습니다. 산화물 → 계수치(LSF·SM·IM·Bogue)는 자동 계산
+  (※ 실제 LIMS 파일 구조에 따라 인식률이 달라지므로 100%를 보장하지는 않으며, 샘플 파일을 받으면 회귀 시험에 추가합니다)
 - 한계(설치형 앱 전용): **자동 LIMS 동기화·무인 알림**, 원료 배합 **자동 최적화**, 재령별 강도 예측, AI 보고서
   (브라우저는 DB 직접 접속·백그라운드 실행이 불가)
 - 계산식은 설치형 앱(Python)과 동일(`dashboard/src/chem.js` ↔ `qms/chemistry.py`·`rawmix.py`·`chromium.py`, 빌드 시 수치 대조)
@@ -238,7 +243,7 @@ scripts/build_definition_workbook.py   관리항목·기준 정의서(엑셀) �
 scripts/build_windows_package.py       사내망(오프라인) Windows 설치 패키지 빌드
 scripts/build_lims_prep_workbook.py    LIMS 연동 준비서(엑셀) 생성
 packaging/windows/          설치 도우미(qms_launcher.py)·자동 감시 실행기·배치 파일·안내서·잠금 파일
-dashboard/src/              오프라인 HTML 대시보드 소스(index.html·styles.css·chem.js·app.js)
+dashboard/src/              오프라인 HTML 대시보드 소스(index.html·styles.css·chem.js·ingest.js·app.js)
 scripts/build_dashboard.py  오프라인 HTML 대시보드 빌드(라이브러리·데이터 인라인)
 docs/                       정의서·보고서·샘플·화면
 tests/                      자동 테스트 120건
@@ -273,7 +278,7 @@ tests/                      자동 테스트 120건
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q        # 120건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿·대시보드
+python -m pytest -q        # 121건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿·대시보드
 ```
 
 ## 로드맵

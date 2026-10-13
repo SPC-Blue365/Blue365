@@ -52,7 +52,7 @@ def test_sample_payload_is_clean_json():
 
 def test_source_files_have_placeholders():
     html = (SRC / "index.html").read_text(encoding="utf-8")
-    for ph in ("/*__CSS__*/", "/*__PLOTLY__*/", "/*__SHEETJS__*/", "/*__DATA__*/", "/*__CHEM__*/", "/*__APP__*/"):
+    for ph in ("/*__CSS__*/", "/*__PLOTLY__*/", "/*__SHEETJS__*/", "/*__DATA__*/", "/*__CHEM__*/", "/*__INGEST__*/", "/*__APP__*/"):
         assert ph in html, ph
     chem = (SRC / "chem.js").read_text(encoding="utf-8")
     assert "predictClinker" in chem and "bogue" in chem and "requiredDose" in chem
@@ -67,9 +67,26 @@ def test_build_script_inlines_without_leftover_placeholder(tmp_path, monkeypatch
     html = (SRC / "index.html").read_text(encoding="utf-8")
     parts = {
         "/*__CSS__*/": "body{}", "/*__PLOTLY__*/": "/*p*/", "/*__SHEETJS__*/": "/*x*/",
-        "/*__DATA__*/": '{"a":1}', "/*__CHEM__*/": "/*c*/", "/*__APP__*/": "/*a*/",
+        "/*__DATA__*/": '{"a":1}', "/*__CHEM__*/": "/*c*/", "/*__INGEST__*/": "/*i*/", "/*__APP__*/": "/*a*/",
     }
     for ph, val in parts.items():
         assert ph in html
         html = html.replace(ph, val, 1)
     assert "/*__" not in html and re.search(r"window\.__QMS_DATA__\s*=\s*\{", html)
+
+
+def test_ingest_engine_node_suite(tmp_path):
+    """엑셀 구조 자동 분석 엔진(ingest.js)의 노드 시험 16건 — node 가 없으면 건너뜀."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node 없음")
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(json.dumps(EXP.spec_payload(), ensure_ascii=False), encoding="utf-8")
+    r = subprocess.run([node, str(ROOT / "tests" / "js" / "ingest_test.js"), str(spec_file)],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr

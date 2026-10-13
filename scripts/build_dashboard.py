@@ -69,6 +69,7 @@ def main() -> None:
         "/*__SHEETJS__*/": safe_script(xlsx),
         "/*__DATA__*/": safe_script(data),
         "/*__CHEM__*/": safe_script((SRC / "chem.js").read_text(encoding="utf-8")),
+        "/*__INGEST__*/": safe_script((SRC / "ingest.js").read_text(encoding="utf-8")),
         "/*__APP__*/": safe_script((SRC / "app.js").read_text(encoding="utf-8")),
     }
     for ph, content in parts.items():
