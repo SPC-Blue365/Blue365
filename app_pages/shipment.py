@@ -93,8 +93,11 @@ with tab1:
                "KS·사내 기준은 **각 시험 채취일의 연도 기준**으로 적용합니다. 값 0(시험 전)은 ‘미시험’으로 제외했습니다.")
     show = sm.drop(columns=["그룹", "key"])
     num_cols = ["최근값", "평균", "표준편차", "최소", "최대", "KS 하한", "KS 상한", "사내 하한", "사내 상한", "목표"]
-    fm = {col: "{:,.2f}" for col in num_cols} | {"최근 채취일": lambda v: "—" if pd.isna(v) else f"{v:%Y-%m-%d}"}
-    st.dataframe(show.style.format(fm, na_rep="—"), hide_index=True, height=min(36 * (len(show) + 1) + 4, 700),
+    disp = show.copy()
+    for col in num_cols:                                   # 빈 기준은 ‘None’ 대신 ‘—’로 표시
+        disp[col] = show[col].map(lambda v: "—" if pd.isna(v) else f"{v:,.2f}")
+    disp["최근 채취일"] = show["최근 채취일"].map(lambda v: "—" if pd.isna(v) else f"{v:%Y-%m-%d}")
+    st.dataframe(disp, hide_index=True, height=min(36 * (len(disp) + 1) + 4, 700),
                  column_config={"상태 설명": st.column_config.TextColumn(width="large")})
     st.download_button("⬇️ 판정표·원자료(엑셀)", _excel({"항목별 판정": show, "원자료(필터 적용)": df.drop(columns=["extra"], errors="ignore")}),
                        file_name=f"출하시멘트_판정_{df['date'].max():%Y%m%d}.xlsx", mime=XLSX)
