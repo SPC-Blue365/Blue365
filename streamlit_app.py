@@ -21,6 +21,7 @@ pages = {
         st.Page("app_pages/overview.py", title="종합 현황", icon="🏠", default=True),
         st.Page("app_pages/monitor.py", title="공정 모니터링", icon="📈"),
         st.Page("app_pages/spc.py", title="SPC·공정능력", icon="📊"),
+        st.Page("app_pages/shipment.py", title="출하시멘트(1종)", icon="🚢"),
     ],
     "알림·분석": [
         st.Page("app_pages/alerts.py", title="알림 센터", icon="🚨"),

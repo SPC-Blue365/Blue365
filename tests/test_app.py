@@ -6,7 +6,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 APP = str(Path(__file__).resolve().parent.parent / "streamlit_app.py")
-PAGES = ["overview", "monitor", "spc", "alerts", "diagnosis", "prediction", "rawmix", "chromium", "calculator", "reports",
+PAGES = ["overview", "monitor", "spc", "shipment", "alerts", "diagnosis", "prediction", "rawmix", "chromium", "calculator", "reports",
          "data", "lims", "settings"]
 
 

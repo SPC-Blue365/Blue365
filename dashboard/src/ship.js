@@ -15,8 +15,8 @@
   // 기준값 초기값: KS L 5201(포틀랜드 시멘트) 참고 — ※ 원문을 이 환경에서 확인하지 못한 값이므로 '추정·원문 확인 필요'. 화면에서 수정 가능.
   const KS_NOTE = "KS L 5201 참고값(추정·원문 확인 필요)";
   const ITEMS = [
-    { key: "ls", name: "석회석 비율", unit: "%", dec: 1, setting: true, group: "배합 구성", aliases: ["석회석비율", "석회석혼합률", "석회석혼합비율", "석회석배합률"] },
-    { key: "addr", name: "첨가재 비율", unit: "%", dec: 1, setting: true, group: "배합 구성", aliases: ["첨가재비율", "혼화재비율", "혼합재비율", "첨가재혼합률"] },
+    { key: "ls", name: "석회석 비율", unit: "%", dec: 1, setting: true, zeroOk: true, group: "배합 구성", aliases: ["석회석비율", "석회석혼합률", "석회석혼합비율", "석회석배합률"] },
+    { key: "addr", name: "첨가재 비율", unit: "%", dec: 1, setting: true, zeroOk: true, group: "배합 구성", aliases: ["첨가재비율", "혼화재비율", "혼합재비율", "첨가재혼합률"] },
     { key: "loi", name: "LOI(강열감량)", unit: "%", dec: 2, group: "화학성분", aliases: ["loi", "강열감량", "강열감량loi"], lim: { usl: 5.0, src: KS_NOTE } },
     { key: "al2o3", name: "Al₂O₃", unit: "%", dec: 2, group: "화학성분", aliases: ["al2o3", "알루미나", "산화알루미늄"] },
     { key: "mgo", name: "MgO", unit: "%", dec: 2, group: "화학성분", aliases: ["mgo", "산화마그네슘"], lim: { usl: 5.0, src: KS_NOTE } },
@@ -153,7 +153,7 @@
       for (const it of items) {
         const x = row[it.col]; let v;
         if (it.hhmm) v = hhmmToMin(x); else v = numOf(x);
-        if (v != null && !(v > 0)) { zeros[it.key] = (zeros[it.key] || 0) + 1; v = null; }   // 0·음수 = 미시험
+        if (v != null && !(v > 0 || (it.zeroOk && v === 0))) { zeros[it.key] = (zeros[it.key] || 0) + 1; v = null; }   // 비율의 0 은 ‘투입 안 함’(실제 값)   // 0·음수 = 미시험
         rec.v[it.key] = v;
       }
       rec._ships = idx.ships != null ? parseShipsRaw(row[idx.ships]) : [];

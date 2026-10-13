@@ -6,10 +6,12 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from qms import shipment
 from qms.demo import SCENARIOS, generate_demo_data, scenario_table
 from qms.standards import TABLES
 from qms.store import SHEET_NAMES, clear_db, load_raw, parse_upload, save_raw, template_workbook
 from qms.ui import DEMO_FLAG, get_ctx, refresh, sidebar
+from qms.ui_ship import parsed_panel
 
 ctx = get_ctx()
 sidebar(ctx)
@@ -34,7 +36,10 @@ with tab1:
     st.markdown("엑셀(시트: 생료·킬른·클링커·시멘트·물성) 또는 CSV(파일명에 테이블명 포함, 예: `clinker_2026-10.csv`)를 올리세요. "
                 "같은 측정일시(+품종)는 업로드 값으로 덮어씁니다.")
     up = st.file_uploader("파일 선택", type=["xlsx", "xls", "csv"])
-    if up is not None:
+    if up is not None and shipment.looks_like_shipment(up.getvalue(), up.name):
+        st.info("LIMS **출하시멘트 일일 로트** 형식입니다. 전용 화면(🚢 출하시멘트)에서 관리하며, 아래에서 바로 저장할 수 있습니다.", icon="🚢")
+        parsed_panel(up.getvalue(), up.name, key="data_ship")
+    elif up is not None:
         res = parse_upload(up.getvalue(), up.name)
         for m in res.messages:
             st.write("•", m)
