@@ -6,13 +6,12 @@ import streamlit as st
 from qms.reports import capability_table
 from qms.spc import capability, capability_grade, rule_name
 from qms.standards import STAGES, TABLES
-from qms.ui import fmt, get_ctx, histogram_figure, sidebar, spc_figure
+from qms.ui import fmt, get_ctx, histogram_figure, page_header, spc_figure
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store, settings = ctx.registry, ctx.store, ctx.settings
 period = store.period()
-st.title("📊 SPC 관리도 · 공정능력")
+page_header(ctx, "📊 SPC 관리도 · 공정능력")
 if period is None:
     st.info("데이터가 없습니다.")
     st.stop()

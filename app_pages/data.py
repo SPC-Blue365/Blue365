@@ -10,13 +10,12 @@ from qms import shipment
 from qms.demo import SCENARIOS, generate_demo_data, scenario_table
 from qms.standards import TABLES
 from qms.store import SHEET_NAMES, clear_db, load_raw, parse_upload, save_raw, template_workbook
-from qms.ui import DEMO_FLAG, get_ctx, refresh, sidebar
+from qms.ui import DEMO_FLAG, get_ctx, page_header, refresh
 from qms.ui_ship import parsed_panel
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
-st.title("📥 데이터 관리")
+page_header(ctx, "📥 데이터 관리")
 
 st.subheader("데이터 현황")
 rows = []

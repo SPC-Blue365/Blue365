@@ -9,7 +9,7 @@ from qms.ai_context import chromium_context
 from qms.ui import (
     colors,
     get_ctx,
-    sidebar,
+    page_header,
     single_bar_figure,
     tornado_figure,
     trend_figure,
@@ -17,10 +17,9 @@ from qms.ui import (
 from qms.ui_ai import ai_panel
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
 
-st.title("☢️ 시멘트 6가크롬(Cr⁶⁺) 관리")
+page_header(ctx, "☢️ 시멘트 6가크롬(Cr⁶⁺) 관리")
 st.caption("원·부원료·연료·내화물의 **총 크롬 물질수지** × **킬른 전환율**로 클링커·시멘트의 수용성 6가크롬을 예측하고, "
            "환원제 필요 투입량과 저감 대책을 제시합니다. 기준: " + crm.LIMIT_KR_TEXT + " · " + crm.LIMIT_EU_TEXT +
            " (두 기준은 시험법이 달라 직접 비교 불가).")

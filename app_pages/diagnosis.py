@@ -10,12 +10,11 @@ from qms.diagnosis import VERDICT_ICON, VERDICT_LEGEND, diagnose, diagnosis_mark
 from qms.knowledge import AXIS_ICON
 from qms.reports import build_issue_ppt
 from qms.store import load_alert_status
-from qms.ui import fmt, get_ctx, sidebar, trend_figure
+from qms.ui import fmt, get_ctx, page_header, trend_figure
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
-st.title("🧪 원인 진단 · 솔루션")
+page_header(ctx, "🧪 원인 진단 · 솔루션")
 st.caption("① 현상 정의·정량화 → ② 원인 가설 5축 우선순위 → ③ 확인 방법 → ④ 단기 조치 vs 근본 대책 → ⑤ KS·관리기준 평가")
 
 if not ctx.events:

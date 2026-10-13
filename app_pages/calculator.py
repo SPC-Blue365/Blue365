@@ -4,12 +4,11 @@ import pandas as pd
 import streamlit as st
 
 from qms import chemistry as chem
-from qms.ui import get_ctx, sidebar
+from qms.ui import get_ctx, page_header
 
 ctx = get_ctx()
-sidebar(ctx)
 reg = ctx.registry
-st.title("🧮 시멘트 화학 계산기")
+page_header(ctx, "🧮 시멘트 화학 계산기")
 tab1, tab2, tab3 = st.tabs(["클링커·생료 계산", "3성분 원료 조합 계산", "계산식·출처"])
 
 with tab1:

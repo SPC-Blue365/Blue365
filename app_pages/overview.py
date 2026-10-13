@@ -5,14 +5,13 @@ import streamlit as st
 
 from qms.alerts import SEVERITY_ICON, SEVERITY_ORDER, latest_status
 from qms.standards import STAGES
-from qms.ui import fmt, get_ctx, open_diagnosis, recent_events, sidebar, trend_figure
+from qms.ui import fmt, get_ctx, open_diagnosis, page_header, recent_events, trend_figure
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
 period = store.period()
 
-st.title("🏭 Blue365 통합 품질관리 대시보드")
+page_header(ctx, "🏭 Blue365 통합 품질관리 대시보드")
 if period is None:
     st.info("데이터가 없습니다. 📥 데이터 관리에서 데이터를 업로드하거나 데모 데이터를 생성하세요.")
     st.stop()

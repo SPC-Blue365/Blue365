@@ -6,12 +6,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from qms.prediction import FEATURE_LABELS, predict
-from qms.ui import add_limit_lines, colors, get_ctx, sidebar
+from qms.ui import add_limit_lines, colors, get_ctx, page_header
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
-st.title("🔮 28일 압축강도 조기 예측")
+page_header(ctx, "🔮 28일 압축강도 조기 예측")
 st.caption("28일 결과가 나오기 전에 조기강도(1·3·7일)·분말도·SO₃·클링커 C₃S로 28일 강도를 회귀 예측합니다. "
            "예측값은 **추정치**이며 실측으로 확정해야 합니다.")
 

@@ -8,5 +8,9 @@ maxUploadSize = 50
 gatherUsageStats = false
 
 [theme]
-# 빨강은 '위험' 상태색으로만 쓰기 위해 강조색을 파랑으로 지정
-primaryColor = "#2a78d6"
+# 사내 포털 느낌: 밝은 배경 + 진한 파랑 강조(빨강은 '위험' 상태색으로만 사용)
+base = "light"
+primaryColor = "#0b4a8f"
+backgroundColor = "#edf2fa"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#2b2f3a"

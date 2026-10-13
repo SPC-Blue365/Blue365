@@ -8,11 +8,10 @@ import streamlit as st
 from qms import lims
 from qms.standards import TABLES
 from qms.store import RAW_COLUMNS
-from qms.ui import get_ctx, refresh, sidebar
+from qms.ui import get_ctx, page_header, refresh
 
 ctx = get_ctx()
-sidebar(ctx)
-st.title("🔗 LIMS 연동")
+page_header(ctx, "🔗 LIMS 연동")
 st.caption("실험실정보관리시스템(LIMS)의 **승인된 시험 결과**를 주기적으로 가져와 QMS 모니터링·알림·진단·예측에 바로 사용합니다. "
            "결과가 항목별로 늦게 확정돼도(예: 28일 강도) 같은 시료 행에 열 단위로 채워지고, 먼저 들어온 값은 지워지지 않습니다.")
 

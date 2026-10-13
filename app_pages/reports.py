@@ -7,13 +7,12 @@ import streamlit as st
 
 from qms.diagnosis import diagnose
 from qms.reports import build_excel_report, build_management_ppt, kpi_summary
-from qms.ui import get_ctx, sidebar
+from qms.ui import get_ctx, page_header
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
 period = store.period()
-st.title("📑 보고서")
+page_header(ctx, "📑 보고서")
 if period is None:
     st.info("데이터가 없습니다.")
     st.stop()

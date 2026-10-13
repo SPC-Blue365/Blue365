@@ -22,12 +22,11 @@ from qms.standards import (
     save_registry,
     save_settings,
 )
-from qms.ui import get_ctx, refresh, sidebar
+from qms.ui import get_ctx, page_header, refresh
 
 ctx = get_ctx()
-sidebar(ctx)
 reg = ctx.registry
-st.title("⚙️ 기준·알림 설정")
+page_header(ctx, "⚙️ 기준·알림 설정")
 tab1, tab2, tab3, tab5, tab4 = st.tabs(["사내 관리기준", "SPC·진단 설정", "알림 채널", "AI(LLM)", "KS 규격 근거"])
 
 with tab1:

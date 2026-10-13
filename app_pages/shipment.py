@@ -10,12 +10,11 @@ from plotly.subplots import make_subplots
 
 from qms import shipment as S
 from qms.spc import capability
-from qms.ui import colors, fmt, get_ctx, sidebar
+from qms.ui import colors, fmt, get_ctx, page_header
 from qms.ui_ship import parsed_panel
 
 ctx = get_ctx()
-sidebar(ctx)
-st.title("🚢 출하시멘트 모니터링")
+page_header(ctx, "🚢 출하시멘트 모니터링")
 
 
 @st.cache_data(show_spinner=False)
@@ -93,10 +92,10 @@ with tab1:
                "🔵 중심선 한쪽 9점 연속(참고) → 🟢 정상. 관리한계는 선택한 조건의 평균±3×표준편차(기존 SPC 화면과 같은 방식)이며, "
                "KS·사내 기준은 **각 시험 채취일의 연도 기준**으로 적용합니다. 값 0(시험 전)은 ‘미시험’으로 제외했습니다.")
     show = sm.drop(columns=["그룹", "key"])
-    cfg = {col: st.column_config.NumberColumn(format="%.2f") for col in
-           ["최근값", "평균", "표준편차", "최소", "최대", "KS 하한", "KS 상한", "사내 하한", "사내 상한", "목표"]}
-    cfg["최근 채취일"] = st.column_config.DatetimeColumn(format="YYYY-MM-DD")
-    st.dataframe(show, hide_index=True, column_config=cfg, height=min(36 * (len(show) + 1) + 4, 700))
+    num_cols = ["최근값", "평균", "표준편차", "최소", "최대", "KS 하한", "KS 상한", "사내 하한", "사내 상한", "목표"]
+    fm = {col: "{:,.2f}" for col in num_cols} | {"최근 채취일": lambda v: "—" if pd.isna(v) else f"{v:%Y-%m-%d}"}
+    st.dataframe(show.style.format(fm, na_rep="—"), hide_index=True, height=min(36 * (len(show) + 1) + 4, 700),
+                 column_config={"상태 설명": st.column_config.TextColumn(width="large")})
     st.download_button("⬇️ 판정표·원자료(엑셀)", _excel({"항목별 판정": show, "원자료(필터 적용)": df.drop(columns=["extra"], errors="ignore")}),
                        file_name=f"출하시멘트_판정_{df['date'].max():%Y%m%d}.xlsx", mime=XLSX)
 

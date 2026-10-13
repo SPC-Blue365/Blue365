@@ -12,7 +12,7 @@ from qms.ui import (
     colors,
     get_ctx,
     get_design,
-    sidebar,
+    page_header,
     signed_bar_figure,
     single_bar_figure,
     strength_curve_figure,
@@ -20,11 +20,10 @@ from qms.ui import (
 from qms.ui_ai import ai_panel
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
 dm = get_design()
 
-st.title("🧪 원료 배합·클링커 설계")
+page_header(ctx, "🧪 원료 배합·클링커 설계")
 st.caption("① 원료 비율을 목표 LSF·SM·IM·C₃S에 맞게 자동 조정 → ② 소성 후 클링커 계수·광물(XRD) 예측 → "
            "③ 클링커 광물·분쇄 조건으로 1·3·7·28일 강도와 응결 예측 → ④ 목표 강도·응결을 맞추는 조치(규칙 기반 + AI). "
            "모든 예측은 **추정치**이며 공장 데이터가 쌓일수록 자동으로 보정됩니다.")

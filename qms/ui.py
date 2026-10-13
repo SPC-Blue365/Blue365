@@ -13,6 +13,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from . import share
 from .alerts import (
     SEVERITY_ICON,
     SEVERITY_ORDER,
@@ -20,7 +21,6 @@ from .alerts import (
     detect_events,
     events_frame,
 )
-from . import share
 from .demo import generate_demo_data
 from .prediction import FittedModel, attach_predictions
 from .rawmix import FcaoModel, XrdMap, fit_fcao_model, fit_xrd_map
@@ -534,26 +534,41 @@ def strength_curve_figure(pred: pd.DataFrame, registry: SpecRegistry, product: s
 
 
 # ── 사이드바 ────────────────────────────────────────────────────────────
-def sidebar(ctx: Ctx) -> None:
+WEEKDAYS = "월화수목금토일"
+
+
+def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
+    """모든 화면 맨 위의 남색 제목 띠: 오늘 날짜·화면 제목·데이터 기간·최근 알림 + 도구(새로고침·태블릿 보기·접속 안내)."""
     tablet_mode()                                     # 스위치를 만들기 전에 자동 판별값을 정해 둔다
-    with st.sidebar:
-        period = ctx.store.period()
-        if period:
-            st.caption(f"데이터 기간  \n{period[0]:%Y-%m-%d} ~ {period[1]:%Y-%m-%d %H:%M}")
-        if ctx.demo:
-            st.warning("데모 데이터 사용 중", icon="🧪")
-        recent = [e for e in ctx.events if period and e.end >= period[1] - pd.Timedelta(days=7)]
-        counts = {k: sum(e.severity == k for e in recent) for k in ("위험", "경고", "주의")}
-        st.caption("최근 7일 알림")
-        st.markdown(" · ".join(f"{SEVERITY_ICON[k]} {k} **{v}**" for k, v in counts.items()))
-        if st.button("🔄 새로고침", width="stretch", help="데이터·기준을 다시 불러와 재분석합니다."):
-            refresh()
-            st.rerun()
-        st.toggle("📱 태블릿 보기", key="qms_tablet",
-                  help="그래프 위를 손가락으로 쓸어도 화면이 스크롤되도록 그래프의 '끌어서 확대'를 끕니다(값은 탭해서 확인). "
-                       "태블릿·휴대폰 브라우저나 QR 주소로 접속하면 자동으로 켜집니다.")
-        with st.popover("📲 태블릿·휴대폰으로 보기", width="stretch"):
-            tablet_access_panel()
+    now = pd.Timestamp.now()
+    period = ctx.store.period()
+    recent = [e for e in ctx.events if period and e.end >= period[1] - pd.Timedelta(days=7)]
+    counts = {k: sum(e.severity == k for e in recent) for k in ("위험", "경고", "주의")}
+    parts = []
+    if period:
+        parts.append(f"데이터 기간 {period[0]:%Y-%m-%d} ~ {period[1]:%Y-%m-%d}")
+    if ctx.demo:
+        parts.append("🧪 데모 데이터")
+    parts.append("최근 7일 알림 " + " ".join(f"{SEVERITY_ICON[k]}{v}" for k, v in counts.items()))
+    with st.container(key="qms_hero"):
+        left, right = st.columns([5, 1.7], vertical_alignment="top")
+        with left:
+            st.html(f'<div class="qms-today">TODAY &nbsp;{now:%Y-%m-%d} {WEEKDAYS[now.weekday()]}요일</div>')
+            st.title(title)
+            st.caption(" · ".join(([subtitle] if subtitle else []) + parts))
+        with right:
+            b1, b2 = st.columns(2)
+            with b1.popover("🛠 도구", width="stretch"):
+                if st.button("🔄 새로고침", width="stretch", help="데이터·기준을 다시 불러와 재분석합니다."):
+                    refresh()
+                    st.rerun()
+                st.toggle("📱 태블릿 보기", key="qms_tablet",
+                          help="그래프 위를 손가락으로 쓸어도 화면이 스크롤되도록 그래프의 '끌어서 확대'를 끕니다(값은 탭해서 확인). "
+                               "태블릿·휴대폰 브라우저나 QR 주소로 접속하면 자동으로 켜집니다.")
+                if ctx.demo:
+                    st.warning("데모 데이터 사용 중", icon="🧪")
+            with b2.popover("📲 접속", width="stretch"):
+                tablet_access_panel()
 
 
 def recent_events(ctx: Ctx, days: int = 7, min_sev: str = "주의") -> list[AlertEvent]:

@@ -8,14 +8,13 @@ from qms.diagnosis import diagnose
 from qms.notify import dispatch, load_config
 from qms.standards import STAGES
 from qms.store import load_alert_status, update_alert_status
-from qms.ui import get_ctx, open_diagnosis, sidebar
+from qms.ui import get_ctx, open_diagnosis, page_header
 
 STATUSES = ["신규", "확인", "조치중", "종결"]
 
 ctx = get_ctx()
-sidebar(ctx)
 period = ctx.store.period()
-st.title("🚨 알림 센터")
+page_header(ctx, "🚨 알림 센터")
 if period is None:
     st.info("데이터가 없습니다.")
     st.stop()

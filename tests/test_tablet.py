@@ -40,7 +40,7 @@ def test_tablet_view_from_qr_url_disables_chart_drag(monkeypatch):
     assert at.session_state["qms_tablet"] is True
     charts = _charts(at)
     assert charts and all(lay.get("dragmode") is False and cfg.get("displayModeBar") is False for lay, cfg in charts)
-    assert [(t.label, t.value) for t in at.sidebar.toggle] == [("📱 태블릿 보기", True)]
+    assert [(t.label, t.value) for t in at.toggle] == [("📱 태블릿 보기", True)]
     assert "http://10.1.2.3:8501/?view=tablet" in [c.value for c in at.code]       # 접속 안내 패널의 주소
 
 
@@ -49,5 +49,5 @@ def test_pc_view_keeps_chart_zoom_and_toggle_switches_mode():
     at.run()
     assert not at.exception and at.session_state["qms_tablet"] is False
     assert all(lay.get("dragmode") is not False for lay, _ in _charts(at))         # PC: 끌어서 확대 유지
-    at.sidebar.toggle[0].set_value(True).run()
+    at.toggle[0].set_value(True).run()
     assert all(lay.get("dragmode") is False for lay, _ in _charts(at))

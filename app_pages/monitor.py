@@ -6,13 +6,12 @@ import streamlit as st
 from qms.alerts import SEVERITY_ICON
 from qms.spc import capability
 from qms.standards import STAGES, TABLES
-from qms.ui import fmt, get_ctx, sidebar, trend_figure
+from qms.ui import fmt, get_ctx, page_header, trend_figure
 
 ctx = get_ctx()
-sidebar(ctx)
 reg, store = ctx.registry, ctx.store
 period = store.period()
-st.title("📈 공정 모니터링")
+page_header(ctx, "📈 공정 모니터링")
 if period is None:
     st.info("데이터가 없습니다.")
     st.stop()
