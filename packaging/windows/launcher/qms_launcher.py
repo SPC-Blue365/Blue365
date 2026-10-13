@@ -262,7 +262,8 @@ def merge_extracted(src: Path, say=print, root: Path | None = None) -> int:
     for n, f in enumerate(files, 1):
         target = root / f.relative_to(src)
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(f, target)
+        with f.open("rb") as fin, target.open("wb") as fout:      # copy2 대신(일부 환경에 CopyFile2 없음)
+            shutil.copyfileobj(fin, fout, 1 << 20)
         if n % step == 0 or n == len(files):
             say(f"      {n * 100 // len(files):3d}%  ({n:,}/{len(files):,}개 파일)")
     return len(files)
