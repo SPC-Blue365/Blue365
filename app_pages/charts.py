@@ -43,13 +43,16 @@ if v3.button("삭제", disabled=pick == "(새로 만들기)", width="stretch"):
     CH.delete_view(pick)
     st.rerun()
 
+ship_all = _ship(S.shipment_mtime(), D.dest_mtime())
+ss.setdefault("cv_source", "출하시멘트" if not ship_all.empty else "공정 데이터")   # 처음엔 자료가 있는 쪽을 보여 줌
 source = st.radio("자료", ["출하시멘트", "공정 데이터"], horizontal=True, key="cv_source")
-ship_df = _ship(S.shipment_mtime(), D.dest_mtime()) if source == "출하시멘트" else pd.DataFrame()
+ship_df = ship_all if source == "출하시멘트" else pd.DataFrame()
 
 # ── 항목 고르기 ─────────────────────────────────────────────────────────
 if source == "출하시멘트":
     if ship_df.empty:
-        st.info("저장된 출하시멘트 자료가 없습니다. 🚢 출하시멘트 또는 📥 데이터 관리에서 LIMS 엑셀을 올리세요.")
+        st.info("저장된 출하시멘트 자료가 없습니다. 🚢 출하시멘트 또는 📥 데이터 관리에서 LIMS 출하시멘트 엑셀을 올리면 "
+                "강도 1·3·7·28일 등 출하시멘트 항목을 그릴 수 있습니다. 지금은 위에서 '공정 데이터'를 고르면 공정 항목을 볼 수 있습니다.")
         st.stop()
     core = [it.key for it in S.ITEMS if it.key in ship_df and ship_df[it.key].notna().any()]
     extras = [c for c in S.extra_columns(ship_df) if ship_df[c].notna().any()]

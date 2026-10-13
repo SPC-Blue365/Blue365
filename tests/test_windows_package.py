@@ -229,3 +229,23 @@ def test_other_install_on_same_port_does_not_block(fake_root, monkeypatch):
     assert L.running_is_ours(8501) and not L.running_is_ours(8502)
     L.SERVER_LOCK.write_text(json.dumps({"port": 8501, "pid": 99999999}), encoding="utf-8")
     assert not L.running_is_ours(8501)                              # 이미 끝난 프로세스
+
+
+def test_browser_translation_is_blocked(tmp_path, monkeypatch):
+    """크롬·엣지 자동 번역이 한국어 메뉴를 바꾸지 않도록 시작 페이지를 lang=ko·번역 금지로 고친다(여러 번 해도 같음)."""
+    from qms import notranslate as N
+    src = ('<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <title>Streamlit</title>\n'
+           '  </head>\n  <body></body>\n</html>\n')
+    f = tmp_path / "index.html"
+    f.write_text(src, encoding="utf-8")
+    assert N.ensure(f) == "patched" and N.is_patched(f)
+    t = f.read_text(encoding="utf-8")
+    assert 'lang="en"' not in t and t.count(N.META) == 1 and N.HTML_TAG in t and "<title>Streamlit</title>" in t
+    assert N.ensure(f) == "ok" and f.read_text(encoding="utf-8") == t
+    assert N.ensure(tmp_path / "없음.html") == "missing"
+    # 설치 도우미: 결과를 알려 주고, 실패해도 설치·실행은 멈추지 않는다
+    msgs = []
+    monkeypatch.setattr(N, "index_path", lambda: f)
+    assert L.block_translate(msgs.append) == "ok" and "적용되어 있음" in msgs[-1]
+    monkeypatch.setattr(N, "ensure", lambda path=None: "readonly")
+    assert L.block_translate(msgs.append) == "readonly" and "[주의]" in msgs[-1]

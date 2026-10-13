@@ -105,6 +105,21 @@ def child_env() -> dict[str, str]:
     return env
 
 
+def block_translate(say=print) -> str:
+    """브라우저 자동 번역 차단 - Streamlit 시작 페이지를 한국어·번역 금지로 고친다(app/qms/notranslate.py)."""
+    try:
+        if str(APP) not in sys.path:
+            sys.path.insert(0, str(APP))
+        from qms import notranslate
+        res = notranslate.ensure()
+    except Exception as exc:  # noqa: BLE001
+        res = f"error: {exc}"
+    msg = {"ok": "적용되어 있음", "patched": "적용함"}.get(res)
+    say(f"  브라우저 자동 번역 차단: {msg}" if msg else
+        f"  [주의] 브라우저 자동 번역 차단을 적용하지 못했습니다({res}). 메뉴 글자가 이상하면 주소창의 번역 표시에서 '원본'을 고르세요.")
+    return res
+
+
 def run_cmd(cmd: list[str], timeout: float = 60) -> tuple[int, str]:
     """Windows 시스템 명령(schtasks·netsh) 실행 - 콘솔 코드 페이지(OEM)로 출력 해석."""
     try:
@@ -505,6 +520,7 @@ def cmd_setup(args) -> int:
         say("  [중단] 필수 구성요소를 불러오지 못했습니다. 9_CHECK.bat 결과(logs 폴더)를 담당자에게 전달하세요.")
         say.save("setup")
         return 4
+    block_translate(say)
 
     if not getattr(args, "quick", False):
         say()
@@ -626,6 +642,7 @@ def cmd_run(args) -> int:
     LOGS.mkdir(parents=True, exist_ok=True)
     data_dir().mkdir(parents=True, exist_ok=True)
     log_path = LOGS / f"server_{datetime.now():%Y%m%d}.log"
+    block_translate(lambda m: print(m) if "[주의]" in m else None)   # 문제가 있을 때만 표시
     print("Blue365 QMS를 시작하는 중입니다(보통 10~40초)…", flush=True)
     proc = subprocess.Popen(streamlit_cmd(port, args.share), cwd=APP, env=child_env(), stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)

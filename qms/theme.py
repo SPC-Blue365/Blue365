@@ -15,6 +15,12 @@ THEME_CSS = f"""<style>
 /* 상단 메뉴(헤더) */
 [data-testid="stHeader"] {{ background:#fff; border-bottom:1px solid var(--q-line); box-shadow:none; }}
 [data-testid="stHeader"] a, [data-testid="stHeader"] button {{ font-weight:600; }}
+/* 메뉴 15개가 넓은 화면(1600px 이상)에서 한 줄에 다 보이도록 간격을 줄이고, 넘치면 영어 'N more' 대신 '더보기' */
+[data-testid="stTopNavLink"] {{ padding:0 4px !important; }}
+[data-testid="stTopNavLink"] p, [data-testid="stTopNavLink"] span {{ font-size:13.5px; }}
+[data-testid="stHeader"] .rc-overflow {{ gap:0 !important; }}
+[data-testid="stHeader"] .rc-overflow-item-rest [data-testid="stTopNavSection"] p {{ font-size:0 !important; }}
+[data-testid="stHeader"] .rc-overflow-item-rest [data-testid="stTopNavSection"] p::after {{ content:"더보기"; font-size:14px; }}
 
 /* 본문 폭·여백: 제목 띠가 화면 끝까지 닿도록 좌우 여백을 변수로 관리 */
 [data-testid="stMainBlockContainer"] {{ max-width:100% !important; padding:3.75rem var(--q-pad) 3rem !important; }}
@@ -54,9 +60,28 @@ div[data-testid="stVerticalBlockBorderWrapper"] {{ border-color:var(--q-line); b
 .stButton > button[kind="primary"]:disabled {{ background:#9fb3cc; border-color:#9fb3cc; color:#fff; opacity:.8; }}
 
 @media (max-width: 1100px) {{ :root {{ --q-pad:1.2rem; }} .st-key-qms_hero h1 {{ font-size:1.55rem; }} }}
+.st-key-qms_notranslate {{ display:none !important; }}
 </style>"""
 
 
 def apply_theme() -> None:
     """매 실행마다 호출(streamlit_app.py)."""
     st.html(THEME_CSS)
+    _no_translate()
+
+
+@st.cache_resource(show_spinner=False)
+def _patch_index_once() -> str:
+    from . import notranslate
+    try:
+        return notranslate.ensure()
+    except Exception:  # noqa: BLE001 - 번역 차단은 보조 기능이라 실패해도 앱은 계속
+        return "error"
+
+
+def _no_translate() -> None:
+    """브라우저 자동 번역(크롬·엣지) 때문에 한국어 메뉴·제목이 엉뚱하게 바뀌는 것을 막는다(qms/notranslate.py)."""
+    from .notranslate import RUNTIME_JS
+    _patch_index_once()                                  # 다음 접속부터: 시작 페이지 자체를 한국어·번역 금지로
+    with st.container(key="qms_notranslate"):            # 지금 화면: 보이지 않는 칸에서 한국어·번역 금지 지정
+        st.html(RUNTIME_JS, unsafe_allow_javascript=True)

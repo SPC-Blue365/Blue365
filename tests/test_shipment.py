@@ -286,3 +286,23 @@ def test_chart_helpers_and_saved_views():
     CH.save_view({"name": "강도", "state": {"cv_ship_keys": ["s3"]}})          # 같은 이름은 덮어씀
     assert [v["state"]["cv_ship_keys"] for v in CH.load_views()] == [["s3"]]
     assert CH.delete_view("강도") == []
+
+
+def test_chart_page_starts_on_source_with_data():
+    """출하시멘트 자료가 없으면 그래프 보기는 공정 데이터로 시작(빈 화면 방지), 있으면 출하시멘트 강도 1·3·7·28일."""
+    S.clear_shipment()
+    at = AppTest.from_file(APP, default_timeout=240)
+    at.run()
+    at.switch_page("app_pages/charts.py")
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.radio(key="cv_source").value == "공정 데이터"
+    S.save_shipment(S.parse_upload(make_xlsx(), "a.xlsx").records)
+    at2 = AppTest.from_file(APP, default_timeout=240)
+    at2.run()
+    at2.switch_page("app_pages/charts.py")
+    at2.run()
+    assert not at2.exception, [e.value for e in at2.exception]
+    assert at2.radio(key="cv_source").value == "출하시멘트"
+    assert at2.multiselect(key="cv_ship_keys").value == ["s1", "s3", "s7", "s28"]
+    S.clear_shipment()
