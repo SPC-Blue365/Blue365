@@ -105,6 +105,7 @@
   // ── 탭 ──
   const TABS = [
     { id: "overview", label: "🏠 종합 현황", render: renderOverview },
+    { id: "ship", label: "🚢 출하시멘트", render: renderShip },
     { id: "monitor", label: "📈 공정 모니터링", render: renderMonitor },
     { id: "chem", label: "🧮 화학 계산기", render: renderChem },
     { id: "rawmix", label: "🧪 배합 설계", render: renderRawmix },
@@ -124,7 +125,8 @@
   function refreshBadge() {
     const p = dataPeriod();
     const src = STATE.source === "sample" ? "샘플(데모) 데이터" : "불러온 데이터";
-    $("#databadge").textContent = `${src}${p[0] ? ` · ${p[0].slice(0, 10)} ~ ${p[1].slice(0, 10)}` : ""}`;
+    const sh = STATE.ship && STATE.ship.records.length ? ` · 출하시멘트 ${STATE.ship.records[0].date} ~ ${STATE.ship.records[STATE.ship.records.length - 1].date} (${STATE.ship.records.length}건)` : "";
+    $("#databadge").textContent = `${src}${p[0] ? ` · ${p[0].slice(0, 10)} ~ ${p[1].slice(0, 10)}` : ""}${sh}`;
   }
 
   // ── ① 종합 현황 ──
@@ -495,6 +497,7 @@
     const res = $("#load-result"); if (!res) return; res.innerHTML = "";
     if (STATE.loadError) { res.appendChild(el("div", { class: "note warn" }, [STATE.loadError])); return; }
     const info = STATE.loadedInfo; if (!info) return;
+    if (info.kind === "ship") { const c = renderShipLoadCard(); if (c) res.appendChild(c); return; }
     const card = el("div", { class: "card", style: "border:2px solid var(--green)" });
     card.appendChild(el("h3", {}, [`✅ ${info.file} — 불러오기 완료`]));
     info.sheets.forEach((s) => {
@@ -577,6 +580,8 @@
   }
   function ingest(sheets, fileName) {
     STATE.fileName = fileName;
+    const shipSheet = sheets.find((s) => s.aoa && SH.detect(s.aoa));      // 출하시멘트(LIMS 일일 로트 표) 형식이면 전용 처리
+    if (shipSheet) { shipIngest(shipSheet, fileName); return; }
     STATE.sheets = sheets.filter((s) => s.aoa && s.aoa.length >= 2).map((s) => {
       const a = ENGINE.analyze(s.aoa, { sheetName: s.name });
       const sh = { name: s.name, aoa: s.aoa, a, opts: {}, sig: a ? sigOf(a) : "" };
@@ -683,6 +688,329 @@
     }
     draw();
   }
+
+  // ── ⑦ 출하시멘트(LIMS 일일 로트 표) 모니터링 ──
+  const SH = window.SHIP;
+  STATE.ship = null;      // { records, items, info }
+  const SUI = { key: "s28", view: "trend", range: "180", from: "", to: "", additive: "", mode: "all", noLowCl: false, showLim: false };
+  const SLIM_KEY = "qmsship_limits", SDATA_KEY = "qmsship_data";
+  const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
+  const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) { /* file:// 차단 */ } };
+
+  const SLIMS = {};
+  function loadShipLimits() {
+    SH.ITEMS.forEach((it) => { SLIMS[it.key] = Object.assign({ lsl: null, usl: null, target: null, src: "" }, it.lim || {}); });
+    const sv = lsGet(SLIM_KEY); if (sv) for (const k in sv) SLIMS[k] = Object.assign({ lsl: null, usl: null, target: null }, sv[k], { src: "사용자 설정" });
+  }
+  loadShipLimits();
+  const slim = (k) => SLIMS[k] || { lsl: null, usl: null, target: null, src: "" };
+  function shipFmt(it, v, withUnit) {
+    if (!isNum(v)) return "—";
+    if (it.hhmm) { const m = Math.round(v); return `${fmt(m, 0)}분 (${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")})`; }
+    return fmt(v, it.dec) + (withUnit && it.unit ? " " + it.unit : "");
+  }
+  const shipItem = (k) => (STATE.ship && STATE.ship.items.find((i) => i.key === k)) || null;
+  const isSingle = (r) => r.nShip === 1 && r.shipsOk;
+
+  function shipRecs() {
+    const all = (STATE.ship && STATE.ship.records) || []; if (!all.length) return [];
+    let from = "", to = "9999";
+    if (SUI.range === "custom") { from = SUI.from || ""; to = SUI.to ? SUI.to + "~" : "9999"; }
+    else if (SUI.range !== "all") from = new Date(Date.parse(all[all.length - 1].date) - (+SUI.range) * 864e5).toISOString().slice(0, 10);
+    return all.filter((r) => r.date >= from && r.date <= to && (!SUI.additive || r.additive === SUI.additive)
+      && (SUI.mode === "all" || (SUI.mode === "single" ? isSingle(r) : r.nShip >= 2)) && !(SUI.noLowCl && r.lowCl));
+  }
+  function shipPts(recs, key) { const o = []; recs.forEach((r) => { const v = r.v[key]; if (isNum(v)) o.push({ t: r.date, v: +v, r }); }); return o; }
+
+  // 항목 한 줄 요약(종합표용)
+  function shipSummary(recs, it) {
+    const pts = shipPts(recs, it.key); const lim = slim(it.key);
+    const st = SH.stats(pts.map((p) => p.v), lim);
+    const fl = SH.flags(pts, st, lim);
+    const last = pts.length ? pts[pts.length - 1] : null;
+    const tail = fl.slice(-10);
+    const nSpec = fl.filter((f) => f.spec).length, nOut = fl.filter((f) => f.out3).length;
+    let status = "gray", label = "자료 부족";
+    if (it.setting) { status = "gray"; label = "배합 설정값(판정 제외)"; }
+    else if (pts.length >= 5) {
+      if (tail.some((f) => f.spec)) { status = "red"; label = "최근 10건 중 기준 이탈"; }
+      else if (tail.some((f) => f.out3)) { status = "amber"; label = "최근 10건 중 3σ 이탈"; }
+      else if (tail.some((f) => f.run)) { status = "yellow"; label = "같은 쪽 9점 연속(참고)"; }
+      else { status = "green"; label = "정상"; }
+    }
+    return { it, pts, st, fl, last, nSpec, nOut, status, label, missing: recs.length - pts.length, lim };
+  }
+  const SDOT = { red: "🔴", amber: "🟠", yellow: "🟡", green: "🟢", gray: "⚪" };
+
+  function renderShip(root) {
+    root.appendChild(el("h2", {}, ["출하시멘트 모니터링"]));
+    if (!STATE.ship || !STATE.ship.records.length) {
+      root.appendChild(el("div", { class: "note", html: "LIMS 출하시멘트 엑셀(채취일·첨가재명칭·석회석비율·LOI·강도·Blaine·비고(선박명) 등이 있는 표)을 올리면 <b>자동으로 인식</b>해 이 화면에서 항목별 추이·관리도·선박별·배합별 비교를 보여 줍니다. 한 번 올리면 이후 같은 양식은 그대로 올리면 됩니다(새 파일의 같은 날짜는 덮어쓰기, 새 날짜는 추가)." }));
+      const fz = el("div", { class: "filezone", html: "📂 <b>출하시멘트 엑셀 선택</b> 또는 여기로 끌어다 놓기" });
+      const fin = el("input", { type: "file", accept: ".xlsx,.xls,.csv", style: "display:none" });
+      fin.addEventListener("change", (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ""; });
+      fz.addEventListener("click", () => fin.click());
+      fz.addEventListener("dragover", (e) => { e.preventDefault(); fz.classList.add("drag"); });
+      fz.addEventListener("dragleave", () => fz.classList.remove("drag"));
+      fz.addEventListener("drop", (e) => { e.preventDefault(); fz.classList.remove("drag"); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+      root.appendChild(fz); root.appendChild(fin);
+      return;
+    }
+    const S = STATE.ship;
+    // 인식 결과(접기)
+    const det = el("details", { class: "card", style: "padding:10px 16px" });
+    det.appendChild(el("summary", { style: "cursor:pointer;font-weight:700" }, [`📋 파일 인식 결과 — ${S.info.file} · ${S.records.length}건 (${S.records[0].date} ~ ${S.records[S.records.length - 1].date})`]));
+    det.appendChild(el("div", { class: "small", style: "line-height:1.7;margin-top:6px", html: shipInfoHtml(S.info) }));
+    root.appendChild(det);
+
+    // 필터
+    const adds = [...new Set(S.records.map((r) => r.additive).filter(Boolean))];
+    const tb = el("div", { class: "toolbar" });
+    const selOf = (opts, cur, fn) => { const s = el("select", { onchange: (e) => fn(e.target.value) }); opts.forEach(([v, l]) => s.appendChild(el("option", { value: v, ...(String(cur) === String(v) ? { selected: "selected" } : {}) }, [l]))); return s; };
+    tb.appendChild(el("label", { class: "field" }, [el("span", {}, ["기간"]), selOf([["all", "전체"], ["30", "최근 30일"], ["90", "최근 90일"], ["180", "최근 180일"], ["365", "최근 1년"], ["custom", "직접 지정"]], SUI.range, (v) => { SUI.range = v; refreshShip(); })]));
+    if (SUI.range === "custom") {
+      tb.appendChild(el("label", { class: "field" }, [el("span", {}, ["시작"]), el("input", { type: "date", value: SUI.from, onchange: (e) => { SUI.from = e.target.value; refreshShip(); } })]));
+      tb.appendChild(el("label", { class: "field" }, [el("span", {}, ["끝"]), el("input", { type: "date", value: SUI.to, onchange: (e) => { SUI.to = e.target.value; refreshShip(); } })]));
+    }
+    if (adds.length > 1) tb.appendChild(el("label", { class: "field" }, [el("span", {}, ["첨가재"]), selOf([["", "전체"]].concat(adds.map((a) => [a, a])), SUI.additive, (v) => { SUI.additive = v; refreshShip(); })]));
+    tb.appendChild(el("label", { class: "field" }, [el("span", {}, ["모선 수"]), selOf([["all", "전체"], ["single", "1모선(단독 시험)만"], ["multi", "2모선 이상(평균값)만"]], SUI.mode, (v) => { SUI.mode = v; refreshShip(); })]));
+    if (S.records.some((r) => r.lowCl)) {
+      const cb = el("input", { type: "checkbox", ...(SUI.noLowCl ? { checked: "checked" } : {}) }); cb.addEventListener("change", () => { SUI.noLowCl = cb.checked; refreshShip(); });
+      tb.appendChild(el("label", { class: "chk field", style: "align-self:flex-end" }, [cb, " ‘저염’ 표기일 제외"]));
+    }
+    root.appendChild(tb);
+    const body = el("div", { id: "ship-body" }); root.appendChild(body);
+    drawShipSections(body);
+  }
+  function refreshShip() { const y = window.scrollY; show("ship"); window.scrollTo({ top: y }); }   // 필터 막대(직접 지정 칸)까지 다시 그림
+
+  function shipInfoHtml(info) {
+    const R = info.report; const L = [];
+    L.push(`읽은 행 <b>${R.rowsRead}</b>건 · 머리글 ${R.headerRow + 1}행` + (R.rowsSkipped ? ` · 날짜가 없어 건너뜀 ${R.rowsSkipped}행` : "") + (info.added != null ? ` · 기존 대비 새로 추가 ${info.added}건 / 덮어쓰기 ${info.replaced}건` : ""));
+    L.push(`인식한 항목 ${R.found.length}개: ` + R.found.map((f) => `${esc(SH.BY[f.key].name)}←<span class="small">${esc(f.header)}</span>`).join(", "));
+    if (R.missing.length) L.push(`<b style="color:var(--amber)">찾지 못한 항목:</b> ${R.missing.map((k) => esc(SH.BY[k].name)).join(", ")} (데이터 불러오기 탭에서 열을 지정할 수 있습니다)`);
+    const zk = Object.keys(R.zeros).filter((k) => !k.startsWith("x:")).map((k) => `${esc(SH.BY[k].name)} ${R.zeros[k]}건`);
+    L.push(`값이 <b>0</b>인 칸은 ‘미시험’으로 보고 계산에서 뺐습니다${zk.length ? ": " + zk.join(", ") : ""} (예: 28일 강도는 시험 전이라 0)`);
+    if (R.shipsFound) {
+      const top = Object.entries(R.shipCount).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([n, c]) => `${esc(n)} ${c}`).join(" · ");
+      L.push(`비고(선박) 해석: 선박 ${R.nShips}척 — ${top}`);
+      if (R.shipUnsure.length) L.push(`<b style="color:var(--amber)">비고를 확신하지 못한 ${R.shipUnsure.length}건</b>은 ‘1모선 단독’ 분석에서 제외했습니다 (예: ${R.shipUnsure.slice(0, 4).map((u) => esc(u.date + " “" + u.raw + "”")).join(", ")})`);
+    }
+    if (R.extras.length) L.push(`<span class="small">그 밖에 항목 목록에서 고를 수 있는 열 ${R.extras.length}개: ${R.extras.slice(0, 12).map(esc).join(", ")}${R.extras.length > 12 ? " …" : ""}</span>`);
+    return L.join("<br>");
+  }
+
+  // 종합표 + 상세
+  function drawShipSections(body) {
+    const S = STATE.ship; const recs = shipRecs();
+    body.innerHTML = "";
+    if (!recs.length) { body.appendChild(el("div", { class: "note warn" }, ["선택한 조건에 맞는 자료가 없습니다. 기간·첨가재·모선 조건을 바꿔 보세요."])); return; }
+    const core = S.items.filter((i) => !i.extra);
+    const sums = core.map((it) => shipSummary(recs, it));
+    // KPI
+    const nSingle = recs.filter(isSingle).length;
+    const red = sums.filter((s) => s.status === "red").length, amb = sums.filter((s) => s.status === "amber").length, yel = sums.filter((s) => s.status === "yellow").length;
+    const m = el("div", { class: "metrics" });
+    m.appendChild(metric("분석 대상", `${recs.length}건`, "blue", `${recs[0].date} ~ ${recs[recs.length - 1].date}`));
+    m.appendChild(metric("1모선 단독 시험", `${nSingle}건`, "blue", `${Math.round(nSingle / recs.length * 100)}% · 나머지는 복수 모선 평균`));
+    m.appendChild(metric("기준 이탈 항목(최근 10건)", `${red}개`, red ? "red" : "green", red ? "아래 표 🔴 확인" : "이상 없음"));
+    m.appendChild(metric("관리한계(3σ) 이탈 항목", `${amb}개`, amb ? "amber" : "green", yel ? `최근 10건 기준 · 치우침 참고 ${yel}개` : "최근 10건 기준"));
+    body.appendChild(m);
+
+    // 종합표
+    const card = el("div", { class: "card", style: "margin-top:14px" });
+    card.appendChild(el("h3", {}, ["핵심 항목 한눈에"]));
+    card.appendChild(el("div", { class: "hint", html: "행을 누르면 아래에 그 항목의 상세 그래프가 열립니다. 상태: 🔴 최근 10건 중 기준(규격·사내) 이탈 · 🟠 최근 10건 중 관리한계(평균±3σ) 이탈 · 🟡 같은 쪽 9점 연속 치우침(참고) · 🟢 정상 · ⚪ 판정 제외·자료 부족(5건 미만)<br>관리한계는 선택한 기간 데이터의 평균±3×표준편차입니다. 배합이 바뀐 구간이 섞이면 넓어지므로 기간·첨가재 필터로 구간을 좁혀 보세요(Nelson 규칙 1·2; Nelson, 1984, J. Quality Technology 16(4))." }));
+    const t = el("table", { class: "stbl" });
+    t.appendChild(el("tr", {}, ["", "항목", "최근값", "평균", "표준편차", "최소 ~ 최대", "규격·기준", "기준이탈", "3σ이탈", "미시험", "판정"].map((h, i) => el("th", { class: i === 1 || i === 10 || i === 6 ? "txt" : "" }, [h]))));
+    let grp = "";
+    sums.forEach((s) => {
+      const it = s.it;
+      if (it.group !== grp) { grp = it.group; t.appendChild(el("tr", {}, [el("td", { colspan: "11", class: "txt", style: "background:#f1f5f9;font-weight:700" }, [grp])])); }
+      const lim = s.lim; const rng = lim.lsl != null && lim.usl != null ? `${lim.lsl} ~ ${lim.usl}` : lim.usl != null ? `≤ ${lim.usl}` : lim.lsl != null ? `≥ ${lim.lsl}` : "—";
+      const tr = el("tr", { style: "cursor:pointer" + (SUI.key === it.key ? ";background:#eff6ff" : ""), onclick: () => { SUI.key = it.key; drawShipSections(body); const d = $("#ship-detail"); if (d) d.scrollIntoView({ behavior: "smooth", block: "start" }); } }, [
+        el("td", {}, [SDOT[s.status]]), el("td", { class: "txt" }, [el("b", {}, [it.name]), document.createTextNode(it.unit && !it.hhmm ? ` (${it.unit})` : "")]),
+        el("td", {}, [s.last ? shipFmt(it, s.last.v) : "—"]), el("td", {}, [shipFmt(it, s.st.mean)]), el("td", {}, [isFinite(s.st.sd) ? fmt(s.st.sd, it.dec + 1) : "—"]),
+        el("td", {}, [s.pts.length ? shipFmt(it, s.st.min) + " ~ " + shipFmt(it, s.st.max) : "—"]),
+        el("td", { class: "txt small" }, [rng]), el("td", {}, [lim.lsl == null && lim.usl == null ? "—" : String(s.nSpec)]), el("td", {}, [String(s.nOut)]),
+        el("td", { title: "0 또는 빈칸(시험 전)" }, [s.missing ? String(s.missing) : "0"]), el("td", { class: "txt small" }, [s.label]),
+      ]);
+      t.appendChild(tr);
+    });
+    card.appendChild(el("div", { class: "tablewrap" }, [t]));
+    body.appendChild(card);
+
+    // 상세
+    const det = el("div", { class: "card", id: "ship-detail" });
+    det.appendChild(el("h3", {}, ["항목 상세"]));
+    const items = S.items;
+    const sel = el("select", { onchange: (e) => { SUI.key = e.target.value; drawShipSections(body); } });
+    [...new Set(items.map((i) => i.group))].forEach((g) => { const og = el("optgroup", { label: g }); items.filter((i) => i.group === g).forEach((i) => og.appendChild(el("option", { value: i.key, ...(i.key === SUI.key ? { selected: "selected" } : {}) }, [i.name + (i.unit ? ` (${i.unit})` : "")]))); sel.appendChild(og); });
+    if (!items.find((i) => i.key === SUI.key)) SUI.key = items[0].key;
+    const views = [["trend", "추이"], ["spc", "관리도(SPC)"], ["hist", "분포"], ["month", "월별"], ["ship", "선박별(단독)"], ["combo", "배합별"]];
+    const vsel = el("select", { onchange: (e) => { SUI.view = e.target.value; drawShipSections(body); } }, views.map(([v, l]) => el("option", { value: v, ...(v === SUI.view ? { selected: "selected" } : {}) }, [l])));
+    det.appendChild(el("div", { class: "toolbar" }, [el("label", { class: "field", style: "flex:2 1 14rem" }, [el("span", {}, ["항목"]), sel]), el("label", { class: "field" }, [el("span", {}, ["보기"]), vsel])]));
+    const stats = el("div", { class: "metrics", id: "ship-stats" }); det.appendChild(stats);
+    det.appendChild(el("div", { class: "chart", id: "ship-chart", style: "margin-top:10px" }));
+    det.appendChild(el("div", { id: "ship-extra" }));
+    if (TOUCH) det.appendChild(el("div", { class: "hint" }, ["그래프를 탭하면 값이 표시됩니다."]));
+    body.appendChild(det);
+    drawShipDetail(recs);
+
+    // 기준값 설정
+    const lc = el("details", { class: "card" });
+    lc.appendChild(el("summary", { style: "cursor:pointer;font-weight:700" }, ["⚙️ 규격·관리 기준값 설정 (하한·상한·목표)"]));
+    lc.appendChild(el("div", { class: "hint", html: `초기값은 ${esc(SH.KS_NOTE)}입니다 — <b>이 환경에서 원문을 확인하지 못했으므로 사내 규격·KS 원문과 대조해 고쳐 주세요.</b> 고친 값은 이 PC 브라우저에 기억됩니다. 비워 두면 해당 기준 없이 표시합니다.` }));
+    const lt = el("table"); lt.appendChild(el("tr", {}, ["항목", "하한(LSL)", "상한(USL)", "목표", "출처"].map((h, i) => el("th", { class: i === 0 || i === 4 ? "txt" : "" }, [h]))));
+    core.forEach((it) => {
+      const L = slim(it.key);
+      const inp = (f) => { const i = el("input", { type: "number", step: "any", class: "editable", style: "width:6.5rem;text-align:right", value: L[f] == null ? "" : L[f] }); i.addEventListener("change", () => { SLIMS[it.key] = Object.assign({}, slim(it.key), { [f]: i.value === "" ? null : +i.value, src: "사용자 설정" }); const sv = {}; for (const k in SLIMS) if (SLIMS[k].src === "사용자 설정") sv[k] = { lsl: SLIMS[k].lsl, usl: SLIMS[k].usl, target: SLIMS[k].target }; lsSet(SLIM_KEY, sv); drawShipSections(body); }); return i; };
+      lt.appendChild(el("tr", {}, [el("td", { class: "txt" }, [it.name + (it.hhmm ? " (분)" : "")]), el("td", {}, [inp("lsl")]), el("td", {}, [inp("usl")]), el("td", {}, [inp("target")]), el("td", { class: "txt small" }, [L.src || "—"])]));
+    });
+    lc.appendChild(el("div", { class: "tablewrap" }, [lt]));
+    lc.appendChild(el("div", { class: "btnrow" }, [el("button", { class: "btn ghost", onclick: () => { lsDel(SLIM_KEY); loadShipLimits(); drawShipSections(body); } }, ["초기값으로 되돌리기"])]));
+    body.appendChild(lc);
+    body.appendChild(el("div", { class: "hint", html: "※ 항목 단위: Cl(XRF)·45㎛·주도·Flow는 파일에 단위 표기가 없어 값 규모로 추정했습니다(Cl=ppm, 45㎛=잔사 %, 주도=%). TA는 Na₂O+0.658·K₂O와 일치(실제 파일 검증). 0은 ‘미시험’으로 처리합니다." }));
+  }
+
+  function drawShipDetail(recs) {
+    const it = shipItem(SUI.key); if (!it) return;
+    const pts = shipPts(recs, it.key); const lim = slim(it.key);
+    const st = SH.stats(pts.map((p) => p.v), lim); const fl = SH.flags(pts, st, lim);
+    const sb = $("#ship-stats"); sb.innerHTML = "";
+    const last = pts.length ? pts[pts.length - 1] : null;
+    const lastSpec = last && ((lim.lsl != null && last.v < lim.lsl) || (lim.usl != null && last.v > lim.usl));
+    sb.appendChild(metric("최근값", last ? shipFmt(it, last.v, true) : "—", lastSpec ? "red" : "blue", last ? last.t : ""));
+    sb.appendChild(metric("평균 ± 표준편차", `${shipFmt(it, st.mean)} ± ${isFinite(st.sd) ? fmt(st.sd, it.dec + 1) : "—"}`, "blue", `n=${st.n}`));
+    sb.appendChild(metric("최소 / 최대", `${shipFmt(it, st.min)} / ${shipFmt(it, st.max)}`, "blue"));
+    sb.appendChild(metric("Cpk", isFinite(st.cpk) ? fmt(st.cpk, 2) : "—", isFinite(st.cpk) ? (st.cpk >= 1.33 ? "green" : st.cpk >= 1 ? "amber" : "red") : "gray", isFinite(st.cpk) ? "규격 대비 여유" : "기준값 필요"));
+    sb.appendChild(metric("3σ 이탈 / 기준 이탈", `${fl.filter((f) => f.out3).length} / ${fl.filter((f) => f.spec).length}건`, fl.some((f) => f.spec) ? "red" : fl.some((f) => f.out3) ? "amber" : "green"));
+    const div = $("#ship-chart"); const ex = $("#ship-extra"); ex.innerHTML = "";
+    if (!pts.length) { Plotly.purge(div); div.innerHTML = ""; ex.appendChild(el("div", { class: "note warn" }, ["선택한 조건에 이 항목의 값이 없습니다(시험 전 0은 제외)."])); return; }
+    const blue = "#2a78d6", red = "#dc2626", green = "#16a34a", amber = "#f59e0b", gray = "#64748b";
+    const addNames = [...new Set(pts.map((p) => p.r.additive || "미표기"))].sort();
+    const PAL = ["#2a78d6", "#f59e0b", "#16a34a", "#9333ea", "#0891b2"]; const colorOf = (a) => PAL[addNames.indexOf(a) % PAL.length];
+    const layout = { height: 400, margin: { l: 52, r: 16, t: 10, b: 40 }, hovermode: "closest", dragmode: TOUCH ? false : "zoom", showlegend: true, legend: { orientation: "h", y: -0.18 }, xaxis: { type: "date" }, yaxis: { title: it.unit || "" }, shapes: [], annotations: [] };
+    const hline = (y, color, text, dash) => { if (!isNum(y)) return; layout.shapes.push({ type: "line", xref: "paper", x0: 0, x1: 1, y0: y, y1: y, line: { color, width: 1.3, dash: dash || "dash" } }); layout.annotations.push({ xref: "paper", x: 1, y, xanchor: "right", yanchor: "bottom", text, showarrow: false, font: { size: 10, color } }); };
+    const hov = (p) => `${p.t} · ${shipFmt(it, p.v, true)}<br>${p.r.additive || ""} 석회석 ${p.r.v.ls ?? "-"}% / 첨가재 ${p.r.v.addr ?? "-"}%<br>${p.r.ships.join(", ") || "선박 미기재"} (${isSingle(p.r) ? "단독" : p.r.nShip + "모선 평균"})`;
+    let traces = [];
+    const ptsTrace = (arr, name, color, symbol) => ({ type: "scatter", mode: "markers", name, x: arr.map((p) => p.t), y: arr.map((p) => p.v), text: arr.map(hov), hovertemplate: "%{text}<extra></extra>", marker: { color: arr.map((p, i) => (p.mark || color)), size: 6, symbol, line: { width: 0 } } });
+    if (SUI.view === "trend" || SUI.view === "spc") {
+      const spc = SUI.view === "spc";
+      pts.forEach((p, i) => { p.mark = spc && (fl[i].out3 || fl[i].run) ? (fl[i].out3 ? red : amber) : null; });
+      traces.push({ type: "scatter", mode: "lines", name: "연결선", x: pts.map((p) => p.t), y: pts.map((p) => p.v), line: { color: "#cbd5e1", width: 1 }, hoverinfo: "skip", showlegend: false });
+      addNames.forEach((a) => {
+        [["단독", "circle", (p) => isSingle(p.r)], ["복수 평균", "diamond", (p) => !isSingle(p.r)]].forEach(([lab, sym, fn]) => {
+          const arr = pts.filter((p) => (p.r.additive || "미표기") === a && fn(p)); if (arr.length) traces.push(ptsTrace(arr, `${a} · ${lab}`, colorOf(a), sym));
+        });
+      });
+      if (!spc) {
+        const W = 30, ma = pts.map((_, i) => { const s = pts.slice(Math.max(0, i - W + 1), i + 1).map((p) => p.v); return SH.mean(s); });
+        traces.push({ type: "scatter", mode: "lines", name: `${W}건 이동평균`, x: pts.map((p) => p.t), y: ma, line: { color: "#0f172a", width: 2 }, hoverinfo: "skip" });
+        hline(lim.target, green, "목표 " + lim.target); hline(lim.lsl, red, "하한 " + lim.lsl); hline(lim.usl, red, "상한 " + lim.usl);
+        ex.appendChild(el("div", { class: "hint" }, ["● 단독 시험(1모선) · ◆ 복수 모선 평균 · 색 = 첨가재. 선 = 30건 이동평균."]));
+      } else {
+        hline(st.mean, gray, "CL " + fmt(st.mean, it.dec + 1), "solid"); hline(st.ucl, amber, "UCL(+3σ) " + fmt(st.ucl, it.dec + 1)); hline(st.lcl, amber, "LCL(−3σ) " + fmt(st.lcl, it.dec + 1));
+        hline(lim.lsl, red, "하한 " + lim.lsl, "dot"); hline(lim.usl, red, "상한 " + lim.usl, "dot");
+        ex.appendChild(el("div", { class: "hint", html: `🔴 3σ 밖 · 🟠 같은 쪽 9점 연속(Nelson 규칙 2). 관리한계는 선택 기간 평균±3×표준편차. 배합(첨가재·비율)이 바뀐 구간은 평균이 달라 관리한계 밖으로 보일 수 있으니 ‘첨가재’ 필터로 나눠 보세요.` }));
+      }
+    } else if (SUI.view === "hist") {
+      const v = pts.map((p) => p.v), lo = st.min, hi = st.max, k = Math.max(8, Math.min(30, Math.round(Math.sqrt(v.length) * 1.6)));
+      const w = (hi - lo) / k || 1, cnt = new Array(k).fill(0); v.forEach((x) => { cnt[Math.min(k - 1, Math.floor((x - lo) / w))]++; });
+      traces = [{ type: "bar", x: cnt.map((_, i) => lo + w * (i + 0.5)), y: cnt, width: w * 0.95, marker: { color: blue }, hovertemplate: "%{x:.2f} 부근: %{y}건<extra></extra>" }];
+      layout.showlegend = false; layout.yaxis = { title: "건수" }; layout.xaxis = { title: it.unit || "" };
+      [["lsl", "하한", red], ["usl", "상한", red], ["target", "목표", green]].forEach(([f, lab, col]) => { if (isNum(lim[f])) layout.shapes.push({ type: "line", yref: "paper", y0: 0, y1: 1, x0: lim[f], x1: lim[f], line: { color: col, width: 1.5, dash: "dash" } }); });
+      layout.shapes.push({ type: "line", yref: "paper", y0: 0, y1: 1, x0: st.mean, x1: st.mean, line: { color: gray, width: 1.5 } });
+    } else if (SUI.view === "month") {
+      const g = {}; pts.forEach((p) => { (g[p.t.slice(0, 7)] = g[p.t.slice(0, 7)] || []).push(p.v); });
+      const ms = Object.keys(g).sort();
+      traces = [{ type: "bar", x: ms, y: ms.map((k) => SH.mean(g[k])), error_y: { type: "data", array: ms.map((k) => (isFinite(SH.sd(g[k])) ? SH.sd(g[k]) : 0)), visible: true, color: "#94a3b8" }, marker: { color: blue }, text: ms.map((k) => `n=${g[k].length}`), hovertemplate: "%{x} 평균 %{y:.2f} (%{text})<extra></extra>" }];
+      layout.showlegend = false; layout.xaxis = { type: "category", tickangle: -45 };
+      const mn = Math.min(...ms.map((k) => SH.mean(g[k]))), mx = Math.max(...ms.map((k) => SH.mean(g[k])));
+      const pad = (mx - mn) * 0.6 || 1; layout.yaxis = { title: it.unit || "", range: [mn - pad, mx + pad] };
+      hline(lim.lsl, red, "하한 " + lim.lsl); hline(lim.usl, red, "상한 " + lim.usl);
+      ex.appendChild(el("div", { class: "hint" }, ["막대 = 월 평균, 선 = ±1 표준편차(월 내 변동). 세로축은 평균 근처로 확대해 표시합니다."]));
+    } else if (SUI.view === "ship") {
+      const rows = SH.byShip(recs, it.key);
+      const base = pts.filter((p) => isSingle(p.r)).map((p) => p.v); const bm = SH.mean(base), bs = SH.sd(base);
+      const shown = rows.filter((r) => r.n >= 3);
+      if (!shown.length) { Plotly.purge(div); div.innerHTML = ""; ex.appendChild(el("div", { class: "note warn" }, ["1모선 단독 시험이 3건 이상인 선박이 없습니다. ‘모선 수’ 필터를 ‘전체’로 하거나 기간을 늘려 보세요."])); return; }
+      traces = [{ type: "bar", x: shown.map((r) => r.ship), y: shown.map((r) => r.mean), error_y: { type: "data", array: shown.map((r) => (isFinite(r.sd) ? r.sd : 0)), visible: true, color: "#94a3b8" }, marker: { color: shown.map((r) => (Math.abs(r.mean - bm) >= 2 * bs / Math.sqrt(r.n) ? amber : blue)) }, text: shown.map((r) => `n=${r.n}`), hovertemplate: "%{x} 평균 %{y:.2f} (%{text})<extra></extra>" }];
+      layout.showlegend = false; layout.xaxis = { type: "category" };
+      const mn = Math.min(...shown.map((r) => r.mean)), mx = Math.max(...shown.map((r) => r.mean)), pad = (mx - mn) * 0.8 || 1; layout.yaxis = { title: it.unit || "", range: [mn - pad, mx + pad] };
+      hline(bm, gray, "단독 시험 전체 평균 " + fmt(bm, it.dec + 1), "solid"); hline(lim.lsl, red, "하한 " + lim.lsl); hline(lim.usl, red, "상한 " + lim.usl);
+      const t = el("table"); t.appendChild(el("tr", {}, ["선박", "단독 시험 건수", "평균", "표준편차", "최소 ~ 최대", "전체 평균 대비", "판단"].map((h, i) => el("th", { class: i === 0 || i === 6 ? "txt" : "" }, [h]))));
+      rows.forEach((r) => {
+        const d = r.mean - bm, z = isFinite(bs) && bs > 0 ? d / (bs / Math.sqrt(r.n)) : 0;
+        t.appendChild(el("tr", {}, [el("td", { class: "txt" }, [r.ship]), el("td", {}, [String(r.n)]), el("td", {}, [shipFmt(it, r.mean)]), el("td", {}, [isFinite(r.sd) ? fmt(r.sd, it.dec + 1) : "—"]), el("td", {}, [shipFmt(it, r.min) + " ~ " + shipFmt(it, r.max)]),
+          el("td", {}, [(d >= 0 ? "+" : "") + fmt(d, it.dec + 1)]), el("td", { class: "txt small" }, [r.n < 3 ? "건수 부족" : Math.abs(z) >= 2 ? "🔶 차이 있어 보임(추정)" : "차이 없음"])]));
+      });
+      ex.appendChild(el("div", { class: "hint", html: "<b>1모선만 출항한 날</b>의 값을 그 선박의 시험값으로 봅니다(2모선 이상인 날은 평균값이라 선박별로 나눌 수 없어 제외). 판단 🔶는 평균 차이가 표준오차의 2배 이상일 때(추정). <b>선박 차이는 같은 시기의 배합·원료 변화와 섞여 있을 수 있어</b>, 원인으로 단정하지 말고 기간·첨가재 필터를 바꿔 재확인하세요." }));
+      ex.appendChild(el("div", { class: "tablewrap" }, [t]));
+    } else {
+      const g = {}; pts.forEach((p) => { const r = p.r; const k = `${r.additive || "미표기"} · 석회석 ${r.v.ls ?? "-"}% · 첨가재 ${r.v.addr ?? "-"}%`; (g[k] = g[k] || { vals: [], d0: p.t, d1: p.t }).vals.push(p.v); g[k].d1 = p.t; if (p.t < g[k].d0) g[k].d0 = p.t; });
+      const ks = Object.keys(g).sort((a, b) => (g[a].d0 < g[b].d0 ? -1 : 1));
+      traces = [{ type: "bar", x: ks, y: ks.map((k) => SH.mean(g[k].vals)), error_y: { type: "data", array: ks.map((k) => (isFinite(SH.sd(g[k].vals)) ? SH.sd(g[k].vals) : 0)), visible: true, color: "#94a3b8" }, marker: { color: blue }, text: ks.map((k) => `n=${g[k].vals.length}`), hovertemplate: "%{x}<br>평균 %{y:.2f} (%{text})<extra></extra>" }];
+      layout.showlegend = false; layout.xaxis = { type: "category", tickangle: -30, automargin: true }; layout.margin.b = 120;
+      const mm = ks.map((k) => SH.mean(g[k].vals)); const mn = Math.min(...mm), mx = Math.max(...mm), pad = (mx - mn) * 0.8 || 1; layout.yaxis = { title: it.unit || "", range: [mn - pad, mx + pad] };
+      hline(lim.lsl, red, "하한 " + lim.lsl); hline(lim.usl, red, "상한 " + lim.usl);
+      const t = el("table"); t.appendChild(el("tr", {}, ["배합(첨가재·석회석·첨가재 비율)", "사용 기간", "건수", "평균", "표준편차"].map((h, i) => el("th", { class: i === 0 || i === 1 ? "txt" : "" }, [h]))));
+      ks.forEach((k) => t.appendChild(el("tr", {}, [el("td", { class: "txt" }, [k]), el("td", { class: "txt small" }, [g[k].d0 + " ~ " + g[k].d1]), el("td", {}, [String(g[k].vals.length)]), el("td", {}, [shipFmt(it, SH.mean(g[k].vals))]), el("td", {}, [isFinite(SH.sd(g[k].vals)) ? fmt(SH.sd(g[k].vals), it.dec + 1) : "—"])])));
+      ex.appendChild(el("div", { class: "hint" }, ["첨가재 종류·석회석 비율·첨가재 비율 조합별 평균입니다. 배합이 바뀐 시점의 품질 변화를 확인할 때 사용합니다."]));
+      ex.appendChild(el("div", { class: "tablewrap" }, [t]));
+    }
+    Plotly.react(div, traces, layout, { displayModeBar: false, responsive: true, scrollZoom: false });
+  }
+
+  // ── 출하시멘트 파일 불러오기 ──
+  function shipSig(headers) { return hashStr("ship|" + headers.map((h) => SH.norm(h)).join("|")).replace("qmsmap_", "qmsshipov_"); }
+  function shipIngest(sheet, fileName, overrides) {
+    const det = SH.detect(sheet.aoa);
+    const headers = (sheet.aoa[det.headerRow] || []).map((c) => (c == null ? "" : String(c).trim()));
+    const sig = shipSig(headers);
+    const ov = overrides || lsGet(sig) || {};
+    let res = SH.parse(sheet.aoa, { overrides: ov, headerRow: det.headerRow });
+    if (!res || res.error) { STATE.loadError = (res && res.error) || "출하시멘트 표를 읽지 못했습니다."; renderLoadResult(); return; }
+    STATE.shipPending = { sheet, fileName, sig, overrides: ov, res };
+    const old = STATE.ship ? STATE.ship.records : [];
+    const oldKeys = new Set(old.map((r) => r.lot || r.date));
+    const added = res.records.filter((r) => !oldKeys.has(r.lot || r.date)).length;
+    const records = SH.merge(old, res.records);
+    const itemMap = new Map(); (STATE.ship ? STATE.ship.items : []).forEach((i) => itemMap.set(i.key, i)); res.items.forEach((i) => itemMap.set(i.key, i));
+    STATE.ship = { records, items: [...itemMap.values()], info: { file: fileName, report: res.report, added, replaced: res.records.length - added, sig } };
+    STATE.loadedInfo = { kind: "ship", file: fileName }; STATE.loadError = null;
+    if (!STATE.ship.items.find((i) => i.key === SUI.key)) SUI.key = (STATE.ship.items.find((i) => i.key === "s28") || STATE.ship.items[0]).key;
+    if (lsGet("qmsship_persist")) persistShip();
+    refreshBadge(); renderLoadResult(); refreshCurrentData(); $("#map-panel").style.display = "none";
+    if (active === "data") show("ship");
+  }
+  function persistShip() { if (STATE.ship) lsSet(SDATA_KEY, { records: STATE.ship.records, items: STATE.ship.items, info: STATE.ship.info }); }
+  function renderShipLoadCard(res) {
+    const S = STATE.ship; if (!S) return;
+    const card = el("div", { class: "card", style: "border:2px solid var(--green)" });
+    card.appendChild(el("h3", {}, [`✅ ${S.info.file} — 출하시멘트 형식으로 인식`]));
+    card.appendChild(el("div", { class: "small", style: "margin:6px 0;line-height:1.7", html: shipInfoHtml(S.info) }));
+    const R = S.info.report;
+    if (R.missing.length && STATE.shipPending) {
+      const box = el("div", { class: "note warn" }); box.appendChild(el("div", {}, ["아래 항목은 열 이름으로 찾지 못했습니다. 파일의 어느 열인지 고르면 추가로 읽고, 다음부터 기억합니다(없으면 그대로 두세요)."]));
+      const picks = {};
+      R.missing.forEach((k) => {
+        const s = el("select", { style: "min-width:12rem" }); s.appendChild(el("option", { value: "-1" }, ["— 없음 —"]));
+        R.headers.forEach((h, j) => { if (h && !Object.values(R.idx).includes(j)) s.appendChild(el("option", { value: j }, [h])); });
+        picks[k] = s; box.appendChild(el("label", { class: "field", style: "display:inline-block;margin:6px 12px 0 0" }, [el("span", {}, [SH.BY[k].name]), s]));
+      });
+      box.appendChild(el("div", { class: "btnrow" }, [el("button", { class: "btn", onclick: () => { const ov = Object.assign({}, STATE.shipPending.overrides); for (const k in picks) if (+picks[k].value >= 0) ov[k] = +picks[k].value; lsSet(STATE.shipPending.sig, ov); shipIngest(STATE.shipPending.sheet, STATE.shipPending.fileName, ov); } }, ["선택한 열로 다시 읽기"])]));
+      card.appendChild(box);
+    }
+    const cb = el("input", { type: "checkbox", ...(lsGet("qmsship_persist") ? { checked: "checked" } : {}) });
+    cb.addEventListener("change", () => { if (cb.checked) { lsSet("qmsship_persist", true); persistShip(); } else { lsDel("qmsship_persist"); lsDel(SDATA_KEY); } });
+    card.appendChild(el("label", { class: "chk small", style: "margin:4px 0" }, [cb, " 다음에 열 때 자동으로 보이게 이 PC 브라우저에 저장(공용 PC에서는 끄세요)"]));
+    card.appendChild(el("div", { class: "btnrow" }, [el("button", { class: "btn", onclick: () => show("ship") }, ["🚢 출하시멘트 모니터링 보기"]), el("button", { class: "btn ghost", onclick: () => { if (!confirm("불러온 출하시멘트 자료를 모두 지울까요?")) return; STATE.ship = null; lsDel(SDATA_KEY); STATE.loadedInfo = null; refreshBadge(); renderLoadResult(); } }, ["출하시멘트 자료 지우기"])]));
+    return card;
+  }
+  // 저장된 자료 복원
+  (function restoreShip() { const d = lsGet(SDATA_KEY); if (d && d.records && d.records.length) { STATE.ship = d; } })();
 
   // ── 엑셀 내보내기 ──
   function sheetFromAoa(aoa) { return XLSX.utils.aoa_to_sheet(aoa); }

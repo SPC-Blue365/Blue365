@@ -80,6 +80,12 @@ Python 설치가 막힌 사내망 PC에서는 **단일 HTML 파일**(`dist/dashb
   **고른 구성은 기억**(localStorage)해 같은 양식은 다음부터 자동. 처리 결과(읽은 행 수·항목·무시한 열·건너뛴 행)는 항상 요약 표시하고
   조용히 버리지 않습니다. 산화물 → 계수치(LSF·SM·IM·Bogue)는 자동 계산
   (※ 실제 LIMS 파일 구조에 따라 인식률이 달라지므로 100%를 보장하지는 않으며, 샘플 파일을 받으면 회귀 시험에 추가합니다)
+- **🚢 출하시멘트 탭**(`dashboard/src/ship.js`): LIMS 출하시멘트 일일 로트 표(채취일·첨가재명칭·석회석/첨가재 비율·LOI·Al₂O₃·MgO·SO₃(XRF)·Cl(XRF)·TA·
+  강도 1/3/7/28일·45㎛·Blaine·주도·Flow·종결시간·비고)를 **올리면 이 형식을 자동 감지**해 17개 핵심 항목을 한눈에 판정(🔴기준 이탈 🟠3σ 이탈
+  🟡9점 연속 치우침 🟢정상)하고, 항목별 추이·관리도·분포·월별·**선박별(1모선 단독 시험만)**·배합별 비교를 보여 줍니다.
+  값 **0은 ‘미시험’**(예: 28일 강도 시험 전)으로 제외, 종결시간 HH:MM→분, 비고의 선박명(마침표·공백·‘수성3’↔‘수성3호’·괄호 주석·쉼표 없이 붙은 이름)을 정규화.
+  1모선 = 단독 시험값, 2모선 이상 = 그날 출항한 배들의 평균값으로 구분하며 기간·첨가재·모선 수 필터 제공. 새 파일을 올리면 같은 LOT는 덮어쓰고 새 날짜는 추가.
+  규격·기준값 초기값(KS L 5201 참고)은 **원문 미확인 추정치**이므로 화면의 ‘기준값 설정’에서 사내 규격으로 수정(브라우저에 기억).
 - 한계(설치형 앱 전용): **자동 LIMS 동기화·무인 알림**, 원료 배합 **자동 최적화**, 재령별 강도 예측, AI 보고서
   (브라우저는 DB 직접 접속·백그라운드 실행이 불가)
 - 계산식은 설치형 앱(Python)과 동일(`dashboard/src/chem.js` ↔ `qms/chemistry.py`·`rawmix.py`·`chromium.py`, 빌드 시 수치 대조)
@@ -243,7 +249,7 @@ scripts/build_definition_workbook.py   관리항목·기준 정의서(엑셀) �
 scripts/build_windows_package.py       사내망(오프라인) Windows 설치 패키지 빌드
 scripts/build_lims_prep_workbook.py    LIMS 연동 준비서(엑셀) 생성
 packaging/windows/          설치 도우미(qms_launcher.py)·자동 감시 실행기·배치 파일·안내서·잠금 파일
-dashboard/src/              오프라인 HTML 대시보드 소스(index.html·styles.css·chem.js·ingest.js·app.js)
+dashboard/src/              오프라인 HTML 대시보드 소스(index.html·styles.css·chem.js·ingest.js·ship.js·app.js)
 scripts/build_dashboard.py  오프라인 HTML 대시보드 빌드(라이브러리·데이터 인라인)
 docs/                       정의서·보고서·샘플·화면
 tests/                      자동 테스트 120건
@@ -278,7 +284,7 @@ tests/                      자동 테스트 120건
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest -q        # 121건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿·대시보드
+python -m pytest -q        # 123건: 화학·SPC·알림·진단·예측·저장·배합·강도·6가크롬·LIMS·AI·화면 13개·설치 패키지·태블릿·대시보드
 ```
 
 ## 로드맵

@@ -52,12 +52,22 @@ def test_sample_payload_is_clean_json():
 
 def test_source_files_have_placeholders():
     html = (SRC / "index.html").read_text(encoding="utf-8")
-    for ph in ("/*__CSS__*/", "/*__PLOTLY__*/", "/*__SHEETJS__*/", "/*__DATA__*/", "/*__CHEM__*/", "/*__INGEST__*/", "/*__APP__*/"):
+    for ph in ("/*__CSS__*/", "/*__PLOTLY__*/", "/*__SHEETJS__*/", "/*__DATA__*/", "/*__CHEM__*/", "/*__INGEST__*/", "/*__SHIP__*/", "/*__APP__*/"):
         assert ph in html, ph
     chem = (SRC / "chem.js").read_text(encoding="utf-8")
     assert "predictClinker" in chem and "bogue" in chem and "requiredDose" in chem
     app = (SRC / "app.js").read_text(encoding="utf-8")
     assert "deriveAll" in app and "loadFile" in app and "구분별 5칸 채우기" in app   # 배합 다원료 UI
+
+
+def test_every_tab_has_a_section():
+    """TABS 에 넣은 화면마다 index.html 에 <section data-tab> 이 있어야 한다(없으면 탭을 열 때 오류)."""
+    html = (SRC / "index.html").read_text(encoding="utf-8")
+    app = (SRC / "app.js").read_text(encoding="utf-8")
+    ids = re.findall(r'\{ id: "(\w+)", label: "[^"]+", render: render\w+ \}', app)
+    assert len(ids) >= 7
+    for i in ids:
+        assert f'data-tab="{i}"' in html, i
 
 
 def test_build_script_inlines_without_leftover_placeholder(tmp_path, monkeypatch):
@@ -67,7 +77,7 @@ def test_build_script_inlines_without_leftover_placeholder(tmp_path, monkeypatch
     html = (SRC / "index.html").read_text(encoding="utf-8")
     parts = {
         "/*__CSS__*/": "body{}", "/*__PLOTLY__*/": "/*p*/", "/*__SHEETJS__*/": "/*x*/",
-        "/*__DATA__*/": '{"a":1}', "/*__CHEM__*/": "/*c*/", "/*__INGEST__*/": "/*i*/", "/*__APP__*/": "/*a*/",
+        "/*__DATA__*/": '{"a":1}', "/*__CHEM__*/": "/*c*/", "/*__INGEST__*/": "/*i*/", "/*__SHIP__*/": "/*s*/", "/*__APP__*/": "/*a*/",
     }
     for ph, val in parts.items():
         assert ph in html
@@ -89,4 +99,18 @@ def test_ingest_engine_node_suite(tmp_path):
     spec_file.write_text(json.dumps(EXP.spec_payload(), ensure_ascii=False), encoding="utf-8")
     r = subprocess.run([node, str(ROOT / "tests" / "js" / "ingest_test.js"), str(spec_file)],
                        capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_ship_module_node_suite():
+    """출하시멘트 LIMS 표 분석 모듈(ship.js) 노드 시험 — node 가 없으면 건너뜀."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node 없음")
+    r = subprocess.run([node, str(ROOT / "tests" / "js" / "ship_test.js")], capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
