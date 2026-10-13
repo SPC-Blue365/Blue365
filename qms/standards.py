@@ -353,7 +353,13 @@ def load_registry(path: Path = USER_STANDARDS_PATH) -> SpecRegistry:
             overrides = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             overrides = {}
-    return SpecRegistry(overrides=overrides)
+    reg = SpecRegistry(overrides=overrides)
+    try:                                                # 사용자가 바꾼 항목 이름·단위(data/labels.json)
+        from .labels import apply_registry
+        apply_registry(reg)
+    except Exception:  # noqa: BLE001 - 이름 설정 파일이 깨져도 계산은 계속
+        pass
+    return reg
 
 
 def save_registry(reg: SpecRegistry, path: Path = USER_STANDARDS_PATH) -> None:

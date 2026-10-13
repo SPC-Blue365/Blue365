@@ -27,7 +27,7 @@ from qms.ui import get_ctx, page_header, refresh
 ctx = get_ctx()
 reg = ctx.registry
 page_header(ctx, "⚙️ 기준·알림 설정")
-tab1, tab2, tab3, tab5, tab4 = st.tabs(["사내 관리기준", "SPC·진단 설정", "알림 채널", "AI(LLM)", "KS 규격 근거"])
+tab1, tab6, tab2, tab3, tab5, tab4 = st.tabs(["사내 관리기준", "✏️ 용어·제목", "SPC·진단 설정", "알림 채널", "AI(LLM)", "KS 규격 근거"])
 
 with tab1:
     st.markdown("**사내 관리기준(하한·상한·목표)** 을 공장 기준으로 수정하세요. KS 값은 규격이므로 수정할 수 없습니다. "
@@ -61,6 +61,73 @@ with tab1:
         st.rerun()
     if c2.button("기본값으로 되돌리기"):
         USER_STANDARDS_PATH.unlink(missing_ok=True)
+        refresh()
+        st.rerun()
+
+with tab6:
+    import re
+    from pathlib import Path
+
+    from qms import labels as L
+    from qms import shipment as S
+
+    st.markdown("화면에 보이는 **메뉴 이름 · 화면 제목 · 항목 이름 · 단위**를 직접 바꿔 저장합니다. 계산·판정에는 영향이 없고, "
+                "‘현재 이름’ 칸을 비우면 기본 이름으로 돌아갑니다. 저장하면 바로 모든 화면에 반영됩니다.")
+    lab = L.load_labels()
+    root = Path(__file__).resolve().parent.parent
+    menus = re.findall(r'L\.menu\("([^"]+)"', (root / "streamlit_app.py").read_text(encoding="utf-8"))
+    pages = []
+    for f in sorted((root / "app_pages").glob("*.py")):
+        pages += re.findall(r'page_header\(ctx, "([^"]+)"', f.read_text(encoding="utf-8"))
+    ship_defaults = {it.key: it for it in S._DEFAULT_ITEMS}
+    st.markdown("##### 메뉴 이름(상단)")
+    m_df = pd.DataFrame([{"기본 이름": m, "현재 이름": lab["menu"].get(m, "")} for m in menus])
+    m_ed = st.data_editor(m_df, hide_index=True, disabled=["기본 이름"], key="lab_menu", width="stretch")
+    st.markdown("##### 화면 제목(남색 띠)")
+    p_df = pd.DataFrame([{"기본 제목": t, "현재 제목": lab["pages"].get(t, "")} for t in pages])
+    p_ed = st.data_editor(p_df, hide_index=True, disabled=["기본 제목"], key="lab_pages", width="stretch")
+    st.markdown("##### 출하시멘트 항목 이름·단위")
+    s_df = pd.DataFrame([{"key": k, "기본 이름": it.name, "기본 단위": it.unit, "현재 이름": lab["ship_items"].get(k, {}).get("name", ""),
+                          "현재 단위": lab["ship_items"].get(k, {}).get("unit", "")} for k, it in ship_defaults.items()])
+    s_ed = st.data_editor(s_df, hide_index=True, disabled=["key", "기본 이름", "기본 단위"], key="lab_ship", width="stretch",
+                          column_config={"key": None})
+    st.markdown("##### 공정 항목 이름·단위")
+    from qms.standards import SpecRegistry
+    base_reg = SpecRegistry()
+    stage_f = st.multiselect("공정 필터", sorted({it.stage for it in base_reg.all()}), default=[], placeholder="전체 공정", key="lab_stage")
+    r_df = pd.DataFrame([{"key": it.key, "공정": it.stage, "기본 이름": it.name, "기본 단위": it.unit,
+                          "현재 이름": lab["items"].get(it.key, {}).get("name", ""), "현재 단위": lab["items"].get(it.key, {}).get("unit", "")}
+                         for it in base_reg.all() if not stage_f or it.stage in stage_f])
+    r_ed = st.data_editor(r_df, hide_index=True, disabled=["key", "공정", "기본 이름", "기본 단위"], key="lab_items", width="stretch",
+                          column_config={"key": None}, height=420)
+    b1, b2 = st.columns(2)
+    if b1.button("용어·제목 저장", type="primary"):
+        new = {"menu": {r["기본 이름"]: r["현재 이름"] for _, r in m_ed.iterrows() if isinstance(r["현재 이름"], str) and r["현재 이름"].strip()},
+               "pages": {r["기본 제목"]: r["현재 제목"] for _, r in p_ed.iterrows() if isinstance(r["현재 제목"], str) and r["현재 제목"].strip()},
+               "ship_items": {}, "items": dict(lab["items"])}
+        for _, r in s_ed.iterrows():
+            e = {}
+            if isinstance(r["현재 이름"], str) and r["현재 이름"].strip():
+                e["name"] = r["현재 이름"].strip()
+            if isinstance(r["현재 단위"], str) and r["현재 단위"].strip():
+                e["unit"] = r["현재 단위"].strip()
+            if e:
+                new["ship_items"][r["key"]] = e
+        for _, r in r_ed.iterrows():                       # 필터로 보이는 항목만 갱신(안 보이는 항목 설정은 유지)
+            e = {}
+            if isinstance(r["현재 이름"], str) and r["현재 이름"].strip():
+                e["name"] = r["현재 이름"].strip()
+            if isinstance(r["현재 단위"], str) and r["현재 단위"].strip():
+                e["unit"] = r["현재 단위"].strip()
+            new["items"].pop(r["key"], None)
+            if e:
+                new["items"][r["key"]] = e
+        L.save_labels(new)
+        refresh()
+        st.success("저장했습니다. 메뉴 이름은 화면을 새로 고치면(F5) 바뀝니다.")
+        st.rerun()
+    if b2.button("모두 기본값으로"):
+        L.save_labels({})
         refresh()
         st.rerun()
 

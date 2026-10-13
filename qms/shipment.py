@@ -77,6 +77,25 @@ ITEMS: tuple[ShipItem, ...] = (
 )
 BY_KEY = {it.key: it for it in ITEMS}
 ITEM_COLS = [it.key for it in ITEMS]
+_DEFAULT_ITEMS = ITEMS
+
+
+def set_item_labels(overrides: dict) -> None:
+    """화면 표시 이름·단위를 바꾼다(qms.labels 의 사용자 설정). 기본값에서 다시 만들어 지운 설정은 기본값으로 복귀."""
+    global ITEMS
+    from dataclasses import replace as _replace
+    new = []
+    for it in _DEFAULT_ITEMS:
+        e = overrides.get(it.key) or {}
+        kw = {}
+        if e.get("name"):
+            kw["name"] = e["name"]
+        if "unit" in e:
+            kw["unit"] = e["unit"]
+        new.append(_replace(it, **kw) if kw else it)
+    ITEMS = tuple(new)
+    BY_KEY.clear()
+    BY_KEY.update({it.key: it for it in ITEMS})
 ROLE_ALIASES = {
     "date": ("채취일", "시료채취일", "채취일자", "시료채취일시", "채취일시"),
     "additive": ("첨가재명칭", "첨가재", "첨가재명", "혼화재명칭", "혼합재명칭"),

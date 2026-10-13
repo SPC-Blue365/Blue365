@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import functools
+import json
 import re
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -231,7 +233,8 @@ def init_demo_if_empty() -> None:
 
 def get_ctx() -> Ctx:
     init_demo_if_empty()
-    return _load(db_mtime(), _mtime(USER_STANDARDS_PATH), _mtime(SETTINGS_PATH), DEMO_FLAG.exists())
+    from .labels import LABELS_PATH
+    return _load(db_mtime(), _mtime(USER_STANDARDS_PATH) + _mtime(LABELS_PATH), _mtime(SETTINGS_PATH), DEMO_FLAG.exists())
 
 
 @dataclass
@@ -537,6 +540,19 @@ def strength_curve_figure(pred: pd.DataFrame, registry: SpecRegistry, product: s
 WEEKDAYS = "월화수목금토일"
 
 
+@functools.lru_cache(maxsize=1)
+def install_info() -> str:
+    """지금 보고 있는 프로그램의 버전·설치 위치(여러 설치본이 있을 때 구별용)."""
+    app = Path(__file__).resolve().parent.parent
+    ver = ""
+    try:
+        man = json.loads((app.parent / "tools" / "manifest.json").read_text(encoding="utf-8"))
+        ver = str(man.get("version", ""))
+    except (OSError, ValueError):
+        pass
+    return f"버전 {ver or '개발용'} · 설치 위치 {app.parent if ver else app}"
+
+
 def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
     """모든 화면 맨 위의 남색 제목 띠: 오늘 날짜·화면 제목·데이터 기간·최근 알림 + 도구(새로고침·태블릿 보기·접속 안내)."""
     tablet_mode()                                     # 스위치를 만들기 전에 자동 판별값을 정해 둔다
@@ -550,6 +566,8 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
     if ctx.demo:
         parts.append("🧪 데모 데이터")
     parts.append("최근 7일 알림 " + " ".join(f"{SEVERITY_ICON[k]}{v}" for k, v in counts.items()))
+    from . import labels as _L
+    title = _L.page(title)
     with st.container(key="qms_hero"):
         left, right = st.columns([5, 1.7], vertical_alignment="top")
         with left:
@@ -567,6 +585,8 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
                                "태블릿·휴대폰 브라우저나 QR 주소로 접속하면 자동으로 켜집니다.")
                 if ctx.demo:
                     st.warning("데모 데이터 사용 중", icon="🧪")
+                st.page_link("app_pages/settings.py", label="✏️ 메뉴·제목·항목 이름 바꾸기", help="설정 → 용어·제목 탭")
+                st.caption(install_info())
             with b2.popover("📲 접속", width="stretch"):
                 tablet_access_panel()
 

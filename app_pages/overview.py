@@ -98,11 +98,18 @@ with left:
             if b.button("진단", key=f"dx_{e.event_id}", help="원인 진단·솔루션 보기"):
                 open_diagnosis(e.event_id)
 with right:
-    st.subheader("28일 압축강도 추이 (1종)")
-    fig = trend_figure(ctx, "phy_s28", "1종", start=end - pd.Timedelta(days=90), height=360)
+    st.subheader("압축강도 추이")
+    r1, r2, r3 = st.columns(3)
+    ages = {"1일": "phy_s1", "3일": "phy_s3", "7일": "phy_s7", "28일": "phy_s28"}
+    age = r1.selectbox("재령", list(ages), index=3, key="ov_age")
+    prod = r2.selectbox("품종", ["1종", "3종"], key="ov_prod")
+    days = {"30일": 30, "90일": 90, "180일": 180, "1년": 365}[r3.selectbox("기간", ["30일", "90일", "180일", "1년"], index=1, key="ov_days")]
+    fig = trend_figure(ctx, ages[age], prod, start=end - pd.Timedelta(days=days), height=340)
     if fig:
-        st.plotly_chart(fig, key="ov_s28")
-        st.caption("실선 = 실측, 점선 = 예측(28일 미도래 로트, 추정치). 음영 = 경고/위험 이벤트 구간.")
+        st.plotly_chart(fig, key="ov_strength")
+        st.caption("실선 = 실측, 점선 = 예측(재령 미도래 로트, 추정치). 음영 = 경고/위험 이벤트 구간. 여러 항목을 함께 보려면 📉 그래프 보기.")
+    else:
+        st.caption(f"{prod} {age} 강도 자료가 없습니다.")
 
 # ── 핵심 공정 지표 ─────────────────────────────────────────────────────
 st.subheader("핵심 공정 지표 (최근 14일)")

@@ -250,3 +250,39 @@ def test_monitor_import_folder_handles_shipment_and_dest(tmp_path):
     assert sorted(p.name for p in (tmp_path / "processed").iterdir()) == ["lims_출하.xlsx", "운항실적.xlsx"]
     S.clear_shipment()
     D.DEST_DB_PATH.unlink(missing_ok=True)
+
+
+def test_labels_rename_items_and_titles_then_reset():
+    from qms import labels as L
+    from qms.standards import load_registry
+    L.save_labels({"menu": {"출하시멘트": "출하 품질"}, "pages": {"🚢 출하시멘트 모니터링": "🚢 출하 품질 현황"},
+                   "ship_items": {"s28": {"name": "28일 강도(KS)", "unit": "N/mm²"}}, "items": {"cem_blaine": {"name": "비표면적"}}})
+    lab = L.load_labels()
+    assert L.menu("출하시멘트", lab) == "출하 품질" and L.menu("종합 현황", lab) == "종합 현황"
+    assert L.page("🚢 출하시멘트 모니터링", lab) == "🚢 출하 품질 현황"
+    L.apply_shipment(lab)
+    assert S.BY_KEY["s28"].name == "28일 강도(KS)" and S.BY_KEY["s28"].unit == "N/mm²" and S.BY_KEY["s3"].name == "압축강도 3일"
+    assert next(it for it in S.ITEMS if it.key == "s28").name == "28일 강도(KS)"
+    assert load_registry()["cem_blaine"].name == "비표면적"
+    L.save_labels({})                                         # 지우면 기본값
+    L.apply_shipment()
+    assert S.BY_KEY["s28"].name == "압축강도 28일" and load_registry()["cem_blaine"].name != "비표면적"
+
+
+def test_chart_helpers_and_saved_views():
+    from qms import charts as CH
+    idx = pd.date_range("2026-01-01", periods=60, freq="12h")
+    s = pd.Series(np.arange(60, dtype=float), index=idx)
+    d = CH.aggregate(s, CH.AGGS["일 평균"])
+    assert len(d) == 30 and d.iloc[0] == 0.5
+    assert len(CH.aggregate(s, CH.AGGS["월 평균"])) == 1
+    z = CH.zscore(d)
+    assert abs(z.mean()) < 1e-9 and abs(z.std(ddof=1) - 1) < 1e-9
+    fig = CH.item_figure(d, "시험", "MPa", ma=5, limits={"lsl": 3.0, "usl": pd.Series(20.0, index=d.index)})
+    assert len(fig.data) == 3                                  # 값 + 이동평균 + 상한(계단선), 하한은 수평선
+    ov = CH.overlay_figure([("a", "MPa", d), ("b", "%", d * 2)], standardize=True)
+    assert len(ov.data) == 2 and ov.data[0].line.color == CH.SERIES[0] and ov.data[1].line.color == CH.SERIES[1]
+    CH.save_view({"name": "강도", "state": {"cv_ship_keys": ["s1", "s28"]}})
+    CH.save_view({"name": "강도", "state": {"cv_ship_keys": ["s3"]}})          # 같은 이름은 덮어씀
+    assert [v["state"]["cv_ship_keys"] for v in CH.load_views()] == [["s3"]]
+    assert CH.delete_view("강도") == []

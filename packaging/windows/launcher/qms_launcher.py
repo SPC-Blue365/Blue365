@@ -140,7 +140,7 @@ def page_titles() -> dict[str, str]:
         src = (APP / "streamlit_app.py").read_text(encoding="utf-8")
     except OSError:
         return {}
-    return dict(re.findall(r'st\.Page\("app_pages/(\w+)\.py",\s*title="([^"]+)"', src))
+    return dict(re.findall(r'st\.Page\("app_pages/(\w+)\.py",\s*title=(?:L\.menu\()?"([^"]+)"', src))
 
 
 # ───────────────────────────── 경로·분할 파일 ─────────────────────────────
@@ -663,7 +663,7 @@ def cmd_run(args) -> int:
             print(f"   {'다른 PC에서 접속 :' if i == 0 else ' ' * 18} http://{ip}:{port}")
         print(f"   {'다른 PC에서 접속 :' if not ips else ' ' * 18} http://{socket.gethostname()}:{port}")
         if ips:
-            print(f"   태블릿·휴대폰    : http://{ips[0]}:{port}/?view=tablet  (QR 코드: 프로그램 왼쪽 메뉴 맨 아래)")
+            print(f"   태블릿·휴대폰    : http://{ips[0]}:{port}/?view=tablet  (QR 코드: 화면 오른쪽 위 📲 접속)")
         print(f"   접속 비밀번호    : {'설정됨' if access_password_set() else '미설정 - 사내망 누구나 접속·설정 변경 가능(README 6항)'}")
         print("   접속이 안 되면   : 4_FIREWALL_ADMIN.bat(관리자) 실행 또는 IT에 TCP 인바운드 허용 요청")
     print(f"   종료             : 이 창을 닫거나 Ctrl+C\n{line}\n", flush=True)
