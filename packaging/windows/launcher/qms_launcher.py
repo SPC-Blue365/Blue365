@@ -44,6 +44,7 @@ TOOLS = ROOT / "tools"
 LOGS = ROOT / "logs"
 BACKUPS = ROOT / "backups"
 MANIFEST_PATH = TOOLS / "manifest.json"
+SERVER_LOCK = TOOLS / "server.json"          # 이 설치본이 띄운 서버(포트·PID) — 다른 위치의 QMS와 구별
 SETUP_MARK = TOOLS / "setup_ok.json"
 TOP = "Blue365_QMS"                     # 분할 ZIP 안의 최상위 폴더명
 
@@ -192,8 +193,10 @@ def sha256_file(path: Path) -> str:
 
 
 def search_dirs() -> list[Path]:
+    """분할 ZIP을 찾을 기준 폴더: 설치 폴더와 상위 3단계, 현재 폴더, 다운로드·바탕화면·문서."""
     home = Path.home()
-    cands = [ROOT, ROOT.parent, ROOT.parent.parent, Path.cwd(), home / "Downloads", home / "Desktop"]
+    cands = [ROOT, ROOT.parent, ROOT.parent.parent, ROOT.parent.parent.parent, Path.cwd(),
+             home / "Downloads", home / "Desktop", home / "Documents"]
     out: list[Path] = []
     for d in cands:
         try:
@@ -205,8 +208,23 @@ def search_dirs() -> list[Path]:
     return out
 
 
+def _globs(d: Path, pattern: str, depth: int = 3):
+    """d 아래 depth 단계까지 pattern 과 맞는 경로(설치 폴더 안은 제외)."""
+    for k in range(depth + 1):
+        try:
+            for p in sorted(d.glob("/".join(["*"] * k + [pattern]))):
+                try:
+                    rp = p.resolve()
+                except OSError:
+                    continue
+                if ROOT.resolve() not in rp.parents:
+                    yield p
+        except OSError:
+            continue
+
+
 def find_part_file(part: dict, dirs: list[Path] | None = None) -> Path | None:
-    """분할 ZIP 찾기: 설치 폴더·상위 폴더·다운로드 폴더 순. 브라우저가 '(1)'을 붙인 이름도 크기로 확인."""
+    """분할 ZIP 찾기: 설치 폴더·상위 폴더·다운로드 폴더(하위 폴더 3단계까지). 브라우저가 '(1)'을 붙인 이름도 크기로 확인."""
     dirs = dirs if dirs is not None else search_dirs()
     name = part["file"]
     for d in dirs:
@@ -214,10 +232,40 @@ def find_part_file(part: dict, dirs: list[Path] | None = None) -> Path | None:
             return d / name
     stem = Path(name).stem
     for d in dirs:
-        for p in sorted(d.glob(f"{stem}*.zip")):
+        for p in _globs(d, f"{stem}*.zip"):
             if p.is_file() and p.stat().st_size == part.get("size"):
                 return p
     return None
+
+
+def find_extracted_part(part: dict, dirs: list[Path] | None = None) -> Path | None:
+    """구성요소 ZIP을 따로 압축 해제해 둔 폴더 찾기(…/Blue365_QMS/<완료 표식>이 있고 내용이 맞는 곳). 반환: 그 Blue365_QMS 폴더."""
+    dirs = dirs if dirs is not None else search_dirs()
+    marker = part.get("marker", "")
+    if not marker:
+        return None
+    for d in dirs:
+        for m in _globs(d, f"{TOP}/{marker}", depth=3):
+            top = m
+            for _ in Path(marker).parts:
+                top = top.parent
+            if top.resolve() != ROOT.resolve() and part_installed(part, top):
+                return top
+    return None
+
+
+def merge_extracted(src: Path, say=print, root: Path | None = None) -> int:
+    """따로 풀어 둔 구성요소 폴더를 설치 폴더로 복사(같은 파일은 덮어씀)."""
+    root = (root or ROOT).resolve()
+    files = [p for p in src.rglob("*") if p.is_file()]
+    step = max(1, len(files) // 10)
+    for n, f in enumerate(files, 1):
+        target = root / f.relative_to(src)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, target)
+        if n % step == 0 or n == len(files):
+            say(f"      {n * 100 // len(files):3d}%  ({n:,}/{len(files):,}개 파일)")
+    return len(files)
 
 
 def extract_part(zpath: Path, say=print, root: Path | None = None) -> int:
@@ -338,6 +386,28 @@ def port_status(port: int) -> str:
     return "qms" if health_ok(port) else "other"
 
 
+def _pid_alive(pid: int) -> bool:
+    if not pid:
+        return False
+    if IS_WIN:
+        rc, out = run_cmd(["tasklist", "/FI", f"PID eq {pid}", "/NH"], timeout=15)
+        return rc == 0 and str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def running_is_ours(port: int) -> bool:
+    """포트의 QMS가 이 설치본이 띄운 서버인가? (아니면 다른 위치의 이전 설치본)"""
+    try:
+        lock = json.loads(SERVER_LOCK.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return int(lock.get("port", 0)) == port and _pid_alive(int(lock.get("pid", 0)))
+
+
 def is_admin() -> bool:
     if not IS_WIN:
         return hasattr(os, "geteuid") and os.geteuid() == 0
@@ -370,10 +440,13 @@ def cmd_setup(args) -> int:
     if any(level == "error" for level, _ in issues):
         say.save("setup")
         return 2
-    if port_status(DEFAULT_PORT) == "qms":           # 실행 중이면 사용 중인 파일을 덮어쓸 수 없음
-        say("  [중단] Blue365 QMS가 실행 중입니다. 실행 창(2_RUN·3_RUN_SHARE)을 닫은 뒤 다시 실행하세요.")
-        say.save("setup")
-        return 2
+    if port_status(DEFAULT_PORT) == "qms":
+        if running_is_ours(DEFAULT_PORT):            # 이 설치본이 실행 중이면 사용 중인 파일을 덮어쓸 수 없음
+            say("  [중단] 이 폴더의 Blue365 QMS가 실행 중입니다. 실행 창(2_RUN·3_RUN_SHARE)을 닫은 뒤 다시 실행하세요.")
+            say.save("setup")
+            return 2
+        say(f"  [주의] 다른 위치(이전 설치본)의 QMS가 포트 {DEFAULT_PORT}에서 실행 중입니다. 설치는 계속합니다. "
+            "끝나면 이전 QMS의 검은 창을 닫고 2_RUN.bat 을 실행하세요(닫지 않으면 빈 포트로 따로 실행됩니다).")
 
     core = {"marker": man.get("core_marker", ""), "expect": man.get("core_expect", {})}
     if man.get("core_marker") and not part_installed(core):
@@ -390,6 +463,12 @@ def cmd_setup(args) -> int:
             continue
         z = find_part_file(part)
         if z is None:
+            ext = find_extracted_part(part)            # ZIP을 따로 압축 해제해 둔 경우 그 폴더에서 가져온다
+            if ext is not None:
+                say(f"  - {part['file']}: 압축이 풀린 폴더에서 가져옴 ({ext})")
+                merge_extracted(ext, say)
+                if part_installed(part):
+                    continue
             say(f"  - {part['file']}: 파일을 찾을 수 없음")
             missing.append(part["file"])
             continue
@@ -405,10 +484,11 @@ def cmd_setup(args) -> int:
             missing.append(part["file"])
     if missing:
         say()
-        say("  [중단] 아래 파일이 필요합니다. 받은 ZIP 파일을 이 폴더에 복사한 뒤 1_SETUP.bat 을 다시 실행하세요.")
+        say("  [중단] 아래 파일이 필요합니다. 받은 ZIP 파일(압축을 풀지 않은 그대로)을 이 폴더에 복사한 뒤 1_SETUP.bat 을 다시 실행하세요.")
         for m in missing:
             say(f"     · {m}")
         say(f"     복사할 위치: {ROOT}")
+        say("     찾아본 폴더(하위 3단계 포함): " + ", ".join(str(d) for d in search_dirs()))
         say.save("setup")
         return 3
 
@@ -522,6 +602,10 @@ def cmd_run(args) -> int:
         print()
     port = args.port
     status = port_status(port)
+    if status == "qms" and not running_is_ours(port):
+        print(f"[알림] 다른 위치(이전 설치본)의 QMS가 포트 {port}에서 실행 중입니다. 이 설치본은 빈 포트로 따로 실행합니다.")
+        print("       이전 QMS가 필요 없으면 그 검은 창을 닫으세요.")
+        status = "other"
     if status == "qms":
         print(f"QMS가 이미 실행 중입니다 → http://localhost:{port}")
         if args.share:
@@ -545,6 +629,11 @@ def cmd_run(args) -> int:
     proc = subprocess.Popen(streamlit_cmd(port, args.share), cwd=APP, env=child_env(), stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
     threading.Thread(target=_pump, args=(proc, log_path), daemon=True).start()
+    try:
+        SERVER_LOCK.write_text(json.dumps({"port": port, "pid": proc.pid, "root": str(ROOT),
+                                           "version": load_manifest().get("version")}), encoding="utf-8")
+    except OSError:
+        pass
     t0 = time.time()
     while not health_ok(port):
         if proc.poll() is not None or time.time() - t0 > 240:
@@ -617,7 +706,8 @@ def cmd_check(args) -> int:
     say("  구성요소:")
     ok = import_check(say)
     st = port_status(DEFAULT_PORT)
-    say(f"  포트 {DEFAULT_PORT}  : {({'free': '사용 가능', 'qms': 'QMS 실행 중', 'other': '다른 프로그램이 사용 중'})[st]}")
+    qms_txt = "QMS 실행 중(이 폴더)" if st == "qms" and running_is_ours(DEFAULT_PORT) else "QMS 실행 중(다른 위치의 설치본)"
+    say(f"  포트 {DEFAULT_PORT}  : {({'free': '사용 가능', 'qms': qms_txt, 'other': '다른 프로그램이 사용 중'})[st]}")
     say(f"  IP 주소    : {', '.join(local_ipv4()) or '확인 불가'}")
     if IS_WIN:
         rc, _ = run_cmd(["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_PORT_RULE.format(port=DEFAULT_PORT)}"])

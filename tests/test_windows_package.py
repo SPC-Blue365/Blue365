@@ -195,3 +195,37 @@ def test_library_zips_are_reproducible(tmp_path):
         assert z.namelist()[-1] == "Blue365_QMS/tools/parts/2of2.done"     # 완료 표식은 맨 마지막
     assert B.libs_id(entries, 28_000_000) == B.libs_id(list(reversed(entries)), 28_000_000)
     assert B.libs_id(entries, 28_000_000) != B.libs_id(entries, 95_000_000)  # 분할 한도가 다르면 다른 묶음
+
+
+def test_setup_finds_parts_in_nested_folders_and_already_extracted_folders(fake_root, tmp_path, monkeypatch):
+    """사용자 사례: 1번 ZIP을 'Blue365_QMS_win64_..._1of6' 폴더 안에 풀고, 나머지 ZIP은 그대로 두거나 각각 압축을 풀어 둔 경우."""
+    # ① 하위 폴더(2단계 아래)에 있는 ZIP도 찾는다
+    deep = tmp_path / "받은파일" / "QMS"
+    deep.mkdir(parents=True)
+    zp = deep / "Blue365_QMS_win64_libs-aaaa_2of2.zip"
+    part = _part_zip(zp, "aaaa", [("Blue365_QMS/py/Lib/site-packages/foo/__init__.py", "x = 1")])
+    assert L.find_part_file(part, [tmp_path]) == zp
+    # ② ZIP을 따로 압축 해제해 둔 폴더(…/libs_2of2/Blue365_QMS/…)를 찾아 설치 폴더로 합친다
+    ext = tmp_path / "Blue365_QMS_win64_libs-aaaa_2of2"
+    with zipfile.ZipFile(zp) as z:
+        z.extractall(ext)
+    zp.unlink()
+    assert L.find_part_file(part, [tmp_path]) is None
+    found = L.find_extracted_part(part, [tmp_path])
+    assert found == ext / "Blue365_QMS"
+    assert not L.part_installed(part)
+    L.merge_extracted(found, say=lambda m: None)
+    assert L.part_installed(part) and (fake_root / "py/Lib/site-packages/foo/__init__.py").read_text() == "x = 1"
+    # 설치 폴더 자신은 '따로 풀어 둔 폴더'로 보지 않음
+    assert L.find_extracted_part(part, [fake_root.parent]) in (None, ext / "Blue365_QMS")
+
+
+def test_other_install_on_same_port_does_not_block(fake_root, monkeypatch):
+    """다른 위치의 이전 설치본이 8501에서 실행 중이어도 이 설치본의 설치·실행을 막지 않는다."""
+    monkeypatch.setattr(L, "SERVER_LOCK", fake_root / "tools" / "server.json")
+    assert not L.running_is_ours(8501)                              # 잠금 파일 없음 = 다른 설치본
+    import os
+    L.SERVER_LOCK.write_text(json.dumps({"port": 8501, "pid": os.getpid()}), encoding="utf-8")
+    assert L.running_is_ours(8501) and not L.running_is_ours(8502)
+    L.SERVER_LOCK.write_text(json.dumps({"port": 8501, "pid": 99999999}), encoding="utf-8")
+    assert not L.running_is_ours(8501)                              # 이미 끝난 프로세스
