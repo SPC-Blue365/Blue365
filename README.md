@@ -25,6 +25,10 @@ KS 규격·사내 관리기준·SPC 판정규칙을 벗어나면 **자동으로 
 
 필요 환경: **Python 3.11 이상**(3.11·3.13에서 확인), Streamlit 1.55 이상(requirements.txt로 자동 설치).
 
+> **Windows에서 가장 쉬운 방법: 코드 폴더의 `RUN_CODE.bat` 더블클릭.** 폴더·파이썬·구성요소를 점검해 문제를 한국어로 알려 주고 실행합니다. 이미 설치한 QMS 패키지의 파이썬(`Blue365_QMS\py\python.exe`)이 코드 폴더 옆(`..\Blue365_QMS`)이나 `C:\Blue365_QMS`에 있으면 자동으로 사용하므로 **인터넷·pip 설치가 필요 없습니다**(다른 위치면 `set QMS_PY=...\py\python.exe` 후 실행).
+>
+> ⚠️ 코드는 **`ccr-4c0c953d-ll1jyd` 브랜치**에서 받으세요. GitHub 첫 화면 기본값(`main`)에는 처음 만든 채팅 예제만 있습니다.
+
 ```bash
 # Windows (명령 프롬프트)                     # macOS·Linux
 py -3.11 -m venv .venv                       # python3 -m venv .venv
