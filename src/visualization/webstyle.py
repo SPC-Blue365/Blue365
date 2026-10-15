@@ -1,4 +1,9 @@
-"""리포트 공통 스타일 [Synthesis-Agent].
+"""리포트 공통 스타일 [Synthesis-Agent] — ⚠️ **2026-10-15 이후 사용하지 않음(보관용)**.
+
+산출물은 모두 `portalstyle.py`(사내 포털 스타일)로 옮겨갔다. 이 파일은 **되돌릴 수 있도록**
+남겨 둔 것이며, 토큰 이름이 같으므로 `from ... import STYLE` 한 줄만 바꾸면 복귀한다.
+새 작업은 `portalstyle.py` 에서 한다.
+
 
 `make_brief.py`(현황)와 `make_prescription.py`(처방)가 **같은 시각 언어**를 쓰도록
 토큰과 기본 컴포넌트를 한곳에 둔다.

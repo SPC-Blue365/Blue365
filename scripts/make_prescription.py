@@ -30,7 +30,7 @@ from src.matching.inventory import zone_inventory                   # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources         # noqa: E402
 from src.matching import piles                                    # noqa: E402
 from src.optimization.prescribe import prescribe, zone_balance_health  # noqa: E402
-from src.visualization.webstyle import STYLE                        # noqa: E402
+from src.visualization.portalstyle import STYLE, foot, hero, nav                        # noqa: E402
 
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
 E = html.escape
@@ -187,7 +187,9 @@ def build() -> str:
     attr_x_lo, attr_x_hi = attr_lo / TOL, attr_hi / TOL
     orders_txt = "기록된 칸 근처 · 더미 전체 혼합 · 먼저 쌓은 것부터 · 나중 것부터"
 
-    return f"""<title>배합 처방서</title>
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>배합 처방서</title>
 <style>{STYLE}
 .pcard {{ background:var(--surface); border:1px solid var(--rule); border-radius:3px;
           padding:20px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:12px;
@@ -208,19 +210,17 @@ def build() -> str:
 .verdict h3 {{ margin:0 0 8px; font-size:16px; color:var(--bad); }}
 .verdict p {{ margin:0 0 8px; font-size:15px; }}
 .verdict p:last-child {{ margin-bottom:0; }}
-</style>
+</style></head><body>
+{nav(active="배합 처방")}
+{hero(
+  eyebrow="석회석 광산 → OSP → 야드 · 최종 산출",
+  title=f"어느 구역에서 <em>몇 톤</em>을 뽑으면<br>{TARGET}±{TOL}% 에 드는가",
+  lead="계산한 결과입니다. 계산은 나왔지만 지금은 그대로 쓰기에 이릅니다 — "
+       "넣는 구역 품위를 정확히 모르기 때문이며, 그 이유를 아래에 적었습니다.",
+  strip=f"기준시각 {max(p.at for p in lines):%Y-%m-%d %H:%M} · "
+        f"생성 {datetime.now():%Y-%m-%d %H:%M}")}
 
-<div class="wrap">
-
-<div class="top">
-  <div class="eyebrow">석회석 광산 → OSP → 야드 · 최종 산출</div>
-  <h1>배합 처방서</h1>
-  <p class="thesis">어느 구역에서 몇 톤을 몇 시간 동안 뽑으면 목표 품위
-    <strong>{TARGET}±{TOL}%</strong>에 드는지 계산한 결과입니다.
-    계산은 나왔지만 <strong>지금은 그대로 쓰기에 이릅니다</strong> — 이유를 아래에 적었습니다.</p>
-  <div class="meta">기준시각 {max(p.at for p in lines):%Y-%m-%d %H:%M} ·
-    생성 {datetime.now():%Y-%m-%d %H:%M}</div>
-</div>
+<div class="wrap doc">
 
 <section>
   <h2>처 방</h2>
@@ -309,6 +309,8 @@ def build() -> str:
 </footer>
 
 </div>
+{foot("석회석 광산–야드 품위(CaO) 매칭 및 추적 시스템 · SAMPYO")}
+</body></html>
 """
 
 

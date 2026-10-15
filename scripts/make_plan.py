@@ -32,7 +32,7 @@ from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE               # noqa: E
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                               # noqa: E402
 from src.optimization.prescribe import prescribe, zone_balance_health  # noqa: E402
-from src.visualization.webstyle import STYLE                           # noqa: E402
+from src.visualization.portalstyle import STYLE, foot, hero, nav        # noqa: E402
 
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
 E = html.escape
@@ -326,7 +326,9 @@ def build(qualitative: bool = False) -> str:
         f"<td class='c2'>{E(cost)}</td><td class='c2'><b>{E(eff)}</b></td></tr>"
         for i, (t, d, cost, eff) in enumerate(asks))
 
-    return f"""<title>석회석 품위 관리 체계 구축 계획</title>
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>석회석 품위 관리 체계 구축 계획</title>
 <style>{STYLE}
 .goalbox {{ background:var(--accent-soft); border:1px solid var(--accent-2);
             border-radius:var(--radius); padding:20px 22px;
@@ -349,18 +351,17 @@ td.c2 {{ text-align:center; white-space:nowrap; font-size:12px; color:var(--ink-
 .qv {{ font-size:21px; font-weight:600; letter-spacing:-.01em; line-height:1.2; }}
 .k.good .qv {{ color:var(--good); }} .k.bad .qv {{ color:var(--bad); }}
 .k.warn .qv {{ color:var(--warn); }}
-</style>
+</style></head><body>
+{nav(active="계획서")}
+{hero(
+  eyebrow="석회석 품위 관리 체계 · 추진 계획",
+  title="“지금 어느 구역에서 <em>몇 톤</em>을 뽑아야 하는가”<br>에 답하는 체계",
+  lead=f"석회석 야드 품위를 {TARGET}% ± {TOL} 로 안정시키는 것이 목표입니다. 지금은 야드에 "
+       "실린 뒤에야 품위를 알지만, 이 체계가 서면 뽑기 전에 알고, 원하는 값에 맞춰 뽑을 수 "
+       "있게 됩니다.",
+  strip=meta_txt)}
 
-<div class="wrap">
-
-<div class="top">
-  <div class="eyebrow">석회석 품위 관리 체계 · 추진 계획</div>
-  <h1>“지금 어느 구역에서 몇 톤을 뽑아야 하는가”에 답하는 체계</h1>
-  <p class="thesis">석회석 야드 품위를 <strong>{TARGET}% ± {TOL}</strong>로 안정시키는 것이 목표입니다.
-    지금은 야드에 실린 뒤에야 품위를 알지만, 이 체계가 서면 <strong>뽑기 전에 알고, 원하는 값에
-    맞춰 뽑을 수</strong> 있게 됩니다.</p>
-  <div class="meta">{meta_txt}</div>
-</div>
+<div class="wrap doc">
 
 <section>
   <h2>만들려는 것</h2>
@@ -428,6 +429,8 @@ td.c2 {{ text-align:center; white-space:nowrap; font-size:12px; color:var(--ink-
 <footer>{foot_txt}</footer>
 
 </div>
+{foot("석회석 광산–야드 품위(CaO) 매칭 및 추적 시스템 · SAMPYO")}
+</body></html>
 """
 
 

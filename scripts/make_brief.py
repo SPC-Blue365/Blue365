@@ -31,7 +31,7 @@ from src.matching import pipeline as P2                        # noqa: E402
 from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE         # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                         # noqa: E402
-from src.visualization.webstyle import STYLE                     # noqa: E402
+from src.visualization.portalstyle import STYLE, foot, hero, nav  # noqa: E402
 
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
 E = html.escape
@@ -315,20 +315,21 @@ def build() -> str:
     period = (f"{min(v['lo'] for v in ystats.values()):%Y-%m-%d}"
               f" ~ {max(v['hi'] for v in ystats.values()):%Y-%m-%d}")
 
-    return f"""<title>석회석 품위 추적 현황</title>
-<style>{STYLE}</style>
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>석회석 품위 추적 현황</title>
+<style>{STYLE}</style></head><body>
+{nav(active="현황 브리프")}
+{hero(
+  eyebrow="석회석 광산 → OSP → 야드",
+  title="평균은 닿았고,<br><em>흔들림</em>이 남았습니다",
+  lead=f"야드 품위의 평균은 목표에 거의 닿았습니다. 문제는 흔들림입니다 — "
+       f"편차가 목표의 {rep['std']/TOL:.1f}배라, 목표 구간 안에 있던 시간은 "
+       f"{rep['inband']:.0f}%에 그칩니다.",
+  strip=f"데이터 기간 {E(period)} · 야드 측정 "
+        f"{sum(v['n'] for v in ystats.values()):,}건 · 생성 {datetime.now():%Y-%m-%d %H:%M}")}
 
-<div class="wrap">
-
-<div class="top">
-  <div class="eyebrow">석회석 광산 → OSP → 야드</div>
-  <h1>석회석 품위 추적 현황</h1>
-  <p class="thesis">야드 품위의 <strong>평균은 목표에 거의 닿았습니다</strong>. 문제는
-    <strong>흔들림</strong>입니다 — 편차가 목표의 {rep['std']/TOL:.1f}배라, 목표 구간 안에 있던
-    시간은 {rep['inband']:.0f}%에 그칩니다.</p>
-  <div class="meta">데이터 기간 {E(period)} · 야드 측정 {sum(v['n'] for v in ystats.values()):,}건
-    · 생성 {datetime.now():%Y-%m-%d %H:%M}</div>
-</div>
+<div class="wrap doc">
 
 <div class="kpis">{kpis}</div>
 
@@ -470,6 +471,8 @@ def build() -> str:
 </footer>
 
 </div>
+{foot("석회석 광산–야드 품위(CaO) 매칭 및 추적 시스템 · SAMPYO")}
+</body></html>
 """
 
 

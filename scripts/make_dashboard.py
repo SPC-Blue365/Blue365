@@ -33,7 +33,7 @@ from src.matching import pipeline as MP                         # noqa: E402
 from src.matching.inventory import zone_inventory               # noqa: E402
 from src.models.dataset import RAW_DIR, load_osp_stock, load_sources  # noqa: E402
 from src.visualization import dashboard_data as D               # noqa: E402
-from src.visualization.webstyle import STYLE                    # noqa: E402
+from src.visualization.portalstyle import STYLE, foot, hero, nav  # noqa: E402
 
 E = html.escape
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
@@ -73,42 +73,29 @@ def build() -> str:
     )
     js = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
-    return f"""<title>석회석 품질·재고 대시보드</title>
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>석회석 품질·재고 대시보드</title>
 <style>{STYLE}
-.wrap {{ max-width:1320px; padding:20px 18px 56px; gap:20px; }}
+/* 패널 모양·칩·배지·격자는 포털 스타일(portalstyle.py)이 맡는다. 여기에는 대시보드
+   고유 요소(상단 필터 바·게이지·구역 막대)만 남긴다. */
 .bar {{ position:sticky; top:0; z-index:20; background:var(--surface);
         border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
-        padding:11px 14px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }}
+        padding:10px 13px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }}
 .bar .grp {{ display:inline-flex; gap:4px; }}
-.chip {{ appearance:none; border:1px solid var(--line-2); background:var(--surface);
-         border-radius:999px; padding:5px 13px; font-size:12.5px; cursor:pointer;
-         color:var(--ink-2); font-family:inherit; }}
-.chip[aria-pressed="true"] {{ background:var(--accent-soft); border-color:var(--accent-2);
-                              color:var(--accent-ink); font-weight:600; }}
 .bar .sp {{ margin-left:auto; font-size:11.5px; color:var(--ink-3); }}
-.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }}
-.grid.wide {{ grid-template-columns:1fr; }}
-.panel {{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
-          box-shadow:var(--shadow); padding:15px 17px 17px; min-width:0;
-          display:flex; flex-direction:column; gap:9px; }}
-.panel > h3 {{ margin:0; font-size:13px; font-weight:600; letter-spacing:-.01em;
-               display:flex; align-items:center; gap:9px; flex-wrap:wrap; }}
-.panel .hint {{ font-size:11.5px; color:var(--ink-3); margin:0; line-height:1.55; }}
-.tag {{ font-size:10.5px; font-weight:600; padding:2px 9px; border-radius:999px;
-        border:1px solid currentColor; white-space:nowrap; }}
-.tag.good {{ color:var(--good); }} .tag.warn {{ color:var(--warn); }}
-.tag.bad {{ color:var(--bad); }} .tag.mute {{ color:var(--ink-3); }}
 .statrow {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:10px; }}
 .stat .v {{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;
             font-size:19px; font-weight:600; letter-spacing:-.02em; }}
 .stat .v small {{ font-size:11.5px; font-weight:400; color:var(--ink-2);
-                  font-family:'IBM Plex Sans KR',sans-serif; margin-left:1px; }}
-.stat .l {{ font-size:10px; letter-spacing:.07em; text-transform:uppercase;
-            color:var(--ink-3); font-weight:600; margin-top:2px; }}
+                  font-family:'Noto Sans KR',sans-serif; margin-left:1px; }}
+.stat .l {{ font-size:10.5px; letter-spacing:.03em; color:var(--ink-3);
+            font-weight:600; margin-top:2px; }}
 .v.good {{ color:var(--good); }} .v.bad {{ color:var(--bad); }} .v.warn {{ color:var(--warn); }}
 .gauge {{ height:9px; border-radius:99px; background:var(--surface-3); overflow:hidden; }}
 .gauge i {{ display:block; height:100%; background:var(--accent); }}
-.tbl {{ overflow:auto; max-height:380px; border:1px solid var(--line); border-radius:8px; }}
+.tbl {{ overflow:auto; max-height:380px; border:1px solid var(--line);
+        border-radius:var(--radius); }}
 .tbl table {{ margin:0; border:0; border-radius:0; }}
 .tbl th {{ position:sticky; top:0; z-index:1; }}
 .zbar {{ display:flex; align-items:center; gap:8px; font-size:12px; }}
@@ -121,17 +108,21 @@ def build() -> str:
 .empty {{ color:var(--ink-3); font-size:12.5px; padding:14px 0; text-align:center; }}
 @media (max-width:640px) {{
   .wrap {{ padding:14px 12px 40px; gap:14px; }}
-  .bar {{ padding:9px 10px; }} .chip {{ padding:5px 10px; font-size:12px; }}
-  .grid {{ grid-template-columns:1fr; gap:12px; }}
+  .bar {{ padding:9px 10px; }} .chip {{ padding:4px 10px; font-size:12px; }}
 }}
-</style>
+</style></head><body>
+{nav(active="운영 대시보드")}
+{hero(
+  eyebrow="석회석 광산 → OSP → 야드 · 운영 대시보드",
+  title="품질 · 재고 현황",
+  lead="야드 품위와 OSP 재고를 한 화면에서 봅니다. 위 필터로 기간과 라인을 바꾸면 "
+       "아래 모든 그래프와 표가 함께 움직입니다.",
+  strip=f"생성 {payload['built']}",
+  today=datetime.now().strftime("%Y-%m-%d"),
+  quick=[("배합 처방", "flask", "cards"), ("품위 추이", "chart", "c-trend"),
+         ("구역 재고", "grid", "c-zone"), ("최근 기록", "doc", "rec-n")])}
 
 <div class="wrap">
-
-<div class="top" style="border:0;padding-bottom:0">
-  <div class="eyebrow">석회석 광산 → OSP → 야드 · 운영 대시보드</div>
-  <h1>품질 · 재고 현황</h1>
-</div>
 
 <div class="bar" role="toolbar" aria-label="기간과 라인 선택">
   <span style="font-size:11.5px;color:var(--ink-3);font-weight:600">기간</span>
@@ -149,7 +140,7 @@ def build() -> str:
 <div id="cards" class="grid"></div>
 
 <div class="grid wide">
-  <div class="panel">
+  <div class="panel plain">
     <h3>야드 품위 추이 <span class="tag mute">일별 평균 · 음영 = 규격</span></h3>
     <div id="c-trend"></div>
     <p class="hint">굵은 선이 하루 평균, 옅은 띠가 그날의 최저~최고입니다.
@@ -158,12 +149,12 @@ def build() -> str:
 </div>
 
 <div class="grid">
-  <div class="panel">
+  <div class="panel plain">
     <h3>OSP 재고 추이 <span class="tag mute">실사 기준</span></h3>
     <div id="c-stock"></div>
     <p class="hint">점선은 만실 용량입니다. 재고가 낮아지면 배합 선택지가 줄어듭니다.</p>
   </div>
-  <div class="panel">
+  <div class="panel plain">
     <h3>적재 · 인출 <span class="tag mute">일별 톤</span></h3>
     <div id="c-flow"></div>
     <p class="hint">위쪽이 광산에서 들어온 양, 아래쪽이 야드로 나간 양입니다.</p>
@@ -171,12 +162,12 @@ def build() -> str:
 </div>
 
 <div class="grid">
-  <div class="panel">
+  <div class="panel plain">
     <h3>품위 분포 <span class="tag mute">전체 기간</span></h3>
     <div id="c-hist"></div>
     <p class="hint">규격 폭 안에 얼마나 모여 있는지 봅니다. 봉우리가 좁고 음영 안에 있을수록 좋습니다.</p>
   </div>
-  <div class="panel">
+  <div class="panel plain">
     <h3>구역별 재고 <span class="tag mute">추정</span></h3>
     <div id="c-zone"></div>
     <p class="hint" id="zone-note"></p>
@@ -184,7 +175,7 @@ def build() -> str:
 </div>
 
 <div class="grid wide">
-  <div class="panel">
+  <div class="panel plain">
     <h3>교차인출 — 기존 OSP 에서 뽑아 신설로 보낸 물량 <span class="tag">반영됨</span></h3>
     <p class="hint">재고는 <b>기존</b> 적치장에서 빠지고, 품위는 <b>신설</b> 야드로 갑니다 —
       두 가지를 따로 귀속시켜 계산합니다. 데이터로 추정한 경로별 이송 시간:
@@ -195,7 +186,7 @@ def build() -> str:
 </div>
 
 <div class="grid wide">
-  <div class="panel">
+  <div class="panel plain">
     <h3>최근 기록 <span class="tag mute" id="rec-n"></span></h3>
     <input id="q" class="chip" style="border-radius:8px;width:100%;max-width:280px;padding:7px 12px"
            placeholder="검색 — 구역 번호·라인·비고" aria-label="기록 검색">
@@ -212,6 +203,7 @@ def build() -> str:
   재현 <code>python scripts/make_dashboard.py</code>.
 </footer>
 </div>
+{foot("석회석 광산–야드 품위(CaO) 매칭 및 추적 시스템 · 운영 대시보드 · SAMPYO")}
 
 <script id="payload" type="application/json">{js}</script>
 <script>
@@ -236,7 +228,8 @@ function cut(rows) {{                       // 기간 필터 — 마지막 날�
   return rows.filter(r => new Date(r.d) >= from);
 }}
 const lines = () => LINE === 'all' ? DATA.lines : [LINE];
-const COL = {{}}; DATA.lines.forEach((l, i) => COL[l] = i ? 'var(--accent)' : 'var(--bar)');
+// 계열색 — 막대 채움색(--bar)은 선으로 쓰면 바탕에 묻힌다. 전용 계열색을 쓴다.
+const COL = {{}}; DATA.lines.forEach((l, i) => COL[l] = i ? 'var(--series-1)' : 'var(--series-2)');
 
 function svg(host, w, h) {{
   host.innerHTML = '';
@@ -459,7 +452,7 @@ function drawCards() {{
     const dev = h.w_mean == null ? null : h.w_mean - DATA.target;
     const okTone = h.w_ok == null ? 'mute' : (h.w_ok >= 60 ? 'good' : h.w_ok >= 30 ? 'warn' : 'bad');
     const stale = h.age_h != null && h.age_h > 48;
-    return `<div class="panel">
+    return `<div class="panel plain">
       <h3>${{l}} 라인 <span style="font-weight:400;color:var(--ink-3)">${{DATA.alias[l] || ''}}</span>
         <span class="tag ${{okTone}}">최근 7일 규격내 ${{h.w_ok == null ? '—' : h.w_ok.toFixed(0) + '%'}}</span>
         ${{stale ? '<span class="tag mute">자료 지연</span>' : ''}}</h3>
@@ -526,6 +519,7 @@ document.querySelectorAll('#lin .chip').forEach(b => b.onclick = () => {{
 document.getElementById('q').oninput = drawRecent;
 render();
 </script>
+</body></html>
 """
 
 

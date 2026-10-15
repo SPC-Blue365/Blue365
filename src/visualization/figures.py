@@ -918,8 +918,8 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
         nav.append(f'<label class="tabbtn" for="t{i}" tabindex="0">{tab["name"]}</label>')
         # 활성 탭은 밑줄로 표시한다 (첨부 스타일의 관제 대시보드 관례)
         rules.append(f"#t{i}:checked~.wrap #tab{i}{{display:block}}"
-                     f"#t{i}:checked~nav label[for=t{i}]"
-                     f"{{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}}")
+                     f"#t{i}:checked~nav.tabnav label[for=t{i}]"
+                     f"{{color:var(--ink);border-bottom-color:var(--accent);font-weight:700}}")
         body = []
         for heading, obj in tab["sections"]:
             if heading:
@@ -927,6 +927,16 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
             body.append(render(obj))
         panels.append(f'<div class="tabpanel" id="tab{i}">{"".join(body)}</div>')
     tabcss = "".join(rules)
+
+    from src.visualization.portalstyle import STYLE, foot, hero, nav as portal_nav_fn
+    portal_nav = portal_nav_fn(active="통합 리포트")
+    portal_hero = hero(
+        eyebrow="석회석 광산 → OSP → 야드 · 근거 전체",
+        title=title,
+        lead="추적·매칭·예측·처방의 근거를 전부 담은 리포트입니다. 아래 탭으로 나뉘어 있고, "
+             "기간을 바꾸면 모든 시간축 차트가 함께 확대됩니다.")
+    portal_foot = foot("※ 본 리포트·데이터는 <b>로컬 전용</b>입니다. 외부(원격)에 발행·커밋하지 "
+                       "않습니다. · 석회석 광산–야드 품위(CaO) 매칭 및 추적 시스템 · SAMPYO")
 
     dmin, dmax = (date_range or ("", ""))
     daterow = ""
@@ -942,23 +952,14 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
 
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&display=swap');
-:root{{color-scheme:light;
---ground:#f4f7fb;--surface:#ffffff;--surface-2:#eef4fc;--ink:#101c2c;--ink-2:#4d6076;--ink-3:#8496a9;
---line:#dbe5f1;--line-2:#c6d5e8;--accent:#1c5cab;--accent-2:#2a78d6;--accent-soft:#e6effb;--accent-ink:#14477f;
---good:#0ca30c;--warn:#a6740a;--bad:#d03b3b;--grid:#e9f0f8;--radius:10px;
---shadow:0 1px 2px rgba(16,40,72,.06),0 8px 24px -16px rgba(16,40,72,.28)}}
-*{{box-sizing:border-box}}
-body{{font-family:'IBM Plex Sans KR','Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
-margin:0;color:var(--ink);background:var(--ground);font-size:14px;line-height:1.65;-webkit-font-smoothing:antialiased}}
+<style>{STYLE}
 .mono,.kpi .v,td.n{{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}}
-header{{background:var(--surface);color:var(--ink);padding:16px 22px;border-bottom:1px solid var(--line)}}
-header h1{{margin:0;font-size:19px;font-weight:600;letter-spacing:-.015em}}
-nav{{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);
+/* 탭 줄 — 포털의 밑줄형 탭과 같은 모양 */
+/* ⚠️ 반드시 .tabnav 로 한정한다 — 맨 선택자 `nav` 는 상단 포털 바(.nav-menu)까지 잡는다. */
+nav.tabnav{{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);
 padding:0 12px;display:flex;flex-wrap:wrap;gap:2px;z-index:9}}
 .tabbtn{{display:inline-flex;align-items:center;gap:7px;border:0;border-bottom:2px solid transparent;
-background:none;color:var(--ink-2);padding:9px 16px 11px;cursor:pointer;font-size:13.5px;
+background:none;color:var(--ink-3);padding:12px 15px 10px;cursor:pointer;font-size:14px;
 font-weight:500;user-select:none;line-height:1.2}}
 .tabbtn:hover{{color:var(--ink);background:var(--surface-2)}}
 .daterow{{background:var(--surface);padding:9px 14px;display:flex;flex-wrap:wrap;align-items:center;gap:7px;
@@ -972,7 +973,7 @@ cursor:pointer;font-weight:600;font-size:12.5px}}
 .wrap{{max-width:1080px;margin:0 auto;padding:20px 16px 48px}}
 .tabpanel{{display:none}}
 .tabsel{{position:absolute;opacity:0;width:0;height:0;pointer-events:none}}
-.tabbtn:focus-visible,.tabsel:focus-visible+nav .tabbtn{{outline:2px solid var(--accent);outline-offset:-2px}}
+.tabbtn:focus-visible,.tabsel:focus-visible+nav.tabnav .tabbtn{{outline:2px solid var(--accent);outline-offset:-2px}}
 {tabcss}
 h2{{color:var(--ink);margin:30px 0 4px;font-size:15px;font-weight:600;letter-spacing:-.01em;
 padding-left:11px;border-left:3px solid var(--accent)}}
@@ -1017,12 +1018,13 @@ pre{{background:var(--surface-2);border:1px solid var(--line);padding:12px;borde
 code{{background:var(--surface-2);border:1px solid var(--line);padding:1px 5px;border-radius:4px;
 font-family:'IBM Plex Mono',monospace;font-size:11.5px}}
 </style></head>
-<body><header><h1>{title}</h1></header>
+<body>{portal_nav}
+{portal_hero}
 {"".join(radios)}
-<nav>{"".join(nav)}</nav>
+<nav class="tabnav">{"".join(nav)}</nav>
 {daterow}
 <div class="wrap">{"".join(panels)}</div>
-<p style="color:#888;font-size:.82rem;text-align:center;padding:14px">※ 본 리포트·데이터는 로컬 전용입니다. 외부(원격)에 발행/커밋하지 않습니다.</p>
+{portal_foot}
 <script>
 var DR_MIN="{dmin}", DR_MAX="{dmax}";
 function _timeGraphs(){{

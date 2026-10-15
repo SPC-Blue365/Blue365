@@ -1080,8 +1080,11 @@ def test_report_tabs_work_without_javascript():
     assert 'onclick="showTab(' not in html, "탭이 JS onclick 에 의존하면 안 된다"
     assert html.count('type="radio"') == 2 and 'name="tabs"' in html
     assert re.search(r"#t1:checked~\.wrap #tab1\{display:block\}", html)
-    assert re.search(r"#t1:checked~nav label\[for=t1\]", html)
-    assert html.index('id="t0"') < html.index("<nav>") < html.index('id="tab0"')
+    # ⚠️ 탭 줄 선택자는 `nav.tabnav` 로 한정돼야 한다 — 맨 `nav` 는 상단 포털 바(.nav-menu)까지
+    #    잡아 그 아래에 엉뚱한 경계선이 그어진다(2026-10-15 실제로 그랬다).
+    assert re.search(r"#t1:checked~nav\.tabnav label\[for=t1\]", html)
+    assert "<nav class=\"tabnav\">" in html
+    assert html.index('id="t0"') < html.index('<nav class="tabnav">') < html.index('id="tab0"')
 
 
 # ── 한 행이 두 라인에 걸치는 표기 (사용자 확정 2026-08-19) ─────────────────────
