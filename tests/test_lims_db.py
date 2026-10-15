@@ -200,3 +200,39 @@ def test_partial_items_from_lims_do_not_break_derived_values():
            "raw_meal": pd.DataFrame({"timestamp": pd.to_datetime(["2026-10-01 08:00"]), "rm_cao": [43.1]})}
     st = build_store(raw)
     assert st.tables["clinker"]["clk_cao"].iloc[0] == 65.2 and pd.isna(st.tables["clinker"]["clk_lsf"].iloc[0])
+
+
+def test_detect_db_type_from_first_handshake():
+    """아이디·비밀번호 없이 첫 인사(핸드셰이크)로 DB 종류 판별 — 실제 서버에서 받은 응답 바이트로 확인."""
+    tds = bytes.fromhex("0401001a0000010000000b00060100110001ff100010d1000002")          # SQL Server 2022 PRELOGIN 응답
+    assert L._classify(tds) == {"type": "mssql", "version": "SQL Server 2022 (16.0.4305)"}
+    maria = b"Z\x00\x00\x00\n11.8.9-MariaDB-ubu2404\x00\x05\x00\x00\x00tz)[l0FO\x00"
+    assert L._classify(maria) == {"type": "mysql", "version": "MariaDB 11.8.9"}
+    assert L._classify(b"N")["type"] == "postgresql" and L._classify(b"S")["type"] == "postgresql"
+    ora = (b'\x00]\x00\x00\x04\x00\x00\x00"\x00\x00Q(DESCRIPTION=(TMP=)(VSNNUM=0)(ERR=1189)'
+           b'(ERROR_STACK=(ERROR=(CODE=1189)(EMFI=4))))')
+    assert L._classify(ora) == {"type": "oracle", "version": ""}
+    assert L._classify(b"") is None and L._classify(b"HTTP/1.1 400 Bad Request\r\n") is None
+    assert len(L._tds_prelogin()) == 26 and len(L._tns_version()) == int.from_bytes(L._tns_version()[:2], "big")
+
+    import socket
+    import threading
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(5)
+    port = srv.getsockname()[1]
+
+    def serve():                                   # 가짜 MySQL: 접속하면 먼저 인사
+        for _ in range(2):
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                return
+            c.sendall(maria)
+            c.close()
+    threading.Thread(target=serve, daemon=True).start()
+    det = L.detect_type("127.0.0.1", port, timeout=2)
+    srv.close()
+    assert det["type"] == "mysql" and "MariaDB 11.8.9" in det["msg"]
+    closed = L.detect_type("127.0.0.1", 1, timeout=1)
+    assert closed["type"] is None and "포트" in closed["msg"]

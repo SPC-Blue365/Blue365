@@ -294,6 +294,93 @@ def tcp_check(host: str, port: int, timeout: float = 5.0) -> tuple[bool, str]:
         return False, f"{host}:{port} 연결 실패 — {exc}"
 
 
+# ── DB 종류 자동 확인(아이디·비밀번호 없이, 접속 첫 인사만 주고받음) ──────────────────────
+MSSQL_YEARS = {16: "2022", 15: "2019", 14: "2017", 13: "2016", 12: "2014", 11: "2012", 10: "2008"}
+
+
+def _exchange(host: str, port: int, payload: bytes | None, timeout: float) -> bytes:
+    """새로 접속해 payload 를 보내고(없으면 서버가 먼저 말하기를 기다림) 처음 받은 바이트를 돌려준다."""
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout) as s:
+            s.settimeout(timeout)
+            if payload:
+                s.sendall(payload)
+            try:
+                return s.recv(4096)
+            except (TimeoutError, socket.timeout, ConnectionResetError, OSError):
+                return b""
+    except OSError:
+        return b""
+
+
+def _tds_prelogin() -> bytes:
+    # MS SQL Server TDS PRELOGIN: VERSION(6바이트) · ENCRYPTION(1바이트, 0x02=암호화 안 씀) · 끝(0xFF)
+    opts = bytes([0x00, 0x00, 0x0B, 0x00, 0x06, 0x01, 0x00, 0x11, 0x00, 0x01, 0xFF])
+    data = opts + bytes([0x0F, 0x00, 0x00, 0x00, 0x00, 0x00]) + bytes([0x02])
+    n = 8 + len(data)
+    return bytes([0x12, 0x01, n >> 8, n & 0xFF, 0x00, 0x00, 0x01, 0x00]) + data
+
+
+def _tns_version() -> bytes:
+    # Oracle TNS CONNECT(COMMAND=version) — 리스너가 버전 또는 거절(REFUSE) 패킷으로 답한다
+    cd = b"(CONNECT_DATA=(COMMAND=version))"
+    body = bytes.fromhex("0136012c00000800" "7fff7f0800000001") + len(cd).to_bytes(2, "big") + (58).to_bytes(2, "big")
+    body += b"\x00" * (58 - 8 - len(body))
+    n = 8 + len(body) + len(cd)
+    return n.to_bytes(2, "big") + b"\x00\x00\x01\x00\x00\x00" + body + cd
+
+
+def _classify(data: bytes) -> dict | None:
+    if not data:
+        return None
+    if len(data) > 6 and data[4] == 10 and b"\x00" in data[5:60]:                 # MySQL·MariaDB 첫 인사(프로토콜 10)
+        ver = data[5:data.index(b"\x00", 5)].decode("ascii", "replace")
+        if re.match(r"\d+\.\d+", ver):
+            return {"type": "mysql", "version": ("MariaDB " if "mariadb" in ver.lower() else "MySQL ") + ver.split("-")[0]}
+    if len(data) >= 8 and data[0] == 0x04 and int.from_bytes(data[2:4], "big") >= 8:   # TDS 응답 = MS SQL Server
+        ver = ""
+        try:
+            p = data[8:]
+            i = 0
+            while i < len(p) and p[i] != 0xFF:
+                tok, off, ln = p[i], int.from_bytes(p[i + 1:i + 3], "big"), int.from_bytes(p[i + 3:i + 5], "big")
+                if tok == 0x00 and ln >= 6:
+                    major, minor, build = p[off], p[off + 1], int.from_bytes(p[off + 2:off + 4], "big")
+                    ver = f"SQL Server {MSSQL_YEARS.get(major, '')} ({major}.{minor}.{build})".replace("  ", " ")
+                i += 5
+        except IndexError:
+            pass
+        return {"type": "mssql", "version": ver}
+    if data in (b"S", b"N") or (data[:1] == b"E" and b"SFATAL" in data):            # PostgreSQL SSL 요청 응답
+        return {"type": "postgresql", "version": ""}
+    if len(data) >= 8 and data[4] in (2, 4, 5, 11, 12) and (b"DESCRIPTION" in data or b"VSNNUM" in data
+                                                           or b"ERR=" in data or data[4] == 11):
+        m = re.search(rb"VSNNUM=(\d+)", data)
+        ver = ""
+        if m and int(m.group(1)) > 0:                                             # 보안 설정이면 VSNNUM=0(버전 숨김)
+            v = int(m.group(1))
+            ver = f"Oracle {v >> 24}.{(v >> 20) & 0xF}"
+        return {"type": "oracle", "version": ver}
+    return None
+
+
+def detect_type(host: str, port: int, timeout: float = 3.0) -> dict:
+    """IP·포트만으로 DB 종류 확인 → {'type','label','version','msg'}. type 이 None 이면 알아내지 못함."""
+    ok, msg = tcp_check(host, port, timeout)
+    if not ok:
+        return {"type": None, "label": "", "version": "", "msg": msg}
+    probes = [(None, 1.5), (_tds_prelogin(), timeout), (b"\x00\x00\x00\x08\x04\xd2\x16\x2f", timeout), (_tns_version(), timeout)]
+    for payload, to in probes:                    # MySQL(서버가 먼저 인사) → MS SQL → PostgreSQL → Oracle 순서
+        hit = _classify(_exchange(host, port, payload, to))
+        if hit:
+            label = DB_TYPES[hit["type"]]["label"]
+            return {**hit, "label": label, "msg": f"이 서버는 **{label}** 입니다" + (f" — {hit['version']}" if hit["version"] else "")}
+    hint = guess_type(port)
+    return {"type": None, "label": "", "version": "",
+            "msg": "포트는 열려 있지만 DB 종류를 알아내지 못했습니다(중계 장비·암호화 전용 설정 등)."
+                   + (f" 포트 {port} 는 보통 {DB_TYPES[hint]['label']} 입니다." if hint else " LIMS 담당자에게 확인하세요.")}
+
+
 def _probe_sql(t: str) -> str:
     return "SELECT 1 FROM DUAL" if t == "oracle" else "SELECT 1"
 
@@ -344,6 +431,13 @@ def diagnose(conn: dict, password: str) -> list[dict]:
         ok, msg = tcp_check(server_of(conn), int(port), 5)
         if not add("포트 연결", ok, msg):
             return out
+        det = detect_type(server_of(conn), int(port))
+        if det["type"] and det["type"] != t:
+            add("DB 종류", False, f"입력한 종류는 {DB_TYPES[t]['label']} 이지만 서버는 {det['label']}{' ' + det['version'] if det['version'] else ''} 입니다 — "
+                "DB 종류를 바꾸세요('🔎 DB 종류 자동 확인'을 누르면 자동으로 맞춥니다).")
+            return out
+        if det["type"]:
+            add("DB 종류", True, det["label"] + (f" — {det['version']}" if det["version"] else ""))
     drv = conn.get("driver") or default_driver(t)
     try:
         __import__(DRIVER_MODULE.get(drv, drv))

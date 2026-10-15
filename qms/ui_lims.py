@@ -78,10 +78,15 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
     if not local:
         st.info("🔒 접속 정보·비밀번호는 **QMS를 실행 중인 PC**에서만 바꿀 수 있습니다(사내망 공유 접속은 보기만 가능).")
     types = list(L.DB_TYPES)
+    if "ldb_type_next" in ss:                          # 🔎 DB 종류 자동 확인 결과 반영(위젯을 만들기 전에만 바꿀 수 있음)
+        ss["ldb_type"] = ss.pop("ldb_type_next")
+        if "ldb_port_next" in ss:
+            ss[f"ldb_port_{ss['ldb_type']}"] = ss.pop("ldb_port_next")
     a1, a2 = st.columns([1.3, 1])
-    t = a1.selectbox("DB 종류", types, index=types.index(c0["type"]) if c0["type"] in types else 0,
+    tkw = {} if "ldb_type" in ss else {"index": types.index(c0["type"]) if c0["type"] in types else 0}
+    t = a1.selectbox("DB 종류", types, **tkw,
                      format_func=lambda k: L.DB_TYPES[k]["label"], key="ldb_type", disabled=not local,
-                     help="모르면 포트 번호로 짐작할 수 있습니다: 1433 = MS SQL Server, 1521 = Oracle, 5432 = PostgreSQL, 3306 = MySQL·MariaDB")
+                     help="모르면 IP·포트를 넣고 아래 '🔎 DB 종류 자동 확인'을 누르세요(포트로도 짐작: 1433 = MS SQL Server, 1521 = Oracle, 5432 = PostgreSQL, 3306 = MySQL·MariaDB).")
     drivers = L.DB_TYPES[t]["drivers"]
     drv = a2.selectbox("접속 드라이버", list(drivers), format_func=lambda k: drivers[k], disabled=not local or len(drivers) < 2,
                        index=list(drivers).index(c0["driver"]) if c0.get("driver") in drivers else 0, key=f"ldb_drv_{t}")
@@ -101,10 +106,25 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
         host = b2.text_input("호스트 이름(host)", c0["host"], placeholder="예: LIMS-DB01 또는 lims.company.local", key="ldb_host",
                              disabled=not local, help="MS SQL Server 이름 있는 인스턴스는 '서버\\인스턴스' 대신 포트 번호를 쓰세요.")
         default_port = c0["port"] if c0["type"] == t and c0.get("port") else L.DB_TYPES[t]["port"]
-        port = b3.number_input("포트", 1, 65535, int(default_port), key=f"ldb_port_{t}", disabled=not local)
+        pkw = {} if f"ldb_port_{t}" in ss else {"value": int(default_port)}
+        port = b3.number_input("포트", 1, 65535, **pkw, key=f"ldb_port_{t}", disabled=not local)
+        k1, k2 = st.columns([1, 2.2], vertical_alignment="center")
+        if k1.button("🔎 DB 종류 자동 확인", width="stretch", disabled=not (ip.strip() or host.strip()),
+                     help="아이디·비밀번호 없이 IP(또는 호스트)·포트만으로 서버에 물어 DB 종류와 버전을 알아냅니다."):
+            with st.spinner("서버에 확인 중…"):
+                det = L.detect_type(ip.strip() or host.strip(), int(port))
+            if det["type"] and det["type"] != t:
+                ss["ldb_type_next"], ss["ldb_port_next"] = det["type"], int(port)
+                ss["ldb_detect"] = (ip.strip() or host.strip(), int(port), det["msg"] + " — DB 종류를 자동으로 바꿨습니다.", True)
+                st.rerun()
+            ss["ldb_detect"] = (ip.strip() or host.strip(), int(port), det["msg"], bool(det["type"]))
+        shown = ss.get("ldb_detect")
+        shown = shown if shown and shown[:2] == (ip.strip() or host.strip(), int(port)) else None   # 주소·포트를 바꾸면 지움
+        if shown:
+            (k2.success if shown[3] else k2.warning)(shown[2])
         g = L.guess_type(port)
-        if g and g != t:
-            st.warning(f"포트 {port} 는 보통 **{L.DB_TYPES[g]['label']}** 입니다 — DB 종류를 확인하세요.")
+        if g and g != t and not shown:
+            st.warning(f"포트 {port} 는 보통 **{L.DB_TYPES[g]['label']}** 입니다 — DB 종류를 확인하세요(🔎 자동 확인).")
         d1, d2 = st.columns([1.6, 1])
         lab = {"mssql": "데이터베이스 이름(모르면 비우고 아래 'DB 목록 불러오기')", "oracle": "서비스 이름(또는 SID)",
                "postgresql": "데이터베이스 이름(모르면 비우고 'DB 목록 불러오기')", "mysql": "데이터베이스 이름(모르면 비우고 'DB 목록 불러오기')"}[t]
