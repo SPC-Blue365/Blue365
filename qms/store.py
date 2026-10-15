@@ -121,6 +121,9 @@ def enrich(raw: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
         if "timestamp" in df:
             df["timestamp"] = pd.to_datetime(df["timestamp"])
         df = df.sort_values("timestamp").reset_index(drop=True)
+        for c in RAW_COLUMNS.get(name, []):        # 일부 항목만 들어온 경우(LIMS 연동 등)에도 파생값 계산이 멈추지 않게 빈 열 보충
+            if c not in df.columns:
+                df[c] = None if c in TEXT_COLUMNS else np.nan
         if name == "raw_meal" and len(df):
             df = chem.add_raw_meal_moduli(df)
         if name == "clinker" and len(df):

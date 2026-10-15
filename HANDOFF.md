@@ -81,6 +81,14 @@
 - 사용자: 코드 다운로드 후 실행 안 됨. 확인된 원인 후보: 저장소 기본 브랜치 `main` 은 처음 만든 OpenAI 채팅 예제뿐(QMS 코드 없음), 파이썬 미설치·사내망 pip 차단.
 - `RUN_CODE.bat`(cp949·CRLF, `.gitattributes` 로 변환 금지): 코드 폴더 확인 → 파이썬 찾기(QMS_PY → ..\Blue365_QMS\py → C:\Blue365_QMS\py → py -3 → python) → 3.11 이상·구성요소 확인(없으면 pip) → 127.0.0.1 로 실행. Wine에서 설치 패키지 파이썬 자동 사용·화면 정상 확인.
 
+**완료(10차, 2026-10-15): LIMS DB 간편 연결 — 주소·포트·계정 입력, 비밀번호 암호화, 표 고르기·열 역할·항목 매칭**
+- `qms/secret_store.py`: 비밀번호 암호화 저장(Windows DPAPI 현재 사용자 범위 / 그 외 Fernet+data/.secret.key). 값은 다시 보여주지 않음, 다른 PC·계정 값은 빈 값 처리.
+- `qms/lims_db.py`: 접속 정보(종류·IP·호스트·포트·DB·아이디·드라이버) → SQLAlchemy URL, 단계별 진단(주소·포트·드라이버·로그인·권한, 한국어 원인 안내), DB·스키마·표/뷰 목록, 미리보기, 열 역할·형식(긴/가로/출하시멘트)·날짜 저장 형식 자동 추천, 시험항목→QMS 항목 추천, 소스별 SELECT(Core, 읽기 전용 세션). MSSQL 비유니코드 문자 열은 NVARCHAR 로 CAST(Windows pymssql 한글 깨짐 대응).
+- `qms/lims.py`: 모드 `db`(권장), `LimsConfig.db/sources`, `_sync_db`(소스별 워터마크·실패 격리), `_sync_ship`(출하시멘트 → parse_aoa → shipment.db). 비밀값 우선순위 환경변수 → secrets.toml → 화면 입력(암호화). 데모 LIMS DB에 연습용 뷰 `V_QC_RESULT`.
+- `qms/ui_lims.py`·`app_pages/lims.py`: ① 접속 정보(실행 PC에서만 변경)·연결 확인·DB 목록, ② 가져올 곳(표 고르기→형식→열 역할→항목 매칭→미리보기→저장, 이름 중복 방지), REST 토큰 입력.
+- `qms/store.py`: 일부 항목만 들어와도(LIMS) 파생값 계산이 멈추지 않게 빈 열 보충(실제 오류 재현 후 수정).
+- 검증(사실): Docker 로 띄운 실제 MS SQL Server 2022(Korean_Wansung)·Oracle 23 Free·PostgreSQL 16·MariaDB 11 에서 진단·탐색·매칭·동기화, Wine 에서 Windows용 드라이버(pymssql·oracledb·psycopg2)·DPAPI 확인(pyodbc 는 Wine ODBC 한계로 미확인). 시험 `tests/test_lims_db.py` 7개.
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).

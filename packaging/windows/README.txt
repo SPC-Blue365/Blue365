@@ -131,6 +131,8 @@
           사용자가 설정한 메일(SMTP)·웹훅·LIMS(DB·REST) 주소.
   · 사용 포트: TCP 8501. 3_RUN_SHARE.bat 으로 실행할 때만 다른 PC의 접속을 받습니다.
   · 설치 폴더 밖에 만드는 것: 작업 스케줄러 작업(5번 등록 시), 방화벽 규칙(4번 실행 시)뿐입니다.
+  · LIMS DB 연결(사용자가 켤 때만): QMS PC → LIMS DB 서버의 DB 포트(TCP)로 SELECT 만 실행. 비밀번호는 Windows DPAPI 로
+    암호화해 data\secrets.enc.json 에 저장(이 PC의 해당 Windows 계정에서만 풀림). 백업을 다른 PC에 되살리면 비밀번호를 다시 입력.
     레지스트리·시스템 폴더는 바꾸지 않습니다.
   · Python: python.org 공식 NuGet 배포본 {PY_VERSION} (Python Software Foundation), 빌드 시 SHA-512 검증.
   · 구성요소 이름·버전·라이선스·분할 파일 해시: tools\components.xlsx

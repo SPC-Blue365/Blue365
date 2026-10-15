@@ -50,7 +50,8 @@ SECRETS_PATH = Path(__file__).resolve().parent.parent / ".streamlit" / "secrets.
 STD_COLUMNS = ["sampled_at", "sample_point", "test_code", "value", "product", "status", "unit", "updated_at"]
 FILE_COL = "__file__"                  # 내보내기 파일 이름(채취 지점 추론용 내부 열)
 SKIP_MARKS = {"-", "제외", "skip"}     # column_map 에서 이 값으로 지정한 열은 버린다(시료번호·비고 등)
-MODES = {"demo": "데모 LIMS(시연용 SQLite)", "sql": "DB 직접 조회(SQL)", "rest": "REST API", "file": "내보내기 파일 폴더"}
+MODES = {"db": "DB 연결(주소·계정 입력, 표 선택) — 권장", "demo": "데모 LIMS(시연용 SQLite)", "sql": "DB 직접 조회(SQL 직접 입력, 고급)",
+         "rest": "REST API", "file": "내보내기 파일 폴더"}
 
 SAMPLE_POINTS = {"raw_meal": "KILN_FEED", "clinker": "CLINKER", "xrd": "CLINKER_DAILY", "cement": "CEMENT_MILL",
                  "physical": "CEMENT_LOT"}
@@ -114,9 +115,16 @@ class LimsConfig:
     lookback_days: int = 35
     watermark: str | None = None
     mapping: list = field(default_factory=default_mapping)
+    db: dict = field(default_factory=lambda: _ldb().empty_conn())   # DB 연결 방식: 종류·IP·호스트·포트·DB·아이디(비밀번호 제외)
+    sources: list = field(default_factory=list)                      # 가져올 곳: 표·열 역할·항목 매칭(소스별 워터마크)
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def _ldb():
+    from . import lims_db
+    return lims_db
 
 
 def load_lims_config(path: Path = LIMS_CONFIG_PATH) -> LimsConfig:
@@ -131,22 +139,49 @@ def load_lims_config(path: Path = LIMS_CONFIG_PATH) -> LimsConfig:
 
 def save_lims_config(cfg: LimsConfig, path: Path = LIMS_CONFIG_PATH) -> None:
     d = cfg.to_dict()
+    d["db"] = {k: v for k, v in (d.get("db") or {}).items() if "pass" not in k.lower()}   # 비밀번호는 암호화 저장소에만
     if "{password}" not in d.get("sql_url", "") and re.search(r"://[^:/@]+:[^@{]+@", d.get("sql_url", "")):
         raise ValueError("DB 비밀번호를 URL에 직접 넣지 마세요. {password} 자리표시자를 쓰고 QMS_LIMS_PASSWORD 로 설정하세요.")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+STORE_NAMES = {"password": "lims_db_password", "token": "lims_token"}   # 화면에서 입력한 값(암호화 저장소 이름)
+
+
 def _secret(name: str) -> str:
+    """비밀값 우선순위: 환경변수 → .streamlit/secrets.toml [lims] → 화면에서 입력해 암호화 저장한 값."""
     env = {"password": "QMS_LIMS_PASSWORD", "token": "QMS_LIMS_TOKEN"}[name]
     if os.environ.get(env):
         return os.environ[env]
     if SECRETS_PATH.exists():
         try:
             import tomllib
-            return str(tomllib.loads(SECRETS_PATH.read_text(encoding="utf-8")).get("lims", {}).get(name, ""))
-        except Exception:  # noqa: BLE001 - 비밀 설정 파싱 실패 시 빈 값
-            return ""
+            v = str(tomllib.loads(SECRETS_PATH.read_text(encoding="utf-8")).get("lims", {}).get(name, ""))
+            if v:
+                return v
+        except Exception:  # noqa: BLE001 - 비밀 설정 파싱 실패 시 다음 순서
+            pass
+    from . import secret_store
+    return secret_store.get_secret(STORE_NAMES[name])
+
+
+def secret_source(name: str) -> str:
+    """비밀값이 어디서 오는지(화면 표시용, 값은 보여주지 않음)."""
+    env = {"password": "QMS_LIMS_PASSWORD", "token": "QMS_LIMS_TOKEN"}[name]
+    if os.environ.get(env):
+        return f"환경변수 {env}"
+    if SECRETS_PATH.exists():
+        try:
+            import tomllib
+            if tomllib.loads(SECRETS_PATH.read_text(encoding="utf-8")).get("lims", {}).get(name):
+                return ".streamlit/secrets.toml"
+        except Exception:  # noqa: BLE001
+            pass
+    from . import secret_store
+    st_ = secret_store.status(STORE_NAMES[name])
+    if st_["saved"]:
+        return "화면 입력(암호화 저장)" if st_["usable"] else "저장돼 있으나 이 PC·계정에서 풀 수 없음 → 다시 입력"
     return ""
 
 
@@ -284,11 +319,13 @@ class SyncReport:
     errors: list = field(default_factory=list)
     messages: list = field(default_factory=list)
     wide: dict = field(default_factory=dict, repr=False)
+    sources: list = field(default_factory=list)          # DB 연결 방식: 소스별 결과
 
     def summary_text(self) -> str:
         if self.errors:
             return "실패: " + "; ".join(self.errors)
-        t = ", ".join(f"{TABLES[k]['label']} {v}행" for k, v in self.rows_by_table.items()) or "반영할 결과 없음"
+        t = ", ".join(f"{TABLES[k]['label'] if k in TABLES else '출하시멘트'} {v}행" for k, v in self.rows_by_table.items()) \
+            or "반영할 결과 없음"
         return (f"조회 {self.n_fetched}건 → 반영 {self.n_mapped}건({t}) · 신규 칸 {self.cells_new} · 변경 칸 {self.cells_changed} · "
                 f"미승인 제외 {self.n_status_skipped} · 미매핑 {self.n_unmapped} · 숫자 아님 {self.n_invalid}")
 
@@ -430,6 +467,8 @@ def _cell_diff(before: dict[str, pd.DataFrame], wide: dict[str, pd.DataFrame]) -
 def sync(cfg: LimsConfig, db_path: Path = DB_PATH, dry_run: bool = False, now: datetime | None = None,
          session=None, log_path: Path = LIMS_LOG_PATH, persist_watermark: bool = True) -> SyncReport:
     """LIMS → QMS 증분 동기화. dry_run=True 이면 저장·워터마크 갱신 없이 결과만 보고."""
+    if cfg.mode == "db":
+        return _sync_db(cfg, db_path, dry_run, now, log_path, persist_watermark)
     since = _since(cfg, now)
     rep = SyncReport(cfg.mode, since.strftime("%Y-%m-%d %H:%M:%S"))
     try:
@@ -461,6 +500,106 @@ def sync(cfg: LimsConfig, db_path: Path = DB_PATH, dry_run: bool = False, now: d
     return rep
 
 
+def _src_since(cfg: LimsConfig, src: dict, now: datetime | None) -> datetime:
+    if src.get("watermark") and (src.get("cols") or {}).get("updated_at"):
+        try:
+            return pd.Timestamp(src["watermark"]).to_pydatetime()
+        except (ValueError, TypeError):
+            pass
+    return (now or datetime.now()) - timedelta(days=int(src.get("lookback_days") or cfg.lookback_days))
+
+
+def _sync_db(cfg: LimsConfig, db_path: Path, dry_run: bool, now: datetime | None, log_path: Path,
+             persist_watermark: bool, only: str | None = None) -> SyncReport:
+    """DB 연결 방식: 가져올 곳(소스)마다 SELECT → 표준화 → 소스의 항목 매칭 → 열 단위 병합 저장(출하시멘트는 출하 DB)."""
+    from dataclasses import replace
+
+    from . import lims_db
+
+    srcs = [s for s in cfg.sources if s.get("enabled", True) and (only is None or s.get("name") == only)]
+    rep = SyncReport("db", ", ".join(f"{s.get('name')}: {_src_since(cfg, s, now):%Y-%m-%d %H:%M}" for s in srcs))
+    rep.sources = []
+    if not srcs:
+        rep.errors.append("가져올 곳(소스)이 없습니다 — ② 가져올 곳·항목 매칭 탭에서 표를 고르고 저장하세요.")
+    pw = _secret("password")
+    changed = False
+    for src in srcs:
+        name = src.get("name") or src.get("table")
+        info = {"name": name, "table": src.get("table"), "fetched": 0, "mapped": 0, "error": ""}
+        try:
+            since = _src_since(cfg, src, now)
+            d, capped = lims_db.fetch_source(cfg.db, pw, src, since)
+            info["fetched"] = len(d)
+            rep.n_fetched += len(d)
+            if capped:
+                rep.messages.append(f"[{name}] 한 번에 읽는 최대 {lims_db.MAX_ROWS:,}행에 도달했습니다 — 결과 확정일시 열을 지정하거나 "
+                                    "최초 조회 기간을 줄이세요(나머지는 다음 동기화 때 이어서 읽음).")
+            if len(d) == 0:
+                rep.sources.append(info)
+                continue
+            if src.get("layout") == "ship":
+                info["mapped"] = _sync_ship(src, d, rep, dry_run)
+            else:
+                scfg = replace(cfg, column_map={}, default_sample_point=str(src.get("fixed_sample_point") or ""),
+                               mapping=src.get("mapping") or [],
+                               status_ok=cfg.status_ok if (src.get("cols") or {}).get("status") else [])
+                sub = SyncReport("db", rep.since)
+                nd = normalize(d, scfg, sub)
+                wide = apply_mapping(nd, scfg, sub)
+                for k in ("n_status_skipped", "n_invalid", "n_censored", "n_unmapped", "n_mapped"):
+                    setattr(rep, k, getattr(rep, k) + getattr(sub, k))
+                rep.unmapped += [(sp, tc, n) for sp, tc, n in sub.unmapped]
+                rep.messages += [f"[{name}] {m}" for m in sub.messages]
+                info["mapped"] = sub.n_mapped
+                if wide:
+                    new, chg = _cell_diff(load_raw(db_path), wide)
+                    rep.cells_new += new
+                    rep.cells_changed += chg
+                    for t, w in wide.items():
+                        rep.wide[t] = pd.concat([rep.wide[t], w], ignore_index=True) if t in rep.wide else w
+                        rep.rows_by_table[t] = rep.rows_by_table.get(t, 0) + len(w)
+                    if not dry_run:
+                        save_raw(wide, path=db_path, replace=False)
+                        rep.saved = True
+                if (src.get("cols") or {}).get("updated_at") and nd["updated_at"].notna().any():
+                    wm = pd.Timestamp(nd["updated_at"].max()).strftime("%Y-%m-%d %H:%M:%S")
+                    info["watermark"] = wm
+                    if not dry_run and persist_watermark:
+                        src["watermark"] = wm
+                        changed = True
+        except Exception as exc:  # noqa: BLE001 - 소스별로 실패를 기록하고 다음 소스 계속
+            info["error"] = lims_db.sanitize(f"{type(exc).__name__}: {exc}", pw)
+            hint = lims_db.explain(info["error"])
+            rep.errors.append(f"[{name}] {info['error']}" + (f" → {hint}" if hint else ""))
+        rep.sources.append(info)
+    if changed:
+        save_lims_config(cfg)
+    rep.watermark_after = ", ".join(f"{s['name']}: {s['watermark']}" for s in rep.sources if s.get("watermark")) or None
+    _log_sync(rep, dry_run, log_path)
+    return rep
+
+
+def _sync_ship(src: dict, d: pd.DataFrame, rep: SyncReport, dry_run: bool) -> int:
+    """출하시멘트 성적(가로형) → 출하시멘트 해석기(parse_aoa: 0=미시험·선박명·저염 처리 그대로) → 출하 DB 저장."""
+    from . import shipment as S
+
+    aoa = [[str(c) for c in d.columns]] + d.astype(object).where(d.notna(), None).values.tolist()
+    res = S.parse_aoa(aoa, overrides={k: v for k, v in (src.get("ship_map") or {}).items() if v}, header_row=0)
+    if res.errors:
+        raise ValueError("; ".join(res.errors))
+    n = len(res.records)
+    rep.n_mapped += n
+    rep.rows_by_table["shipment"] = rep.rows_by_table.get("shipment", 0) + n
+    rep.wide["shipment"] = res.records
+    if not dry_run:
+        out = S.save_shipment(res.records)
+        rep.cells_new += int(out.get("added", 0))
+        rep.cells_changed += int(out.get("updated", 0))
+        rep.messages.append(f"[{src.get('name')}] 출하시멘트 {n}행 반영(신규 {out.get('added', 0)} · 갱신 {out.get('updated', 0)})")
+        rep.saved = True
+    return n
+
+
 def _log_sync(rep: SyncReport, dry_run: bool, path: Path) -> None:
     entry = {k: v for k, v in asdict(rep).items() if k != "wide"}
     entry["ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -487,6 +626,11 @@ def read_sync_log(path: Path = LIMS_LOG_PATH, limit: int = 100) -> list[dict]:
 
 def test_connection(cfg: LimsConfig, session=None) -> tuple[bool, str, pd.DataFrame]:
     """최근 lookback_days 범위를 조회해 연결·열 구성을 확인(저장 안 함)."""
+    if cfg.mode == "db":
+        steps = _ldb().diagnose(cfg.db, _secret("password"))
+        ok = bool(steps) and all(x["ok"] for x in steps)
+        msg = " / ".join(f"{'✅' if x['ok'] else '❌'} {x['step']}: {x['msg']}" for x in steps)
+        return ok, msg, pd.DataFrame(steps)
     try:
         if cfg.mode == "demo" and not LIMS_DEMO_DB.exists():
             create_demo_lims(load_raw(), LIMS_DEMO_DB)
@@ -831,5 +975,9 @@ def create_demo_lims(raw: dict[str, pd.DataFrame], path: Path = LIMS_DEMO_DB, da
                     "approved_at TEXT)")
         con.executemany("INSERT INTO lims_sample VALUES (?,?,?,?)", rows_s)
         con.executemany("INSERT INTO lims_result VALUES (?,?,?,?,?,?)", rows_r)
+        # 연습용 결과 뷰(실제 LIMS도 시료·결과 표를 합친 '결과 뷰'를 받아 쓰는 것을 권장) — DB 연결 방식의 표 고르기 연습용
+        con.execute("CREATE VIEW V_QC_RESULT AS SELECT s.sampled_at AS SMP_DT, s.sample_point AS SMP_PT, r.test_code AS TEST_CD, "
+                    "r.value AS RESULT_VAL, s.product AS PROD_CD, r.status AS STATUS, r.approved_at AS APPROVED_DT "
+                    "FROM lims_result r JOIN lims_sample s ON s.sample_id = r.sample_id")
         con.commit()
     return {"samples": len(rows_s), "results": len(rows_r)}

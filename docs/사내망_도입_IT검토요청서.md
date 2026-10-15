@@ -60,7 +60,11 @@ e70fcc73bdf23b00d4d52d44656a219814d34ca3fe33b878498e57ddeb264a68  Blue365_QMS_wi
 ## 5. 후속 단계 — LIMS 연동 (설치 승인 이후)
 
 설치가 승인된 뒤, 사내 LIMS의 **읽기 전용 계정**과 **결과 뷰(View)** 로 시험 결과를 자동으로 가져오려 합니다.
-- LIMS DB 비밀번호·토큰은 **화면·소스에 저장하지 않고** 해당 PC의 보안 설정 파일에만 둡니다.
+- 필요 사항: ① LIMS DB **읽기 전용 계정**(결과 표·뷰 SELECT 권한만) ② 방화벽: **QMS PC → LIMS DB 서버의 DB 포트(TCP)** 허용
+  (MS SQL Server 1433 · Oracle 1521 · PostgreSQL 5432 · MySQL/MariaDB 3306 — 실제 포트는 LIMS 담당자 확인) ③ 가능하면 시료·결과를 합친 **결과 뷰**.
+- 접속 정보(IP·호스트·포트·DB 이름·아이디)는 data/lims.json, **비밀번호는 Windows DPAPI 로 암호화**해 data/secrets.enc.json 에 저장합니다
+  (이 PC의 해당 Windows 계정에서만 복호화, 화면·로그·설정 파일에 평문 없음). QMS는 SELECT 문만 실행합니다(PostgreSQL·MySQL은 읽기 전용 세션).
+- 접속 정보·비밀번호 변경은 QMS를 실행 중인 PC에서만 가능합니다(사내망 공유 접속자는 보기만).
 - 구체적 요청 항목(계정·뷰 정의·방화벽 등)은 별첨 **「LIMS 연동 준비서」**(docs/LIMS_연동_준비서.xlsx)에 정리되어 있습니다.
 
 ## 6. 검토 지원
