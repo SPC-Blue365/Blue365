@@ -254,7 +254,7 @@ def test_browser_translation_is_blocked(tmp_path, monkeypatch):
 def test_new_folder_install_copies_previous_install_data(fake_root, tmp_path, monkeypatch):
     """새 버전 1번 ZIP을 다른 폴더에 풀어도 이전 설치본의 자료(출하시멘트·LIMS 설정·암호화된 비밀번호)를 복사해 온다(원본 유지).
     데모 데이터만 있는 설치본·이미 자료가 있는 새 설치본은 건드리지 않는다."""
-    monkeypatch.setattr(L.Path, "home", staticmethod(lambda: tmp_path / "home"))
+    monkeypatch.setattr(L, "search_dirs", lambda: [tmp_path])          # 다른 시험의 임시 폴더를 찾지 않게
     demo = tmp_path / "demo_1of6" / "Blue365_QMS"
     (demo / "tools").mkdir(parents=True)
     (demo / "tools" / "qms_launcher.py").write_text("#")
