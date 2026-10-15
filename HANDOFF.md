@@ -88,6 +88,7 @@
 - `qms/ui_lims.py`·`app_pages/lims.py`: ① 접속 정보(실행 PC에서만 변경)·연결 확인·DB 목록, ② 가져올 곳(표 고르기→형식→열 역할→항목 매칭→미리보기→저장, 이름 중복 방지), REST 토큰 입력.
 - `qms/store.py`: 일부 항목만 들어와도(LIMS) 파생값 계산이 멈추지 않게 빈 열 보충(실제 오류 재현 후 수정).
 - 검증(사실): Docker 로 띄운 실제 MS SQL Server 2022(Korean_Wansung)·Oracle 23 Free·PostgreSQL 16·MariaDB 11 에서 진단·탐색·매칭·동기화, Wine 에서 Windows용 드라이버(pymssql·oracledb·psycopg2)·DPAPI 확인(pyodbc 는 Wine ODBC 한계로 미확인). 시험 `tests/test_lims_db.py` 7개.
+- 설치: 1번 ZIP 이름의 날짜가 바뀌어(v2026.10.15) 새 폴더에 풀리는 경우 대비 — `migrate_data`: 새 설치본 data 가 비어 있으면 주변 이전 설치본 data 를 복사(데모만 있는 설치본·이미 자료가 있는 새 설치본은 건드리지 않음). Wine 재현: 10.13 설치본(출하시멘트·LIMS 설정·DPAPI 비밀번호) → 10.15 새 폴더 설치 → 자료 이전·15화면 정상 → 설치 앱 실행 후 LIMS 화면에서 실제 MSSQL 연결 확인 5단계 통과·동기화 미리보기 25행.
 
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.

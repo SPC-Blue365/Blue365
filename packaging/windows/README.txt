@@ -91,11 +91,13 @@
       ① 6_BACKUP.bat 으로 백업하고 실행 창을 모두 닫습니다.
       ② 새 1번 ZIP을 처음과 같은 위치(C:\)에 압축 해제 → '파일 바꾸기'를 선택합니다.
       ③ 1_SETUP.bat 실행 → 구성요소는 '이미 설치됨'으로 건너뛰고 점검만 합니다(데이터·설정은 그대로).
+      ※ 새 1번 ZIP을 다른 폴더(예: 이름의 날짜가 바뀐 새 폴더)에 풀었어도, 그 폴더의 data 가 비어 있으면 1_SETUP.bat 이
+        주변의 이전 설치본 data(출하시멘트·LIMS 설정·암호화된 비밀번호·기준·이름)를 자동으로 복사해 옵니다(원본은 그대로).
   · 구성요소까지 바뀐 업데이트(libs-… 이름이 달라진 경우)
       ① 6_BACKUP.bat 으로 백업하고 실행 창을 모두 닫습니다.
       ② 기존 폴더 이름을 바꿉니다(예: C:\Blue365_QMS_old).
       ③ 새 패키지를 2항 순서대로 설치합니다.
-      ④ 옛 폴더의 data 폴더와 app\.streamlit\secrets.toml 을 새 폴더의 같은 위치에 복사합니다.
+      ④ 옛 폴더의 data 폴더(새 data 가 비어 있으면 1_SETUP 이 자동 복사)와 app\.streamlit\secrets.toml 을 새 폴더의 같은 위치에 복사합니다.
       ⑤ 5_MONITOR_TASK.bat 을 썼다면 1번(등록)을 한 번 더 실행합니다.
   · 제거: 5_MONITOR_TASK.bat → 2번(해제) → (공유했다면) 관리자 명령 프롬프트에서
       netsh advfirewall firewall delete rule name=Blue365_QMS_TCP8501
