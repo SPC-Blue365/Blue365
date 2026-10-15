@@ -32,6 +32,7 @@ KS 규격·사내 관리기준·SPC 판정규칙을 벗어나면 **자동으로 
 > 2. ZIP을 풀고 그 안의 **`RUN_CODE.bat`** 더블클릭 → 브라우저에 QMS가 열립니다.
 >    - 설치한 QMS 패키지(`Blue365_QMS\py\python.exe`)를 **코드 폴더 주변·`C:\Blue365_QMS`·다운로드·바탕화면·문서 폴더**에서 자동으로 찾아 그 파이썬을 씁니다
 >      (못 찾으면 PC의 Python 3.11+ → 구성요소가 없으면 `pip install -r requirements.txt`). 직접 지정: `set QMS_PY=…\py\python.exe`
+>    - PC 파이썬으로 실행할 때는 **LIMS DB 드라이버**(`requirements-lims.txt`: pymssql·oracledb·psycopg2·PyMySQL)도 처음 한 번 자동 설치합니다. 설치하지 못했으면 LIMS 화면의 **⬇️ 드라이버 설치** 버튼으로 다시 시도할 수 있습니다(설치 앱의 파이썬에는 모두 들어 있음).
 >    - 처음 한 번 **설치 앱의 데이터를 함께 쓸지** 묻습니다(1 = 함께 쓰기, 2 = 코드 폴더 전용). 선택은 `data\.run_code_data` 에 기억 — 지우면 다시 묻습니다.
 >      함께 쓰는 경우 설치 앱(2_RUN)과 동시에 켜지 마세요.
 > 3. 새 기능이 올라오면 같은 주소로 다시 받아 풀고 `RUN_CODE.bat` 만 실행하면 됩니다(설치 패키지 재설치 불필요 — 구성요소가 바뀐 경우만 새 2~6번 ZIP 필요).

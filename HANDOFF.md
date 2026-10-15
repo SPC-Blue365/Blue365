@@ -99,6 +99,10 @@
 - 조치: 🩺 연결 확인 성공 시 접속 정보 자동 저장, ② 탭에 사용 중인 접속 표시·미저장 경고, 데이터베이스 선택(MSSQL·PostgreSQL), 혼동 버튼 제거, 소스별 database(여러 DB 지원).
 - `lims_db.catalog/explore/score_table/find_term/structure_workbook`: INFORMATION_SCHEMA(MSSQL·PG·MySQL)·ALL_TAB_COLUMNS(Oracle)·sqlite 로 표·열 목록을 한 번에 읽고 날짜·시험항목/결과 열·시험항목 이름 열·출하시멘트 머리글·표 이름으로 점수(잡표 0점), 이름·값 찾기(상위 후보 문자 열 LIKE, 질의 150회 한도), 구조 엑셀. 화면 🧭 자동으로 찾기 → ▶ 이 표로 시작(역할 자동, 긴 형식은 시험항목 목록 자동 불러오기·매칭 추천). 실제 MSSQL(기본 DB=master 재현)·Oracle·PG(여러 DB)·MariaDB, Wine(Windows 드라이버)에서 확인.
 
+**완료(13차, 2026-10-15): 사용자 화면 'No module named pymssql' — DB 드라이버 없는 실행 환경 대응**
+- 사용자 캡처: 주소·포트·DB 종류(SQL Server 2022, 10.50.11.71:3718, DB TEST) 정상인데 ② 탭 'DB 목록을 읽지 못했습니다 — No module named pymssql'. 원인: 코드 실행(RUN_CODE)이 PC 파이썬을 썼고 requirements.txt 에 DB 드라이버가 없었음(설치 패키지 파이썬에는 포함). 안내 문구도 'pymssql 로 바꾸라'로 잘못 나옴. 호스트 칸 'MTcyLjE3LjIyLjEx' = Base64 로 인코딩된 172.17.22.11.
+- 조치: requirements-lims.txt(드라이버, 비Windows는 cryptography), RUN_CODE.bat 드라이버 하나씩 설치(실패해도 실행 계속)·OneDrive·상위 2단계 검색, `lims_db.driver_ok/install_driver/b64_ip`, 드라이버 선택 상자에 '❌ 이 PC에 없음', ①·② 탭에 '⬇️ 드라이버 설치' 버튼(실행 중인 파이썬에 pip 설치, 사용자 폴더 설치도 바로 인식), No module 안내 정정, Base64 호스트 안내. 드라이버 없는 venv + 실제 MSSQL(포트 3718, DB TEST)로 재현 → 버튼 설치 → 자동 찾기 성공 확인.
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).

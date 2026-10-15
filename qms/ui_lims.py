@@ -67,6 +67,38 @@ def _steps_table(steps: list[dict]) -> None:
         (st.success if x["ok"] else st.error)(f"{'✅' if x['ok'] else '❌'} **{x['step']}** — {x['msg']}")
 
 
+def driver_gate(drv: str, local: bool = True, where: str = "conn") -> bool:
+    """드라이버가 이 실행 환경에 없으면 안내와 '설치' 버튼을 보여 주고 False."""
+    ss = st.session_state
+    res = ss.get("ldb_install_result")
+    if res and res[0] == drv and res[1] and L.driver_ok(drv):
+        st.success(f"드라이버 '{drv}' 를 설치했습니다. 이제 DB 목록·표를 읽을 수 있습니다.")
+        ss.pop("ldb_install_result", None)
+    if drv == "sqlite" or L.driver_ok(drv):
+        return True
+    pkg = L.DRIVER_PIP.get(drv, drv)
+    st.error(f"**이 실행 환경(파이썬)에 DB 드라이버 '{drv}' 가 없습니다.** 그래서 DB 목록·표를 읽지 못합니다.  \n"
+             f"실행 중인 파이썬: `{L.runtime_python()}`  \n"
+             "해결: ① 아래 **⬇️ 드라이버 설치**(인터넷 또는 사내 pip 저장소 필요) ② 드라이버가 들어 있는 **설치 앱(2_RUN.bat)** 으로 실행 "
+             "③ 최신 **RUN_CODE.bat**(GitHub에서 다시 받기)으로 실행 — 처음 실행 때 드라이버를 자동 설치합니다.")
+    g1, g2 = st.columns([1, 2.5], vertical_alignment="center")
+    if g1.button(f"⬇️ 드라이버 설치 ({pkg})", type="primary", disabled=not local, key=f"ldb_install_{where}_{drv}", width="stretch"):
+        with st.spinner(f"{pkg} 설치 중…(1~3분)"):
+            ok, log = L.install_driver(drv)
+        ss["ldb_install_result"] = (drv, ok, log)
+        if ok:
+            _clear_browse_cache()
+            st.rerun()
+    res = ss.get("ldb_install_result")
+    if res and res[0] == drv and not res[1]:
+        g2.warning("설치하지 못했습니다(사내망이 인터넷 설치를 막는 경우가 많습니다) — 설치 앱(2_RUN.bat)으로 실행하거나 IT에 pip 사내 저장소를 문의하세요.")
+        with st.expander("설치 기록", expanded=False):
+            st.code(res[2] or "(기록 없음)")
+    elif not local:
+        g2.caption("드라이버 설치는 QMS를 실행 중인 PC에서만 할 수 있습니다.")
+    return False
+
+
 def _clear_browse_cache() -> None:
     ss = st.session_state
     for k in [k for k in ss if str(k).startswith(("ldb_objects_", "ldb_schemas", "ldb_cols_", "ldb_prev_", "ldb_codes_", "ldb_dbs",
@@ -95,8 +127,10 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
                      format_func=lambda k: L.DB_TYPES[k]["label"], key="ldb_type", disabled=not local,
                      help="모르면 IP·포트를 넣고 아래 '🔎 DB 종류 자동 확인'을 누르세요(포트로도 짐작: 1433 = MS SQL Server, 1521 = Oracle, 5432 = PostgreSQL, 3306 = MySQL·MariaDB).")
     drivers = L.DB_TYPES[t]["drivers"]
-    drv = a2.selectbox("접속 드라이버", list(drivers), format_func=lambda k: drivers[k], disabled=not local or len(drivers) < 2,
+    drv = a2.selectbox("접속 드라이버", list(drivers), disabled=not local or len(drivers) < 2,
+                       format_func=lambda k: drivers[k] + ("" if L.driver_ok(k) else " — ❌ 이 PC에 없음"),
                        index=list(drivers).index(c0["driver"]) if c0.get("driver") in drivers else 0, key=f"ldb_drv_{t}")
+    driver_gate(drv, local)
     if t == "sqlite":
         db_name = st.text_input("DB 파일 경로", c0["database"] if c0["type"] == "sqlite" else str(lims.LIMS_DEMO_DB),
                                 key="ldb_sqlite", disabled=not local, help="연습용: 데모 LIMS DB(data/lims_demo.db)로 표 고르기·매칭을 미리 해 볼 수 있습니다.")
@@ -112,6 +146,10 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
         ip = b1.text_input("IP 주소", c0["ip"], placeholder="예: 10.20.30.40", key="ldb_ip", disabled=not local)
         host = b2.text_input("호스트 이름(host)", c0["host"], placeholder="예: LIMS-DB01 또는 lims.company.local", key="ldb_host",
                              disabled=not local, help="MS SQL Server 이름 있는 인스턴스는 '서버\\인스턴스' 대신 포트 번호를 쓰세요.")
+        dec = L.b64_ip(host)
+        if dec:
+            st.info(f"호스트 칸의 '{host}' 는 Base64로 인코딩된 IP **{dec}** 입니다(LIMS 설정 파일에서 복사한 값으로 보임). "
+                    "IP 주소로 접속이 되면 호스트 칸은 비워도 됩니다.")
         default_port = c0["port"] if c0["type"] == t and c0.get("port") else L.DB_TYPES[t]["port"]
         pkw = {} if f"ldb_port_{t}" in ss else {"value": int(default_port)}
         port = b3.number_input("포트", 1, 65535, **pkw, key=f"ldb_port_{t}", disabled=not local)
@@ -357,6 +395,8 @@ def sources_panel(cfg: lims.LimsConfig, registry) -> None:
     st.caption(f"사용 중인 접속: {L.DB_TYPES.get(c.get('type'), {}).get('label', c.get('type'))} · "
                + (f"{L.server_of(c)}:{c.get('port')} · DB {c.get('database') or '(지정 안 함 — 아래에서 고르거나 자동으로 찾기)'} · 아이디 {c.get('user')}"
                   if c.get("type") != "sqlite" else str(c.get("database"))))
+    if not driver_gate(c.get("driver") or L.default_driver(c.get("type", "mssql")), is_local(), "src"):
+        return
     _explorer(cfg, pw)
 
     if "ldb_src_pick_next" in ss:                       # 저장·삭제·자동 찾기 직후 선택 바꾸기(위젯 생성 전에만 바꿀 수 있음)

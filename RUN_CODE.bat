@@ -23,6 +23,8 @@ if not defined PY if exist "C:\Blue365_QMS\py\python.exe" set "QMS_HOME=C:\Blue3
 if not defined PY if not defined QMS_HOME call :findqms "%USERPROFILE%\Downloads"
 if not defined PY if not defined QMS_HOME call :findqms "%USERPROFILE%\Desktop"
 if not defined PY if not defined QMS_HOME call :findqms "%USERPROFILE%\Documents"
+if not defined PY if not defined QMS_HOME if defined OneDrive call :findqms "%OneDrive%"
+if not defined PY if not defined QMS_HOME call :findqms "%~dp0..\.."
 if not defined PY if defined QMS_HOME set "PY=%QMS_HOME%\py\python.exe"
 set "PYFLAGS="
 if defined QMS_HOME set "PYFLAGS=-E -s"
@@ -47,12 +49,26 @@ if errorlevel 1 goto oldpy
 
 rem ── 3. 구성요소 확인 → 없으면 설치(인터넷 또는 사내 pip 저장소 필요) ──
 %PYRUN% %PYFLAGS% -c "import streamlit, pandas, numpy, scipy, plotly, openpyxl, pptx; v = tuple(int(x) for x in streamlit.__version__.split('.')[:2]); raise SystemExit(0 if v >= (1, 55) else 1)" >nul 2>nul
-if not errorlevel 1 goto data
+if not errorlevel 1 goto drivers
 if defined QMS_HOME goto brokenqms
 echo.
 echo   구성요소가 없거나 오래되어 설치합니다(처음 1회, 수 분 소요)...
 %PYRUN% -m pip install -r requirements.txt
 if errorlevel 1 goto nopip
+
+rem ── 3-1. LIMS DB 드라이버(pymssql, oracledb, psycopg2, PyMySQL): 없으면 하나씩 설치, 실패해도 실행은 계속 ──
+:drivers
+if defined QMS_HOME goto data
+%PYRUN% -c "import sqlalchemy, pymssql, oracledb, psycopg2, pymysql" >nul 2>nul
+if not errorlevel 1 goto data
+echo.
+echo   LIMS DB 드라이버를 설치합니다(처음 1회)...
+%PYRUN% -c "import sqlalchemy" >nul 2>nul || %PYRUN% -m pip install "SQLAlchemy>=2.0"
+%PYRUN% -c "import pymssql" >nul 2>nul || %PYRUN% -m pip install "pymssql>=2.3"
+%PYRUN% -c "import oracledb" >nul 2>nul || %PYRUN% -m pip install "oracledb>=2.0"
+%PYRUN% -c "import psycopg2" >nul 2>nul || %PYRUN% -m pip install "psycopg2-binary>=2.9"
+%PYRUN% -c "import pymysql" >nul 2>nul || %PYRUN% -m pip install "PyMySQL>=1.1"
+echo   설치하지 못한 드라이버는 화면 LIMS 연동 - 연결 설정의 '드라이버 설치' 버튼으로 다시 시도할 수 있습니다.
 
 rem ── 4. 데이터 폴더: 설치 앱의 데이터를 함께 쓸지(처음 1회 묻고 기억) ──
 :data

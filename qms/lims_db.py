@@ -242,6 +242,66 @@ def connect_args(conn: dict) -> dict:
     return {}
 
 
+DRIVER_PIP = {"pymssql": "pymssql>=2.3", "pyodbc": "pyodbc>=5.1", "oracledb": "oracledb>=2.0", "psycopg2": "psycopg2-binary>=2.9",
+              "pymysql": "PyMySQL>=1.1", "sqlalchemy": "SQLAlchemy>=2.0"}
+
+
+def driver_ok(drv: str) -> bool:
+    """이 실행 환경(파이썬)에 드라이버 구성요소가 있는가(불러오지 않고 찾기만)."""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec(DRIVER_MODULE.get(drv, drv)) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def runtime_python() -> str:
+    import sys
+    return sys.executable
+
+
+def install_driver(drv: str, timeout: int = 600) -> tuple[bool, str]:
+    """실행 중인 파이썬에 드라이버를 pip 로 설치(인터넷 또는 사내 pip 저장소 필요). → (성공, 기록 끝부분)."""
+    import importlib
+    import site
+    import subprocess
+    import sys
+
+    pkgs = [DRIVER_PIP.get(drv, drv)] + ([] if driver_ok("sqlalchemy") else [DRIVER_PIP["sqlalchemy"]])
+    try:
+        p = subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", *pkgs], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=timeout)
+        log = (p.stdout or "") + (p.stderr or "")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    try:                                               # 사용자 폴더에 설치된 경우에도 바로 불러올 수 있게
+        user_site = site.getusersitepackages()
+        if user_site and user_site not in sys.path:
+            site.addsitedir(user_site)
+    except Exception:  # noqa: BLE001
+        pass
+    importlib.invalidate_caches()
+    ok = p.returncode == 0 and driver_ok(drv)
+    return ok, "\n".join(log.strip().splitlines()[-12:])
+
+
+def b64_ip(text: str) -> str | None:
+    """'MTcyLjE3LjIyLjEx' 처럼 Base64 로 인코딩된 IP 이면 풀어서 돌려준다(LIMS 설정 파일에서 복사한 값 안내용)."""
+    import base64
+    import binascii
+
+    t = (text or "").strip()
+    if not t or not re.fullmatch(r"[A-Za-z0-9+/]{8,}={0,2}", t):
+        return None
+    try:
+        dec = base64.b64decode(t + "=" * (-len(t) % 4), validate=True).decode("ascii")
+        ipaddress.ip_address(dec)
+        return dec
+    except (binascii.Error, UnicodeDecodeError, ValueError):
+        return None
+
+
 def make_engine(conn: dict, password: str = "", database: str | None = None):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
@@ -263,8 +323,8 @@ _HINTS = [
      "DB 이름(Oracle은 서비스 이름/SID)이 맞지 않습니다. MSSQL·PostgreSQL·MySQL은 DB 이름을 비우고 'DB 목록 불러오기'로 고를 수 있습니다."),
     (r"18456|login failed|password authentication failed|ora-01017|access denied for user|\(1045|authentication failed",
      "아이디 또는 비밀번호가 맞지 않습니다(대소문자 확인). 계정 잠김·만료 여부는 LIMS 담당자·IT에 확인하세요."),
-    (r"no module named|data source name not found|im002|can't open lib|driver.*not found",
-     "DB 드라이버가 없습니다. MS SQL Server는 드라이버를 pymssql 로 바꿔 보세요(추가 설치 불필요)."),
+    (r"data source name not found|im002|can't open lib|odbc driver.*not found",
+     "Windows ODBC 드라이버가 없습니다. MS SQL Server는 접속 드라이버를 pymssql 로 바꾸세요."),
     (r"ssl|certificate|encrypt|tls", "암호화(SSL/TLS) 연결 설정 문제입니다. MS SQL Server는 드라이버를 바꿔 보세요(pymssql ↔ pyodbc)."),
     (r"permission denied|select permission|ora-00942|ora-01031|\(1142|not authorized",
      "이 계정에 읽기 권한이 없습니다. LIMS 담당자에게 해당 표·뷰의 SELECT 권한을 요청하세요."),
@@ -276,6 +336,11 @@ _HINTS = [
 
 def explain(msg: str) -> str:
     low = msg.lower()
+    m = re.search(r"no module named '([\w.]+)'", low)
+    if m:
+        mod = m.group(1).split(".")[0]
+        return (f"이 실행 환경(파이썬)에 DB 드라이버 '{mod}' 가 없습니다 → ① 연결 설정의 '⬇️ 드라이버 설치' 버튼을 누르거나, "
+                "드라이버가 들어 있는 설치 앱(2_RUN.bat)·최신 RUN_CODE.bat 으로 실행하세요.")
     return next((h for p, h in _HINTS if re.search(p, low)), "")
 
 
@@ -420,7 +485,9 @@ def diagnose(conn: dict, password: str) -> list[dict]:
                 if ip and ip not in addrs:
                     msgs.append("※ 호스트 이름의 IP와 입력한 IP가 다릅니다(IP로 접속합니다)")
             except socket.gaierror:
-                msgs.append(f"호스트 {host}: 이름 확인 안 됨" + (" (IP로 접속)" if ip else ""))
+                dec = b64_ip(host)
+                msgs.append(f"호스트 {host}: 이름 확인 안 됨" + (" (IP로 접속)" if ip else "")
+                            + (f" — 이 값은 Base64로 인코딩된 IP {dec} 입니다(LIMS 설정 파일 값으로 보임)" if dec else ""))
                 if not ip:
                     add("주소", False, f"'{host}' 주소를 찾을 수 없습니다. IP 주소를 입력하세요.")
                     return out
@@ -444,7 +511,8 @@ def diagnose(conn: dict, password: str) -> list[dict]:
         __import__(DRIVER_MODULE.get(drv, drv))
         add("드라이버", True, DB_TYPES[t]["drivers"].get(drv, drv))
     except ImportError:
-        add("드라이버", False, f"{drv} 구성요소가 없습니다(설치 패키지에는 포함 — 코드로 실행 중이면 pip install {drv}).")
+        add("드라이버", False, f"이 실행 환경에 '{drv}' 드라이버가 없습니다 — '⬇️ 드라이버 설치' 버튼(인터넷 필요)을 누르거나 "
+            f"설치 앱(2_RUN.bat)으로 실행하세요. 실행 중인 파이썬: {runtime_python()}")
         return out
     from sqlalchemy import inspect, text
 

@@ -1,0 +1,6 @@
+# LIMS DB 드라이버(DB 연결 방식) — 쓰는 DB 것만 있으면 됩니다. 설치 패키지(1~6번 ZIP)에는 모두 들어 있습니다.
+pymssql>=2.3          # MS SQL Server(추가 프로그램 없이 접속, 권장)
+oracledb>=2.0         # Oracle(Thin — Oracle Client 불필요)
+psycopg2-binary>=2.9  # PostgreSQL
+PyMySQL>=1.1          # MySQL·MariaDB
+cryptography>=42; sys_platform != "win32"   # 비밀번호 암호화(Windows 는 DPAPI 사용이라 불필요)

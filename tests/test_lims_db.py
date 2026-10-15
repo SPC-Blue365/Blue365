@@ -272,3 +272,15 @@ def test_demo_lims_view_is_found_first(demo_raw, tmp_path):
     res = L.explore({"type": "sqlite", "database": str(p)}, "")
     top = res["candidates"].iloc[0]
     assert top["table"] == "V_QC_RESULT" and top["layout"] == "long"
+
+
+def test_missing_driver_is_explained_and_detected():
+    """드라이버가 없는 실행 환경(PC 파이썬으로 코드 실행 등) → 정확한 안내(드라이버 바꾸라는 엉뚱한 안내 금지)·설치 버튼용 상태."""
+    msg = L.explain("ModuleNotFoundError: No module named 'pymssql'")
+    assert "'pymssql'" in msg and "드라이버 설치" in msg and "바꿔" not in msg
+    assert "pymssql 로 바꾸세요" in L.explain("('IM002', '[IM002] Data source name not found')")
+    assert L.driver_ok("sqlite") and not L.driver_ok("no_such_driver_mod")
+    assert L.DRIVER_PIP["psycopg2"].startswith("psycopg2-binary")
+    assert L.b64_ip("MTcyLjE3LjIyLjEx") == "172.17.22.11" and L.b64_ip("LIMS-DB01") is None and L.b64_ip("") is None
+    req = (Path(__file__).resolve().parent.parent / "requirements-lims.txt").read_text(encoding="utf-8")
+    assert all(p in req for p in ("pymssql", "oracledb", "psycopg2-binary", "PyMySQL"))
