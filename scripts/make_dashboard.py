@@ -140,11 +140,19 @@ def build() -> str:
 <div id="cards" class="grid"></div>
 
 <div class="grid wide">
-  <div class="panel plain">
-    <h3>야드 품위 추이 <span class="tag mute">일별 평균 · 음영 = 규격</span></h3>
-    <div id="c-trend"></div>
-    <p class="hint">굵은 선이 하루 평균, 옅은 띠가 그날의 최저~최고입니다.
-      띠가 음영을 크게 벗어난 날은 하루 안에서도 품위가 많이 흔들린 날입니다.</p>
+  <div class="panel">
+    <div class="phd">
+      <div class="tabs" id="trendtabs">
+        <button class="on" data-m="cao">야드 CaO</button>
+        <button data-m="mgo">MgO</button>
+        <button data-m="load">적재량</button>
+      </div>
+      <span class="sp"></span><span class="tag mute" id="trend-tag">일별 평균 · 음영 = 규격</span>
+    </div>
+    <div class="pbd">
+      <div id="c-trend"></div>
+      <p class="hint" id="trend-hint"></p>
+    </div>
   </div>
 </div>
 
@@ -258,32 +266,60 @@ function dateTicks(s, rows, X, pb) {{
 }}
 
 /* ── 야드 품위 추이 ───────────────────────────────── */
+// 추이 패널에서 볼 지표 — 탭으로 바꾼다. 규격 음영은 CaO 에만 의미가 있다.
+const METRICS = {{
+  cao:  {{v: 'cao',  lo: 'lo',  hi: 'hi',  unit: '%',   spec: true,  step: 2,
+          tag: '일별 평균 · 음영 = 규격',
+          hint: '굵은 선이 하루 평균, 옅은 띠가 그날의 최저~최고입니다. 띠가 음영을 크게 '
+              + '벗어난 날은 하루 안에서도 품위가 많이 흔들린 날입니다.'}},
+  mgo:  {{v: 'mgo',  lo: 'mlo', hi: 'mhi', unit: '%',   spec: false, step: 1,
+          tag: '일별 평균',
+          hint: 'MgO 는 CaO 와 같은 광산 기록에서 나오므로, 두 성분이 함께 움직이는지 보면 '
+              + '매칭이 제대로 되었는지 교차 확인할 수 있습니다(품위 수지).'}},
+  load: {{v: 'load', lo: 'llo', hi: 'lhi', unit: '',    spec: false, step: 10,
+          tag: '벨트 적재량 · 일별 평균',
+          hint: '분석기 헛값은 적재량이 적을 때 몰립니다(헛값 구간 중앙값 15 vs 정상 35). '
+              + '품위가 튀는 날은 이 그래프를 함께 보십시오.'}},
+}};
+let METRIC = 'cao';
+
 function drawTrend() {{
   const host = document.getElementById('c-trend');
-  const series = lines().map(l => [l, cut(DATA.yard[l] || [])]).filter(([, r]) => r.length);
+  const M = METRICS[METRIC];
+  const tag = document.getElementById('trend-tag');
+  const hint = document.getElementById('trend-hint');
+  if (tag) tag.textContent = M.tag;
+  if (hint) hint.textContent = M.hint;
+  const series = lines().map(l => [l, cut(DATA.yard[l] || [])])
+    .map(([l, r]) => [l, r.filter(x => x[M.v] != null)]).filter(([, r]) => r.length);
   if (!series.length) {{ host.innerHTML = '<p class="empty">표시할 자료가 없습니다.</p>'; return; }}
   const W = 1200, H = 300, pl = 44, pr = W - 14, pt = 14, pb = H - 26;
   const s = svg(host, W, H);
   const all = series.flatMap(([, r]) => r);
-  const lo = Math.min(DATA.target - DATA.tol - 1, ...all.map(r => r.lo ?? r.cao)) - .3;
-  const hi = Math.max(DATA.target + DATA.tol + 1, ...all.map(r => r.hi ?? r.cao)) + .3;
+  let lo = Math.min(...all.map(r => r[M.lo] ?? r[M.v]));
+  let hi = Math.max(...all.map(r => r[M.hi] ?? r[M.v]));
+  if (M.spec) {{ lo = Math.min(lo, DATA.target - DATA.tol - 1); hi = Math.max(hi, DATA.target + DATA.tol + 1); }}
+  const pad = Math.max((hi - lo) * .05, .3);
+  lo -= pad; hi += pad;
   const Y = ymap(lo, hi, pb, pt), X = xmap(all.slice().sort((a, b) => a.d < b.d ? -1 : 1), pl, pr);
-  s.appendChild(el('rect', {{x: pl, y: Y(DATA.target + DATA.tol), width: pr - pl,
-    height: Math.abs(Y(DATA.target - DATA.tol) - Y(DATA.target + DATA.tol)),
-    fill: 'var(--band)'}}));
-  for (let v = Math.ceil(lo); v <= hi; v += 2) {{
+  if (M.spec) {{
+    s.appendChild(el('rect', {{x: pl, y: Y(DATA.target + DATA.tol), width: pr - pl,
+      height: Math.abs(Y(DATA.target - DATA.tol) - Y(DATA.target + DATA.tol)),
+      fill: 'var(--band)'}}));
+  }}
+  const step = M.step;
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {{
     s.appendChild(el('line', {{x1: pl, y1: Y(v), x2: pr, y2: Y(v), stroke: 'var(--grid)'}}));
     s.appendChild(txt(v, {{x: pl - 7, y: Y(v) + 4, 'text-anchor': 'end', class: 'ax'}}));
   }}
   series.forEach(([l, rows]) => {{
-    const band = rows.filter(r => r.lo != null && r.hi != null);
+    const band = rows.filter(r => r[M.lo] != null && r[M.hi] != null);
     if (band.length > 1) {{
-      const up = band.map(r => `${{X(r.d).toFixed(1)}},${{Y(r.hi).toFixed(1)}}`);
-      const dn = band.slice().reverse().map(r => `${{X(r.d).toFixed(1)}},${{Y(r.lo).toFixed(1)}}`);
+      const up = band.map(r => `${{X(r.d).toFixed(1)}},${{Y(r[M.hi]).toFixed(1)}}`);
+      const dn = band.slice().reverse().map(r => `${{X(r.d).toFixed(1)}},${{Y(r[M.lo]).toFixed(1)}}`);
       s.appendChild(el('polygon', {{points: up.concat(dn).join(' '), fill: COL[l], opacity: .16}}));
     }}
-    const pts = rows.filter(r => r.cao != null)
-      .map(r => `${{X(r.d).toFixed(1)}},${{Y(r.cao).toFixed(1)}}`).join(' ');
+    const pts = rows.map(r => `${{X(r.d).toFixed(1)}},${{Y(r[M.v]).toFixed(1)}}`).join(' ');
     s.appendChild(el('polyline', {{points: pts, fill: 'none', stroke: COL[l],
       'stroke-width': 1.8, 'stroke-linejoin': 'round'}}));
   }});
@@ -294,8 +330,10 @@ function drawTrend() {{
     s.appendChild(txt(l, {{x: lx + 21, y: pt + 1, class: 'cs'}}));
     lx += 82;
   }});
-  s.appendChild(txt(`음영 = 목표 ${{DATA.target}}±${{DATA.tol}}`,
-    {{x: pr, y: pt + 1, 'text-anchor': 'end', class: 'cs'}}));
+  if (M.spec) {{
+    s.appendChild(txt(`음영 = 목표 ${{DATA.target}}±${{DATA.tol}}`,
+      {{x: pr, y: pt + 1, 'text-anchor': 'end', class: 'cs'}}));
+  }}
 }}
 
 /* ── 재고 추이 ────────────────────────────────────── */
@@ -504,6 +542,11 @@ document.getElementById('built').textContent = '기준 ' + DATA.built;
 document.getElementById('lin').innerHTML =
   `<button class="chip" data-l="all" aria-pressed="true">전체</button>`
   + DATA.lines.map(l => `<button class="chip" data-l="${{l}}">${{l}}</button>`).join('');
+document.querySelectorAll('#trendtabs button').forEach(b => b.onclick = () => {{
+  METRIC = b.dataset.m;
+  document.querySelectorAll('#trendtabs button').forEach(x => x.classList.toggle('on', x === b));
+  drawTrend();
+}});
 document.querySelectorAll('#win .chip').forEach(b => b.onclick = () => {{
   WIN = +b.dataset.w;
   document.querySelectorAll('#win .chip').forEach(x =>

@@ -47,11 +47,20 @@ def yard_daily(yards: dict) -> dict:
             continue
         d["day"] = d["datetime"].dt.floor("D")
         d["ok"] = (d["cao"] >= TARGET - TOL) & (d["cao"] <= TARGET + TOL)
+        # ⭐️ MgO·적재량도 함께 낸다 — 화면에서 지표를 바꿔 가며 보기 위한 것(§6-0-24).
+        #    MgO 는 품위 수지 검증에 쓰는 값이고, 적재량은 분석기 헛값이 적재량이 적을 때
+        #    몰린다는 사실(§6-0-20) 때문에 품위와 **함께** 봐야 한다.
+        if "load" not in d.columns:
+            d["load"] = np.nan
         g = d.groupby("day").agg(
             cao=("cao", "mean"), lo=("cao", "min"), hi=("cao", "max"),
-            mgo=("mgo", "mean"), ok=("ok", "mean"), n=("cao", "size"))
+            mgo=("mgo", "mean"), mlo=("mgo", "min"), mhi=("mgo", "max"),
+            load=("load", "mean"), llo=("load", "min"), lhi=("load", "max"),
+            ok=("ok", "mean"), n=("cao", "size"))
         out[ln] = [dict(d=k.strftime("%Y-%m-%d"), cao=_f(r.cao), lo=_f(r.lo), hi=_f(r.hi),
-                        mgo=_f(r.mgo), ok=_f(r.ok * 100), n=int(r.n))
+                        mgo=_f(r.mgo), mlo=_f(r.mlo), mhi=_f(r.mhi),
+                        load=_f(r.load), llo=_f(r.llo), lhi=_f(r.lhi),
+                        ok=_f(r.ok * 100), n=int(r.n))
                    for k, r in g.iterrows()]
     return out
 

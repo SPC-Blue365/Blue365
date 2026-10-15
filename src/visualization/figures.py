@@ -1186,18 +1186,34 @@ def assemble_html(title: str, sections: list[tuple[str, object]], tail_html: str
         else:
             body.append(str(obj))
     inner = "\n".join(body)
+    # ⚠️ 이 셸도 **포털 스타일**을 쓴다(§6-0-23). 예전엔 여기만 2022년식 하드코딩 CSS 라
+    #    모니터 상태 리포트 혼자 전혀 다른 모양이었다.
+    from src.visualization.portalstyle import STYLE, foot, hero, nav
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
-<style>body{{font-family:system-ui,'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
-max-width:1040px;margin:22px auto;padding:0 16px;color:#1a1a1a;line-height:1.6}}
-h1{{border-bottom:3px solid #1f77b4;padding-bottom:8px}}h2{{margin-top:30px;color:#12395c}}
-table{{border-collapse:collapse;width:100%;margin:10px 0}}th,td{{border:1px solid #ddd;padding:8px;text-align:center}}
-th{{background:#f0f4f8}}.ok{{background:#e8f5e9;border-left:4px solid #2ca02c;padding:10px 14px;margin:14px 0;border-radius:4px}}
-.note{{background:#fff8e1;border-left:4px solid #ffb300;padding:10px 14px;margin:14px 0;border-radius:4px}}
-code,pre{{background:#f4f4f4;border-radius:4px}}pre{{padding:12px;overflow-x:auto}}code{{padding:1px 5px}}</style></head>
-<body><h1>{title}</h1>{inner}{tail_html}
-<p style="color:#888;font-size:0.85em;margin-top:24px">※ 본 리포트·데이터는 로컬 전용입니다. 외부(원격)에 발행/커밋하지 않습니다.</p>
+<style>{STYLE}
+h2{{color:var(--ink);margin:28px 0 4px;font-size:15px;font-weight:700;letter-spacing:-.01em;
+padding-left:11px;border-left:3px solid var(--accent)}}
+table{{border-collapse:collapse;width:100%;margin:10px 0;background:var(--surface);
+border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;font-size:12.5px}}
+th,td{{border-bottom:1px solid var(--grid);padding:8px 10px;text-align:center;color:var(--ink-2)}}
+th{{background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:600}}
+tr:last-child td{{border-bottom:none}}
+.ok{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--good);
+padding:11px 15px;margin:13px 0;border-radius:var(--radius);font-size:13px}}
+.note{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);
+padding:11px 15px;margin:13px 0;border-radius:var(--radius);font-size:13px}}
+pre{{background:var(--surface-2);border:1px solid var(--line);padding:12px;
+border-radius:var(--radius);overflow-x:auto;font-size:11.5px}}</style></head>
+<body>{nav(active="운영 모니터")}
+{hero(eyebrow="석회석 광산 → OSP → 야드 · 운영 모니터",
+      title=title,
+      lead="라인별 최신 품위·예측값과 규격 이탈 경보를 모아 둔 화면입니다. "
+           "경보는 실측이 규격을 벗어났거나, 예측이 벗어날 것으로 보일 때 뜹니다.")}
+<div class="wrap doc">{inner}{tail_html}</div>
+{foot("※ 본 리포트·데이터는 <b>로컬 전용</b>입니다. 외부(원격)에 발행·커밋하지 않습니다. · "
+      "석회석 광산–야드 품위(CaO) 매칭 및 추적 시스템 · SAMPYO")}
 </body></html>"""
 
 

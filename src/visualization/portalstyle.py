@@ -134,6 +134,10 @@ body {
 .hero-in { max-width:1280px; margin:0 auto; padding:26px 20px 30px;
            display:grid; grid-template-columns:minmax(0,1.85fr) minmax(0,1fr); gap:18px;
            align-items:stretch; }
+/* 우측 패널이 없는 문서형 산출물 — 배너가 한 칸만 차지해 잘린 것처럼 보이면 안 된다. */
+.hero-in.solo { grid-template-columns:1fr; }
+.hero-in.solo .hero-card { padding:28px 32px; }
+.hero-in.solo .hero-card h1, .hero-in.solo .lead { max-width:66ch; }
 .hero-card { background:linear-gradient(135deg,var(--accent) 0%,#0d4bb0 100%);
              border-radius:var(--radius); padding:26px 28px; color:#fff;
              display:flex; flex-direction:column; gap:12px; justify-content:center;
@@ -342,7 +346,7 @@ h1 { font-size:25px; line-height:1.35; font-weight:700; letter-spacing:-.025em;
 """
 
 #: 상단 바 메뉴 — (라벨, 활성 여부). 산출물마다 자기 항목을 활성으로 둔다.
-NAV_ITEMS = ("현황 브리프", "배합 처방", "운영 대시보드", "통합 리포트", "계획서")
+NAV_ITEMS = ("현황 브리프", "배합 처방", "운영 대시보드", "통합 리포트", "운영 모니터", "계획서")
 
 
 def _icon(name: str) -> str:
@@ -364,7 +368,7 @@ def _icon(name: str) -> str:
 
 def nav(active: str = "", user: str = "") -> str:
     """흰 상단 바 — 레퍼런스의 그룹 포털 머리말을 우리 산출물 묶음으로 바꾼 것."""
-    icons = ["chart", "flask", "grid", "doc", "map"]
+    icons = ["chart", "flask", "grid", "doc", "alert", "map"]
     items = "".join(
         f'<a href="#" class="{"on" if n == active else ""}">{_icon(i)}{n}</a>'
         for n, i in zip(NAV_ITEMS, icons))
@@ -387,7 +391,8 @@ def hero(eyebrow: str, title: str, lead: str, strip: str = "",
     <div class="quick">{qs}</div>
   </div>""" if (today or qs) else ""
     st = f'<div class="hero-strip">{strip}</div>' if strip else ""
-    return f"""<div class="hero"><div class="hero-in">
+    solo = "" if side else " solo"
+    return f"""<div class="hero"><div class="hero-in{solo}">
   <div class="hero-card">
     <div class="hero-eyebrow">{eyebrow}</div>
     <h1>{title}</h1>
