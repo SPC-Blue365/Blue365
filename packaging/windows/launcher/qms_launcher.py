@@ -284,6 +284,77 @@ def merge_extracted(src: Path, say=print, root: Path | None = None) -> int:
     return len(files)
 
 
+DATA_SKIP = {".demo", ".gitkeep"}
+
+
+def has_user_data(d: Path) -> bool:
+    """data 폴더에 사용자가 만든 자료(출하시멘트·LIMS 설정·기준·이름 등)가 있는가. 데모 데이터만 있으면 False."""
+    try:
+        if not d.is_dir():
+            return False
+        demo = (d / ".demo").exists()
+        for p in d.iterdir():
+            if p.name in DATA_SKIP or p.name.startswith(("~", ".tmp")):
+                continue
+            if demo and p.name in ("qms.db", "lims_demo.db", "qms.db-journal"):
+                continue
+            return True
+    except OSError:
+        return False
+    return False
+
+
+def _data_mtime(d: Path) -> float:
+    try:
+        return max((p.stat().st_mtime for p in d.rglob("*") if p.is_file()), default=0.0)
+    except OSError:
+        return 0.0
+
+
+def find_previous_data() -> list[Path]:
+    """주변의 다른(이전) 설치본 data 폴더 중 사용자 자료가 있는 것 — 최근에 쓴 것부터."""
+    bases = [(d, 3) for d in search_dirs()]
+    if IS_WIN:
+        bases.append((Path("C:/"), 0))
+    found: dict[Path, Path] = {}
+    for base, depth in bases:
+        for p in _globs(base, TOP, depth):
+            try:
+                rp = p.resolve()
+            except OSError:
+                continue
+            if rp == ROOT.resolve() or rp in found:
+                continue
+            if (p / "tools" / "qms_launcher.py").exists() and has_user_data(p / "data"):
+                found[rp] = p / "data"
+    return sorted(found.values(), key=_data_mtime, reverse=True)
+
+
+def migrate_data(say=print) -> Path | None:
+    """새로 푼 설치본의 data 가 비어 있으면 이전 설치본의 data 를 복사(원본은 그대로). 이미 자료가 있으면 아무것도 안 함."""
+    if os.environ.get("QMS_DATA_DIR") or has_user_data(data_dir()):
+        return None
+    prev = find_previous_data()
+    if not prev:
+        return None
+    src = prev[0]
+    dst = data_dir()
+    dst.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for f in src.rglob("*"):
+        if not f.is_file():
+            continue
+        target = dst / f.relative_to(src)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with f.open("rb") as fin, target.open("wb") as fout:
+            shutil.copyfileobj(fin, fout, 1 << 20)
+        n += 1
+    say(f"  이전 설치본의 데이터를 가져왔습니다({n}개 파일, 원본은 그대로): {src}")
+    if len(prev) > 1:
+        say(f"  ※ 다른 이전 설치본도 있습니다(가장 최근 것을 사용): {', '.join(str(x) for x in prev[1:3])}")
+    return src
+
+
 def extract_part(zpath: Path, say=print, root: Path | None = None) -> int:
     """분할 ZIP을 설치 폴더에 푼다(ZIP 안 'Blue365_QMS/' 아래만, 폴더 밖으로 나가는 경로는 무시)."""
     root = (root or ROOT).resolve()
@@ -508,6 +579,10 @@ def cmd_setup(args) -> int:
         say.save("setup")
         return 3
 
+    try:
+        migrate_data(say)
+    except Exception as exc:  # noqa: BLE001 - 가져오기 실패는 설치를 막지 않음
+        say(f"  [주의] 이전 설치본 데이터를 가져오지 못했습니다: {exc} (data 폴더를 직접 복사하거나 6_BACKUP 백업을 쓰세요)")
     say()
     say("2단계: 실행 준비 - 파이썬 파일 컴파일(1회, 1~5분 소요)…")
     t0 = time.time()

@@ -249,3 +249,29 @@ def test_browser_translation_is_blocked(tmp_path, monkeypatch):
     assert L.block_translate(msgs.append) == "ok" and "적용되어 있음" in msgs[-1]
     monkeypatch.setattr(N, "ensure", lambda path=None: "readonly")
     assert L.block_translate(msgs.append) == "readonly" and "[주의]" in msgs[-1]
+
+
+def test_new_folder_install_copies_previous_install_data(fake_root, tmp_path, monkeypatch):
+    """새 버전 1번 ZIP을 다른 폴더에 풀어도 이전 설치본의 자료(출하시멘트·LIMS 설정·암호화된 비밀번호)를 복사해 온다(원본 유지).
+    데모 데이터만 있는 설치본·이미 자료가 있는 새 설치본은 건드리지 않는다."""
+    monkeypatch.setattr(L.Path, "home", staticmethod(lambda: tmp_path / "home"))
+    demo = tmp_path / "demo_1of6" / "Blue365_QMS"
+    (demo / "tools").mkdir(parents=True)
+    (demo / "tools" / "qms_launcher.py").write_text("#")
+    (demo / "data").mkdir()
+    (demo / "data" / ".demo").write_text("1")
+    (demo / "data" / "qms.db").write_bytes(b"demo")
+    assert not L.has_user_data(demo / "data") and L.migrate_data(lambda m: None) is None
+    old = tmp_path / "old_1of6" / "Blue365_QMS"
+    (old / "tools").mkdir(parents=True)
+    (old / "tools" / "qms_launcher.py").write_text("#")
+    (old / "data" / "sub").mkdir(parents=True)
+    for name, body in [("shipment.db", b"ship"), ("lims.json", b"{}"), ("secrets.enc.json", b"{}"), ("sub/x.json", b"1")]:
+        (old / "data" / name).write_bytes(body)
+    msgs = []
+    assert L.migrate_data(msgs.append) == old / "data"
+    new = fake_root / "data"
+    assert (new / "shipment.db").read_bytes() == b"ship" and (new / "sub" / "x.json").exists()
+    assert (old / "data" / "shipment.db").exists() and "가져왔습니다" in msgs[0]
+    (old / "data" / "shipment.db").write_bytes(b"changed")
+    assert L.migrate_data(lambda m: None) is None and (new / "shipment.db").read_bytes() == b"ship"   # 이미 자료가 있으면 그대로
