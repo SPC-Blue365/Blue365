@@ -4,3 +4,4 @@ oracledb>=2.0         # Oracle(Thin — Oracle Client 불필요)
 psycopg2-binary>=2.9  # PostgreSQL
 PyMySQL>=1.1          # MySQL·MariaDB
 cryptography>=42; sys_platform != "win32"   # 비밀번호 암호화(Windows 는 DPAPI 사용이라 불필요)
+pyodbc>=5.1; sys_platform == "win32"   # MS SQL Server: Windows 자체 SQL Server 드라이버(ODBC)로 접속(🔧 연결 방법 자동 찾기)

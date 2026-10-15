@@ -205,7 +205,8 @@ def test_partial_items_from_lims_do_not_break_derived_values():
 def test_detect_db_type_from_first_handshake():
     """아이디·비밀번호 없이 첫 인사(핸드셰이크)로 DB 종류 판별 — 실제 서버에서 받은 응답 바이트로 확인."""
     tds = bytes.fromhex("0401001a0000010000000b00060100110001ff100010d1000002")          # SQL Server 2022 PRELOGIN 응답
-    assert L._classify(tds) == {"type": "mssql", "version": "SQL Server 2022 (16.0.4305)"}
+    assert L._classify(tds) == {"type": "mssql", "version": "SQL Server 2022 (16.0.4305)",
+                                "encryption": "강제 아님(암호화 없이도 접속 허용)"}
     maria = b"Z\x00\x00\x00\n11.8.9-MariaDB-ubu2404\x00\x05\x00\x00\x00tz)[l0FO\x00"
     assert L._classify(maria) == {"type": "mysql", "version": "MariaDB 11.8.9"}
     assert L._classify(b"N")["type"] == "postgresql" and L._classify(b"S")["type"] == "postgresql"
@@ -284,3 +285,22 @@ def test_missing_driver_is_explained_and_detected():
     assert L.b64_ip("MTcyLjE3LjIyLjEx") == "172.17.22.11" and L.b64_ip("LIMS-DB01") is None and L.b64_ip("") is None
     req = (Path(__file__).resolve().parent.parent / "requirements-lims.txt").read_text(encoding="utf-8")
     assert all(p in req for p in ("pymssql", "oracledb", "psycopg2-binary", "PyMySQL"))
+
+
+def test_connection_plans_and_tls_hint():
+    """로그인 전 TLS 단계 끊김(20002) → 정확한 안내, 연결 방법 후보(암호화 없는 방법은 동의할 때만), pymssql 설정 전달."""
+    m = "OperationalError: (20002, b'DB-Lib error message 20002, severity 9:\\nTDS server connection failed (10.50.11.71)')"
+    assert "암호화(TLS)" in L.explain(m) and "비밀번호 문제 아님" in L.explain(m)
+    base = {"type": "mssql", "ip": "10.0.0.1", "port": 1433, "user": "u", "driver": "pymssql"}
+    labels = [p[0] for p in L.connection_plans(base)]
+    assert labels[:2] == ["pymssql(기본)", "pymssql · TDS 7.4"] and not any("암호화 없이" in x for x in labels)
+    plain = dict(L.connection_plans(base, allow_plain=True))
+    assert plain["pymssql · 암호화 없이(사내망 전용)"]["encryption"] == "off"
+    assert L.connect_args({**base, "tds_version": "7.0", "encryption": "off"})["tds_version"] == "7.0"
+    assert "tds_version" not in L.connect_args(base)
+    u = L.build_url({**base, "driver": "pyodbc", "odbc_driver": "ODBC Driver 18 for SQL Server"}, "pw")
+    assert u.query["Encrypt"] == "yes" and u.query["TrustServerCertificate"] == "yes"
+    assert "Encrypt" not in L.build_url({**base, "driver": "pyodbc", "odbc_driver": "SQL Server"}, "pw").query
+    assert L.connection_plans({"type": "postgresql"}) == [("기본", {})]
+    tds = bytes.fromhex("0401001a0000010000000b00060100110001ff100010d1000003")
+    assert L._classify(tds)["encryption"].startswith("필수")

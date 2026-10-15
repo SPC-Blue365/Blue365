@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 
 import pandas as pd
@@ -67,6 +68,52 @@ def _steps_table(steps: list[dict]) -> None:
         (st.success if x["ok"] else st.error)(f"{'✅' if x['ok'] else '❌'} **{x['step']}** — {x['msg']}")
 
 
+def _finder(cfg: lims.LimsConfig, conn: dict, pw_new: str, local: bool, expanded: bool) -> None:
+    """🔧 연결 방법 자동 찾기 — pymssql 설정·Windows ODBC 드라이버를 차례로 시도해 되는 방법을 저장."""
+    ss = st.session_state
+    cur = conn.get("driver", "pymssql") + (f" · ODBC {conn.get('odbc_driver')}" if conn.get("driver") == "pyodbc" else "") \
+        + (f" · TDS {conn['tds_version']}" if conn.get("tds_version") else "") + (f" · 암호화 {conn['encryption']}" if conn.get("encryption") else "")
+    with st.container(border=True):
+        st.markdown("**🔧 연결 방법 자동 찾기** — 로그인 전 암호화(TLS) 단계에서 끊길 때 쓰는 방법입니다. 드라이버와 설정을 바꿔 가며 "
+                    "**실제 로그인까지** 시도하고, 처음 성공한 방법을 저장합니다(SELECT 1 만 실행).")
+        odbc = L.odbc_drivers()
+        st.caption(f"지금 방법: {cur} · 이 PC의 Windows SQL Server 드라이버: {', '.join(odbc) if odbc else '없음(또는 pyodbc 없음)'}")
+        f1, f2 = st.columns([1.2, 2.2], vertical_alignment="center")
+        plain = f2.checkbox("암호화 없는 방법도 시도(사내망 전용 · 비권장 — 비밀번호가 암호화되지 않고 전송됨)", key="ldb_find_plain",
+                            help="서버 인증서·TLS 설정이 오래돼 암호화 연결이 안 될 때만 쓰세요. 서버가 암호화를 강제하면 이 방법은 실패합니다. "
+                                 "근본 해결은 LIMS 서버 인증서(2048비트·SHA256)·TLS 1.2 설정입니다.")
+        if f1.button("🔧 연결 방법 자동 찾기", type="primary", disabled=not local, width="stretch", key=f"ldb_find_btn_{expanded}"):
+            bar = st.progress(0.0, text="시도 중…")
+            best, tried = L.find_connection(conn, pw_new or _pw(), allow_plain=plain,
+                                            progress=lambda i, n, lab: bar.progress(min(1.0, i / max(n, 1)), text=f"{lab} 시도 중… ({i}/{n})"))
+            bar.empty()
+            ss["ldb_find_result"] = (best, tried)
+            if best:
+                if pw_new:
+                    SS.set_secret(lims.STORE_NAMES["password"], pw_new)
+                    ss["ldb_pw_v"] = ss.get("ldb_pw_v", 0) + 1
+                cfg.db, cfg.mode = best, "db"
+                lims.save_lims_config(cfg)
+                _clear_browse_cache()
+                ss.pop("ldb_diag", None)
+                ss["ldb_drv_v"] = ss.get("ldb_drv_v", 0) + 1       # 드라이버 선택 상자를 저장된 값으로 새로 그림
+                ss["ldb_find_ok"] = best["driver"] + (f" · {best.get('odbc_driver')}" if best["driver"] == "pyodbc" else "") \
+                    + (f" · TDS {best['tds_version']}" if best.get("tds_version") else "") \
+                    + (" · 암호화 없음(사내망 전용)" if best.get("encryption") == "off" else "")
+                st.rerun()
+        res = ss.get("ldb_find_result")
+        if res:
+            best, tried = res
+            if best:
+                how = best["driver"] + (f" · {best.get('odbc_driver')}" if best["driver"] == "pyodbc" else "") \
+                    + (f" · TDS {best['tds_version']}" if best.get("tds_version") else "") + (" · 암호화 없음" if best.get("encryption") == "off" else "")
+                st.success(f"연결에 성공한 방법: **{how}** — 접속 정보를 저장했습니다. 이제 ② 가져올 곳 탭에서 🧭 자동으로 찾기를 누르세요.")
+            else:
+                st.error("어떤 방법으로도 연결하지 못했습니다." + ("" if plain else " '암호화 없는 방법도 시도'를 켜고 다시 해 보세요(서버가 허용하는 경우).")
+                         + " 계속 안 되면 LIMS 담당자에게 'SQL Server 인증서·TLS 1.2 설정'과 'QMS PC에서의 SQL 로그인 허용'을 확인해 달라고 하세요.")
+            st.dataframe(pd.DataFrame(tried), hide_index=True, width="stretch")
+
+
 def driver_gate(drv: str, local: bool = True, where: str = "conn") -> bool:
     """드라이버가 이 실행 환경에 없으면 안내와 '설치' 버튼을 보여 주고 False."""
     ss = st.session_state
@@ -129,7 +176,8 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
     drivers = L.DB_TYPES[t]["drivers"]
     drv = a2.selectbox("접속 드라이버", list(drivers), disabled=not local or len(drivers) < 2,
                        format_func=lambda k: drivers[k] + ("" if L.driver_ok(k) else " — ❌ 이 PC에 없음"),
-                       index=list(drivers).index(c0["driver"]) if c0.get("driver") in drivers else 0, key=f"ldb_drv_{t}")
+                       index=list(drivers).index(c0["driver"]) if c0.get("driver") in drivers else 0,
+                       key=f"ldb_drv_{t}_{ss.get('ldb_drv_v', 0)}")
     driver_gate(drv, local)
     if t == "sqlite":
         db_name = st.text_input("DB 파일 경로", c0["database"] if c0["type"] == "sqlite" else str(lims.LIMS_DEMO_DB),
@@ -193,10 +241,29 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
         pw_new = ""
     odbc = c0.get("odbc_driver") or L.ODBC_DEFAULT
     if t == "mssql" and drv == "pyodbc":
-        odbc = st.text_input("ODBC 드라이버 이름", odbc, key="ldb_odbc", disabled=not local,
-                             help="Windows 'ODBC 데이터 원본 관리자 → 드라이버' 탭의 이름(예: ODBC Driver 17 for SQL Server, SQL Server)")
+        have = L.odbc_drivers()
+        if have:
+            opts = have if odbc in have else [*have, odbc]
+            odbc = st.selectbox("Windows SQL Server 드라이버(ODBC)", opts, index=opts.index(odbc) if odbc in opts else 0,
+                                key=f"ldb_odbc_{ss.get('ldb_drv_v', 0)}", disabled=not local,
+                                help="이 PC에 설치된 SQL Server ODBC 드라이버입니다. 'SQL Server'는 Windows 에 기본으로 들어 있습니다.")
+        else:
+            odbc = st.text_input("ODBC 드라이버 이름", odbc, key="ldb_odbc", disabled=not local,
+                                 help="Windows 'ODBC 데이터 원본 관리자 → 드라이버' 탭의 이름(예: ODBC Driver 17 for SQL Server, SQL Server)")
     conn = {"type": t, "ip": ip.strip(), "host": host.strip(), "port": int(port), "database": db_name.strip(), "user": user.strip(),
             "driver": drv, "odbc_driver": odbc, "oracle_mode": omode}
+    if t == c0["type"] and drv == c0.get("driver"):          # 🔧 연결 방법 자동 찾기에서 정한 설정 유지
+        conn.update({k: c0[k] for k in ("tds_version", "encryption") if c0.get(k)})
+    if conn.get("tds_version") or conn.get("encryption"):
+        e1x, e2x = st.columns([3, 1], vertical_alignment="center")
+        e1x.caption("연결 방법 설정: " + " · ".join(x for x in (f"TDS {conn.get('tds_version')}" if conn.get("tds_version") else "",
+                                                          "암호화 없음(사내망 전용)" if conn.get("encryption") == "off" else "") if x)
+                    + " — 🔧 연결 방법 자동 찾기로 정한 값")
+        if e2x.button("기본으로 되돌리기", disabled=not local, key="ldb_reset_plan"):
+            cfg.db = {k: v for k, v in {**c0, **conn}.items() if k not in ("tds_version", "encryption")}
+            lims.save_lims_config(cfg)
+            _clear_browse_cache()
+            st.rerun()
     ss["ldb_form_conn"] = conn
     st.caption(f"🔐 비밀번호: {src_label or '없음'}" + (f" · 저장 방식 {SS.method_label()}" if src_label.startswith("화면") else ""))
 
@@ -239,12 +306,22 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
     if c4.button("🗑 저장된 비밀번호 지우기", width="stretch", disabled=not local or not src_label.startswith(("화면", "저장"))):
         SS.delete_secret(lims.STORE_NAMES["password"])
         st.rerun()
+    if ss.get("ldb_find_ok"):
+        st.success(f"🔧 연결에 성공한 방법: **{ss.pop('ldb_find_ok')}** — 접속 정보를 저장했습니다. "
+                   "이제 **② 가져올 곳·항목 매칭** 탭에서 **🧭 자동으로 찾기**를 누르세요.")
     if ss.get("ldb_diag"):
         _steps_table(ss["ldb_diag"])
+        failed = next((x for x in ss["ldb_diag"] if not x["ok"]), None)
+        if t == "mssql" and failed and failed["step"] == "로그인·DB 접속" and not re.search(
+                r"아이디 또는 비밀번호|db 이름", failed["msg"].lower()):
+            _finder(cfg, conn, pw_new, local, expanded=True)
         if all(x["ok"] for x in ss["ldb_diag"]):
             if ss.pop("ldb_diag_saved", False):
                 st.success("연결에 성공해 접속 정보를 저장했습니다" + (" (비밀번호는 암호화 저장)" if lims.secret_source("password") else "") + ".")
             st.info("다음: **② 가져올 곳·항목 매칭** 탭 → **🧭 자동으로 찾기**를 누르세요. 결과가 들어 있을 표를 자동으로 찾아 줍니다.")
+    if t == "mssql" and not (ss.get("ldb_diag") and any(not x["ok"] and x["step"] == "로그인·DB 접속" for x in ss["ldb_diag"])):
+        with st.expander("🔧 연결 방법(고급) — 로그인 단계에서 끊길 때"):
+            _finder(cfg, conn, pw_new, local, expanded=False)
     if ss.get("ldb_dblist"):
         p1, p2 = st.columns([2, 1], vertical_alignment="bottom")
         pick = p1.selectbox("DB 고르기", ss["ldb_dblist"], key="ldb_dbpick")

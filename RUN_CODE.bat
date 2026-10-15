@@ -59,7 +59,7 @@ if errorlevel 1 goto nopip
 rem ── 3-1. LIMS DB 드라이버(pymssql, oracledb, psycopg2, PyMySQL): 없으면 하나씩 설치, 실패해도 실행은 계속 ──
 :drivers
 if defined QMS_HOME goto data
-%PYRUN% -c "import sqlalchemy, pymssql, oracledb, psycopg2, pymysql" >nul 2>nul
+%PYRUN% -c "import sqlalchemy, pymssql, oracledb, psycopg2, pymysql, pyodbc" >nul 2>nul
 if not errorlevel 1 goto data
 echo.
 echo   LIMS DB 드라이버를 설치합니다(처음 1회)...
@@ -68,6 +68,7 @@ echo   LIMS DB 드라이버를 설치합니다(처음 1회)...
 %PYRUN% -c "import oracledb" >nul 2>nul || %PYRUN% -m pip install "oracledb>=2.0"
 %PYRUN% -c "import psycopg2" >nul 2>nul || %PYRUN% -m pip install "psycopg2-binary>=2.9"
 %PYRUN% -c "import pymysql" >nul 2>nul || %PYRUN% -m pip install "PyMySQL>=1.1"
+%PYRUN% -c "import pyodbc" >nul 2>nul || %PYRUN% -m pip install "pyodbc>=5.1"
 echo   설치하지 못한 드라이버는 화면 LIMS 연동 - 연결 설정의 '드라이버 설치' 버튼으로 다시 시도할 수 있습니다.
 
 rem ── 4. 데이터 폴더: 설치 앱의 데이터를 함께 쓸지(처음 1회 묻고 기억) ──

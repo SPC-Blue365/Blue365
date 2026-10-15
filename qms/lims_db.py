@@ -213,8 +213,11 @@ def build_url(conn: dict, password: str = "", database: str | None = None):
                   port=port)
     if t == "mssql":
         if drv == "pyodbc":
-            return URL.create("mssql+pyodbc", database=db or None, **common,
-                              query={"driver": conn.get("odbc_driver") or ODBC_DEFAULT, "TrustServerCertificate": "yes"})
+            od = conn.get("odbc_driver") or ODBC_DEFAULT
+            q = {"driver": od, "TrustServerCertificate": "yes"}
+            if "18" in od:                                # ODBC Driver 18 은 암호화가 기본 필수
+                q["Encrypt"] = "yes"
+            return URL.create("mssql+pyodbc", database=db or None, **common, query=q)
         return URL.create("mssql+pymssql", database=db or None, **common)
     if t == "oracle":
         if conn.get("oracle_mode", "service") == "service":
@@ -230,7 +233,12 @@ def build_url(conn: dict, password: str = "", database: str | None = None):
 def connect_args(conn: dict) -> dict:
     t, drv = conn.get("type"), conn.get("driver") or default_driver(conn.get("type", "mssql"))
     if t == "mssql" and drv == "pymssql":
-        return {"login_timeout": TIMEOUT, "timeout": 300}
+        args = {"login_timeout": TIMEOUT, "timeout": 300}
+        if conn.get("tds_version"):                   # 🔧 연결 방법 자동 찾기에서 정한 값(예: 7.0)
+            args["tds_version"] = conn["tds_version"]
+        if conn.get("encryption"):                    # off·request·require
+            args["encryption"] = conn["encryption"]
+        return args
     if t == "mssql":
         return {"timeout": TIMEOUT}
     if t == "postgresql":
@@ -319,6 +327,9 @@ def sanitize(msg: str, password: str = "") -> str:
 
 
 _HINTS = [
+    (r"20002|20017|tds server connection failed|unexpected eof from the server|adaptive server connection failed",
+     "로그인 전 암호화(TLS) 단계에서 연결이 끊겼습니다(아이디·비밀번호 문제 아님). 서버 인증서·TLS 설정이 오래됐거나 중간 장비가 막는 경우가 많습니다 "
+     "→ 아래 '🔧 연결 방법 자동 찾기'를 누르세요(Windows SQL Server 드라이버 등 다른 방법을 차례로 시도)."),
     (r"4060|cannot open database|database .* does not exist|ora-12514|ora-12505|unknown database|\(1049",
      "DB 이름(Oracle은 서비스 이름/SID)이 맞지 않습니다. MSSQL·PostgreSQL·MySQL은 DB 이름을 비우고 'DB 목록 불러오기'로 고를 수 있습니다."),
     (r"18456|login failed|password authentication failed|ora-01017|access denied for user|\(1045|authentication failed",
@@ -404,7 +415,7 @@ def _classify(data: bytes) -> dict | None:
         if re.match(r"\d+\.\d+", ver):
             return {"type": "mysql", "version": ("MariaDB " if "mariadb" in ver.lower() else "MySQL ") + ver.split("-")[0]}
     if len(data) >= 8 and data[0] == 0x04 and int.from_bytes(data[2:4], "big") >= 8:   # TDS 응답 = MS SQL Server
-        ver = ""
+        ver, enc = "", ""
         try:
             p = data[8:]
             i = 0
@@ -413,10 +424,13 @@ def _classify(data: bytes) -> dict | None:
                 if tok == 0x00 and ln >= 6:
                     major, minor, build = p[off], p[off + 1], int.from_bytes(p[off + 2:off + 4], "big")
                     ver = f"SQL Server {MSSQL_YEARS.get(major, '')} ({major}.{minor}.{build})".replace("  ", " ")
+                if tok == 0x01 and ln >= 1:
+                    # 이쪽이 '암호화 안 씀'으로 물었을 때의 서버 답: 2 = 강제 아님(암호화 없이도 접속 허용), 3 = 서버가 암호화를 강제
+                    enc = {0: "선택", 1: "사용", 2: "강제 아님(암호화 없이도 접속 허용)", 3: "필수(서버가 강제)"}.get(p[off], "")
                 i += 5
         except IndexError:
             pass
-        return {"type": "mssql", "version": ver}
+        return {"type": "mssql", "version": ver, **({"encryption": enc} if enc else {})}
     if data in (b"S", b"N") or (data[:1] == b"E" and b"SFATAL" in data):            # PostgreSQL SSL 요청 응답
         return {"type": "postgresql", "version": ""}
     if len(data) >= 8 and data[4] in (2, 4, 5, 11, 12) and (b"DESCRIPTION" in data or b"VSNNUM" in data
@@ -440,7 +454,8 @@ def detect_type(host: str, port: int, timeout: float = 3.0) -> dict:
         hit = _classify(_exchange(host, port, payload, to))
         if hit:
             label = DB_TYPES[hit["type"]]["label"]
-            return {**hit, "label": label, "msg": f"이 서버는 **{label}** 입니다" + (f" — {hit['version']}" if hit["version"] else "")}
+            return {**hit, "label": label, "msg": f"이 서버는 **{label}** 입니다" + (f" — {hit['version']}" if hit["version"] else "")
+                    + (f" · 암호화 연결: {hit['encryption']}" if hit.get("encryption") else "")}
     hint = guess_type(port)
     return {"type": None, "label": "", "version": "",
             "msg": "포트는 열려 있지만 DB 종류를 알아내지 못했습니다(중계 장비·암호화 전용 설정 등)."
@@ -505,7 +520,8 @@ def diagnose(conn: dict, password: str) -> list[dict]:
                 "DB 종류를 바꾸세요('🔎 DB 종류 자동 확인'을 누르면 자동으로 맞춥니다).")
             return out
         if det["type"]:
-            add("DB 종류", True, det["label"] + (f" — {det['version']}" if det["version"] else ""))
+            add("DB 종류", True, det["label"] + (f" — {det['version']}" if det["version"] else "")
+                + (f" · 암호화 연결: {det['encryption']}" if det.get("encryption") else ""))
     drv = conn.get("driver") or default_driver(t)
     try:
         __import__(DRIVER_MODULE.get(drv, drv))
@@ -1005,3 +1021,70 @@ def structure_workbook(res: dict, samples: dict | None = None) -> bytes:
                 ws.column_dimensions[col[0].column_letter].width = min(60, max(8, w * 1.3))
             ws.freeze_panes = "A2"
     return buf.getvalue()
+
+
+# ── 🔧 연결 방법 자동 찾기(MS SQL Server): 드라이버·설정을 바꿔 가며 실제 로그인까지 시도 ───────────────
+_ODBC_ORDER = ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server", "ODBC Driver 13 for SQL Server",
+               "SQL Server Native Client 11.0", "SQL Server Native Client 10.0", "SQL Server")
+
+
+def odbc_drivers() -> list[str]:
+    """이 PC(Windows)에 설치된 SQL Server ODBC 드라이버 — 좋은 것부터. Windows 에는 'SQL Server'(기본 내장)가 항상 있다."""
+    try:
+        import pyodbc
+        have = [d for d in pyodbc.drivers() if "sql server" in d.lower()]
+    except Exception:  # noqa: BLE001 - pyodbc·ODBC 관리자 없음
+        return []
+    return sorted(have, key=lambda d: (_ODBC_ORDER.index(d) if d in _ODBC_ORDER else len(_ODBC_ORDER), d))
+
+
+def connection_plans(conn: dict, allow_plain: bool = False) -> list[tuple[str, dict]]:
+    """시도할 연결 방법 목록(앞쪽이 권장) — (설명, conn 에 덮어쓸 값)."""
+    if conn.get("type") != "mssql":
+        return [("기본", {})]
+    base = {"tds_version": None, "encryption": None}
+    plans = [("pymssql(기본)", {**base, "driver": "pymssql"}),
+             ("pymssql · TDS 7.4", {**base, "driver": "pymssql", "tds_version": "7.4"})]
+    plans += [(f"Windows ODBC · {d}", {**base, "driver": "pyodbc", "odbc_driver": d}) for d in odbc_drivers()]
+    if allow_plain:
+        plans += [("pymssql · 암호화 없이(사내망 전용)", {**base, "driver": "pymssql", "encryption": "off"}),
+                  ("pymssql · TDS 7.0(암호화 없음, 오래된 방식)", {**base, "driver": "pymssql", "tds_version": "7.0"})]
+    return plans
+
+
+def try_plan(conn: dict, password: str) -> tuple[bool, str]:
+    from sqlalchemy import text
+
+    drv = conn.get("driver") or default_driver(conn.get("type", "mssql"))
+    if not driver_ok(drv):
+        return False, f"'{drv}' 드라이버 없음"
+    try:
+        eng = make_engine(conn, password)
+        try:
+            with eng.connect() as c:
+                c.execute(text(_probe_sql(conn.get("type", "mssql")))).fetchall()
+        finally:
+            eng.dispose()
+        return True, "연결 성공"
+    except Exception as exc:  # noqa: BLE001
+        m = sanitize(f"{type(exc).__name__}: {exc}", password)
+        h = explain(m)
+        return False, (h.split("→")[0].strip() + " · " if h else "") + m[:220]
+
+
+def find_connection(conn: dict, password: str, allow_plain: bool = False, progress=None) -> tuple[dict | None, list[dict]]:
+    """방법을 차례로 시도해 처음 성공한 접속 정보를 돌려준다. 아이디·비밀번호·DB 이름 오류면 더 시도하지 않는다."""
+    plans = connection_plans(conn, allow_plain)
+    tried = []
+    for i, (label, patch) in enumerate(plans, 1):
+        if progress:
+            progress(i, len(plans), label)
+        cand = {**conn, **patch}
+        ok, msg = try_plan(cand, password)
+        tried.append({"방법": label, "결과": "✅ 성공" if ok else "❌ 실패", "내용": msg})
+        if ok:
+            return cand, tried
+        if re.search(r"18456|login failed|4060|cannot open database", msg.lower()):
+            tried.append({"방법": "(중단)", "결과": "—", "내용": "아이디·비밀번호 또는 DB 이름 문제라 다른 방법으로는 해결되지 않습니다."})
+            break
+    return None, tried

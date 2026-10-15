@@ -103,6 +103,11 @@
 - 사용자 캡처: 주소·포트·DB 종류(SQL Server 2022, 10.50.11.71:3718, DB TEST) 정상인데 ② 탭 'DB 목록을 읽지 못했습니다 — No module named pymssql'. 원인: 코드 실행(RUN_CODE)이 PC 파이썬을 썼고 requirements.txt 에 DB 드라이버가 없었음(설치 패키지 파이썬에는 포함). 안내 문구도 'pymssql 로 바꾸라'로 잘못 나옴. 호스트 칸 'MTcyLjE3LjIyLjEx' = Base64 로 인코딩된 172.17.22.11.
 - 조치: requirements-lims.txt(드라이버, 비Windows는 cryptography), RUN_CODE.bat 드라이버 하나씩 설치(실패해도 실행 계속)·OneDrive·상위 2단계 검색, `lims_db.driver_ok/install_driver/b64_ip`, 드라이버 선택 상자에 '❌ 이 PC에 없음', ①·② 탭에 '⬇️ 드라이버 설치' 버튼(실행 중인 파이썬에 pip 설치, 사용자 폴더 설치도 바로 인식), No module 안내 정정, Base64 호스트 안내. 드라이버 없는 venv + 실제 MSSQL(포트 3718, DB TEST)로 재현 → 버튼 설치 → 자동 찾기 성공 확인.
 
+**완료(14차, 2026-10-15): 사용자 'TDS server connection failed(20002)' — 로그인 전 TLS 단계 끊김 대응**
+- 사용자 서버: SQL Server 2022 RTM(16.0.1000), 10.50.11.71:3718. 드라이버 설치 후 로그인 단계에서 20002(18456 아님 → 비밀번호 문제 아님).
+- 재현(사실): 정상 인증서·암호화 강제 서버는 pymssql 정상. 약한 인증서(RSA 1024·SHA1)·TLS 1.0 전용 서버는 pymssql(Windows·Linux) 20017/20002 실패, TDS 7.0 또는 encryption=off 로는 성공(서버가 강제하지 않을 때).
+- 조치: `lims_db.connection_plans/try_plan/find_connection/odbc_drivers` — pymssql 기본 → TDS 7.4 → Windows ODBC(SQL Server 드라이버, SChannel) → (동의 시) 암호화 없음·TDS 7.0 순서로 실제 로그인까지 시도, 성공한 설정 저장(conn.tds_version/encryption/driver/odbc_driver, 되돌리기 가능). 아이디·비밀번호·DB 이름 오류면 중단. prelogin 응답의 암호화 설정(필수/강제 아님) 표시, 20002/20017 안내 문구. pyodbc(win32) requirements-lims·RUN_CODE 추가. pyodbc+Windows ODBC 경로는 Wine ODBC 한계로 미확인(실제 Windows 에선 'SQL Server' 드라이버 기본 내장).
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).
