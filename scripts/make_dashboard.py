@@ -84,6 +84,12 @@ def build() -> str:
         padding:10px 13px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }}
 .bar .grp {{ display:inline-flex; gap:4px; }}
 .bar .sp {{ margin-left:auto; font-size:11.5px; color:var(--ink-3); }}
+.bar .blab {{ font-size:11.5px; color:var(--ink-3); font-weight:600; }}
+.bar .tilde {{ color:var(--ink-3); font-size:12px; }}
+.bar input[type=date] {{ padding:4px 9px; border:1px solid var(--line-2);
+  border-radius:var(--radius); font-size:12.5px; background:var(--surface);
+  color:var(--ink); font-family:'IBM Plex Mono',monospace; }}
+.bar input[type=date]:focus-visible {{ outline:2px solid var(--accent); outline-offset:-1px; }}
 .statrow {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:10px; }}
 .stat .v {{ font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;
             font-size:19px; font-weight:600; letter-spacing:-.02em; }}
@@ -125,17 +131,21 @@ def build() -> str:
 <div class="wrap">
 
 <div class="bar" role="toolbar" aria-label="기간과 라인 선택">
-  <span style="font-size:11.5px;color:var(--ink-3);font-weight:600">기간</span>
+  <span class="blab">기간 <span style="font-weight:400">(년-월-일)</span></span>
+  <input type="date" id="dFrom" aria-label="시작 날짜">
+  <span class="tilde">~</span>
+  <input type="date" id="dTo" aria-label="종료 날짜">
   <span class="grp" id="win">
-    <button class="chip" data-w="7">7일</button>
+    <button class="chip" data-w="7">최근 7일</button>
     <button class="chip" data-w="30" aria-pressed="true">30일</button>
     <button class="chip" data-w="90">90일</button>
     <button class="chip" data-w="0">전체</button>
   </span>
-  <span style="font-size:11.5px;color:var(--ink-3);font-weight:600;margin-left:8px">라인</span>
+  <span class="blab" style="margin-left:6px">라인</span>
   <span class="grp" id="lin"></span>
   <span class="sp" id="built"></span>
 </div>
+<p class="hint" id="span-note" style="margin:-8px 2px 0"></p>
 
 <div id="cards" class="grid"></div>
 
@@ -217,7 +227,23 @@ def build() -> str:
 <script>
 const DATA = JSON.parse(document.getElementById('payload').textContent);
 const SVGNS = 'http://www.w3.org/2000/svg';
-let WIN = 30, LINE = 'all';
+let LINE = 'all';
+// ⭐️ 기간은 **년-월-일 두 날짜**로 잡는다. 칩은 그 날짜를 채워 넣는 지름길일 뿐이다.
+//    (종전엔 '마지막 날 기준 N일' 상대 창이라 어느 구간을 보는지 화면에 드러나지 않았다)
+let FROM = '', TO = '';
+// ⚠️ **분석 구간과 보관 구간이 다르다.** OSP 실사 재고 시트는 2024-04 부터 있지만 품위·물량
+//    기록은 2026-06 부터다. '전체' 를 재고 기준으로 잡으면 품위 그래프가 오른쪽 끝에 몰려
+//    읽을 수 없게 된다. → **기본 구간은 품위·물량이 있는 쪽**으로, 날짜 입력의 하한만
+//    재고까지 열어 둔다(과거 재고를 보고 싶으면 직접 입력하면 된다).
+function spanOf(grps) {{
+  const ds = [];
+  grps.forEach(grp => Object.values(grp || {{}}).forEach(rows =>
+    (Array.isArray(rows) ? rows : (rows.daily || [])).forEach(r => r && r.d && ds.push(r.d))));
+  ds.sort();
+  return ds.length ? [ds[0], ds[ds.length - 1]] : ['', ''];
+}}
+function dataSpan() {{ return spanOf([DATA.yard, DATA.flow, DATA.cross]); }}
+function storedSpan() {{ return spanOf([DATA.yard, DATA.flow, DATA.cross, DATA.stock]); }}
 
 const fmt = (v, d = 0) => v == null ? '—'
   : v.toLocaleString('ko-KR', {{minimumFractionDigits: d, maximumFractionDigits: d}});
@@ -229,11 +255,9 @@ const el = (t, a = {{}}, kids = []) => {{
 }};
 const txt = (s, a) => {{ const n = el('text', a); n.textContent = s; return n; }};
 
-function cut(rows) {{                       // 기간 필터 — 마지막 날짜 기준 상대 창
-  if (!WIN || !rows.length) return rows;
-  const last = new Date(rows[rows.length - 1].d);
-  const from = new Date(last); from.setDate(from.getDate() - WIN);
-  return rows.filter(r => new Date(r.d) >= from);
+function cut(rows) {{   // 기간 필터 — 시작~종료 날짜(포함). ISO 문자열이라 문자열 비교로 충분하다.
+  if (!rows || !rows.length) return rows;
+  return rows.filter(r => (!FROM || r.d >= FROM) && (!TO || r.d <= TO));
 }}
 const lines = () => LINE === 'all' ? DATA.lines : [LINE];
 // 계열색 — 막대 채움색(--bar)은 선으로 쓰면 바탕에 묻힌다. 전용 계열색을 쓴다.
@@ -547,12 +571,42 @@ document.querySelectorAll('#trendtabs button').forEach(b => b.onclick = () => {{
   document.querySelectorAll('#trendtabs button').forEach(x => x.classList.toggle('on', x === b));
   drawTrend();
 }});
-document.querySelectorAll('#win .chip').forEach(b => b.onclick = () => {{
-  WIN = +b.dataset.w;
+const [DMIN, DMAX] = dataSpan();            // 품위·물량이 있는 구간 = 기본
+const [SMIN, SMAX] = storedSpan();          // 재고까지 포함한 전체 보관 구간
+const fIn = document.getElementById('dFrom'), tIn = document.getElementById('dTo');
+[fIn, tIn].forEach(i => {{ i.min = SMIN; i.max = SMAX; }});
+
+
+function setSpan(from, to, chip) {{
+  FROM = from; TO = to;
+  fIn.value = FROM; tIn.value = TO;
   document.querySelectorAll('#win .chip').forEach(x =>
-    x.setAttribute('aria-pressed', x === b));
+    x.setAttribute('aria-pressed', x === chip));
+  // ⚠️ 날짜 입력칸의 표기 형식은 **브라우저 언어**를 따라가 바꿀 수 없다(한국어가 아니면
+  //    MM/DD/YYYY 로 보인다). 그래서 지금 보는 구간을 년-월-일로 따로 적어 준다.
+  const n = document.getElementById('span-note');
+  if (n) {{
+    const days = Math.round((new Date(TO) - new Date(FROM)) / 86400000) + 1;
+    n.innerHTML = `보는 구간 <b>${{FROM}} ~ ${{TO}}</b> (${{days}}일)`
+      + (SMIN < DMIN ? ` · 실사 재고는 ${{SMIN}}부터 있습니다 — 직접 입력하면 그 구간도 볼 수 있습니다.` : '');
+  }}
   render();
+}}
+function presetFrom(days) {{
+  if (!days || !DMAX) return DMIN;
+  const d = new Date(DMAX); d.setDate(d.getDate() - days);
+  const iso = d.toISOString().slice(0, 10);
+  return iso < DMIN ? DMIN : iso;
+}}
+document.querySelectorAll('#win .chip').forEach(b => b.onclick = () =>
+  setSpan(presetFrom(+b.dataset.w), DMAX, b));
+// 날짜를 직접 고치면 어떤 칩도 눌린 상태가 아니게 둔다 — 지금 보는 구간은 입력칸이 말해 준다
+[fIn, tIn].forEach(i => i.onchange = () => {{
+  let a = fIn.value || DMIN, z = tIn.value || DMAX;
+  if (a > z) {{ [a, z] = [z, a]; }}          // 거꾸로 넣으면 바로잡는다
+  setSpan(a, z, null);
 }});
+setSpan(presetFrom(30), DMAX, document.querySelector('#win .chip[data-w="30"]'));
 document.querySelectorAll('#lin .chip').forEach(b => b.onclick = () => {{
   LINE = b.dataset.l;
   document.querySelectorAll('#lin .chip').forEach(x =>

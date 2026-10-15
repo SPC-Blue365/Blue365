@@ -119,11 +119,12 @@ body {
 .nav-menu { display:flex; align-items:center; gap:4px; flex:1; min-width:0;
             overflow-x:auto; scrollbar-width:none; }
 .nav-menu::-webkit-scrollbar { display:none; }
-.nav-menu a { display:flex; align-items:center; gap:6px; padding:8px 11px; border-radius:4px;
-              font-size:13.5px; font-weight:500; color:var(--nav-ink); text-decoration:none;
-              white-space:nowrap; }
-.nav-menu a:hover { background:var(--surface-2); }
-.nav-menu a.on { color:var(--accent); font-weight:600; }
+.nav-menu a, .nav-menu span { display:flex; align-items:center; gap:6px; padding:8px 11px;
+              border-radius:4px; font-size:13.5px; font-weight:500; color:var(--nav-ink);
+              text-decoration:none; white-space:nowrap; }
+.nav-menu a:hover { background:var(--surface-2); color:var(--accent); }
+.nav-menu a:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.nav-menu .on { color:var(--accent); font-weight:700; background:var(--accent-soft); }
 .nav-menu .ico { width:17px; height:17px; flex:none; }
 .nav-util { display:flex; align-items:center; gap:14px; font-size:12.5px;
             color:var(--ink-2); white-space:nowrap; }
@@ -345,8 +346,17 @@ h1 { font-size:25px; line-height:1.35; font-weight:700; letter-spacing:-.025em;
 }
 """
 
-#: 상단 바 메뉴 — (라벨, 활성 여부). 산출물마다 자기 항목을 활성으로 둔다.
-NAV_ITEMS = ("현황 브리프", "배합 처방", "운영 대시보드", "통합 리포트", "운영 모니터", "계획서")
+#: 상단 바 메뉴 — (라벨, 파일명, 아이콘).
+#: ⭐️ **실제 링크다.** 산출물이 모두 `outputs/` 한 폴더에 나오므로 상대경로로 서로 이동한다.
+#: (죽은 `href="#"` 로 두면 눌러도 아무 일이 없어 고장처럼 보인다 — 2026-10-15 실제 지적)
+NAV_ITEMS = (
+    ("현황 브리프", "brief.html", "chart"),
+    ("배합 처방", "prescription.html", "flask"),
+    ("운영 대시보드", "dashboard.html", "grid"),
+    ("통합 리포트", "final_report.html", "doc"),
+    ("운영 모니터", "monitor_status.html", "alert"),
+    ("계획서", "plan.html", "map"),
+)
 
 
 def _icon(name: str) -> str:
@@ -367,11 +377,18 @@ def _icon(name: str) -> str:
 
 
 def nav(active: str = "", user: str = "") -> str:
-    """흰 상단 바 — 레퍼런스의 그룹 포털 머리말을 우리 산출물 묶음으로 바꾼 것."""
-    icons = ["chart", "flask", "grid", "doc", "alert", "map"]
-    items = "".join(
-        f'<a href="#" class="{"on" if n == active else ""}">{_icon(i)}{n}</a>'
-        for n, i in zip(NAV_ITEMS, icons))
+    """흰 상단 바 — 산출물끼리 오갈 수 있는 **실제 메뉴**.
+
+    같은 폴더의 다른 산출물로 이동한다. 현재 보고 있는 항목은 링크 대신 활성 표시만 한다
+    (자기 자신으로 가는 링크는 눌러도 제자리라 고장처럼 보인다).
+    """
+    items = []
+    for label, fname, ico in NAV_ITEMS:
+        if label == active:
+            items.append(f'<span class="on" aria-current="page">{_icon(ico)}{label}</span>')
+        else:
+            items.append(f'<a href="{fname}">{_icon(ico)}{label}</a>')
+    items = "".join(items)
     who = f'<span class="hide-s"><b>{user}</b></span>' if user else ""
     return f"""<div class="nav"><div class="nav-in">
   <span class="logo"><span class="dot"></span>SAMPYO<span class="sub">석회석 품위추적</span></span>
