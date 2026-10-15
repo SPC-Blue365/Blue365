@@ -67,6 +67,13 @@ def _steps_table(steps: list[dict]) -> None:
         (st.success if x["ok"] else st.error)(f"{'✅' if x['ok'] else '❌'} **{x['step']}** — {x['msg']}")
 
 
+def _clear_browse_cache() -> None:
+    ss = st.session_state
+    for k in [k for k in ss if str(k).startswith(("ldb_objects_", "ldb_schemas", "ldb_cols_", "ldb_prev_", "ldb_codes_", "ldb_dbs",
+                                                   "ldb_explore", "ldb_find", "ldb_struct"))]:
+        ss.pop(k, None)
+
+
 # ── ① 접속 정보 ─────────────────────────────────────────────────────────
 def conn_panel(cfg: lims.LimsConfig) -> None:
     ss = st.session_state
@@ -152,6 +159,7 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
                              help="Windows 'ODBC 데이터 원본 관리자 → 드라이버' 탭의 이름(예: ODBC Driver 17 for SQL Server, SQL Server)")
     conn = {"type": t, "ip": ip.strip(), "host": host.strip(), "port": int(port), "database": db_name.strip(), "user": user.strip(),
             "driver": drv, "odbc_driver": odbc, "oracle_mode": omode}
+    ss["ldb_form_conn"] = conn
     st.caption(f"🔐 비밀번호: {src_label or '없음'}" + (f" · 저장 방식 {SS.method_label()}" if src_label.startswith("화면") else ""))
 
     c1, c2, c3, c4 = st.columns(4)
@@ -164,13 +172,23 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
             cfg.db, cfg.mode = conn, "db"
             lims.save_lims_config(cfg)
             ss["ldb_pw_v"] = ss.get("ldb_pw_v", 0) + 1          # 입력칸 비우기(위젯 키를 바꿔 새로 만듦)
-            for k in [k for k in ss if str(k).startswith(("ldb_objects_", "ldb_schemas", "ldb_cols_", "ldb_prev_", "ldb_codes_"))]:
-                ss.pop(k, None)
+            _clear_browse_cache()
             st.success("저장했습니다." + (" 비밀번호는 암호화해 저장했습니다." if pw_new else ""))
             st.rerun()
     if c2.button("🩺 연결 확인", width="stretch", help="주소 → 포트 → 드라이버 → 로그인 → 읽기 권한 순서로 확인합니다(저장 전 입력값으로)."):
         with st.spinner("연결 확인 중…(최대 10~20초)"):
             ss["ldb_diag"] = L.diagnose(conn, pw_new or _pw())
+        if ss["ldb_diag"] and all(x["ok"] for x in ss["ldb_diag"]) and local:      # 연결에 성공하면 그 정보를 바로 저장
+            if pw_new:
+                SS.set_secret(lims.STORE_NAMES["password"], pw_new)
+                ss["ldb_pw_v"] = ss.get("ldb_pw_v", 0) + 1
+            changed = cfg.db != conn or bool(pw_new)
+            cfg.db, cfg.mode = conn, "db"
+            lims.save_lims_config(cfg)
+            if changed:
+                _clear_browse_cache()
+            ss["ldb_diag_saved"] = True
+            st.rerun()
     if c3.button("📚 DB 목록 불러오기", width="stretch", disabled=t in ("oracle", "sqlite")):
         try:
             with st.spinner("DB 목록을 읽는 중…"):
@@ -186,7 +204,9 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
     if ss.get("ldb_diag"):
         _steps_table(ss["ldb_diag"])
         if all(x["ok"] for x in ss["ldb_diag"]):
-            st.caption("다음: **② 가져올 곳·항목 매칭** 탭에서 결과가 들어 있는 표(뷰)를 고르세요.")
+            if ss.pop("ldb_diag_saved", False):
+                st.success("연결에 성공해 접속 정보를 저장했습니다" + (" (비밀번호는 암호화 저장)" if lims.secret_source("password") else "") + ".")
+            st.info("다음: **② 가져올 곳·항목 매칭** 탭 → **🧭 자동으로 찾기**를 누르세요. 결과가 들어 있을 표를 자동으로 찾아 줍니다.")
     if ss.get("ldb_dblist"):
         p1, p2 = st.columns([2, 1], vertical_alignment="bottom")
         pick = p1.selectbox("DB 고르기", ss["ldb_dblist"], key="ldb_dbpick")
@@ -204,7 +224,7 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
 
 # ── ② 가져올 곳(소스) ────────────────────────────────────────────────────
 def _new_draft() -> dict:
-    return {"orig": None, "name": "", "schema": None, "table": None, "layout": None, "cols": {}, "fixed_table": None,
+    return {"orig": None, "name": "", "database": None, "schema": None, "table": None, "layout": None, "cols": {}, "fixed_table": None,
             "item_cols": [], "filter_col": "", "filter_values": "", "date_format": None, "updated_format": None,
             "mapping": [], "ship_map": {}, "enabled": True}
 
@@ -222,6 +242,92 @@ def _cached(key: str, fn):
     if key not in ss:
         ss[key] = fn()
     return ss[key]
+
+
+LAYOUT_SHORT = {"long": "긴 형식", "wide": "가로형", "ship": "출하시멘트"}
+
+
+def _loc(r) -> str:
+    return ".".join(x for x in (r.get("database"), r.get("schema"), r.get("table")) if x)
+
+
+def _explorer(cfg: lims.LimsConfig, pw: str) -> None:
+    """🧭 결과 표 자동으로 찾기 — DB 구조를 몰라도 후보 표를 순위로 보여 주고 바로 시작."""
+    ss = st.session_state
+    t = cfg.db.get("type")
+    with st.container(border=True):
+        st.markdown("**🧭 결과 표 자동으로 찾기** — LIMS DB 구조를 몰라도 됩니다. 볼 수 있는 표·뷰를 모두 훑어 "
+                    "**시험 결과가 들어 있을 가능성이 높은 표**를 순서대로 보여 줍니다(표·열 이름만 읽음, 데이터는 바꾸지 않음).")
+        e1, e2, e3 = st.columns([1.1, 1.2, 2.2], vertical_alignment="center")
+        multi = t in ("mssql", "postgresql")
+        all_dbs = e2.checkbox("모든 DB에서 찾기", value=multi and not cfg.db.get("database"), disabled=not multi, key="ldb_all_dbs",
+                              help="접속 계정이 들어갈 수 있는 DB를 모두 찾습니다(MS SQL Server·PostgreSQL).")
+        if e1.button("🧭 자동으로 찾기", type="primary", width="stretch"):
+            bar = st.progress(0.0, text="DB 구조를 읽는 중…")
+            res = L.explore(cfg.db, pw, all_dbs=all_dbs,
+                            progress=lambda i, n, db: bar.progress(min(1.0, i / max(n, 1)), text=f"{db or '접속한 DB'} 읽는 중… ({i}/{n})"))
+            bar.empty()
+            ss["ldb_explore"] = res
+            ss.pop("ldb_find", None)
+            ss.pop("ldb_struct_xlsx", None)
+        res = ss.get("ldb_explore")
+        if not res:
+            e3.caption("처음이면 이 버튼부터 누르세요. 결과에서 표를 골라 '▶ 이 표로 시작'을 누르면 아래 단계가 자동으로 채워집니다.")
+            return
+        for e in res["errors"][:5]:
+            st.warning(e)
+        cand = res["candidates"]
+        if cand.empty:
+            st.error("읽을 수 있는 표·뷰가 없습니다 — 접속 계정의 읽기(SELECT) 권한을 LIMS 담당자에게 확인하세요.")
+            return
+        top = cand[cand["score"] > 0].head(15)
+        if top.empty:
+            st.warning("시험 결과처럼 보이는 표를 찾지 못했습니다 — 아래 '이름·값으로 찾기'나 직접 고르기를 쓰세요.")
+            top = cand.head(15)
+        e3.caption(f"표·뷰 {len(cand)}개를 확인했습니다" + (f"(DB {len(res['databases'])}개: {', '.join(res['databases'][:5])})"
+                                                      if res["databases"] else "") + ". 점수가 높을수록 결과 표일 가능성이 큽니다.")
+        recs = top.to_dict("records")
+        st.dataframe(pd.DataFrame([{"순위": i, "위치(DB.스키마.표)": _loc(r), "종류": r["kind"], "추정 형식": LAYOUT_SHORT.get(r["layout"], r["layout"]),
+                                    "점수": r["score"], "근거": r["reasons"]} for i, r in enumerate(recs, 1)]),
+                     hide_index=True, width="stretch", height=min(38 * len(recs) + 40, 420),
+                     column_config={"점수": st.column_config.ProgressColumn(min_value=0, max_value=max(30, int(top["score"].max())),
+                                                                          format="%d")})
+        p1, p2 = st.columns([3, 1], vertical_alignment="bottom")
+        pick = p1.selectbox("시작할 표", list(range(len(recs))), key="ldb_exp_pick",
+                            format_func=lambda i: f"{i + 1}. {_loc(recs[i])} — {LAYOUT_SHORT.get(recs[i]['layout'], '')}")
+        if p2.button("▶ 이 표로 시작", type="primary", width="stretch"):
+            r = recs[pick]
+            ss["ldb_start"] = {"database": r["database"] or None, "schema": r["schema"] or None, "table": r["table"], "layout": r["layout"]}
+            ss["ldb_src_pick_next"] = "➕ 새로 추가"
+            st.rerun()
+        with st.expander("🔤 이름·값으로 찾기 — 예: Blaine, 28일, CaO, 클링커, 선박 이름"):
+            q1, q2 = st.columns([3, 1], vertical_alignment="bottom")
+            term = q1.text_input("찾을 말", key="ldb_find_term", placeholder="예: Blaine")
+            if q2.button("찾기", width="stretch", disabled=not term.strip()):
+                with st.spinner("열 이름과 값을 찾는 중…(상위 후보 표만)"):
+                    ss["ldb_find"] = L.find_term(cfg.db, pw, res["catalog"], cand, term)
+            fd = ss.get("ldb_find")
+            if fd is not None:
+                if fd.empty:
+                    st.info("찾지 못했습니다 — 다른 말(영문 코드·한글 이름)로 찾아보세요.")
+                else:
+                    st.dataframe(fd, hide_index=True, width="stretch")
+                    st.caption("'값'에서 찾은 표는 시험항목 이름이 행에 들어 있는 **긴 형식**, '열 이름'에서 찾은 표는 **가로형**일 가능성이 큽니다.")
+        with st.expander("📄 LIMS DB 구조를 엑셀로 받기 — LIMS 담당자와 함께 보거나 지원 요청할 때"):
+            inc = st.checkbox("추천 상위 5개 표의 예시 데이터 5행 포함(실제 데이터가 들어갑니다)", value=False, key="ldb_struct_inc")
+            if st.button("엑셀 만들기", key="ldb_struct_btn"):
+                samples = {}
+                if inc:
+                    for r in recs[:5]:
+                        try:
+                            samples[_loc(r)] = L.preview(cfg.db, pw, r["schema"] or None, r["table"], 5, r["database"] or None)
+                        except Exception:  # noqa: BLE001
+                            continue
+                ss["ldb_struct_xlsx"] = L.structure_workbook(res, samples)
+            if ss.get("ldb_struct_xlsx"):
+                st.download_button("⬇️ LIMS_DB_구조.xlsx 내려받기", ss["ldb_struct_xlsx"], file_name="LIMS_DB_구조.xlsx",
+                                   mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.caption("표 목록·열 목록·역할/시험항목 추정이 들어 있습니다. 비밀번호·접속 정보는 들어가지 않습니다.")
 
 
 def sources_panel(cfg: lims.LimsConfig, registry) -> None:
@@ -242,13 +348,27 @@ def sources_panel(cfg: lims.LimsConfig, registry) -> None:
                  "워터마크": s.get("watermark") or "—"} for s in cfg.sources]
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     names = [s.get("name") for s in cfg.sources]
-    if "ldb_src_pick_next" in ss:                       # 저장·삭제 직후 선택 바꾸기(위젯 생성 전에만 바꿀 수 있음)
+    form = ss.get("ldb_form_conn")
+    keys = ("type", "ip", "host", "port", "database", "user", "driver", "oracle_mode")
+    if form and any(str(form.get(k) or "") != str((cfg.db or {}).get(k) or "") for k in keys if k in form):
+        st.warning("① 연결 설정에서 바꾼 접속 정보가 **아직 저장되지 않았습니다**. 여기서는 저장된 정보로 접속합니다 — "
+                   "① 탭에서 **🩺 연결 확인**(성공하면 자동 저장) 또는 **💾 접속 정보 저장**을 먼저 하세요.")
+    c = cfg.db
+    st.caption(f"사용 중인 접속: {L.DB_TYPES.get(c.get('type'), {}).get('label', c.get('type'))} · "
+               + (f"{L.server_of(c)}:{c.get('port')} · DB {c.get('database') or '(지정 안 함 — 아래에서 고르거나 자동으로 찾기)'} · 아이디 {c.get('user')}"
+                  if c.get("type") != "sqlite" else str(c.get("database"))))
+    _explorer(cfg, pw)
+
+    if "ldb_src_pick_next" in ss:                       # 저장·삭제·자동 찾기 직후 선택 바꾸기(위젯 생성 전에만 바꿀 수 있음)
         ss["ldb_src_pick"] = ss.pop("ldb_src_pick_next")
-    k1, k2 = st.columns([2, 1], vertical_alignment="bottom")
-    choice = k1.selectbox("편집할 가져올 곳", ["➕ 새로 추가", *names], key="ldb_src_pick")
-    if k2.button("불러오기", width="stretch") or ss.get("ldb_draft") is None or ss.get("ldb_draft_for") != choice:
+    choice = st.selectbox("편집할 가져올 곳", ["➕ 새로 추가", *names], key="ldb_src_pick",
+                          help="저장해 둔 가져올 곳을 고르면 그 설정을 불러와 고칠 수 있습니다.")
+    start = ss.pop("ldb_start", None)
+    if start or ss.get("ldb_draft") is None or ss.get("ldb_draft_for") != choice:
         src = next((s for s in cfg.sources if s.get("name") == choice), None)
-        ss["ldb_draft"] = _draft_from(src) if src else _new_draft()
+        ss["ldb_draft"] = _draft_from(src) if src and not start else _new_draft()
+        if start:
+            ss["ldb_draft"].update(start, name=start["table"], auto_codes=True)
         ss["ldb_draft_for"] = choice
         ss["ldb_draft_rev"] = ss.get("ldb_draft_rev", 0) + 1
         for k in [k for k in ss if str(k).startswith(("ldb_cols_", "ldb_prev_", "ldb_codes_"))]:
@@ -257,50 +377,66 @@ def sources_panel(cfg: lims.LimsConfig, registry) -> None:
     rev = ss["ldb_draft_rev"]
 
     # 1) 표 고르기
-    st.markdown("**1. 표(뷰) 고르기**")
+    st.markdown("**1. 표(뷰) 고르기** — 위 🧭 자동 찾기에서 '이 표로 시작'을 누르면 채워집니다. 직접 골라도 됩니다.")
+    dbs: list[str] = []
+    if c.get("type") in ("mssql", "postgresql"):
+        try:
+            dbs = _cached("ldb_dbs", lambda: L.list_databases(c, pw))
+        except Exception:  # noqa: BLE001 - DB 목록 권한이 없으면 접속 DB만
+            dbs = []
+    cur_db = d.get("database") or c.get("database") or ""
+    if dbs:
+        db_opts = dbs if (not cur_db or cur_db in dbs) else [cur_db, *dbs]
+        s0, s1, s2, s3 = st.columns([1, 1, 1, 2])
+        db = s0.selectbox("데이터베이스", db_opts, index=db_opts.index(cur_db) if cur_db in db_opts else 0, key=f"ldb_dbsel_{rev}")
+    else:
+        db = cur_db
+        s1, s2, s3 = st.columns([1, 1, 2])
     try:
-        schemas, default = _cached("ldb_schemas", lambda: L.list_schemas(cfg.db, pw))
+        schemas, default = _cached(f"ldb_schemas_{db}", lambda: L.list_schemas(c, pw, db or None))
     except Exception as exc:  # noqa: BLE001
         m = L.sanitize(f"{type(exc).__name__}: {exc}", pw)
         st.error("DB에 접속하지 못했습니다 — " + (L.explain(m) + " · " if L.explain(m) else "") + m)
         if st.button("다시 시도"):
-            ss.pop("ldb_schemas", None)
+            for k in [k for k in ss if str(k).startswith(("ldb_schemas", "ldb_dbs"))]:
+                ss.pop(k, None)
             st.rerun()
         return
-    s1, s2, s3 = st.columns([1, 1, 2])
     sch_opts = schemas or [None]
-    sch = s1.selectbox("스키마(소유자)", sch_opts, key=f"ldb_sch_{rev}",
+    sch = s1.selectbox("스키마(소유자)", sch_opts, key=f"ldb_sch_{rev}_{db}",
                        index=sch_opts.index(d["schema"]) if d.get("schema") in sch_opts else
                        (sch_opts.index(default) if default in sch_opts else 0),
                        format_func=lambda x: f"{x}{' (기본)' if x == default else ''}" if x else "(기본)")
     flt = s2.text_input("이름 검색", key=f"ldb_flt_{rev}", placeholder="예: RESULT, 성적")
     try:
-        objs = _cached(f"ldb_objects_{sch}", lambda: L.list_objects(cfg.db, pw, sch))
+        objs = _cached(f"ldb_objects_{db}_{sch}", lambda: L.list_objects(c, pw, sch, db or None))
     except Exception as exc:  # noqa: BLE001
         st.error(L.sanitize(f"표 목록을 읽지 못했습니다 — {exc}", pw))
         return
     view = objs[objs["이름"].str.contains(flt, case=False, regex=False)] if flt else objs
     if view.empty:
-        st.info("이 스키마에 보이는 표·뷰가 없습니다. 다른 스키마를 고르거나 검색어를 지우세요.")
+        st.info("이 스키마에 보이는 표·뷰가 없습니다. 위 **🧭 자동으로 찾기**를 누르거나, 데이터베이스·스키마를 바꾸거나, 검색어를 지우세요.")
         return
     opts = list(view["이름"])
     kinds = dict(zip(objs["이름"], objs["종류"]))
     if st.button("목록 새로 고침", key=f"ldb_reload_{rev}"):
-        ss.pop("ldb_schemas", None)
-        ss.pop(f"ldb_objects_{sch}", None)
+        for k in [k for k in ss if str(k).startswith(("ldb_schemas", "ldb_objects_", "ldb_dbs"))]:
+            ss.pop(k, None)
         st.rerun()
     tbl = s3.selectbox(f"표·뷰 ({len(view)}개)", opts, index=opts.index(d["table"]) if d.get("table") in opts else 0,
-                       format_func=lambda n: f"{n}  ·  {kinds.get(n, '')}", key=f"ldb_tbl_{rev}_{sch}")
-    if (d.get("schema"), d.get("table")) != (sch, tbl):
+                       format_func=lambda n: f"{n}  ·  {kinds.get(n, '')}", key=f"ldb_tbl_{rev}_{db}_{sch}")
+    if (d.get("database") or "", d.get("schema"), d.get("table")) != (db or "", sch, tbl):
         if d.get("name") in (None, "", d.get("table")):          # 이름을 직접 바꾸지 않았으면 표 이름을 따라감
             d["name"] = tbl
-        d.update(schema=sch, table=tbl, layout=None, cols={}, item_cols=[], mapping=[] if d.get("orig") is None else d["mapping"],
-                 ship_map={}, date_format=None, updated_format=None)
+        keep_layout = d.get("table") == tbl and d.get("layout")
+        d.update(database=db or None, schema=sch, table=tbl, cols={} if not keep_layout else d.get("cols", {}),
+                 layout=d.get("layout") if keep_layout else None, item_cols=[],
+                 mapping=[] if d.get("orig") is None else d["mapping"], ship_map={}, date_format=None, updated_format=None)
         if not d.get("name"):
             d["name"] = tbl
     try:
-        cols_df = _cached(f"ldb_cols_{sch}_{tbl}", lambda: L.get_columns(cfg.db, pw, sch, tbl))
-        prev = _cached(f"ldb_prev_{sch}_{tbl}", lambda: L.preview(cfg.db, pw, sch, tbl, 20))
+        cols_df = _cached(f"ldb_cols_{db}_{sch}_{tbl}", lambda: L.get_columns(c, pw, sch, tbl, db or None))
+        prev = _cached(f"ldb_prev_{db}_{sch}_{tbl}", lambda: L.preview(c, pw, sch, tbl, 20, db or None))
     except Exception as exc:  # noqa: BLE001
         m = L.sanitize(f"{type(exc).__name__}: {exc}", pw)
         st.error("표를 읽지 못했습니다 — " + (L.explain(m) + " · " if L.explain(m) else "") + m)
@@ -454,7 +590,7 @@ def _match_long(d: dict, cfg: lims.LimsConfig, pw: str, registry, rev: int) -> N
     src = _draft_to_src(d)
     key = f"ldb_codes_{rev}"
     days = st.number_input("시험항목 목록을 볼 기간(최근 일)", 1, 365, int(cfg.lookback_days), key=f"ldb_days_{rev}")
-    if st.button("📥 시험항목 목록 불러오기", key=f"ldb_loadcodes_{rev}") or (key not in ss and d.get("mapping")):
+    if st.button("📥 시험항목 목록 불러오기", key=f"ldb_loadcodes_{rev}") or (key not in ss and (d.get("mapping") or d.pop("auto_codes", False))):
         ss[f"{key}_v"] = ss.get(f"{key}_v", 0) + 1
         try:
             with st.spinner("LIMS에서 시험항목을 모으는 중…"):
@@ -543,7 +679,7 @@ def _match_wide(d: dict, cols: list[str], prev: pd.DataFrame, registry, rev: int
 
 
 def _draft_to_src(d: dict) -> dict:
-    src = {k: d.get(k) for k in ("name", "schema", "table", "layout", "cols", "item_cols", "filter_col", "filter_values",
+    src = {k: d.get(k) for k in ("name", "database", "schema", "table", "layout", "cols", "item_cols", "filter_col", "filter_values",
                                  "date_format", "updated_format", "mapping", "ship_map", "enabled")}
     src["name"] = (src.get("name") or d.get("table") or "").strip()
     src["date_format"] = src.get("date_format") or "datetime"

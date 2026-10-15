@@ -236,3 +236,39 @@ def test_detect_db_type_from_first_handshake():
     assert det["type"] == "mysql" and "MariaDB 11.8.9" in det["msg"]
     closed = L.detect_type("127.0.0.1", 1, timeout=1)
     assert closed["type"] is None and "포트" in closed["msg"]
+
+
+def test_explore_ranks_result_tables_and_finds_terms(lims_sqlite, tmp_path):
+    """DB 구조를 몰라도: 표·열 목록을 훑어 결과 표를 위로(잡표는 0점), 이름·값 찾기, 구조 엑셀."""
+    db = Path(lims_sqlite["database"])
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE USER_INFO (USER_ID TEXT, USER_NM TEXT, REG_DT TEXT)")
+    con.execute("CREATE TABLE SYS_LOG (LOG_DT TEXT, MSG TEXT, USER_ID TEXT)")
+    con.commit()
+    con.close()
+    res = L.explore(lims_sqlite, "")
+    cand = res["candidates"]
+    order = list(cand["table"])
+    assert set(order[:3]) == {"QC_RESULT", "CLK_DAILY", "SHIP"} and not res["errors"]
+    lay = dict(zip(cand["table"], cand["layout"]))
+    assert lay["QC_RESULT"] == "long" and lay["CLK_DAILY"] == "wide" and lay["SHIP"] == "ship"
+    sc = dict(zip(cand["table"], cand["score"]))
+    assert sc["USER_INFO"] == 0 and sc["SYS_LOG"] == 0
+    hit = L.find_term(lims_sqlite, "", res["catalog"], cand, "BLAINE")
+    assert ("값", "QC_RESULT", "ITEM_CD") in set(zip(hit["찾은 곳"], hit["표"], hit["열"]))
+    assert ("열 이름", "SHIP", "Blaine") in set(zip(hit["찾은 곳"], hit["표"], hit["열"]))
+    assert L.find_term(lims_sqlite, "", res["catalog"], cand, "  ").empty
+    xls = L.structure_workbook(res, {"QC_RESULT": L.preview(lims_sqlite, "", None, "QC_RESULT", 3)})
+    import openpyxl, io
+    wb = openpyxl.load_workbook(io.BytesIO(xls))
+    assert wb.sheetnames == ["① 추천 표", "② 표 목록", "③ 열 목록", "④ 예시 데이터"]
+    assert L.score_table("X", [("a", "text"), ("b", "text")])["score"] == 0
+    assert L.score_table("CLK", [("측정일자", "varchar"), ("CaO", "float"), ("SiO2", "float")])["layout"] == "wide"
+
+
+def test_demo_lims_view_is_found_first(demo_raw, tmp_path):
+    p = tmp_path / "demo.db"
+    lims.create_demo_lims(demo_raw, p)
+    res = L.explore({"type": "sqlite", "database": str(p)}, "")
+    top = res["candidates"].iloc[0]
+    assert top["table"] == "V_QC_RESULT" and top["layout"] == "long"

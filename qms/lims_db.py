@@ -65,7 +65,8 @@ ROLES = {   # 키: (화면 이름, 필수 여부, 설명)
 ROLE_ALIASES = {
     "sampled_at": ("채취일시", "시료채취일시", "채취일", "채취일자", "시료채취일", "채취날짜", "sampledat", "sampledate", "sampledt",
                    "smpdt", "smpdate", "sampletime", "sampledatetime", "collectdate", "collectiondate", "samplingdate",
-                   "samplingdt", "시료일시", "시험일시", "시험일", "접수일시", "date", "dt"),
+                   "samplingdt", "시료일시", "시험일시", "시험일", "시험일자", "측정일자", "측정일", "측정일시", "분석일자", "분석일",
+                   "분석일시", "검사일자", "검사일", "검사일시", "생산일자", "생산일", "접수일시", "date", "dt"),
     "time": ("채취시각", "채취시간", "시료채취시각", "smptm", "smptime", "sampletm", "samplinghour", "time", "tm"),
     "sample_point": ("채취지점", "채취장소", "채취지점코드", "시료지점", "시료구분", "시료종류", "시료유형", "samplepoint", "smppt",
                      "smppoint", "sampletype", "smptype", "samplelocation", "location", "point", "spoint"),
@@ -491,7 +492,8 @@ def list_databases(conn: dict, password: str) -> list[str]:
     from sqlalchemy import text
 
     t = conn.get("type")
-    q = {"mssql": "SELECT name FROM sys.databases WHERE name NOT IN ('master','tempdb','model','msdb') ORDER BY name",
+    q = {"mssql": "SELECT name FROM sys.databases WHERE name NOT IN ('master','tempdb','model','msdb') "
+                  "AND HAS_DBACCESS(name) = 1 AND state = 0 ORDER BY name",
          "postgresql": "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY 1",
          "mysql": "SHOW DATABASES"}.get(t)
     if not q:
@@ -505,10 +507,10 @@ def list_databases(conn: dict, password: str) -> list[str]:
     return [n for n in names if n.lower() not in SYSTEM_SCHEMAS]
 
 
-def list_schemas(conn: dict, password: str) -> tuple[list[str], str | None]:
+def list_schemas(conn: dict, password: str, database: str | None = None) -> tuple[list[str], str | None]:
     from sqlalchemy import inspect
 
-    eng = make_engine(conn, password)
+    eng = make_engine(conn, password, database or None)
     try:
         with eng.connect() as c:
             ins = inspect(c)
@@ -523,10 +525,10 @@ def list_schemas(conn: dict, password: str) -> tuple[list[str], str | None]:
     return names, default
 
 
-def list_objects(conn: dict, password: str, schema: str | None) -> pd.DataFrame:
+def list_objects(conn: dict, password: str, schema: str | None, database: str | None = None) -> pd.DataFrame:
     from sqlalchemy import inspect
 
-    eng = make_engine(conn, password)
+    eng = make_engine(conn, password, database or None)
     try:
         with eng.connect() as c:
             ins = inspect(c)
@@ -541,10 +543,10 @@ def list_objects(conn: dict, password: str, schema: str | None) -> pd.DataFrame:
         .reset_index(drop=True)
 
 
-def get_columns(conn: dict, password: str, schema: str | None, table: str) -> pd.DataFrame:
+def get_columns(conn: dict, password: str, schema: str | None, table: str, database: str | None = None) -> pd.DataFrame:
     from sqlalchemy import inspect
 
-    eng = make_engine(conn, password)
+    eng = make_engine(conn, password, database or None)
     try:
         with eng.connect() as c:
             cols = inspect(c).get_columns(table, schema)
@@ -584,12 +586,13 @@ def _col(t, name: str, fix: set[str], label: str | None = None):
     return e.label(lab) if (name in fix or label) else e
 
 
-def preview(conn: dict, password: str, schema: str | None, table: str, n: int = 20) -> pd.DataFrame:
+def preview(conn: dict, password: str, schema: str | None, table: str, n: int = 20,
+            database: str | None = None) -> pd.DataFrame:
     from sqlalchemy import select
 
-    cols = list(get_columns(conn, password, schema, table)["열"])
+    cols = list(get_columns(conn, password, schema, table, database)["열"])
     t = _table({"table": table, "schema": schema}, cols)
-    eng = make_engine(conn, password)
+    eng = make_engine(conn, password, database or None)
     try:
         with eng.connect() as c:
             fix = _text_fix(c, schema, table)
@@ -681,7 +684,7 @@ def fetch_source(conn: dict, password: str, src: dict, since: datetime | None, m
     layout = src.get("layout", "long")
     t = _table(src, needed_columns(src))
     cols = src.get("cols", {})
-    eng = make_engine(conn, password)
+    eng = make_engine(conn, password, src.get("database") or None)
     try:
         with eng.connect() as c:
             fix = _text_fix(c, src.get("schema") or None, src["table"])
@@ -714,7 +717,7 @@ def distinct_codes(conn: dict, password: str, src: dict, since: datetime | None,
 
     cols = src.get("cols", {})
     t = _table(src, needed_columns(src))
-    eng = make_engine(conn, password)
+    eng = make_engine(conn, password, src.get("database") or None)
     try:
         with eng.connect() as c:
             fix = _text_fix(c, src.get("schema") or None, src["table"])
@@ -726,8 +729,8 @@ def distinct_codes(conn: dict, password: str, src: dict, since: datetime | None,
             w = _where(src, t, since)
             if w is not None:
                 q = q.where(w)
-            grp = [t.c[cols["sample_point"]]] if cols.get("sample_point") else []
-            q = q.group_by(*grp, t.c[cols["test_code"]]).order_by(desc(n)).limit(limit)
+            grp = [_col(t, cols["sample_point"], fix)] if cols.get("sample_point") else []   # 선택한 식 그대로 묶음(TEXT 형 대비)
+            q = q.group_by(*[g.element if hasattr(g, "element") else g for g in grp + [tc]]).order_by(desc(n)).limit(limit)
             d = pd.read_sql(q, c)
     finally:
         eng.dispose()
@@ -736,3 +739,201 @@ def distinct_codes(conn: dict, password: str, src: dict, since: datetime | None,
     d["sample_point"] = d["sample_point"].astype(str).str.strip()
     d["test_code"] = d["test_code"].astype(str).str.strip()
     return d
+
+
+# ── DB 구조 자동 탐색: 표·열 목록을 한 번에 읽고, 시험 결과가 있을 법한 표를 점수로 고른다 ─────────
+_GOOD_WORDS = ("result", "rslt", "결과", "시험", "test", "qc", "sample", "smp", "성적", "lab", "lims", "분석", "analysis",
+               "inspect", "검사", "품질", "quality", "assay", "measure", "측정", "출하", "ship", "cement", "시멘트", "clinker",
+               "클링커", "강도", "strength")
+_BAD_WORDS = ("log", "hist", "bak", "backup", "tmp", "temp", "user", "menu", "auth", "config", "sys", "dict", "error",
+              "session", "file", "attach", "mail", "msg", "role", "perm", "audit", "trace")
+_DATE_TYPES = ("date", "time")
+_TEXT_TYPES = ("char", "text", "string", "clob", "varchar")
+
+
+def _norm_name(n: str, dialect: str) -> str:
+    """Oracle 은 대문자 이름을 소문자로(SQLAlchemy 반영 이름과 같게)."""
+    return n.lower() if dialect == "oracle" and n == n.upper() else n
+
+
+def catalog(conn: dict, password: str, database: str | None = None) -> pd.DataFrame:
+    """DB 안의 표·뷰와 열 목록(권한이 있는 것만) → [database, schema, table, kind, column, dtype]."""
+    from sqlalchemy import text
+
+    t = conn.get("type")
+    cols = ["database", "schema", "table", "kind", "column", "dtype"]
+    if t == "sqlite":
+        import sqlite3
+        from contextlib import closing
+        rows = []
+        with closing(sqlite3.connect(conn.get("database") or "")) as con:
+            for name, typ in con.execute("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') "
+                                         "AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall():
+                for r in con.execute(f'PRAGMA table_info("{name}")').fetchall():
+                    rows.append(("", "main", name, "뷰" if typ == "view" else "표", r[1], str(r[2] or "").lower()))
+        return pd.DataFrame(rows, columns=cols)
+    if t == "oracle":
+        sysq = ",".join(f"'{x.upper()}'" for x in sorted(SYSTEM_SCHEMAS) if "'" not in x)
+        q = ("SELECT c.owner, c.table_name, CASE WHEN v.view_name IS NULL THEN 'BASE TABLE' ELSE 'VIEW' END, c.column_name, "
+             "c.data_type FROM all_tab_columns c LEFT JOIN all_views v ON v.owner = c.owner AND v.view_name = c.table_name "
+             f"WHERE c.owner NOT IN ({sysq}) AND c.owner NOT LIKE 'APEX%' AND c.owner NOT LIKE 'FLOWS%' "
+             "AND c.table_name NOT LIKE 'BIN$%' ORDER BY c.owner, c.table_name, c.column_id")
+    else:
+        where = "WHERE c.TABLE_SCHEMA NOT IN ('mysql','information_schema','performance_schema','sys') " if t == "mysql" else \
+            ("WHERE c.TABLE_SCHEMA NOT IN ('pg_catalog','information_schema') " if t == "postgresql" else "")
+        q = ("SELECT c.TABLE_SCHEMA, c.TABLE_NAME, t.TABLE_TYPE, c.COLUMN_NAME, c.DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS c "
+             "JOIN INFORMATION_SCHEMA.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME "
+             + ("AND t.TABLE_CATALOG = c.TABLE_CATALOG " if t != "mysql" else "") + where
+             + "ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION")
+    eng = make_engine(conn, password, database or None)
+    try:
+        with eng.connect() as c:
+            res = c.execute(text(q)).fetchall()
+    finally:
+        eng.dispose()
+    db = database if database is not None else (conn.get("database") or "")
+    out = [(db if t != "mysql" else str(r[0]), _norm_name(str(r[0]), t), _norm_name(str(r[1]), t),
+            "뷰" if "VIEW" in str(r[2]).upper() else "표", _norm_name(str(r[3]), t), str(r[4]).lower()) for r in res]
+    return pd.DataFrame(out, columns=cols)
+
+
+def score_table(table: str, cols: list[tuple[str, str]]) -> dict:
+    """열 이름·자료형으로 '시험 결과 표일 가능성' 점수와 추정 형식·근거."""
+    from .shipment import BY_KEY, match_headers
+
+    names = [c for c, _ in cols]
+    if len(names) < 3:
+        return {"score": 0, "layout": "", "reasons": "열이 너무 적음"}
+    score, reasons, layout = 0, [], ""
+    roles = suggest_roles(names, "long")
+    dates = [c for c, ty in cols if any(k in ty for k in _DATE_TYPES)] or ([roles["sampled_at"]] if roles.get("sampled_at") else []) \
+        or [c for c in names if norm(c).endswith(("일자", "일시", "날짜", "date", "dt", "datetime"))]
+    if dates:
+        score += 2
+        reasons.append("날짜 " + ", ".join(dates[:2]))
+    if roles.get("test_code") and roles.get("value"):
+        score += 6
+        layout = "long"
+        reasons.append(f"시험항목 {roles['test_code']} · 결과 {roles['value']}")
+    items = [c for c in names if code_of(c)]
+    if len(items) >= 2:
+        score += min(10, 2 * len(items))
+        layout = layout or "wide"
+        reasons.append("시험항목 열 " + ", ".join(items[:6]) + (f" 외 {len(items) - 6}" if len(items) > 6 else ""))
+    idx = match_headers(names)
+    if "date" in idx and ("additive" in idx or "ships" in idx) and sum(k in BY_KEY for k in idx) >= 3:
+        score += 8
+        layout = "ship"
+        reasons.append("출하시멘트 성적 머리글")
+    extra = [r for r in ("sample_point", "product", "status", "updated_at") if roles.get(r)]
+    score += len(extra)
+    if extra:
+        reasons.append("·".join(ROLES[r][0] for r in extra))
+    n = norm(table)
+    if any(norm(w) in n for w in _GOOD_WORDS):
+        score += 2
+    if any(w in n for w in _BAD_WORDS):
+        score -= 3
+    if not dates:
+        score = min(score, 3)                                  # 날짜 열이 없으면 결과 표로 쓰기 어려움
+    return {"score": max(score, 0), "layout": layout or "wide", "reasons": " / ".join(reasons) or "-"}
+
+
+def explore(conn: dict, password: str, all_dbs: bool = False, max_dbs: int = 30, progress=None) -> dict:
+    """DB 전체(또는 모든 DB)의 표를 훑어 후보 순위표를 만든다 → {'candidates', 'catalog', 'errors', 'databases'}."""
+    t = conn.get("type")
+    dbs: list[str | None] = [None]
+    errors = []
+    if t in ("mssql", "postgresql") and (all_dbs or not conn.get("database")):
+        try:
+            dbs = list_databases(conn, password)[:max_dbs] or [None]
+        except Exception as exc:  # noqa: BLE001
+            errors.append(sanitize(f"DB 목록을 읽지 못했습니다(접속한 DB만 찾습니다) — {exc}", password))
+    frames = []
+    for i, db in enumerate(dbs, 1):
+        if progress:
+            progress(i, len(dbs), db or conn.get("database") or "")
+        try:
+            frames.append(catalog(conn, password, db))
+        except Exception as exc:  # noqa: BLE001 - 권한 없는 DB 는 건너뜀
+            m = sanitize(f"{type(exc).__name__}: {exc}", password)
+            hint = explain(m)
+            errors.append(f"[{db or conn.get('database') or '기본 DB'}] " + (f"건너뜀 — {hint}" if hint else m[:300]))
+    cat = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["database", "schema", "table", "kind", "column", "dtype"])
+    rows = []
+    for (db, sch, tb, kind), g in cat.groupby(["database", "schema", "table", "kind"], sort=False):
+        sc = score_table(tb, list(zip(g["column"], g["dtype"])))
+        rows.append({"database": db, "schema": sch, "table": tb, "kind": kind, "n_cols": len(g), **sc})
+    cand = pd.DataFrame(rows, columns=["database", "schema", "table", "kind", "n_cols", "score", "layout", "reasons"])
+    cand = cand.sort_values(["score", "kind", "n_cols"], ascending=[False, False, False]).reset_index(drop=True)
+    return {"candidates": cand, "catalog": cat, "errors": errors, "databases": [d for d in dbs if d]}
+
+
+def find_term(conn: dict, password: str, cat: pd.DataFrame, cand: pd.DataFrame, term: str, max_queries: int = 150) -> pd.DataFrame:
+    """이름·값으로 찾기: 열 이름에 term 이 든 곳 + (후보 상위 표의 문자 열) 값에 term 이 든 곳."""
+    from sqlalchemy import select
+
+    term = (term or "").strip()
+    cols = ["찾은 곳", "DB", "스키마", "표", "열", "예시"]
+    if not term:
+        return pd.DataFrame(columns=cols)
+    nt = norm(term)
+    out = [("열 이름", r.database, r.schema, r.table, r.column, "") for r in cat.itertuples()
+           if nt and nt in norm(r.column)]
+    top = cand[cand["score"] > 0].head(40)
+    budget = max_queries
+    for r in top.itertuples():
+        tcols = cat[(cat["database"] == r.database) & (cat["schema"] == r.schema) & (cat["table"] == r.table)]
+        text_cols = [c for c, ty in zip(tcols["column"], tcols["dtype"]) if any(k in ty for k in _TEXT_TYPES)][:8]
+        if not text_cols or budget <= 0:
+            continue
+        src = {"table": r.table, "schema": r.schema or None, "database": r.database or None}
+        try:
+            eng = make_engine(conn, password, r.database or None)
+            with eng.connect() as c:
+                fix = _text_fix(c, src["schema"], r.table)
+                t = _table(src, text_cols)
+                for col in text_cols:
+                    if budget <= 0:
+                        break
+                    budget -= 1
+                    e = _col(t, col, fix)
+                    v = c.execute(select(e).where(t.c[col].like(f"%{term}%")).limit(1)).scalar()
+                    if v is not None:
+                        out.append(("값", r.database, r.schema, r.table, col, str(v)[:40]))
+            eng.dispose()
+        except Exception:  # noqa: BLE001 - 읽을 수 없는 표는 건너뜀
+            continue
+    return pd.DataFrame(out, columns=cols)
+
+
+def structure_workbook(res: dict, samples: dict | None = None) -> bytes:
+    """LIMS DB 구조 엑셀(추천 표·표 목록·열 목록·예시 데이터) — LIMS 담당자·지원 담당자와 함께 보기용."""
+    import io
+
+    cand, cat = res["candidates"], res["catalog"]
+    lay = {"long": "긴 형식", "wide": "가로형", "ship": "출하시멘트"}
+    top = cand.head(30).rename(columns={"database": "DB", "schema": "스키마", "table": "표", "kind": "종류", "n_cols": "열 수",
+                                        "score": "점수", "layout": "추정 형식", "reasons": "근거"})
+    top["추정 형식"] = top["추정 형식"].map(lambda x: lay.get(x, x))
+    tables = cand.rename(columns={"database": "DB", "schema": "스키마", "table": "표", "kind": "종류", "n_cols": "열 수", "score": "점수"})
+    colsheet = cat.rename(columns={"database": "DB", "schema": "스키마", "table": "표", "kind": "종류", "column": "열", "dtype": "자료형"})
+    colsheet["역할 추정"] = [next((ROLES[k][0] for k, v in suggest_roles([c], "long").items() if v == c), "") for c in colsheet["열"]]
+    colsheet["시험항목 추정"] = colsheet["열"].map(lambda c: code_of(c) or "")
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as xw:
+        top.to_excel(xw, sheet_name="① 추천 표", index=False)
+        tables[["DB", "스키마", "표", "종류", "열 수", "점수"]].to_excel(xw, sheet_name="② 표 목록", index=False)
+        colsheet.to_excel(xw, sheet_name="③ 열 목록", index=False)
+        if samples:
+            r0 = 0
+            for name, df in samples.items():
+                pd.DataFrame([[name]]).to_excel(xw, sheet_name="④ 예시 데이터", index=False, header=False, startrow=r0)
+                df.to_excel(xw, sheet_name="④ 예시 데이터", index=False, startrow=r0 + 1)
+                r0 += len(df) + 4
+        for ws in xw.book.worksheets:
+            for col in ws.columns:
+                w = max(len(str(c.value or "")) for c in col[:200])
+                ws.column_dimensions[col[0].column_letter].width = min(60, max(8, w * 1.3))
+            ws.freeze_panes = "A2"
+    return buf.getvalue()

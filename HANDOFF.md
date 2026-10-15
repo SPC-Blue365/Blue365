@@ -94,6 +94,11 @@
 - RUN_CODE.bat: 설치한 QMS 파이썬을 코드 폴더 주변·C:\Blue365_QMS·다운로드·바탕화면·문서에서 자동 검색, 설치 앱 데이터 함께 쓰기 선택(data\.run_code_data 기억), 괄호 든 폴더 경로·콘솔 인코딩 문제 수정. 받기 주소: https://github.com/SPC-Blue365/Blue365/archive/refs/heads/ccr-4c0c953d-ll1jyd.zip (저장소 public, 기본 브랜치 main 은 예제뿐).
 - `lims_db.detect_type`: 아이디·비밀번호 없이 핸드셰이크로 판별 — MySQL(서버 첫 인사) → MS SQL(TDS PRELOGIN, 버전) → PostgreSQL(SSLRequest) → Oracle(TNS). 화면 '🔎 DB 종류 자동 확인'(DB 종류 자동 변경), 연결 확인에 'DB 종류' 단계. 실제 4종 서버·Windows 파이썬으로 확인.
 
+**완료(12차, 2026-10-15): '가져올 곳' 불러오기 안 됨 대응 · DB 구조를 몰라도 결과 표 자동 찾기**
+- 원인 후보(재현): ① 탭 입력을 저장하지 않으면 ② 탭은 예전 접속 정보 사용 / DB 이름을 비우면 MSSQL 기본 DB(master)의 빈 스키마(guest·dbo)만 보임 / ② 탭 '불러오기' 버튼(저장된 설정 열기)을 LIMS 불러오기로 오해.
+- 조치: 🩺 연결 확인 성공 시 접속 정보 자동 저장, ② 탭에 사용 중인 접속 표시·미저장 경고, 데이터베이스 선택(MSSQL·PostgreSQL), 혼동 버튼 제거, 소스별 database(여러 DB 지원).
+- `lims_db.catalog/explore/score_table/find_term/structure_workbook`: INFORMATION_SCHEMA(MSSQL·PG·MySQL)·ALL_TAB_COLUMNS(Oracle)·sqlite 로 표·열 목록을 한 번에 읽고 날짜·시험항목/결과 열·시험항목 이름 열·출하시멘트 머리글·표 이름으로 점수(잡표 0점), 이름·값 찾기(상위 후보 문자 열 LIKE, 질의 150회 한도), 구조 엑셀. 화면 🧭 자동으로 찾기 → ▶ 이 표로 시작(역할 자동, 긴 형식은 시험항목 목록 자동 불러오기·매칭 추천). 실제 MSSQL(기본 DB=master 재현)·Oracle·PG(여러 DB)·MariaDB, Wine(Windows 드라이버)에서 확인.
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).
