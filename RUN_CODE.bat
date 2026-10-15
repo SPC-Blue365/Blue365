@@ -33,10 +33,16 @@ if not defined PY (
   python -c "import sys" >nul 2>nul && set "PY=python"
 )
 if not defined PY goto nopy
-if "%PY%"=="py" (set "PYRUN=py -3") else (set PYRUN="%PY%")
-if defined QMS_HOME echo   파이썬: 설치한 QMS 패키지 - %QMS_HOME%
-if not defined QMS_HOME echo   파이썬: %PY%
-%PYRUN% %PYFLAGS% -c "import sys; print('   버전:', sys.version.split()[0]); sys.exit(0 if sys.version_info >= (3, 11) else 1)"
+set PYRUN="%PY%"
+if "%PY%"=="py" set "PYRUN=py -3"
+rem 경로에 괄호가 있어도(예: "…_1of6 (1)") 끊기지 않도록 if 줄 안에서 경로를 펼치지 않는다
+if not defined QMS_HOME goto showpy2
+echo   파이썬: 설치한 QMS 패키지 - %QMS_HOME%
+goto showpy3
+:showpy2
+echo   파이썬: %PY%
+:showpy3
+%PYRUN% %PYFLAGS% -c "import sys; print('   Python', sys.version.split()[0]); sys.exit(0 if sys.version_info >= (3, 11) else 1)"
 if errorlevel 1 goto oldpy
 
 rem ── 3. 구성요소 확인 → 없으면 설치(인터넷 또는 사내 pip 저장소 필요) ──
@@ -68,9 +74,13 @@ echo   (선택을 기억합니다. 바꾸려면 data\.run_code_data 파일을 지우세요)
 :applydata
 if "%USE_QMS_DATA%"=="1" set "QMS_DATA_DIR=%QMS_HOME%\data"
 :showdata
-if defined QMS_DATA_DIR echo   데이터: %QMS_DATA_DIR%
-if not defined QMS_DATA_DIR echo   데이터: %~dp0data - 이 코드 폴더 전용
-if "%USE_QMS_DATA%"=="1" echo   ※ 설치 앱과 같은 데이터를 쓰므로 설치 앱(2_RUN)과 동시에 켜지 마세요.
+if not defined QMS_DATA_DIR goto showdata2
+echo   데이터: %QMS_DATA_DIR%
+goto showdata3
+:showdata2
+echo   데이터: %~dp0data - 이 코드 폴더 전용
+:showdata3
+if "%USE_QMS_DATA%"=="1" echo   ※ 설치 앱과 같은 데이터를 쓰므로 설치 앱 2_RUN 과 동시에 켜지 마세요.
 
 :run
 echo.
@@ -110,7 +120,8 @@ echo [오류] 파이썬 3.11 이상이 필요합니다. 새 버전을 설치하거나 QMS 패키지의 파�
 goto end
 
 :brokenqms
-echo [오류] 설치한 QMS 패키지의 구성요소를 불러오지 못했습니다: %QMS_HOME%
+echo [오류] 설치한 QMS 패키지의 구성요소를 불러오지 못했습니다.
+echo   위치: %QMS_HOME%
 echo   그 폴더의 1_SETUP.bat 을 먼저 실행해 설치를 끝내세요(2~6번 ZIP 필요).
 goto end
 

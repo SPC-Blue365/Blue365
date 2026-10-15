@@ -25,9 +25,16 @@ KS 규격·사내 관리기준·SPC 판정규칙을 벗어나면 **자동으로 
 
 필요 환경: **Python 3.11 이상**(3.11·3.13에서 확인), Streamlit 1.55 이상(requirements.txt로 자동 설치).
 
-> **Windows에서 가장 쉬운 방법: 코드 폴더의 `RUN_CODE.bat` 더블클릭.** 폴더·파이썬·구성요소를 점검해 문제를 한국어로 알려 주고 실행합니다. 이미 설치한 QMS 패키지의 파이썬(`Blue365_QMS\py\python.exe`)이 코드 폴더 옆(`..\Blue365_QMS`)이나 `C:\Blue365_QMS`에 있으면 자동으로 사용하므로 **인터넷·pip 설치가 필요 없습니다**(다른 위치면 `set QMS_PY=...\py\python.exe` 후 실행).
+> **Windows에서 GitHub로 받아 바로 쓰기(설치 앱이 이미 있으면 인터넷·pip 설치 불필요)**
 >
-> ⚠️ 코드는 **`ccr-4c0c953d-ll1jyd` 브랜치**에서 받으세요. GitHub 첫 화면 기본값(`main`)에는 처음 만든 채팅 예제만 있습니다.
+> 1. 받기: **<https://github.com/SPC-Blue365/Blue365/archive/refs/heads/ccr-4c0c953d-ll1jyd.zip>**
+>    (GitHub 첫 화면의 Code → Download ZIP 은 기본 브랜치 `main` 이라 QMS 코드가 없습니다 — 위 주소를 쓰세요)
+> 2. ZIP을 풀고 그 안의 **`RUN_CODE.bat`** 더블클릭 → 브라우저에 QMS가 열립니다.
+>    - 설치한 QMS 패키지(`Blue365_QMS\py\python.exe`)를 **코드 폴더 주변·`C:\Blue365_QMS`·다운로드·바탕화면·문서 폴더**에서 자동으로 찾아 그 파이썬을 씁니다
+>      (못 찾으면 PC의 Python 3.11+ → 구성요소가 없으면 `pip install -r requirements.txt`). 직접 지정: `set QMS_PY=…\py\python.exe`
+>    - 처음 한 번 **설치 앱의 데이터를 함께 쓸지** 묻습니다(1 = 함께 쓰기, 2 = 코드 폴더 전용). 선택은 `data\.run_code_data` 에 기억 — 지우면 다시 묻습니다.
+>      함께 쓰는 경우 설치 앱(2_RUN)과 동시에 켜지 마세요.
+> 3. 새 기능이 올라오면 같은 주소로 다시 받아 풀고 `RUN_CODE.bat` 만 실행하면 됩니다(설치 패키지 재설치 불필요 — 구성요소가 바뀐 경우만 새 2~6번 ZIP 필요).
 
 ```bash
 # Windows (명령 프롬프트)                     # macOS·Linux
