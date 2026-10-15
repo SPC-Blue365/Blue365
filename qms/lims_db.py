@@ -212,12 +212,8 @@ def build_url(conn: dict, password: str = "", database: str | None = None):
     common = dict(username=(conn.get("user") or "").strip() or None, password=password or None, host=server_of(conn) or None,
                   port=port)
     if t == "mssql":
-        if drv == "pyodbc":
-            od = conn.get("odbc_driver") or ODBC_DEFAULT
-            q = {"driver": od, "TrustServerCertificate": "yes"}
-            if "18" in od:                                # ODBC Driver 18 은 암호화가 기본 필수
-                q["Encrypt"] = "yes"
-            return URL.create("mssql+pyodbc", database=db or None, **common, query=q)
+        if drv == "pyodbc":                               # 연결 문자열을 직접 만든다(DB 이름이 비면 SQLAlchemy 가 IP 를 DSN 이름으로 씀)
+            return URL.create("mssql+pyodbc", query={"odbc_connect": odbc_string(conn, password, db)})
         return URL.create("mssql+pymssql", database=db or None, **common)
     if t == "oracle":
         if conn.get("oracle_mode", "service") == "service":
@@ -228,6 +224,65 @@ def build_url(conn: dict, password: str = "", database: str | None = None):
     if t == "mysql":
         return URL.create("mysql+pymysql", database=db or None, **common, query={"charset": "utf8mb4"})
     raise ValueError(f"알 수 없는 DB 종류: {t}")
+
+
+def _brace(v: str) -> str:
+    return "{" + str(v).replace("}", "}}") + "}"
+
+
+def odbc_string(conn: dict, password: str = "", database: str | None = None) -> str:
+    """Windows ODBC 연결 문자열(DSN 없이). 'SQL Server'(Windows 기본 내장)는 Network=DBMSSOCN 으로 TCP 를 지정한다."""
+    od = conn.get("odbc_driver") or ODBC_DEFAULT
+    db = conn.get("database", "") if database is None else database
+    port = str(conn.get("port") or "").strip()
+    server = server_of(conn) + (f",{port}" if port not in ("", "0") else "")
+    parts = [f"DRIVER={_brace(od)}"]
+    parts += [f"SERVER={server}", "Network=DBMSSOCN"] if od == "SQL Server" else [f"SERVER=tcp:{server}"]
+    if db:
+        parts.append(f"DATABASE={_brace(db)}")
+    if (conn.get("user") or "").strip():
+        parts += [f"UID={_brace(conn['user'].strip())}", f"PWD={_brace(password)}"]
+    parts.append("TrustServerCertificate=yes")
+    if "18" in od:                                     # ODBC Driver 18 은 암호화가 기본 필수
+        parts.append("Encrypt=yes")
+    return ";".join(parts)
+
+
+def relay_conn(conn: dict) -> dict:
+    """'QMS 보안 중계'를 쓰는 설정이면 중계를 띄우고(이미 있으면 재사용) pymssql 이 중계(127.0.0.1)로 가게 바꾼 사본."""
+    prof = conn.get("tls_relay")
+    if conn.get("type") != "mssql" or not prof:
+        return conn
+    from . import tds_relay as R
+
+    r = R.get_relay(server_of(conn), int(conn.get("port") or 1433), prof)
+    return {**conn, "ip": "127.0.0.1", "host": "", "port": r.port, "driver": "pymssql", "encryption": "off", "tds_version": None}
+
+
+def relay_error(conn: dict) -> str:
+    if conn.get("type") != "mssql" or not conn.get("tls_relay"):
+        return ""
+    from . import tds_relay as R
+
+    return R.get_relay(server_of(conn), int(conn.get("port") or 1433), conn["tls_relay"]).last_error
+
+
+PLAN_KEYS = ("tds_version", "encryption", "tls_relay")
+
+
+def plan_label(conn: dict) -> str:
+    """지금 접속 방법을 사람이 읽는 말로."""
+    if conn.get("type", "mssql") != "mssql":
+        return conn.get("driver") or default_driver(conn.get("type", "mssql"))
+    if conn.get("tls_relay"):
+        from .tds_relay import PROFILES
+        return f"QMS 보안 중계({PROFILES.get(conn['tls_relay'], conn['tls_relay'])}) + pymssql"
+    s = f"Windows ODBC · {conn.get('odbc_driver') or ODBC_DEFAULT}" if conn.get("driver") == "pyodbc" else "pymssql"
+    if conn.get("tds_version"):
+        s += f" · TDS {conn['tds_version']}"
+    if conn.get("encryption") == "off":
+        s += " · 암호화 없음(사내망 전용)"
+    return s
 
 
 def connect_args(conn: dict) -> dict:
@@ -314,28 +369,29 @@ def make_engine(conn: dict, password: str = "", database: str | None = None):
     from sqlalchemy import create_engine
     from sqlalchemy.pool import NullPool
 
+    conn = relay_conn(conn)
     return create_engine(build_url(conn, password, database), connect_args=connect_args(conn), poolclass=NullPool)
 
 
 def sanitize(msg: str, password: str = "") -> str:
     msg = str(msg)
     if password:
-        for p in {password, quote_plus(password)}:
+        for p in {password, quote_plus(password), password.replace("}", "}}")}:
             msg = msg.replace(p, "****")
     msg = re.sub(r"(://[^:/@\s]+:)[^@\s]+@", r"\1****@", msg)
     return msg[:600]
 
 
 _HINTS = [
-    (r"20002|20017|tds server connection failed|unexpected eof from the server|adaptive server connection failed",
-     "로그인 전 암호화(TLS) 단계에서 연결이 끊겼습니다(아이디·비밀번호 문제 아님). 서버 인증서·TLS 설정이 오래됐거나 중간 장비가 막는 경우가 많습니다 "
-     "→ 아래 '🔧 연결 방법 자동 찾기'를 누르세요(Windows SQL Server 드라이버 등 다른 방법을 차례로 시도)."),
     (r"4060|cannot open database|database .* does not exist|ora-12514|ora-12505|unknown database|\(1049",
      "DB 이름(Oracle은 서비스 이름/SID)이 맞지 않습니다. MSSQL·PostgreSQL·MySQL은 DB 이름을 비우고 'DB 목록 불러오기'로 고를 수 있습니다."),
     (r"18456|login failed|password authentication failed|ora-01017|access denied for user|\(1045|authentication failed",
      "아이디 또는 비밀번호가 맞지 않습니다(대소문자 확인). 계정 잠김·만료 여부는 LIMS 담당자·IT에 확인하세요."),
+    (r"20002|20017|tds server connection failed|unexpected eof from the server|adaptive server connection failed",
+     "로그인 전 암호화(TLS) 단계에서 연결이 끊겼습니다(아이디·비밀번호 문제 아님). 서버의 TLS 1.3 설정·오래된 인증서·암호화 강제 설정과 "
+     "pymssql 이 맞지 않을 때 생깁니다 → 아래 '🔧 연결 방법 자동 찾기'를 누르세요(QMS 보안 중계·Windows ODBC 를 차례로 시도)."),
     (r"data source name not found|im002|can't open lib|odbc driver.*not found",
-     "Windows ODBC 드라이버가 없습니다. MS SQL Server는 접속 드라이버를 pymssql 로 바꾸세요."),
+     "Windows ODBC 드라이버 이름을 찾지 못했습니다('ODBC 데이터 원본 관리자 → 드라이버' 탭의 이름과 같아야 함)."),
     (r"ssl|certificate|encrypt|tls", "암호화(SSL/TLS) 연결 설정 문제입니다. MS SQL Server는 드라이버를 바꿔 보세요(pymssql ↔ pyodbc)."),
     (r"permission denied|select permission|ora-00942|ora-01031|\(1142|not authorized",
      "이 계정에 읽기 권한이 없습니다. LIMS 담당자에게 해당 표·뷰의 SELECT 권한을 요청하세요."),
@@ -1042,10 +1098,12 @@ def connection_plans(conn: dict, allow_plain: bool = False) -> list[tuple[str, d
     """시도할 연결 방법 목록(앞쪽이 권장) — (설명, conn 에 덮어쓸 값)."""
     if conn.get("type") != "mssql":
         return [("기본", {})]
-    base = {"tds_version": None, "encryption": None}
+    base = {k: None for k in PLAN_KEYS}
     plans = [("pymssql(기본)", {**base, "driver": "pymssql"}),
-             ("pymssql · TDS 7.4", {**base, "driver": "pymssql", "tds_version": "7.4"})]
+             ("QMS 보안 중계 · TLS 1.2 고정", {**base, "driver": "pymssql", "tls_relay": "tls12"}),
+             ("QMS 보안 중계 · 오래된 TLS·인증서 허용", {**base, "driver": "pymssql", "tls_relay": "legacy"})]
     plans += [(f"Windows ODBC · {d}", {**base, "driver": "pyodbc", "odbc_driver": d}) for d in odbc_drivers()]
+    plans += [("pymssql · TDS 7.4", {**base, "driver": "pymssql", "tds_version": "7.4"})]
     if allow_plain:
         plans += [("pymssql · 암호화 없이(사내망 전용)", {**base, "driver": "pymssql", "encryption": "off"}),
                   ("pymssql · TDS 7.0(암호화 없음, 오래된 방식)", {**base, "driver": "pymssql", "tds_version": "7.0"})]
@@ -1068,8 +1126,11 @@ def try_plan(conn: dict, password: str) -> tuple[bool, str]:
         return True, "연결 성공"
     except Exception as exc:  # noqa: BLE001
         m = sanitize(f"{type(exc).__name__}: {exc}", password)
+        rerr = relay_error(conn)
+        if rerr:                                       # 중계가 서버와 TLS 를 못 맺은 경우 — 그 이유가 더 정확하다
+            return False, rerr + " · " + m[:160]
         h = explain(m)
-        return False, (h.split("→")[0].strip() + " · " if h else "") + m[:220]
+        return False, (h.split("→")[0].strip() + " · " if h else "") + m[:400]
 
 
 def find_connection(conn: dict, password: str, allow_plain: bool = False, progress=None) -> tuple[dict | None, list[dict]]:
@@ -1079,12 +1140,122 @@ def find_connection(conn: dict, password: str, allow_plain: bool = False, progre
     for i, (label, patch) in enumerate(plans, 1):
         if progress:
             progress(i, len(plans), label)
-        cand = {**conn, **patch}
+        cand = {k: v for k, v in {**conn, **patch}.items() if v is not None}
         ok, msg = try_plan(cand, password)
         tried.append({"방법": label, "결과": "✅ 성공" if ok else "❌ 실패", "내용": msg})
         if ok:
             return cand, tried
         if re.search(r"18456|login failed|4060|cannot open database", msg.lower()):
-            tried.append({"방법": "(중단)", "결과": "—", "내용": "아이디·비밀번호 또는 DB 이름 문제라 다른 방법으로는 해결되지 않습니다."})
+            tried.append({"방법": "(중단)", "결과": "—", "내용": f"'{label}' 방법으로 암호화 단계는 통과했고, 서버가 로그인(아이디·비밀번호) "
+                          "또는 DB 이름을 거절했습니다 — 다른 방법으로는 해결되지 않습니다. 아이디·비밀번호(대소문자)·DB 이름을 확인하세요."})
             break
     return None, tried
+
+
+# ── 📋 연결 진단 보고서(텍스트) — 비밀번호는 넣지 않는다 ─────────────────────────────
+def _versions() -> list[str]:
+    import platform
+    import ssl
+    import sys
+
+    out = [f"OS: {platform.platform()}", f"Python: {sys.version.split()[0]} ({sys.executable})", f"OpenSSL(파이썬): {ssl.OPENSSL_VERSION}"]
+    for mod in ("sqlalchemy", "pymssql", "pyodbc"):
+        try:
+            m = __import__(mod)
+            v = getattr(m, "__version__", "") or getattr(m, "version", "")
+            if mod == "pymssql":
+                try:
+                    import pymssql._mssql as _m
+                    v += f" · {_m.get_dbversion()}"
+                except Exception:  # noqa: BLE001
+                    pass
+            out.append(f"{mod}: {v}")
+        except Exception as exc:  # noqa: BLE001
+            out.append(f"{mod}: 없음({type(exc).__name__})")
+    out.append("ODBC SQL Server 드라이버: " + (", ".join(odbc_drivers()) or "없음"))
+    return out
+
+
+def _freetds_trace(conn: dict, password: str) -> list[str]:
+    """pymssql 기본 방식 1회 시도의 FreeTDS 기록 중 TLS·오류 줄만(패킷 내용은 넣지 않음)."""
+    import os
+    import tempfile
+
+    if conn.get("type") != "mssql" or not driver_ok("pymssql"):
+        return []
+    fd, path = tempfile.mkstemp(suffix=".log")
+    os.close(fd)
+    old = os.environ.get("TDSDUMP")
+    os.environ["TDSDUMP"] = path
+    try:
+        try_plan({**{k: v for k, v in conn.items() if k not in PLAN_KEYS}, "driver": "pymssql"}, password)
+    finally:
+        if old is None:
+            os.environ.pop("TDSDUMP", None)
+        else:
+            os.environ["TDSDUMP"] = old
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+        os.unlink(path)
+    except OSError:
+        return []
+    keep = [ln for ln in lines if re.match(r"^\S+\.c:\d+:", ln) and not re.search(r"in tds_(pull|push)_func", ln) and re.search(r"tls|ssl|handshake|certif|cipher|error|fail|encrypt|prelogin|"
+                                                                            r"tds version|connect", ln, re.IGNORECASE)
+            and not re.search(r"passw|pwd", ln, re.IGNORECASE)]
+    return [sanitize(x, password)[:240] for x in keep[:60]]
+
+
+def _judge(pr: dict, best: dict | None, tried: list[dict]) -> list[str]:
+    ok = {lab for lab, good, _ in pr.get("versions", []) if good}
+    first = tried[0]["내용"] if tried else ""
+    out = []
+    if best:
+        out.append(f"연결 성공 방법: {plan_label(best)} — 이 방법이 저장되어 있으면 동기화·표 찾기가 됩니다.")
+    elif any(t["방법"] == "(중단)" for t in tried):
+        out.append("암호화 단계는 통과, 서버가 로그인(아이디·비밀번호) 또는 DB 이름을 거절 → 계정 정보·SQL 로그인 허용을 확인.")
+    if not ok:
+        out.append("서버와 어떤 TLS 버전으로도 암호화 연결을 맺지 못함 → 서버 TLS 설정 또는 중간 장비(방화벽·보안장비) 차단 가능성.")
+    elif ok <= {"TLS 1.0", "TLS 1.1"}:
+        out.append("서버가 오래된 TLS(1.0/1.1)만 허용 → 'QMS 보안 중계 · 오래된 TLS·인증서 허용'으로 접속. 근본 대책: 서버 TLS 1.2 활성화.")
+    elif "TLS 1.3" in ok and re.search(r"20002|20017|20020", first):
+        out.append("서버가 TLS 1.3 을 허용하고 pymssql 기본 방식이 TLS 단계에서 끊김 → TDS 7.x 와 TLS 1.3 비호환으로 판단(추정) — "
+                   "'QMS 보안 중계 · TLS 1.2 고정'으로 해결. 근본 대책: SQL Server 최신 CU 적용 또는 서버의 TDS 7.x 용 TLS 1.3 정리.")
+    cert = pr.get("cert") or {}
+    if re.search(r"SHA1|MD5", cert.get("서명 방식", "")) or re.search(r"RSA (\d+)", cert.get("키", "")) and \
+            int(re.search(r"RSA (\d+)", cert.get("키", "")).group(1)) < 2048:
+        out.append(f"서버 인증서가 오래된 방식({cert.get('서명 방식')}, {cert.get('키')}) → 근본 대책: 2048비트 이상·SHA256 인증서로 교체.")
+    return out or ["특이 사항 없음"]
+
+
+def connection_report(conn: dict, password: str, allow_plain: bool = False) -> str:
+    """LIMS 연결 문제를 다른 사람(IT·개발자)에게 넘길 때 쓰는 보고서. 비밀번호·데이터는 들어가지 않는다."""
+    from . import tds_relay as R
+
+    L_ = [f"Blue365 QMS — LIMS 연결 진단 보고서 ({datetime.now():%Y-%m-%d %H:%M})", "※ 비밀번호·시험 데이터는 들어 있지 않습니다.", ""]
+    L_ += ["[1] 실행 환경", *("  " + x for x in _versions()), ""]
+    show = {k: conn.get(k) for k in ("type", "ip", "host", "port", "database", "user", "driver", "odbc_driver", *PLAN_KEYS) if conn.get(k)}
+    L_ += ["[2] 접속 정보(비밀번호 제외)", "  " + ", ".join(f"{k}={v}" for k, v in show.items()), f"  지금 방법: {plan_label(conn)}", ""]
+    summary_at = len(L_)
+    L_ += ["[3] 단계별 연결 확인"]
+    L_ += [f"  {'OK ' if x['ok'] else 'NG '} {x['step']}: {x['msg']}" for x in diagnose(conn, password)]
+    L_.append("")
+    host, port = server_of(conn), conn.get("port")
+    if conn.get("type") == "mssql" and host and port:
+        det = detect_type(host, int(port))
+        L_ += ["[4] 서버 암호화(TLS) 상태 — 로그인 없이 확인", f"  {det.get('msg', '')}"]
+        pr = R.probe_tls(host, int(port))
+        L_.append(f"  암호화 요청 시 서버 답: {pr['encryption']}")
+        L_ += [f"  {'OK ' if ok else 'NG '} {lab}: {msg}" for lab, ok, msg in pr["versions"]]
+        if pr["cert"]:
+            L_.append("  서버 인증서: " + ", ".join(f"{k} {v}" for k, v in pr["cert"].items()))
+        L_.append("")
+        L_ += ["[5] 연결 방법별 실제 로그인 시도"]
+        best, tried = find_connection(conn, password, allow_plain=allow_plain)
+        L_[summary_at:summary_at] = ["[0] 자동 판단", *("  · " + x for x in _judge(pr, best, tried)), ""]
+        L_ += [f"  {t['결과']} {t['방법']}: {t['내용']}" for t in tried]
+        L_.append("")
+        tr = _freetds_trace(conn, password)
+        if tr:
+            L_ += ["[6] pymssql(FreeTDS) 기록 — TLS·오류 줄만", *("  " + x for x in tr), ""]
+    return "\n".join(L_)

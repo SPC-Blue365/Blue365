@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -71,11 +72,12 @@ def _steps_table(steps: list[dict]) -> None:
 def _finder(cfg: lims.LimsConfig, conn: dict, pw_new: str, local: bool, expanded: bool) -> None:
     """🔧 연결 방법 자동 찾기 — pymssql 설정·Windows ODBC 드라이버를 차례로 시도해 되는 방법을 저장."""
     ss = st.session_state
-    cur = conn.get("driver", "pymssql") + (f" · ODBC {conn.get('odbc_driver')}" if conn.get("driver") == "pyodbc" else "") \
-        + (f" · TDS {conn['tds_version']}" if conn.get("tds_version") else "") + (f" · 암호화 {conn['encryption']}" if conn.get("encryption") else "")
+    cur = L.plan_label(conn)
     with st.container(border=True):
         st.markdown("**🔧 연결 방법 자동 찾기** — 로그인 전 암호화(TLS) 단계에서 끊길 때 쓰는 방법입니다. 드라이버와 설정을 바꿔 가며 "
                     "**실제 로그인까지** 시도하고, 처음 성공한 방법을 저장합니다(SELECT 1 만 실행).")
+        st.caption("시도 순서: pymssql(기본) → **QMS 보안 중계**(QMS가 서버와 TLS 1.2 로 직접 암호화 연결, 필요하면 오래된 TLS·인증서 허용 — "
+                   "서버까지는 계속 암호화됨) → Windows ODBC 드라이버 → pymssql TDS 7.4 → (선택) 암호화 없는 방법")
         odbc = L.odbc_drivers()
         st.caption(f"지금 방법: {cur} · 이 PC의 Windows SQL Server 드라이버: {', '.join(odbc) if odbc else '없음(또는 pyodbc 없음)'}")
         f1, f2 = st.columns([1.2, 2.2], vertical_alignment="center")
@@ -97,21 +99,34 @@ def _finder(cfg: lims.LimsConfig, conn: dict, pw_new: str, local: bool, expanded
                 _clear_browse_cache()
                 ss.pop("ldb_diag", None)
                 ss["ldb_drv_v"] = ss.get("ldb_drv_v", 0) + 1       # 드라이버 선택 상자를 저장된 값으로 새로 그림
-                ss["ldb_find_ok"] = best["driver"] + (f" · {best.get('odbc_driver')}" if best["driver"] == "pyodbc" else "") \
-                    + (f" · TDS {best['tds_version']}" if best.get("tds_version") else "") \
-                    + (" · 암호화 없음(사내망 전용)" if best.get("encryption") == "off" else "")
+                ss["ldb_find_ok"] = L.plan_label(best)
                 st.rerun()
         res = ss.get("ldb_find_result")
         if res:
             best, tried = res
             if best:
-                how = best["driver"] + (f" · {best.get('odbc_driver')}" if best["driver"] == "pyodbc" else "") \
-                    + (f" · TDS {best['tds_version']}" if best.get("tds_version") else "") + (" · 암호화 없음" if best.get("encryption") == "off" else "")
-                st.success(f"연결에 성공한 방법: **{how}** — 접속 정보를 저장했습니다. 이제 ② 가져올 곳 탭에서 🧭 자동으로 찾기를 누르세요.")
+                st.success(f"연결에 성공한 방법: **{L.plan_label(best)}** — 접속 정보를 저장했습니다. 이제 ② 가져올 곳 탭에서 🧭 자동으로 찾기를 누르세요.")
+            elif any(t["방법"] == "(중단)" for t in tried):
+                st.error("암호화 단계는 통과했지만 서버가 **로그인(아이디·비밀번호) 또는 DB 이름**을 거절했습니다. 비밀번호를 다시 입력하고(대소문자), "
+                         "DB 이름을 비운 채 다시 시도해 보세요. 계정 잠김·SQL 로그인 허용 여부는 LIMS 담당자에게 확인하세요.")
             else:
-                st.error("어떤 방법으로도 연결하지 못했습니다." + ("" if plain else " '암호화 없는 방법도 시도'를 켜고 다시 해 보세요(서버가 허용하는 경우).")
-                         + " 계속 안 되면 LIMS 담당자에게 'SQL Server 인증서·TLS 1.2 설정'과 'QMS PC에서의 SQL 로그인 허용'을 확인해 달라고 하세요.")
+                st.error("어떤 방법으로도 연결하지 못했습니다. 아래 **📋 진단 보고서**를 내려받아 개발 담당(또는 LIMS 담당자)에게 보내 주세요 — "
+                         "서버의 암호화(TLS) 설정·인증서 정보와 방법별 오류 원문이 들어 있습니다(비밀번호는 들어가지 않음).")
             st.dataframe(pd.DataFrame(tried), hide_index=True, width="stretch")
+            with st.expander("오류 원문 전체 보기"):
+                for t in tried:
+                    st.text(f"{t['결과']} {t['방법']}\n{t['내용']}")
+        r1, r2 = st.columns([1.2, 2.2], vertical_alignment="center")
+        if r1.button("📋 진단 보고서 만들기", disabled=not local, width="stretch", key=f"ldb_report_btn_{expanded}",
+                     help="서버 암호화(TLS) 상태·인증서·방법별 오류 원문을 텍스트 파일로 만듭니다(1~2분). 비밀번호·데이터는 넣지 않습니다."):
+            with st.spinner("진단 중…(서버 TLS 상태 확인 → 방법별 로그인 시도, 1~2분)"):
+                ss["ldb_report"] = L.connection_report(conn, pw_new or _pw(), allow_plain=plain)
+        if ss.get("ldb_report"):
+            r2.download_button("⬇️ 진단 보고서 내려받기(.txt)", ss["ldb_report"].encode("utf-8-sig"),
+                               file_name=f"LIMS_connection_report_{datetime.now():%Y%m%d_%H%M}.txt", mime="text/plain", width="stretch",
+                               key=f"ldb_report_dl_{expanded}")
+            with st.expander("진단 보고서 미리 보기"):
+                st.text(ss["ldb_report"])
 
 
 def driver_gate(drv: str, local: bool = True, where: str = "conn") -> bool:
@@ -253,14 +268,12 @@ def conn_panel(cfg: lims.LimsConfig) -> None:
     conn = {"type": t, "ip": ip.strip(), "host": host.strip(), "port": int(port), "database": db_name.strip(), "user": user.strip(),
             "driver": drv, "odbc_driver": odbc, "oracle_mode": omode}
     if t == c0["type"] and drv == c0.get("driver"):          # 🔧 연결 방법 자동 찾기에서 정한 설정 유지
-        conn.update({k: c0[k] for k in ("tds_version", "encryption") if c0.get(k)})
-    if conn.get("tds_version") or conn.get("encryption"):
+        conn.update({k: c0[k] for k in L.PLAN_KEYS if c0.get(k)})
+    if any(conn.get(k) for k in L.PLAN_KEYS):
         e1x, e2x = st.columns([3, 1], vertical_alignment="center")
-        e1x.caption("연결 방법 설정: " + " · ".join(x for x in (f"TDS {conn.get('tds_version')}" if conn.get("tds_version") else "",
-                                                          "암호화 없음(사내망 전용)" if conn.get("encryption") == "off" else "") if x)
-                    + " — 🔧 연결 방법 자동 찾기로 정한 값")
+        e1x.caption(f"연결 방법 설정: **{L.plan_label(conn)}** — 🔧 연결 방법 자동 찾기로 정한 값")
         if e2x.button("기본으로 되돌리기", disabled=not local, key="ldb_reset_plan"):
-            cfg.db = {k: v for k, v in {**c0, **conn}.items() if k not in ("tds_version", "encryption")}
+            cfg.db = {k: v for k, v in {**c0, **conn}.items() if k not in L.PLAN_KEYS}
             lims.save_lims_config(cfg)
             _clear_browse_cache()
             st.rerun()

@@ -62,7 +62,7 @@ def test_urls_hide_password_and_error_messages_are_sanitized():
     base = {"ip": "10.0.0.5", "host": "LIMS-DB", "port": 1433, "database": "LIMS", "user": "qms_reader"}
     u = L.build_url({**base, "type": "mssql", "driver": "pymssql"}, PW)
     assert u.drivername == "mssql+pymssql" and u.host == "10.0.0.5" and u.password == PW and PW not in str(u)
-    assert L.build_url({**base, "type": "mssql", "driver": "pyodbc"}, PW).query["driver"] == L.ODBC_DEFAULT
+    assert f"DRIVER={{{L.ODBC_DEFAULT}}}" in L.build_url({**base, "type": "mssql", "driver": "pyodbc"}, PW).query["odbc_connect"]
     o = L.build_url({**base, "type": "oracle", "driver": "oracledb", "port": 1521, "database": "LIMSPDB"}, PW)
     assert o.drivername == "oracle+oracledb" and o.query["service_name"] == "LIMSPDB"
     assert L.build_url({**base, "type": "oracle", "oracle_mode": "sid", "database": "ORCL"}, PW).database == "ORCL"
@@ -279,7 +279,7 @@ def test_missing_driver_is_explained_and_detected():
     """드라이버가 없는 실행 환경(PC 파이썬으로 코드 실행 등) → 정확한 안내(드라이버 바꾸라는 엉뚱한 안내 금지)·설치 버튼용 상태."""
     msg = L.explain("ModuleNotFoundError: No module named 'pymssql'")
     assert "'pymssql'" in msg and "드라이버 설치" in msg and "바꿔" not in msg
-    assert "pymssql 로 바꾸세요" in L.explain("('IM002', '[IM002] Data source name not found')")
+    assert "드라이버 이름" in L.explain("('IM002', '[IM002] Data source name not found')")
     assert L.driver_ok("sqlite") and not L.driver_ok("no_such_driver_mod")
     assert L.DRIVER_PIP["psycopg2"].startswith("psycopg2-binary")
     assert L.b64_ip("MTcyLjE3LjIyLjEx") == "172.17.22.11" and L.b64_ip("LIMS-DB01") is None and L.b64_ip("") is None
@@ -293,14 +293,161 @@ def test_connection_plans_and_tls_hint():
     assert "암호화(TLS)" in L.explain(m) and "비밀번호 문제 아님" in L.explain(m)
     base = {"type": "mssql", "ip": "10.0.0.1", "port": 1433, "user": "u", "driver": "pymssql"}
     labels = [p[0] for p in L.connection_plans(base)]
-    assert labels[:2] == ["pymssql(기본)", "pymssql · TDS 7.4"] and not any("암호화 없이" in x for x in labels)
+    assert labels[:3] == ["pymssql(기본)", "QMS 보안 중계 · TLS 1.2 고정", "QMS 보안 중계 · 오래된 TLS·인증서 허용"]
+    assert "pymssql · TDS 7.4" in labels and not any("암호화 없이" in x for x in labels)
     plain = dict(L.connection_plans(base, allow_plain=True))
     assert plain["pymssql · 암호화 없이(사내망 전용)"]["encryption"] == "off"
     assert L.connect_args({**base, "tds_version": "7.0", "encryption": "off"})["tds_version"] == "7.0"
     assert "tds_version" not in L.connect_args(base)
-    u = L.build_url({**base, "driver": "pyodbc", "odbc_driver": "ODBC Driver 18 for SQL Server"}, "pw")
-    assert u.query["Encrypt"] == "yes" and u.query["TrustServerCertificate"] == "yes"
-    assert "Encrypt" not in L.build_url({**base, "driver": "pyodbc", "odbc_driver": "SQL Server"}, "pw").query
+    cs = L.build_url({**base, "driver": "pyodbc", "odbc_driver": "ODBC Driver 18 for SQL Server"}, "pw").query["odbc_connect"]
+    assert "Encrypt=yes" in cs and "TrustServerCertificate=yes" in cs
+    assert "Encrypt" not in L.build_url({**base, "driver": "pyodbc", "odbc_driver": "SQL Server"}, "pw").query["odbc_connect"]
     assert L.connection_plans({"type": "postgresql"}) == [("기본", {})]
     tds = bytes.fromhex("0401001a0000010000000b00060100110001ff100010d1000003")
     assert L._classify(tds)["encryption"].startswith("필수")
+
+
+def test_odbc_without_database_is_not_treated_as_dsn():
+    """DB 이름을 비우면 SQLAlchemy 가 IP 를 ODBC 'DSN 이름'으로 써서(IM002) 서버에 가지도 못하던 문제."""
+    from sqlalchemy.dialects.mssql import pyodbc as P
+
+    c = {"type": "mssql", "driver": "pyodbc", "odbc_driver": "SQL Server", "ip": "10.50.11.71", "port": 3718, "user": "sampyo",
+         "database": ""}
+    (cs,), _ = P.dialect().create_connect_args(L.build_url(c, PW))
+    assert "dsn=" not in cs.lower() and "DRIVER={SQL Server}" in cs and "SERVER=10.50.11.71,3718" in cs and "Network=DBMSSOCN" in cs
+    assert "PWD={" + PW.replace("}", "}}") + "}" in cs and "DATABASE" not in cs
+    cs17 = L.odbc_string({**c, "odbc_driver": "ODBC Driver 17 for SQL Server", "database": "TEST"}, "a}b")
+    assert "SERVER=tcp:10.50.11.71,3718" in cs17 and "DATABASE={TEST}" in cs17 and "PWD={a}}b}" in cs17
+    assert "a}}b" not in L.sanitize("x PWD={a}}b} y", "a}b")
+    assert "비밀번호" in L.explain("(18456, b\"Login failed for user 'sa'. 20002 TDS server connection failed\")")
+    assert L.plan_label({"type": "mssql", "tls_relay": "tls12"}).startswith("QMS 보안 중계(TLS 1.2")
+    assert L.plan_label({"type": "mssql", "driver": "pyodbc", "odbc_driver": "SQL Server"}) == "Windows ODBC · SQL Server"
+
+
+def _fake_tds_tls_server(ctx, enc=0x03):
+    """PRELOGIN 에 '암호화 필수'로 답하고 TDS 방식 TLS 를 맺은 뒤, 받은 내용을 'ECHO:' 를 붙여 돌려주는 가짜 SQL Server."""
+    import socket
+    import ssl
+    import threading
+
+    from qms import tds_relay as R
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(4)
+
+    def serve():
+        while True:
+            try:
+                c, _ = srv.accept()
+            except OSError:
+                return
+            try:
+                R.read_message(c)
+                c.sendall(R.packets(R.RESPONSE, R.set_enc(R.prelogin_body(0x02), enc)))
+                inc, out = ssl.MemoryBIO(), ssl.MemoryBIO()
+                t = ctx.wrap_bio(inc, out, server_side=True)
+                while True:
+                    try:
+                        t.do_handshake()
+                        break
+                    except ssl.SSLWantReadError:
+                        d = out.read()
+                        if d:
+                            c.sendall(R.packets(R.PRELOGIN, d))
+                        inc.write(R.read_message(c)[1])
+                d = out.read()
+                if d:
+                    c.sendall(R.packets(R.PRELOGIN, d))
+                while True:
+                    try:
+                        msg = t.read(4096)
+                        break
+                    except ssl.SSLWantReadError:
+                        d = c.recv(65536)
+                        if not d:                             # 핸드셰이크만 하고 끊는 진단 접속
+                            raise EOFError from None
+                        inc.write(d)
+                t.write(b"ECHO:" + msg)
+                c.sendall(out.read())
+            except Exception:  # noqa: BLE001
+                pass
+            finally:
+                c.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    return srv
+
+
+def _legacy_server_ctx(tmp_path, bits, sha, tls_max):
+    import shutil
+    import ssl
+    import subprocess
+    import warnings
+
+    if not shutil.which("openssl"):
+        pytest.skip("openssl 명령 없음")
+    key, crt = tmp_path / "k.pem", tmp_path / "c.pem"
+    subprocess.run(["openssl", "req", "-x509", "-nodes", "-newkey", f"rsa:{bits}", f"-{sha}", "-subj", "/CN=lims", "-keyout", str(key),
+                    "-out", str(crt), "-days", "30"], check=True, capture_output=True)
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1
+        ctx.maximum_version = tls_max
+    ctx.set_ciphers("ALL:@SECLEVEL=0")
+    try:
+        ctx.load_cert_chain(str(crt), str(key))
+    except ssl.SSLError:
+        pytest.skip("이 OpenSSL 은 오래된 인증서를 서버 쪽에서도 거부")
+    return ctx
+
+
+def _through_relay(port, profile):
+    import socket
+
+    from qms import tds_relay as R
+
+    r = R.Relay("127.0.0.1", port, profile)
+    try:
+        with socket.create_connection(("127.0.0.1", r.port), timeout=10) as s:
+            s.sendall(R.packets(R.PRELOGIN, R.prelogin_body(0x00)))
+            _, body = R.read_message(s)
+            assert R.get_enc(body) == R.ENC_NOT_SUP          # pymssql 쪽에는 '암호화 지원 안 함'으로 보임
+            s.sendall(b"login7-packet")
+            data = b""
+            while not data.endswith(b"packet"):
+                try:
+                    d = s.recv(4096)
+                except ConnectionResetError:                  # 중계가 TLS 실패 후 연결을 닫음
+                    d = b""
+                if not d:
+                    break
+                data += d
+            return data, r.last_tls, r.last_error
+    finally:
+        r.close()
+
+
+def test_tls_relay_old_server_and_tls_version_pinning(tmp_path):
+    """QMS 보안 중계: 오래된 서버(TLS 1.0·1024비트 SHA1 인증서)는 'legacy' 로만, 일반 서버는 TLS 1.2 고정으로 이어 준다."""
+    import ssl
+
+    from qms import tds_relay as R
+
+    old = _fake_tds_tls_server(_legacy_server_ctx(tmp_path, 1024, "sha1", ssl.TLSVersion.TLSv1))
+    data, tls, err = _through_relay(old.getsockname()[1], "legacy")
+    assert data == b"ECHO:login7-packet" and tls.startswith("TLSv1") and not err
+    data, _, err = _through_relay(old.getsockname()[1], "tls12")
+    assert data == b"" and "TLS 연결 실패" in err                 # TLS 1.2 고정은 TLS 1.0 서버와 맞지 않음 → 이유를 남김
+    old.close()
+    new = _fake_tds_tls_server(_legacy_server_ctx(tmp_path, 2048, "sha256", ssl.TLSVersion.TLSv1_3))
+    data, tls, _ = _through_relay(new.getsockname()[1], "tls12")
+    assert data == b"ECHO:login7-packet" and tls.startswith("TLSv1.2")   # 서버가 TLS 1.3 을 허용해도 1.2 로 맺음
+    pr = R.probe_tls("127.0.0.1", new.getsockname()[1])
+    assert dict((a, b) for a, b, _ in pr["versions"])["TLS 1.2"] and pr["cert"]["키"] == "RSA 2048비트"
+    assert pr["cert"]["서명 방식"] == "SHA256-RSA" and pr["encryption"].startswith("필수")
+    new.close()
+    m = L.relay_conn({"type": "mssql", "ip": "10.9.9.9", "port": 1433, "tls_relay": "tls12", "driver": "pymssql"})
+    assert m["ip"] == "127.0.0.1" and m["encryption"] == "off" and m["port"] != 1433
+    assert L.relay_conn({"type": "mssql", "ip": "10.9.9.9"})["ip"] == "10.9.9.9"

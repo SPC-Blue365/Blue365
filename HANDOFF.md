@@ -108,6 +108,14 @@
 - 재현(사실): 정상 인증서·암호화 강제 서버는 pymssql 정상. 약한 인증서(RSA 1024·SHA1)·TLS 1.0 전용 서버는 pymssql(Windows·Linux) 20017/20002 실패, TDS 7.0 또는 encryption=off 로는 성공(서버가 강제하지 않을 때).
 - 조치: `lims_db.connection_plans/try_plan/find_connection/odbc_drivers` — pymssql 기본 → TDS 7.4 → Windows ODBC(SQL Server 드라이버, SChannel) → (동의 시) 암호화 없음·TDS 7.0 순서로 실제 로그인까지 시도, 성공한 설정 저장(conn.tds_version/encryption/driver/odbc_driver, 되돌리기 가능). 아이디·비밀번호·DB 이름 오류면 중단. prelogin 응답의 암호화 설정(필수/강제 아님) 표시, 20002/20017 안내 문구. pyodbc(win32) requirements-lims·RUN_CODE 추가. pyodbc+Windows ODBC 경로는 Wine ODBC 한계로 미확인(실제 Windows 에선 'SQL Server' 드라이버 기본 내장).
 
+**완료(15차, 2026-10-15): 자동 찾기 5가지 방법 모두 20002 실패 → 원인 재현·QMS 보안 중계(TLS relay)·진단 보고서**
+- 원인 재현(사실): **암호화 강제 + TLS 1.3 허용** SQL Server 2022 에서 pymssql(Windows 휠·Linux 휠 모두, FreeTDS 1.5.19)은 사용자 화면과 **글자까지 같은** `20002 TDS server connection failed ×2` 로 실패, encryption=off·TDS 7.0 도 실패. FreeTDS 기록: 'handshake succeeded' 직후 'connection dead'(TDS 7.x 에서 TLS 1.3 비호환). Linux SQL Server 이미지는 1024비트·TLS 1.0 설정을 서버 쪽에서 스스로 못 써서 14차의 '약한 인증서 재현'은 서버 자체 한계가 섞여 있었다.
+- 버그(사실): Windows ODBC 경로가 DB 이름이 비면 SQLAlchemy 가 IP 를 DSN 이름으로 써서(`dsn=10.50.11.71`) IM002 → 서버에 시도조차 못 함. `lims_db.odbc_string` 으로 연결 문자열 직접 생성(`odbc_connect`, 'SQL Server' 는 Network=DBMSSOCN, 값은 {} 이스케이프).
+- 조치: `qms/tds_relay.py`(표준 라이브러리만) — 127.0.0.1 중계가 PRELOGIN 의 ENCRYPTION 을 서버엔 ON·pymssql 엔 NOT_SUP 으로 바꾸고, 서버와 TLS 를 0x12 패킷에 싸서 직접 맺음(프로필 tls12 = TLS 1.2 고정, legacy = TLS 1.0~1.2·SECLEVEL=0). 서버 구간은 계속 암호화(encrypt_option=TRUE 확인). conn.tls_relay 로 저장, `make_engine` 이 자동 적용. 자동 찾기 순서: pymssql → 중계 tls12 → 중계 legacy → Windows ODBC → TDS 7.4 → (동의) 암호화 없음. 로그인 거절(18456)은 TLS 안내보다 먼저 판정.
+- 📋 진단 보고서(.txt, `connection_report`): 실행 환경·단계별 확인·PRELOGIN·TLS 버전별 핸드셰이크·서버 인증서(서명 방식·키 길이·만료)·방법별 오류 원문·FreeTDS 기록(TLS·오류 줄만)·자동 판단. 비밀번호 미포함(시험으로 확인).
+- 검증: 재현 서버에서 Linux·Wine(Windows 파이썬 3.13·OpenSSL 3.5) 모두 중계로 성공, 브라우저로 연결 확인 실패 → 자동 찾기 성공·저장 → 🧭 표 찾기 → TEST.dbo.QC_RESULT 발견. 가짜 TDS 서버(TLS 1.0·RSA 1024·SHA1)로 legacy 프로필 시험. 테스트 158건.
+- 미확인: 사용자 실제 서버(10.50.11.71)의 TLS 설정 — 진단 보고서를 받으면 확정.
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).

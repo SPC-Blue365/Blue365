@@ -48,7 +48,7 @@
 ## 4. 반입 파일 무결성(SHA-256)
 
 ```
-7c1a0800328465ec4ed421bd037ed410fad02e0493c11f73efa7b69db18da103  Blue365_QMS_win64_v2026.10.15_1of6.zip
+18b98016e2db793f78cc9c44a6c234c3a2cdd58969afee7c0f0dd9c37b11f6c9  Blue365_QMS_win64_v2026.10.15_1of6.zip
 123fce56dceaa40274ea7d448761574ab7e67ece88e494db6cca81d1915dc993  Blue365_QMS_win64_libs-b6d65828_2of6.zip
 4d315bea919357d29868e51fb58434d5d0b6714c0ac49b1d9d7ba744549ec3b4  Blue365_QMS_win64_libs-b6d65828_3of6.zip
 0fd9739ed838a1dd815aa4fdcb84fb7e41ec494a5bf3b747c94049305a917ffc  Blue365_QMS_win64_libs-b6d65828_4of6.zip
@@ -65,6 +65,7 @@ e70fcc73bdf23b00d4d52d44656a219814d34ca3fe33b878498e57ddeb264a68  Blue365_QMS_wi
 - 접속 정보(IP·호스트·포트·DB 이름·아이디)는 data/lims.json, **비밀번호는 Windows DPAPI 로 암호화**해 data/secrets.enc.json 에 저장합니다
   (이 PC의 해당 Windows 계정에서만 복호화, 화면·로그·설정 파일에 평문 없음). QMS는 SELECT 문만 실행합니다(PostgreSQL·MySQL은 읽기 전용 세션).
 - 접속 정보·비밀번호 변경은 QMS를 실행 중인 PC에서만 가능합니다(사내망 공유 접속자는 보기만).
+- **MS SQL Server 암호화(TLS) 호환**: 서버의 TLS 설정(예: TLS 1.3 허용·오래된 인증서)이 기본 드라이버와 맞지 않으면 QMS가 서버와의 TLS 를 직접 맺는 **보안 중계**를 씁니다. 중계는 **127.0.0.1(이 PC 안)** 의 빈 포트에서만 받으며, LIMS 서버 구간은 TLS 1.2(필요 시 1.0~1.2)로 계속 암호화됩니다. 근본 대책은 서버의 **2048비트·SHA256 인증서, TLS 1.2, SQL Server 최신 CU** 적용입니다.
 - 구체적 요청 항목(계정·뷰 정의·방화벽 등)은 별첨 **「LIMS 연동 준비서」**(docs/LIMS_연동_준비서.xlsx)에 정리되어 있습니다.
 
 ## 6. 검토 지원

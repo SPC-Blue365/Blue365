@@ -136,6 +136,8 @@
   · LIMS DB 연결(사용자가 켤 때만): QMS PC → LIMS DB 서버의 DB 포트(TCP)로 SELECT 만 실행. 비밀번호는 Windows DPAPI 로
     암호화해 data\secrets.enc.json 에 저장(이 PC의 해당 Windows 계정에서만 풀림). 백업을 다른 PC에 되살리면 비밀번호를 다시 입력.
     레지스트리·시스템 폴더는 바꾸지 않습니다.
+  · QMS 보안 중계(서버 TLS 설정이 pymssql 과 맞지 않을 때만, 🔧 연결 방법 자동 찾기로 켬): 127.0.0.1(이 PC 안)의 빈 포트에서만
+    받고, LIMS DB 서버와는 TLS 1.2(필요 시 1.0~1.2)로 암호화 연결합니다. 외부 PC의 접속은 받지 않습니다.
   · Python: python.org 공식 NuGet 배포본 {PY_VERSION} (Python Software Foundation), 빌드 시 SHA-512 검증.
   · 구성요소 이름·버전·라이선스·분할 파일 해시: tools\components.xlsx
 
