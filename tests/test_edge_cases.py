@@ -951,21 +951,34 @@ def test_surge_balance_reports_infeasible_instead_of_inventing():
 
 
 def test_surge_cycles_close_locally_and_stay_under_capacity():
-    """'고갈'(재고≈0)을 앵커로 삼은 채움→고갈 사이클은 물리적으로 성립해야 한다."""
+    """채움→고갈 사이클은 **성립하거나, 성립하지 않는다고 표시되거나** 둘 중 하나여야 한다.
+
+    ⚠️ 2026-10-16 갱신본에서 종전 가정이 다시 반증됐다 — 38일·17일짜리 사이클이 나왔고
+       그 사이 '고갈' 기록이 없어, 평균 인출률 가정으로 계산한 순간 재고가 용량을 넘었다.
+       이는 "수항이 넘쳤다" 가 아니라 **"이 사이클은 추정할 수 없다"** 는 뜻이다.
+       그래서 이 테스트는 "모든 사이클이 성립한다" 가 아니라
+       **"성립한다고 표시된 사이클은 전부 물리적으로 성립한다"** 를 고정한다(§2-1).
+    """
     from config import schema as S
     from src.models.dataset import surge_cycles
 
     c = surge_cycles()
     assert len(c) >= 3
-    assert c["plausible"].all(), "인출률이 G/C 상한을 넘는 사이클이 있으면 안 된다"
-    assert (c["tph"] <= S.CRUSHER_CAPACITY_TPH["G/C"][1]).all()
     assert (c["end"] > c["start"]).all()
     # ⚠️ 용량과 비교할 값은 누적 채움(fill_ton)이 아니라 **순간 최대 재고(peak_ton)** 다.
-    #    사이클이 길면 그동안 계속 빠져나가므로 누적 채움은 용량을 넘는 것이 정상이다
-    #    (실제 128시간 사이클에서 12,960톤). 2026-08-19 데이터로 종전 가정이 반증됐다.
-    assert (c["peak_ton"] <= S.SURGE_BIN_CAPACITY_TON).all(), \
-        "순간 재고가 수항 용량을 넘으면 기록이나 해석이 틀린 것이다"
+    #    사이클이 길면 그동안 계속 빠져나가므로 누적 채움은 용량을 넘는 것이 정상이다.
     assert (c["peak_ton"] <= c["fill_ton"] + 1).all(), "순간 재고는 누적 채움을 넘을 수 없다"
+
+    ok = c[c["plausible"]]
+    assert len(ok) >= 3, "성립하는 사이클이 하나도 없으면 국소 수지를 닫을 수 없다"
+    assert (ok["tph"] <= S.CRUSHER_CAPACITY_TPH["G/C"][1]).all(), \
+        "성립 표시된 사이클의 인출률이 G/C 상한을 넘으면 안 된다"
+    assert (ok["peak_ton"] <= S.SURGE_BIN_CAPACITY_TON).all(), \
+        "성립 표시된 사이클의 순간 재고가 용량을 넘으면 안 된다"
+
+    # 성립하지 않는 사이클은 **조용히 넘어가지 않고 이유를 남겨야** 한다
+    bad = c[~c["plausible"]]
+    assert bad["reason"].str.len().gt(0).all(), "추정 불가 사이클은 이유가 적혀 있어야 한다"
 
 
 def test_surge_events_catch_whitespace_variants():

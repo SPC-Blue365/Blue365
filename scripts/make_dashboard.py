@@ -242,7 +242,10 @@ function spanOf(grps) {{
   ds.sort();
   return ds.length ? [ds[0], ds[ds.length - 1]] : ['', ''];
 }}
-function dataSpan() {{ return spanOf([DATA.yard, DATA.flow, DATA.cross]); }}
+// 기본 구간은 **야드 측정**이 있는 기간으로 잡는다. 야드가 이 화면의 목표이고, 인출·재고
+// 시트에는 기간이 훨씬 긴 기록이나 **날짜 오기**가 섞일 수 있기 때문이다
+// (실사 재고 2024-04~ · 인출 시트의 2023-09-18 오기 1건 — §6-0-26).
+function dataSpan() {{ return spanOf([DATA.yard]); }}
 function storedSpan() {{ return spanOf([DATA.yard, DATA.flow, DATA.cross, DATA.stock]); }}
 
 const fmt = (v, d = 0) => v == null ? '—'
@@ -588,7 +591,8 @@ function setSpan(from, to, chip) {{
   if (n) {{
     const days = Math.round((new Date(TO) - new Date(FROM)) / 86400000) + 1;
     n.innerHTML = `보는 구간 <b>${{FROM}} ~ ${{TO}}</b> (${{days}}일)`
-      + (SMIN < DMIN ? ` · 실사 재고는 ${{SMIN}}부터 있습니다 — 직접 입력하면 그 구간도 볼 수 있습니다.` : '');
+      + (SMIN < DMIN ? ` · 기본 구간은 <b>야드 측정 기간</b> 기준입니다. 재고·인출 기록은 `
+                      + `${{SMIN}}부터 있어, 직접 입력하면 그 구간도 볼 수 있습니다.` : '');
   }}
   render();
 }}

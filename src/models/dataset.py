@@ -302,11 +302,16 @@ def surge_cycles(raw_file: str | None = None) -> pd.DataFrame:
 
     ⚠️ **`fill_ton`(누적 채움)을 용량과 비교하면 안 된다.** 사이클이 길면 그동안 계속
     빠져나가므로 누적 채움이 용량을 넘는 것이 정상이다(실제로 128시간 사이클에서 12,960톤).
-    용량과 비교해야 할 값은 **`peak_ton`(순간 최대 재고)** 이다 — 평균 인출률로 빼면서
-    누적한 추정치이며, 이 값이 용량을 넘으면 그때 비로소 모순이다.
+    용량과 비교해야 할 값은 **`peak_ton`(순간 최대 재고)** 이다.
+
+    ⚠️⚠️ **`peak_ton` 이 용량을 넘으면 그것은 '수항이 넘쳤다' 는 뜻이 아니라 '이 사이클은
+    추정할 수 없다' 는 뜻이다.** 평균 인출률 가정은 사이클 안에서 재고가 한 번만 비워진다고
+    보는데, 사이클이 길면 그 사이 **기록되지 않은 고갈**이 있었을 가능성이 크다. 그런 사이클은
+    `plausible=False` 로 표시하고 `reason` 에 이유를 남긴다 — 값을 지어내지 않는다(§2-1).
     """
     ev = surge_events(raw_file)
-    cols = ["start", "end", "fill_ton", "n_fills", "hours", "tph", "peak_ton", "plausible"]
+    cols = ["start", "end", "fill_ton", "n_fills", "hours", "tph", "peak_ton",
+            "plausible", "reason"]
     if ev.empty:
         return pd.DataFrame(columns=cols)
     cap = float(S.CRUSHER_CAPACITY_TPH["G/C"][1])
@@ -330,11 +335,27 @@ def surge_cycles(raw_file: str | None = None) -> pd.DataFrame:
                 cur = max(cur - drawn, 0.0) + ton
                 peak = max(peak, cur)
                 prev = t
+            # ⭐️ **언제 이 추정을 믿을 수 있는가** — `peak_ton` 은 "평균 인출률로 꾸준히
+            #    빠진다" 는 가정 위에 서 있다. 사이클이 길어 그 사이 **기록되지 않은 고갈**이
+            #    있었다면 가정이 깨지고 peak 가 허위로 누적된다.
+            #    그 사실을 가려내는 가장 확실한 신호가 **peak > 용량** 이다 — 물리적으로
+            #    불가능하므로, 값을 내놓는 대신 '추정 불가' 로 표시한다(§2-1).
+            #    (2026-10-16 갱신본에서 38일·17일짜리 사이클 2건이 여기 걸렸다)
+            why = []
+            if not np.isfinite(tph):
+                why.append("인출률을 계산할 수 없음")
+            elif tph > cap:
+                why.append(f"평균 인출률 {tph:,.0f} t/h 가 G/C 상한 {cap:,.0f} 초과")
+            if peak > S.SURGE_BIN_CAPACITY_TON:
+                why.append(
+                    f"순간 재고 추정 {peak:,.0f}톤 > 용량 {S.SURGE_BIN_CAPACITY_TON:,}톤 — "
+                    f"{hours:,.0f}시간 사이클에 '고갈' 기록이 없어 그 사이 빠져나간 양이 "
+                    "누락된 것으로 보인다(추정 불가)")
             rows.append(dict(start=since, end=e["datetime"], fill_ton=acc, n_fills=n,
                              hours=round(hours, 2),
                              tph=round(tph) if np.isfinite(tph) else np.nan,
                              peak_ton=round(peak),
-                             plausible=bool(np.isfinite(tph) and tph <= cap)))
+                             plausible=not why, reason=" · ".join(why)))
             acc, n, since, fills = 0.0, 0, None, []
     return pd.DataFrame(rows, columns=cols)
 

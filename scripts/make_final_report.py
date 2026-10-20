@@ -77,14 +77,24 @@ def _surge_note(bal: dict, cyc) -> str:
     if cyc is None or not len(cyc):
         return head
     ok = cyc[cyc["plausible"]]
+    bad = cyc[~cyc["plausible"]]
+    if not len(ok):
+        return head + "<br><b>⚠️ 성립하는 채움→고갈 사이클이 없어 국소 수지도 닫히지 않습니다.</b>"
+    # ⚠️ "전부 성립한다" 고 단정하지 않는다 — 사이클이 길어 그 사이 '고갈' 기록이 빠지면
+    #    평균 인출률 가정이 깨져 추정 자체가 불가능해진다(2026-10-16 갱신본에서 2건 발생).
+    nope = ("" if not len(bad) else
+            f" 나머지 <b>{len(bad)}개</b>는 사이클이 길어(최장 {bad['hours'].max():,.0f}시간) "
+            "그 사이 <b>'고갈' 기록이 빠진 것으로 보여 추정하지 않았습니다</b> — "
+            "순간 재고가 용량을 넘게 계산되는데, 이는 수항이 넘쳤다는 뜻이 아니라 "
+            "<b>그 구간은 알 수 없다</b>는 뜻입니다.")
     return (head + "<br><b>대신 '고갈' 시점(재고≈0)을 기준점으로 삼아 국소 수지를 닫았습니다.</b> "
-            f"채움→고갈 사이클 <b>{len(cyc)}개</b>(전부 물리적으로 성립) — "
+            f"채움→고갈 사이클 <b>{len(cyc)}개</b> 중 <b>{len(ok)}개</b>가 물리적으로 성립합니다 — "
             f"평균 인출률 중앙 <b>{ok['tph'].median():,.0f} t/h</b>"
             f"(G/C 상한 1,600), 사이클 길이 중앙 {ok['hours'].median():.0f}시간, "
-            f"<b>순간 최대 재고 {cyc['peak_ton'].max():,.0f}톤</b> "
+            f"<b>순간 최대 재고 {ok['peak_ton'].max():,.0f}톤</b> "
             f"(용량 {S.SURGE_BIN_CAPACITY_TON:,}톤의 "
-            f"{cyc['peak_ton'].max() / S.SURGE_BIN_CAPACITY_TON * 100:.0f}%) — "
-            "용량 안에 들어옵니다.<br>"
+            f"{ok['peak_ton'].max() / S.SURGE_BIN_CAPACITY_TON * 100:.0f}%) — "
+            f"용량 안에 들어옵니다.{nope}<br>"
             "ℹ️ 비교 대상은 <b>누적 채움이 아니라 순간 재고</b>입니다. 사이클이 길면 그동안 "
             "계속 빠져나가므로 누적 채움(최대 "
             f"{cyc['fill_ton'].max():,.0f}톤)은 용량을 넘는 것이 정상입니다.")

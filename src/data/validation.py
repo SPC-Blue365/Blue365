@@ -227,6 +227,12 @@ def validate_source(df: pd.DataFrame, spec: SourceSpec) -> ValidationReport:
 # --------------------------------------------------------------------------- #
 # 파이프라인 검증 게이트 (매칭 전 실행) — CLAUDE.md §3
 # --------------------------------------------------------------------------- #
+#: 광산 적재 기간에서 이만큼까지는 벗어나도 정상으로 본다.
+#: ⚠️ 인출이 광산 기록보다 **앞설 수 있다** — 기초 재고에서 뽑기 때문이다(2026-06-01 실제 사례).
+#:    그래서 여유를 넉넉히 둔다. 잡으려는 것은 몇 년씩 어긋난 **오기**이지 경계 며칠이 아니다.
+DATE_SLACK_DAYS = 90
+
+
 def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, ValidationReport]:
     """정제 완료된 프레임들을 매칭 전에 일괄 검증한다.
 
@@ -288,6 +294,28 @@ def validate_pipeline(mine, osp, yards: dict, yard_change=None) -> dict[str, Val
             except Exception as exc:          # 검사 실패가 파이프라인을 막지 않게
                 rep_o.issues.append(Issue(
                     "zone_check_failed", Severity.WARNING, f"구역 귀속 검사 실행 실패: {exc}"))
+        # ⭐️ 고아 날짜 — 적재(광산) 기록이 있는 기간에서 **멀리 벗어난** 인출 행.
+        #    쌓기 전에 뽑을 수는 없으므로, 광산 기간 밖의 인출은 기록 오류 후보다.
+        #    2026-10-16 갱신본에서 실제로 1건(2023-09-18, 6,400톤)이 나왔고, 이 한 줄이
+        #    화면의 기간 축을 3년으로 늘려 그래프를 못 읽게 만들었다(§6-0-26).
+        if mine is not None and "datetime" in osp.columns and "datetime" in mine.columns:
+            md = pd.to_datetime(mine["datetime"], errors="coerce").dropna()
+            od = pd.to_datetime(osp["datetime"], errors="coerce")
+            if len(md):
+                lo = md.min() - pd.Timedelta(days=DATE_SLACK_DAYS)
+                hi = md.max() + pd.Timedelta(days=DATE_SLACK_DAYS)
+                out = osp[(od < lo) | (od > hi)]
+                if len(out):
+                    ton = float(pd.to_numeric(
+                        out.get("withdrawn_ton"), errors="coerce").sum())
+                    whens = sorted({d.strftime("%Y-%m-%d")
+                                    for d in od[(od < lo) | (od > hi)].dropna()})[:4]
+                    rep_o.issues.append(Issue(
+                        "date_outlier", Severity.ERROR,
+                        f"광산 적재 기간({md.min():%Y-%m-%d}~{md.max():%Y-%m-%d}) 밖의 인출 기록 "
+                        f"— {', '.join(whens)} ({ton:,.0f}톤). 쌓기 전에 뽑을 수는 없으므로 "
+                        f"**날짜 오기 후보**입니다. 시간축 기간 설정이 이 날짜까지 늘어납니다",
+                        len(out)))
         reports["OSP인출"] = rep_o
     for line, ydf in (yards or {}).items():
         rep_y = validate_source(ydf, S.SPEC_YARD)
