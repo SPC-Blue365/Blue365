@@ -79,11 +79,32 @@ def _time_parts(v):
         return int(td.total_seconds() // 3600), int(td.total_seconds() % 3600 // 60)
     if isinstance(v, (pd.Timestamp, _dt.datetime)):
         return None if v.year == EXCEL_EPOCH_YEAR else (v.hour, v.minute)
-    m = re.match(r"^\s*(\d{1,2})\s*[:시]\s*(\d{1,2})", str(v))
-    if m:
-        h, mi = int(m.group(1)), int(m.group(2))
+    # ── 사람이 손으로 친 문자열 ──────────────────────────────────────────
+    # 현장이 직접 타이핑하므로 모양이 제각각이다. 실제로 들어온 것: `19:00.`(끝에 마침표).
+    # 앞으로 들어올 법한 모양까지 함께 받아 둔다 — 못 읽으면 그 물량이 시간축에서 빠진다.
+    s = str(v).strip()
+    ampm = 0
+    if re.match(r"^\s*(오후|PM|pm)", s):
+        ampm, s = 12, re.sub(r"^\s*(오후|PM|pm)\s*", "", s)
+    elif re.match(r"^\s*(오전|AM|am)", s):
+        ampm, s = 0, re.sub(r"^\s*(오전|AM|am)\s*", "", s)
+    s = s.strip()
+
+    def _ok(h, mi):
+        h += ampm if (ampm and h < 12) else 0
         return (h, mi) if 0 <= h < 24 and 0 <= mi < 60 else None
-    t = pd.to_datetime(str(v), errors="coerce")
+
+    m = re.match(r"^(\d{1,2})\s*[:시.\-]\s*(\d{1,2})", s)      # 19:00 · 19시00 · 9.30 · 9-30
+    if m:
+        return _ok(int(m.group(1)), int(m.group(2)))
+    m = re.fullmatch(r"(\d{1,2})\s*(?:시|시경)?\s*", s)           # 19 · 19시
+    if m:
+        return _ok(int(m.group(1)), 0)
+    m = re.fullmatch(r"(\d{3,4})", s)                             # 0930 · 1900
+    if m:
+        n = int(m.group(1))
+        return _ok(n // 100, n % 100)
+    t = pd.to_datetime(s, errors="coerce")
     if pd.isna(t) or t.year == EXCEL_EPOCH_YEAR:
         return None
     return t.hour, t.minute
@@ -99,13 +120,48 @@ def time_is_known(time_series: pd.Series) -> pd.Series:
     return time_series.map(lambda v: _time_parts(v) is not None)
 
 
+#: 손으로 친 날짜에서 흔히 섞이는 글자 — 숫자와 구분자만 남긴다.
+_DATE_KR = re.compile(r"\s*(\d{2,4})\s*[년./\-]\s*(\d{1,2})\s*[월./\-]\s*(\d{1,2})\s*일?\s*")
+
+
+def parse_dates(date_series: pd.Series) -> pd.Series:
+    """일자 컬럼을 **어떤 모양으로 와도** 날짜로 읽는다.
+
+    엑셀이 날짜형으로 주면 그대로 쓰고, 사람이 친 문자열(`2026년 8월 21일` · `2026.08.21` ·
+    `26년 8월 21일`)이면 숫자만 뽑아 조립한다. 못 읽으면 NaT 로 두고 **지어내지 않는다**(§2-1).
+
+    ⚠️ `26/8/21` 처럼 **구분자가 슬래시이고 연도가 두 자리**인 꼴은 손대지 않는다 —
+       2021-08-26 인지 2026-08-21 인지 알 수 없다. pandas 해석(일 우선)에 맡기고,
+       애매한 값을 우리가 추측해서 바꾸지 않는다.
+    """
+    d = pd.to_datetime(date_series, errors="coerce")
+    miss = d.isna() & date_series.notna()
+    if not miss.any():
+        return d
+
+    def _kr(v):
+        m = _DATE_KR.fullmatch(str(v))
+        if not m:
+            return pd.NaT
+        y, mo, dy = (int(g) for g in m.groups())
+        if y < 100:                                   # 26 → 2026
+            y += 2000
+        try:
+            return pd.Timestamp(year=y, month=mo, day=dy)
+        except ValueError:
+            return pd.NaT
+
+    d.loc[miss] = date_series[miss].map(_kr)
+    return pd.to_datetime(d, errors="coerce")
+
+
 def _combine_datetime(date_series: pd.Series, time_series: pd.Series) -> pd.Series:
     """일자(date) + 시각(time/str/timedelta) → datetime. 파싱 실패는 그날 00:00.
 
     시각을 모르는 셀은 날짜의 00:00 으로 두되, 호출부는 `time_is_known()` 으로 그 사실을
     함께 기록해야 한다(값을 지어내지 않고 한계를 드러낸다, §2-1).
     """
-    d = pd.to_datetime(date_series, errors="coerce")
+    d = parse_dates(date_series)
     parts = time_series.map(_time_parts)
     mins = parts.map(lambda p: p[0] * 60 + p[1] if p else 0)
     return d + pd.to_timedelta(mins.astype(float), unit="m")
@@ -530,6 +586,50 @@ def apply_osp_date_overrides(df: pd.DataFrame, line: str) -> pd.DataFrame:
     return out
 
 
+def apply_osp_row_additions(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
+    """현장 확인으로 **누락이 확인된 인출**을 보완한다 (`S.OSP_ROW_ADDITIONS`).
+
+    원본 엑셀은 건드리지 않고 정제 단계에서 끼워 넣는다 — 무엇을 왜 더했는지 코드에서
+    추적할 수 있어야 한다(§2-3). 비고에 보완 사실을 적어 두어 화면에서도 드러난다.
+
+    ⚠️ **그 시트가 해당 날짜를 담고 있을 때만** 더한다. "8/21 기록이 빠졌다" 는 말은 8/21 을
+       포함하는 시트에 대한 것이지, 기간이 다른 시트에 끼워 넣으라는 뜻이 아니다.
+       (이 가드가 없으면 부분 데이터·테스트 프레임에까지 끼어든다)
+    ⚠️ **같은 기록이 이미 있으면 더하지 않는다.** 현장이 나중에 원본에 직접 적어 넣으면
+       이중 계상이 되기 때문이다. 그때는 경고를 띄워 이 표를 비우라고 알린다.
+    ⚠️ 시각·구역을 받지 못했으면 비워 둔다. 시각 미상은 `time_known=False` 가 되어 물량
+       수지에는 쓰이되 시간축에서는 빠지고, 구역 미상은 라인 평균 품위로 대체된다.
+    """
+    rules = [r for r in getattr(S, "OSP_ROW_ADDITIONS", []) if r["line"] == line]
+    if not rules or df is None or "일자" not in df.columns:
+        return df
+    out = df.copy()
+    for r in rules:
+        want = pd.Timestamp(r["date"])
+        d = parse_dates(out["일자"])
+        if d.notna().sum() == 0 or not (d.min() <= want <= d.max()):
+            continue                      # 이 시트가 다루는 기간이 아니다 → 남의 일
+        ton = pd.to_numeric(out.get("인출량"), errors="coerce")
+        if ((d == want) & (ton == float(r["ton"]))).any():
+            warnings.warn(
+                f"[인출 보완] {line} {r['date']} {r['ton']:,.0f}톤 이 원본에 이미 있습니다 — "
+                "현장이 직접 적어 넣었다면 config/schema.OSP_ROW_ADDITIONS 에서 빼세요(이중 계상 방지).",
+                stacklevel=2)
+            continue
+        row = {c: np.nan for c in out.columns}
+        row["일자"] = want if pd.api.types.is_datetime64_any_dtype(out["일자"]) else r["date"]
+        row["인출시간"] = r.get("time")
+        row["인출량"] = float(r["ton"])
+        row[S.COL_OSP_NOTE] = r.get("note", "")
+        if S.COL_OSP_PROCESS in out.columns:
+            row[S.COL_OSP_PROCESS] = r.get("dest", line)
+        for col, z in zip(pw_cols, r.get("zones") or ()):
+            row[col] = z
+        at = max(0, min(len(out), int(r.get("excel_row", len(out) + 2)) - 2))
+        out = pd.concat([out.iloc[:at], pd.DataFrame([row]), out.iloc[at:]], ignore_index=True)
+    return out
+
+
 def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
     """OSP 인출 시트 → (datetime, line, dest_line, zone, withdrawn_ton, time_known) long.
 
@@ -541,6 +641,7 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
     구분할 수 있어야 한다(§6-0-18).
     """
     df = apply_osp_date_overrides(df, line)
+    df = apply_osp_row_additions(df, line, pw_cols)
     rows = []
     for _, r in df.iterrows():
         zones = [

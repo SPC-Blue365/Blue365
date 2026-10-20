@@ -1248,6 +1248,145 @@ def test_real_data_has_no_orphan_dates_after_override():
     stray = od[(od < lo) | (od > hi)]
     assert stray.empty, f"기간 밖 인출이 남아 있다: {sorted(set(stray.dt.date))[:5]}"
 
+
+# ── 누락 인출 보완 · 손으로 친 날짜/시각 (2026-10-20 현장 확인) ──────────────
+def test_row_addition_inserts_at_the_requested_position():
+    """현장이 지정한 엑셀 행 번호 자리에 들어가고, 물량·비고가 실린다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_osp_row_additions
+
+    rule = dict(line=S.LINE_NEW, date="2026-08-21", time=None, ton=10300.0,
+                zones=(), excel_row=4, note="보완")
+    df = _osp_sheet_dt([
+        ("2026-08-20", "20:30:00", 75.0, 40.0, 2000.0, None),   # 엑셀 2행
+        ("2026-08-21", "1:10:00", 90.0, 30.0, 2400.0, None),    # 엑셀 3행
+        ("2026-08-22", "16:00:00", 85.0, 30.0, 2200.0, None),   # 엑셀 4행 ← 여기에 삽입
+    ], S.PW_COLS_NEW)
+    orig = list(S.OSP_ROW_ADDITIONS)
+    S.OSP_ROW_ADDITIONS[:] = [rule]
+    try:
+        out = apply_osp_row_additions(df, S.LINE_NEW, S.PW_COLS_NEW)
+    finally:
+        S.OSP_ROW_ADDITIONS[:] = orig
+    assert len(out) == 4
+    assert pd.to_datetime(out["일자"]).dt.strftime("%Y-%m-%d").tolist() == \
+        ["2026-08-20", "2026-08-21", "2026-08-21", "2026-08-22"]
+    new = out.iloc[2]
+    assert new["인출량"] == 10300.0 and new["비고"] == "보완"
+    assert pd.isna(new[S.PW_COLS_NEW[0]]), "구역을 받지 못했으면 비워 둔다"
+
+
+def test_row_addition_without_time_is_marked_unknown_but_keeps_tonnage():
+    """시각을 받지 못한 보완은 **물량은 살리고 시간축에서는 빠진다**(§2-1)."""
+    from config import schema as S
+    from src.data.clean import clean_osp
+
+    rule = dict(line=S.LINE_NEW, date="2026-08-21", time=None, ton=10300.0,
+                zones=(), excel_row=2, note="보완")
+    df = _osp_sheet_dt([("2026-08-20", "9:00:00", 70.0, None, 0.0, None),
+                        ("2026-08-22", "16:00:00", 85.0, 30.0, 2200.0, None)], S.PW_COLS_NEW)
+    orig = list(S.OSP_ROW_ADDITIONS)
+    S.OSP_ROW_ADDITIONS[:] = [rule]
+    try:
+        out = clean_osp(df, S.LINE_NEW, S.PW_COLS_NEW)
+    finally:
+        S.OSP_ROW_ADDITIONS[:] = orig
+    added = out[out["withdrawn_ton"] == 10300.0]
+    assert len(added) == 1, "구역이 없어도 물량은 한 행으로 살아남는다"
+    assert not bool(added["time_known"].iloc[0]), "시각 미상으로 표시돼야 한다"
+    assert out["withdrawn_ton"].sum() == 12500.0
+
+
+def test_row_addition_ignores_sheets_that_do_not_cover_that_date():
+    """기간이 다른 시트에는 끼어들지 않는다 — "8/21 이 빠졌다" 는 8/21 을 담은 시트 얘기다."""
+    from config import schema as S
+    from src.data.clean import apply_osp_row_additions
+
+    rule = dict(line=S.LINE_NEW, date="2026-08-21", time=None, ton=10300.0,
+                zones=(), excel_row=2, note="보완")
+    df = _osp_sheet_dt([("2026-06-03", "9:00:00", 70.0, 40.0, 1000.0, None)], S.PW_COLS_NEW)
+    orig = list(S.OSP_ROW_ADDITIONS)
+    S.OSP_ROW_ADDITIONS[:] = [rule]
+    try:
+        out = apply_osp_row_additions(df, S.LINE_NEW, S.PW_COLS_NEW)
+    finally:
+        S.OSP_ROW_ADDITIONS[:] = orig
+    assert len(out) == 1 and out["인출량"].sum() == 1000.0
+
+
+def test_row_addition_skips_and_warns_when_already_in_source():
+    """현장이 원본에 직접 적어 넣으면 **이중 계상하지 않고 경고**한다."""
+    import warnings
+
+    from config import schema as S
+    from src.data.clean import apply_osp_row_additions
+
+    rule = dict(line=S.LINE_NEW, date="2026-08-21", time=None, ton=10300.0,
+                zones=(), excel_row=3, note="보완")
+    df = _osp_sheet_dt([("2026-08-21", "2:00:00", 90.0, 30.0, 10300.0, None)], S.PW_COLS_NEW)
+    orig = list(S.OSP_ROW_ADDITIONS)
+    S.OSP_ROW_ADDITIONS[:] = [rule]
+    try:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            out = apply_osp_row_additions(df, S.LINE_NEW, S.PW_COLS_NEW)
+        assert any("인출 보완" in str(x.message) for x in w)
+    finally:
+        S.OSP_ROW_ADDITIONS[:] = orig
+    assert len(out) == 1, "이미 있으면 더하지 않는다"
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("19:00.", (19, 0)),      # 현장이 실제로 친 값 (끝에 마침표)
+    ("19:00", (19, 0)),
+    ("19시00", (19, 0)),
+    ("19시", (19, 0)),
+    ("19", (19, 0)),
+    ("0930", (9, 30)),
+    ("1900", (19, 0)),
+    ("9.30", (9, 30)),
+    ("오후 7:00", (19, 0)),
+    ("오전 9:30", (9, 30)),
+    ("오후 7시", (19, 0)),
+    ("24:00", None),          # 시각이 아니다
+    ("19:60", None),
+    ("abc", None),
+])
+def test_hand_typed_time_is_parsed(raw, want):
+    """손으로 친 시각은 모양이 제각각이다 — 못 읽으면 그 물량이 시간축에서 빠진다."""
+    from src.data.clean import _time_parts
+
+    assert _time_parts(raw) == want
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("2026-08-21", "2026-08-21"),
+    ("2026.08.21", "2026-08-21"),
+    ("2026년 8월 21일", "2026-08-21"),
+    ("2026/8/21", "2026-08-21"),
+])
+def test_hand_typed_date_is_parsed(raw, want):
+    """손으로 친 일자도 날짜로 읽는다. 못 읽으면 NaT 로 두고 지어내지 않는다."""
+    import pandas as pd
+
+    from src.data.clean import parse_dates
+
+    got = parse_dates(pd.Series([raw])).iloc[0]
+    assert got == pd.Timestamp(want)
+
+
+def test_unparseable_date_stays_missing():
+    """읽을 수 없는 일자는 **NaT** 로 남는다 — 아무 날짜나 끼워 넣지 않는다(§2-1)."""
+    import pandas as pd
+
+    from src.data.clean import parse_dates
+
+    out = parse_dates(pd.Series(["엉뚱한 값", None, "2026-08-21"]))
+    assert pd.isna(out.iloc[0]) and pd.isna(out.iloc[1])
+    assert out.iloc[2] == pd.Timestamp("2026-08-21")
+
 # ── 출처(OSP) vs 목적지(라인) 분리 (사용자 확정 2026-09-17, §6-0-21) ───────────
 def _osp_sheet2(rows, pw):
     """rows = [(일자, 시각, zoneA, zoneB, 톤, 비고, 공정구분)] → `공정구분` 포함 시트 모양"""
