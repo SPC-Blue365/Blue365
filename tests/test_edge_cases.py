@@ -1173,6 +1173,81 @@ def test_single_line_note_is_left_alone():
     assert out["withdrawn_ton"].sum() == 2800.0
 
 
+
+# ── 날짜 오기 정정 (2026-10-20 사용자 확정) ─────────────────────────────────
+def _osp_sheet_dt(rows, pw):
+    """rows = [(일자, 인출시간, zoneA, zoneB, 톤, 비고)] — 시각을 문자열 그대로 둔다."""
+    import pandas as pd
+    return pd.DataFrame([{
+        "일자": d, "인출시간": t, pw[0]: a, pw[1]: b, "인출량": ton, "비고": note
+    } for d, t, a, b, ton, note in rows])
+
+
+def test_date_override_fixes_only_the_matching_row():
+    """연도 오기 정정 — **네 값이 모두 맞는 행만** 일자를 바꾸고 나머지는 건드리지 않는다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data.clean import apply_osp_date_overrides
+
+    rule = dict(line=S.LINE_NEW, wrong="2023-09-18", time="0:00:00",
+                ton=6400.0, correct="2026-09-18")
+    df = _osp_sheet_dt([
+        ("2023-09-18", "0:00:00", 95.0, 90.0, 6400.0, "Yard 변경"),   # ← 정정 대상
+        ("2023-09-18", "0:00:00", 60.0, None, 1200.0, None),          # 물량 불일치
+        ("2023-09-18", "8:00:00", 95.0, 90.0, 6400.0, None),          # 시각 불일치
+        ("2026-09-20", "0:00:00", 95.0, 90.0, 6400.0, None),          # 일자 불일치
+    ], S.PW_COLS_NEW)
+    orig = list(S.OSP_DATE_OVERRIDES)
+    S.OSP_DATE_OVERRIDES[:] = [rule]
+    try:
+        out = apply_osp_date_overrides(df, S.LINE_NEW)
+    finally:
+        S.OSP_DATE_OVERRIDES[:] = orig
+    got = pd.to_datetime(out["일자"]).dt.strftime("%Y-%m-%d").tolist()
+    assert got == ["2026-09-18", "2023-09-18", "2023-09-18", "2026-09-20"]
+    assert out.attrs["date_overrides_applied"] == 1
+    # 일자 말고는 아무것도 바뀌지 않는다
+    assert out["인출량"].tolist() == df["인출량"].tolist()
+    assert out["인출시간"].tolist() == df["인출시간"].tolist()
+
+
+def test_date_override_warns_when_source_already_fixed():
+    """현장이 원본을 바로잡으면 **조용히 넘어가지 않고 경고**한다 (정정표를 비우라는 신호)."""
+    import warnings
+
+    from config import schema as S
+    from src.data.clean import apply_osp_date_overrides
+
+    rule = dict(line=S.LINE_NEW, wrong="2023-09-18", time="0:00:00",
+                ton=6400.0, correct="2026-09-18")
+    df = _osp_sheet_dt([("2026-09-18", "0:00:00", 95.0, 90.0, 6400.0, None)], S.PW_COLS_NEW)
+    orig = list(S.OSP_DATE_OVERRIDES)
+    S.OSP_DATE_OVERRIDES[:] = [rule]
+    try:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            apply_osp_date_overrides(df, S.LINE_NEW)
+        assert any("인출 날짜 정정" in str(x.message) for x in w)
+    finally:
+        S.OSP_DATE_OVERRIDES[:] = orig
+
+
+def test_real_data_has_no_orphan_dates_after_override():
+    """정정 후 실데이터에 **광산 기간 밖 인출이 남아 있으면 안 된다**."""
+    import pandas as pd
+
+    from src.data.validation import DATE_SLACK_DAYS
+    from src.models.dataset import load_sources
+
+    mine, osp, _ = load_sources(validate=False, verbose=False)
+    md = pd.to_datetime(mine["datetime"], errors="coerce").dropna()
+    od = pd.to_datetime(osp["datetime"], errors="coerce").dropna()
+    lo = md.min() - pd.Timedelta(days=DATE_SLACK_DAYS)
+    hi = md.max() + pd.Timedelta(days=DATE_SLACK_DAYS)
+    stray = od[(od < lo) | (od > hi)]
+    assert stray.empty, f"기간 밖 인출이 남아 있다: {sorted(set(stray.dt.date))[:5]}"
+
 # ── 출처(OSP) vs 목적지(라인) 분리 (사용자 확정 2026-09-17, §6-0-21) ───────────
 def _osp_sheet2(rows, pw):
     """rows = [(일자, 시각, zoneA, zoneB, 톤, 비고, 공정구분)] → `공정구분` 포함 시트 모양"""

@@ -492,6 +492,44 @@ def build_zone_grade_table(mine_long: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # ② OSP 인출 — 균등 배분으로 구역별 인출 long
 # --------------------------------------------------------------------------- #
+def apply_osp_date_overrides(df: pd.DataFrame, line: str) -> pd.DataFrame:
+    """사용자 확정 **날짜 오기** 정정을 적용한다 (`S.OSP_DATE_OVERRIDES`).
+
+    현장이 연도를 잘못 친 행을 바로잡는다. 2026-10-20 사용자가 "2023 년은 2026 년 오기가
+    맞다" 고 확정한 1건이 그것이다(§6-0-26).
+
+    ⚠️ **일자만** 바꾼다 — 시각·물량·구역·비고는 원본 그대로다.
+    ⚠️ (시트라인, 잘못된 일자, 시각, 물량) 네 값이 **모두 맞을 때만** 적용한다. 느슨하게
+       맞추면 엉뚱한 행을 고칠 수 있다.
+    ⚠️ 규칙이 한 건도 맞지 않으면 조용히 넘어가지 않고 경고한다 — 현장이 원본을 바로잡았다는
+       뜻이므로 `S.OSP_DATE_OVERRIDES` 를 비워야 한다.
+    """
+    rules = [r for r in getattr(S, "OSP_DATE_OVERRIDES", []) if r["line"] == line]
+    if not rules or df is None or df.empty or "일자" not in df.columns:
+        return df
+    out = df.copy()
+    d = pd.to_datetime(out["일자"], errors="coerce").dt.strftime("%Y-%m-%d")
+    ton = pd.to_numeric(out.get("인출량"), errors="coerce")
+    tm = out.get("인출시간").astype(str).str.strip() if "인출시간" in out.columns else ""
+    applied = 0
+    for r in rules:
+        m = (d == r["wrong"]) & (ton == float(r["ton"])) & (tm == str(r["time"]))
+        if not m.any():
+            warnings.warn(
+                f"[인출 날짜 정정] {line} {r['wrong']} {r['time']} {r['ton']:,.0f}톤 에 해당하는 "
+                "원본 행이 없습니다 — 현장이 바로잡았다면 "
+                "config/schema.OSP_DATE_OVERRIDES 를 비우세요.", stacklevel=2)
+            continue
+        # ⚠️ `일자` 컬럼의 dtype 이 판마다 다르다(날짜형일 때도, 문자열일 때도 있다).
+        #    컬럼이 들고 있는 타입에 맞춰 넣어야 pandas 가 거부하지 않는다.
+        out.loc[m, "일자"] = (pd.Timestamp(r["correct"])
+                              if pd.api.types.is_datetime64_any_dtype(out["일자"])
+                              else r["correct"])
+        applied += int(m.sum())
+    out.attrs["date_overrides_applied"] = applied
+    return out
+
+
 def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
     """OSP 인출 시트 → (datetime, line, dest_line, zone, withdrawn_ton, time_known) long.
 
@@ -502,6 +540,7 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
     datetime 은 그날 00:00 으로 두지만, 실제 시각이 자정이라는 뜻이 아니므로 시간축 분석에서
     구분할 수 있어야 한다(§6-0-18).
     """
+    df = apply_osp_date_overrides(df, line)
     rows = []
     for _, r in df.iterrows():
         zones = [
