@@ -301,16 +301,62 @@ def _weighted_daily(df: pd.DataFrame, keys: list[str], cols: list[str]) -> pd.Da
 GRADE_SOURCE = "grade_source"
 SRC_ZONE = "zone_history"      # 그 구역의 실제 적재 이력에서 가져옴 (신뢰)
 SRC_LINE_MEAN = "line_mean"    # 구역 적재 이력이 아직 없어 라인 평균으로 대체 (미상)
-SRC_NO_ZONE = "no_zone"        # 인출 구역 자체가 미기재 (미상)
+SRC_NO_ZONE = "no_zone"        # 품위를 낼 수 없어 라인 평균으로 때움 (미상)
+SRC_LINE_PILE = "line_pile"    # ⭐️ 그 라인 더미의 실제 적재 이력에서 혼합 (신뢰, §6-0-28)
 
 #: 실측 기반으로 볼 수 있는 출처 (나머지는 '미상' 물량으로 집계)
-TRUSTED_SOURCES = (SRC_ZONE,)
+TRUSTED_SOURCES = (SRC_ZONE, SRC_LINE_PILE)
+
+
+def assign_grade_line_level(osp: pd.DataFrame, mine_long: pd.DataFrame) -> pd.DataFrame:
+    """⭐️ **라인 단위** 품위 부여 — 인출 품위 = 그 시점 그 라인 더미 전체의 평균.
+
+    구역 단위 추적을 포기한 결과다(§6-0-28, 사용자 확정 2026-10-20). 현장이 구역별 재고를
+    측정하지 않고 칸이 넘치면 옆으로 흘러들므로, 구역 번호로 품위를 찾는 것은 **가지지 않은
+    해상도를 가진 척하는 일**이었다. 라인 더미를 하나로 보고 적재 순서대로 섞는다.
+
+    `piles.simulate(order="mix")` 가 그 혼합을 이미 구현하고 있어 그대로 쓴다 —
+    적재는 쌓이고, 인출은 그 시점 재고 **비례**로 빠진다.
+
+    `grade_source` 는 `SRC_LINE_PILE` 로 적는다. 구역 이력에서 온 값(`SRC_ZONE`)과
+    구별해야 어디서 온 숫자인지 추적된다(§2-3).
+    """
+    from src.matching import piles
+
+    out = osp.copy()
+    for c in GRADE_COLS.values():
+        if c not in out.columns:
+            out[c] = np.nan
+    out[GRADE_SOURCE] = SRC_NO_ZONE
+    for line in (S.LINE_OLD, S.LINE_NEW):
+        sim = piles.simulate(mine_long, osp, line, "mix")
+        if not len(sim):
+            continue
+        idx = sim.index
+        out.loc[idx, GRADE_COLS["cao"]] = sim["sim_cao"].to_numpy()
+        out.loc[idx, GRADE_COLS["mgo"]] = sim["sim_mgo"].to_numpy()
+        out.loc[idx, GRADE_SOURCE] = np.where(
+            sim["sim_cao"].notna().to_numpy(), SRC_LINE_PILE, SRC_NO_ZONE)
+    # 더미가 비어 품위를 못 낸 행은 라인 전역 평균으로 물러선다 (물량은 버리지 않는다)
+    m = mine_long[mine_long["line"].isin([S.LINE_OLD, S.LINE_NEW])]
+    have = [c for c in GRADE_COLS if c in m.columns]
+    glob = _weighted_daily(m.dropna(subset=["cao"]), ["line"], have).set_index("line")
+    for c in have:
+        col = GRADE_COLS[c]
+        miss = out[col].isna()
+        out.loc[miss, col] = out.loc[miss, "line"].map(glob[c])
+    return out
 
 
 def assign_expected_cao_timeaware(
     osp: pd.DataFrame, mine_long: pd.DataFrame
 ) -> pd.DataFrame:
-    """OSP 인출(라인·지점·시각)에 '인출시각 이전 최근 적재 품위'를 매칭 (시간인지).
+    """OSP 인출에 품위를 부여한다. 해상도는 `S.GRADE_RESOLUTION` 이 정한다(§6-0-28).
+
+    기본은 **라인 단위**(`assign_grade_line_level`). 아래 구역 단위 로직은 비교·보관용이다.
+
+    ── 구역 단위(legacy) ─────────────────────────────────────────────
+    OSP 인출(라인·지점·시각)에 '인출시각 이전 최근 적재 품위'를 매칭 (시간인지).
 
     P/W 지점은 위치 식별자이며 품위는 시간에 따라 변하므로, 정적 평균이 아니라
     해당 (line, 지점)에 가장 최근 적재된 광산 품위를 쓴다. 없으면 라인 전역 평균 fallback.
@@ -319,6 +365,9 @@ def assign_expected_cao_timeaware(
     부여해 MgO 품위 수지를 아예 검증할 수 없었다. 두 성분은 같은 광산 행에서 나오므로
     같은 asof 매칭을 공유해야 서로 정합한다.
     """
+    if getattr(S, "GRADE_RESOLUTION", "zone") == "line":
+        return assign_grade_line_level(osp, mine_long)
+
     mine = mine_long[mine_long["line"].isin([S.LINE_OLD, S.LINE_NEW])].dropna(
         subset=["zone", "cao", "date"]
     )

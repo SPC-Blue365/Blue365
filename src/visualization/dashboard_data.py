@@ -124,33 +124,38 @@ def zone_stock(inv_by_line: dict) -> dict:
     return out
 
 
-def cross_flow(raw_file_frames: dict) -> dict:
+def cross_flow(osp: pd.DataFrame) -> dict:
     """⭐️ 교차인출 현황 — **기존 OSP 에서 뽑아 신설 라인으로 보낸 물량**.
 
-    2026-09-17 갱신본에서 현장이 `공정구분` 을 목적지 라인으로 명시하기 시작했다.
-    기존 시트의 절반이 넘는 물량이 여기 해당하고 최근에는 대부분이므로, 재고·품질을
-    읽을 때 **반드시 함께 봐야 하는 지표**다(§6-0-20).
+    현장이 `공정구분` 에 목적지 라인을 적기 시작했고(§6-0-20), 기존 시트 물량의 상당수가
+    여기 해당한다. 재고와 품질을 읽을 때 반드시 함께 봐야 하는 지표다.
 
-    입력: {시트라인: 원본 DataFrame}
+    ⚠️ **정제된 `osp` 를 쓴다.** 예전에는 원본 시트를 다시 읽었는데, 그러면 날짜 정정·누락
+       보완 같은 교정이 **하나도 반영되지 않는다**. 실제로 2026-10-20 에 정정한 날짜 오기가
+       이 화면에만 그대로 남아 기간 축이 2023 년까지 늘어났다. 읽는 경로가 둘이면 반드시
+       갈라진다 — 정제 결과 하나만 본다.
     """
     out = {}
-    for ln, d in raw_file_frames.items():
-        if d is None or not len(d) or "공정구분" not in d.columns:
+    if osp is None or not len(osp) or "dest_line" not in osp.columns:
+        return out
+    x = osp.dropna(subset=["datetime"]).copy()
+    x["ton"] = pd.to_numeric(x["withdrawn_ton"], errors="coerce")
+    x["day"] = x["datetime"].dt.floor("D")
+    for ln in S.YARD_PAIR:
+        s = x[x["line"] == ln]
+        if not len(s):
             continue
-        x = d.copy()
-        x["일자"] = pd.to_datetime(x["일자"], errors="coerce")
-        x["ton"] = pd.to_numeric(x["인출량"], errors="coerce")
-        x = x.dropna(subset=["일자"])
         other = S.LINE_NEW if ln == S.LINE_OLD else S.LINE_OLD
-        x["cross"] = x["공정구분"].astype(str).str.strip() == other
-        g = x.assign(day=x["일자"].dt.floor("D")).groupby("day").agg(
-            tot=("ton", "sum"), cr=("ton", lambda s: s[x.loc[s.index, "cross"]].sum()))
-        tot = float(x["ton"].sum())
-        cr = float(x.loc[x["cross"], "ton"].sum())
+        s = s.assign(cross=s["dest_line"] != ln)
+        g = s.groupby("day").apply(
+            lambda d: pd.Series({"tot": d["ton"].sum(),
+                                 "cr": d.loc[d["cross"], "ton"].sum()}),
+            include_groups=False)
+        tot, cr = float(s["ton"].sum()), float(s.loc[s["cross"], "ton"].sum())
         out[ln] = dict(
             dest=other, total=_f(tot), cross=_f(cr),
             pct=_f(cr / tot * 100 if tot else np.nan),
-            n_rows=int(x["cross"].sum()),
+            n_rows=int(s["cross"].sum()),
             daily=[dict(d=k.strftime("%Y-%m-%d"), t=_f(r.tot), c=_f(r.cr))
                    for k, r in g.iterrows()])
     return out

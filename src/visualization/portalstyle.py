@@ -125,6 +125,13 @@ body {
 .nav-menu a:hover { background:var(--surface-2); color:var(--accent); }
 .nav-menu a:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .nav-menu .on { color:var(--accent); font-weight:700; background:var(--accent-soft); }
+/* 근거 보관 — 매일 보는 것과 섞이지 않게 한 단계 뒤로 뺀다 */
+.nav-menu span.navsep { width:1px; height:18px; background:var(--nav-line); margin:0 8px;
+                        flex:none; padding:0; border-radius:0; }
+.nav-menu .navlab { font-size:11px; color:var(--ink-3); font-weight:600; padding:8px 2px; }
+.nav-menu a.sub, .nav-menu span.sub { font-size:12.5px; color:var(--ink-3); font-weight:400; }
+.nav-menu a.sub:hover { color:var(--accent); }
+.nav-menu .on.sub { color:var(--accent); font-weight:600; }
 .nav-menu .ico { width:17px; height:17px; flex:none; }
 .nav-util { display:flex; align-items:center; gap:14px; font-size:12.5px;
             color:var(--ink-2); white-space:nowrap; }
@@ -349,12 +356,18 @@ h1 { font-size:25px; line-height:1.35; font-weight:700; letter-spacing:-.025em;
 #: 상단 바 메뉴 — (라벨, 파일명, 아이콘).
 #: ⭐️ **실제 링크다.** 산출물이 모두 `outputs/` 한 폴더에 나오므로 상대경로로 서로 이동한다.
 #: (죽은 `href="#"` 로 두면 눌러도 아무 일이 없어 고장처럼 보인다 — 2026-10-15 실제 지적)
+#: ⭐️ **매일 보는 화면**. 품질담당이 "지금 정상인가" 를 판단하는 데 쓴다(§6-0-28).
 NAV_ITEMS = (
+    ("운영 대시보드", "dashboard.html", "grid"),
+    ("운영 모니터", "monitor_status.html", "alert"),
+)
+
+#: **근거 보관** — 매일 볼 것이 아니라 "왜 그런가" 를 따질 때 여는 것들.
+#: 한 단계 뒤로 빼 둔다. 산출물이 7개면 무엇이 중심인지 알 수 없다.
+NAV_ARCHIVE = (
     ("현황 브리프", "brief.html", "chart"),
     ("배합 처방", "prescription.html", "flask"),
-    ("운영 대시보드", "dashboard.html", "grid"),
     ("통합 리포트", "final_report.html", "doc"),
-    ("운영 모니터", "monitor_status.html", "alert"),
     ("계획서", "plan.html", "map"),
 )
 
@@ -382,13 +395,14 @@ def nav(active: str = "", user: str = "") -> str:
     같은 폴더의 다른 산출물로 이동한다. 현재 보고 있는 항목은 링크 대신 활성 표시만 한다
     (자기 자신으로 가는 링크는 눌러도 제자리라 고장처럼 보인다).
     """
-    items = []
-    for label, fname, ico in NAV_ITEMS:
+    def _one(label, fname, ico, cls=""):
         if label == active:
-            items.append(f'<span class="on" aria-current="page">{_icon(ico)}{label}</span>')
-        else:
-            items.append(f'<a href="{fname}">{_icon(ico)}{label}</a>')
-    items = "".join(items)
+            return f'<span class="on {cls}" aria-current="page">{_icon(ico)}{label}</span>'
+        return f'<a class="{cls}" href="{fname}">{_icon(ico)}{label}</a>'
+
+    items = "".join(_one(*it) for it in NAV_ITEMS)
+    items += '<span class="navsep" aria-hidden="true"></span><span class="navlab">근거</span>'
+    items += "".join(_one(*it, cls="sub") for it in NAV_ARCHIVE)
     who = f'<span class="hide-s"><b>{user}</b></span>' if user else ""
     return f"""<div class="nav"><div class="nav-in">
   <span class="logo"><span class="dot"></span>SAMPYO<span class="sub">석회석 품위추적</span></span>

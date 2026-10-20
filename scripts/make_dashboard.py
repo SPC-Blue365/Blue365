@@ -30,8 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import paths as P                                   # noqa: E402
 from config import schema as S                                  # noqa: E402
 from src.matching import pipeline as MP                         # noqa: E402
+from src.matching.chain import build_chain                      # noqa: E402
 from src.matching.inventory import zone_inventory               # noqa: E402
-from src.models.dataset import RAW_DIR, load_osp_stock, load_sources  # noqa: E402
+from src.models.dataset import (RAW_DIR, load_osp_stock,        # noqa: E402
+                                load_sources, load_yard_change)
 from src.visualization import dashboard_data as D               # noqa: E402
 from src.visualization.portalstyle import STYLE, foot, hero, nav  # noqa: E402
 
@@ -44,6 +46,9 @@ def build() -> str:
     stock = load_osp_stock()
     invs = {ln: zone_inventory(mine, osp, stock, ln) for ln in S.YARD_PAIR}
 
+    # ⭐️ 추적 연결 점수판 — 이 프로젝트의 성공 기준이다(§6-0-28). 화면 맨 위에 둔다.
+    chain = build_chain(mine, osp, stock, load_yard_change())
+
     # ⭐️ 경로별 이송 시간 — 하드코딩하지 않고 매 실행마다 데이터에서 추정한다(§2-4)
     route_lags = {}
     for ln in S.YARD_PAIR:
@@ -52,11 +57,6 @@ def build() -> str:
             route_lags[f"{src}→{ln}"] = int(lag)
     route_txt = " · ".join(f"{k} 약 {v}시간" for k, v in
                            sorted(route_lags.items(), key=lambda kv: -kv[1]))
-
-    # 교차인출은 원본 시트의 `공정구분` 을 봐야 하므로 원본을 다시 읽는다
-    xls = pd.ExcelFile(RAW_DIR / S.DATA_FILE)
-    raw = {S.LINE_OLD: pd.read_excel(xls, S.SHEET_OSP_OLD),
-           S.LINE_NEW: pd.read_excel(xls, S.SHEET_OSP_NEW)}
 
     payload = dict(
         target=TARGET, tol=TOL, capacity=S.OSP_CAPACITY_TON,
@@ -68,7 +68,7 @@ def build() -> str:
         stock=D.stock_daily(stock),
         flow=D.flow_daily(mine, osp),
         zones=D.zone_stock(invs),
-        cross=D.cross_flow(raw),
+        cross=D.cross_flow(osp),
         recent=D.recent_records(osp, mine),
     )
     js = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -120,15 +120,34 @@ def build() -> str:
 {nav(active="운영 대시보드")}
 {hero(
   eyebrow="석회석 광산 → OSP → 야드 · 운영 대시보드",
-  title="품질 · 재고 현황",
-  lead="야드 품위와 OSP 재고를 한 화면에서 봅니다. 위 필터로 기간과 라인을 바꾸면 "
-       "아래 모든 그래프와 표가 함께 움직입니다.",
+  title="지금 정상인가",
+  lead="<b>이 화면은 품질담당이 '지금 품위와 재고가 정상인지' 를 판단하기 위한 것입니다.</b> "
+       "맨 위는 광산에서 야드까지 데이터가 얼마나 이어졌는지, 그 아래는 라인별 현재 상태입니다. "
+       "기간·라인을 바꾸면 모든 그래프가 함께 움직입니다.",
   strip=f"생성 {payload['built']}",
   today=datetime.now().strftime("%Y-%m-%d"),
   quick=[("배합 처방", "flask", "cards"), ("품위 추이", "chart", "c-trend"),
          ("구역 재고", "grid", "c-zone"), ("최근 기록", "doc", "rec-n")])}
 
 <div class="wrap">
+
+<div class="grid wide"><div class="panel">
+  <div class="phd"><h3>추적 연결 상태 <span class="tag mute">이 과제의 성공 기준</span></h3>
+    <span class="sp"></span><span class="tag {chain.weakest.tone if chain.weakest else 'mute'}">
+      {f"{chain.linked_pct:.1f}% 이어짐" if chain.linked_pct == chain.linked_pct else "—"}</span></div>
+  <div class="pbd">
+    <p class="a" style="margin-bottom:14px">{chain.sentence()}</p>
+    <div class="kpis">{"".join(
+      f'<div class="k {j.tone}"><div class="kv">{E(j.label)}</div>'
+      f'<div class="kl">{E(j.name)}</div>'
+      f'<div class="kn">{E(j.why)}</div>'
+      + (f'<div class="kn" style="color:var(--{j.tone})">↳ {E(j.gap)}</div>' if j.gap else '')
+      + '</div>' for j in chain.joints)}</div>
+    <p class="hint">구역(칸) 단위가 아니라 <b>라인 단위</b>로 잇습니다 — 현장이 구역별 재고를
+      측정하지 않아 그 해상도는 가질 수 없고, 가진 척하면 숫자만 그럴듯해집니다.
+      네 칸이 모두 녹색이면 "어느 더미에서 언제 쌓인 돌인지" 를 끝까지 말할 수 있습니다.</p>
+  </div>
+</div></div>
 
 <div class="bar" role="toolbar" aria-label="기간과 라인 선택">
   <span class="blab">기간 <span style="font-weight:400">(년-월-일)</span></span>
