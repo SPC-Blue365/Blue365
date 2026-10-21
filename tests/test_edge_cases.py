@@ -1630,3 +1630,47 @@ def test_yard_analyzer_dropout_is_removed_but_row_kept():
     assert out["mgo"].notna().tolist() == [True, False, False, True]
     assert out["load"].notna().all(), "적재량은 유효하므로 유지한다"
     assert out["cao"].max() < 55 and out["cao"].min() >= S.YARD_CAO_MIN
+
+
+# ── 단일 파일 통합본 (2026-10-21) ───────────────────────────────────────────
+def test_bundle_strips_inner_nav_and_packs_every_menu_item():
+    """허브는 **메뉴에 있는 문서를 빠짐없이** 담고, 안쪽 상단 바는 걷어낸다.
+
+    낱개 파일로 받으면 상대경로 링크가 먹통이라(2026-10-21 지적) 한 파일 안에 품어야 한다.
+    안쪽 상단 바를 그대로 두면 메뉴가 두 줄로 보이고, 그 링크는 어차피 동작하지 않는다.
+    """
+    import base64
+    import gzip
+    import json
+    import re
+
+    from scripts import make_bundle
+    from src.visualization.portalstyle import NAV_ARCHIVE, NAV_ITEMS
+
+    html = make_bundle.build()
+    m = re.search(r'<script id="docs" type="application/json">(.*?)</script>', html, re.S)
+    assert m, "문서 꾸러미가 들어 있어야 한다"
+    docs = json.loads(m.group(1))
+
+    for name, fname, _ in (*NAV_ITEMS, *NAV_ARCHIVE):
+        assert fname in docs, f"{name}({fname}) 이 빠졌다 — 메뉴를 눌러도 열리지 않는다"
+        inner = gzip.decompress(base64.b64decode(docs[fname])).decode("utf-8")
+        assert '<div class="nav"><div class="nav-in">' not in inner, \
+            f"{fname}: 안쪽 상단 바가 남아 있다"
+        assert len(inner) > 1000, f"{fname}: 내용이 비었다"
+    # 메뉴 버튼이 담긴 문서를 가리키는지
+    for _, fname, _ in (*NAV_ITEMS, *NAV_ARCHIVE):
+        assert f'data-doc="{fname}"' in html, f"{fname} 버튼이 없다"
+
+
+def test_bundle_has_no_dead_relative_links():
+    """허브 메뉴는 **링크가 아니라 버튼**이어야 한다 — 상대경로는 낱개 파일에서 죽는다."""
+    import re
+
+    from scripts import make_bundle
+
+    html = make_bundle.build()
+    head = html[:html.index("<div id=\"stage\">")]
+    assert not re.search(r'<a [^>]*href="[a-z_]+\.html"', head), \
+        "허브 상단 바에 상대경로 링크가 남아 있다"
+    assert html.count('class="navbtn') >= 6

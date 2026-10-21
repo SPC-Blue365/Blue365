@@ -119,10 +119,15 @@ body {
 .nav-menu { display:flex; align-items:center; gap:4px; flex:1; min-width:0;
             overflow-x:auto; scrollbar-width:none; }
 .nav-menu::-webkit-scrollbar { display:none; }
-.nav-menu a, .nav-menu span { display:flex; align-items:center; gap:6px; padding:8px 11px;
+.nav-menu a, .nav-menu span, .nav-menu button { display:flex; align-items:center; gap:6px; padding:8px 11px;
               border-radius:4px; font-size:13.5px; font-weight:500; color:var(--nav-ink);
               text-decoration:none; white-space:nowrap; }
-.nav-menu a:hover { background:var(--surface-2); color:var(--accent); }
+.nav-menu a:hover, .nav-menu button:hover { background:var(--surface-2); color:var(--accent); }
+.nav-menu button { background:none; border:0; font-family:inherit; cursor:pointer; }
+.nav-menu button.sub { font-size:12.5px; color:var(--ink-3); font-weight:400; }
+.nav-menu button.sub:hover { color:var(--accent); }
+.nav-menu button.on { color:var(--accent); font-weight:700; background:var(--accent-soft); }
+.nav-menu button.on.sub { font-weight:600; }
 .nav-menu a:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .nav-menu .on { color:var(--accent); font-weight:700; background:var(--accent-soft); }
 /* 근거 보관 — 매일 보는 것과 섞이지 않게 한 단계 뒤로 뺀다 */
@@ -387,6 +392,28 @@ def _icon(name: str) -> str:
     return (f'<svg class="ico" viewBox="0 0 20 20" fill="none" stroke="currentColor" '
             f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" '
             f'aria-hidden="true"><path d="{p}"/></svg>')
+
+
+def nav_hub(active: str = "") -> str:
+    """단일 파일 허브용 상단 바 — 링크가 아니라 **안쪽 문서를 바꾸는 버튼**이다.
+
+    산출물을 낱개로 받으면 옆 파일이 없어 상대경로 링크가 먹통이 된다(2026-10-21 지적).
+    허브는 문서들을 **한 파일 안에 품고** 있으므로 이동이 아니라 교체다.
+    """
+    def _one(label, fname, ico, cls=""):
+        on = " on" if label == active else ""
+        cur = ' aria-current="page"' if label == active else ""
+        return (f'<button class="navbtn {cls}{on}" data-doc="{fname}"{cur}>'
+                f'{_icon(ico)}{label}</button>')
+
+    items = "".join(_one(*it) for it in NAV_ITEMS)
+    items += '<span class="navsep" aria-hidden="true"></span><span class="navlab">근거</span>'
+    items += "".join(_one(*it, cls="sub") for it in NAV_ARCHIVE)
+    return f"""<div class="nav"><div class="nav-in">
+  <span class="logo"><span class="dot"></span>SAMPYO<span class="sub">석회석 품위추적</span></span>
+  <nav class="nav-menu">{items}</nav>
+  <div class="nav-util"><span class="hide-s" id="hubstate">한 파일에 모두 담김</span></div>
+</div></div>"""
 
 
 def nav(active: str = "", user: str = "") -> str:

@@ -23,10 +23,17 @@ from config.paths import OUTPUTS_DIR, RAW_DIR
 from config import schema as S
 
 
+# ⚠️ 순서가 의미를 갖는다 — 통합본(make_bundle)은 **나머지를 전부 만든 뒤** 담아야 한다.
+#    예전에는 run_all 이 리포트·모니터만 만들어, "원클릭" 이라면서 대시보드·브리프·처방서·
+#    계획서는 따로 돌려야 했다(실제로 낡은 산출물이 섞여 나갔다).
 STEPS = [
     ("매칭 통합셋 생성", "build_matched_dataset"),
     ("예측 모델 학습·저장", "train_and_save"),
     ("모니터 상태 산출", "monitor"),
+    ("운영 대시보드", "make_dashboard"),
+    ("현황 브리프", "make_brief"),
+    ("배합 처방서", "make_prescription"),
+    ("임원 계획서", "make_plan"),
 ]
 
 
@@ -72,15 +79,28 @@ def main(start=None, end=None) -> int:
         print(f"      ✘ 실패: {type(e).__name__}: {e}")
         failed.append("최종 통합 리포트")
 
+    # 맨 마지막: 단일 파일 통합본 — 앞의 산출물이 모두 있어야 담을 수 있다
+    print("\n[마무리] 단일 파일 통합본 …")
+    t0 = time.time()
+    try:
+        from scripts import make_bundle
+
+        make_bundle.main()
+        print(f"      ✔ 완료 ({time.time() - t0:.1f}s)")
+    except Exception as e:
+        print(f"      ✘ 실패: {type(e).__name__}: {e}")
+        failed.append("단일 파일 통합본")
+
     print("\n" + "=" * 70)
     if failed:
         print(f"⚠️ 일부 단계 실패: {', '.join(failed)}")
     else:
         print("✅ 전체 완료")
     print(f"산출물 위치: {OUTPUTS_DIR}")
-    print("  · final_report.html   (임원 발표용 통합 리포트)")
-    print("  · monitor_status.html (운영 모니터 상태)")
-    print("대시보드 실행: streamlit run streamlit_app.py")
+    print("  · 블루365_통합.html   ⭐️ 이 파일 하나면 전부 열립니다 (메일로 보낼 것)")
+    print("  · dashboard.html      매일 보는 화면 — 지금 정상인가")
+    print("  · monitor_status.html 운영 모니터 (경보)")
+    print("  · brief / prescription / plan / final_report  근거 보관")
     print("=" * 70)
     return 1 if failed else 0
 
