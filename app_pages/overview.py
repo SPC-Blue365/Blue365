@@ -113,10 +113,20 @@ with right:
 
 # ── 핵심 공정 지표 ─────────────────────────────────────────────────────
 st.subheader("핵심 공정 지표 (최근 14일)")
-cc = st.columns(3)
-for col, (key, prod) in zip(cc, (("rm_lsf", None), ("clk_fcao", None), ("cem_blaine", "1종"))):
+KEY_TRENDS = (("rm_lsf", None), ("clk_fcao", None), ("cem_blaine", "1종"), ("cem_blaine", "3종"))
+figs = []
+for key, prod in KEY_TRENDS:
+    if key not in reg:
+        continue
     it = reg[key]
     fig = trend_figure(ctx, key, prod, start=end - pd.Timedelta(days=14), resample="8h",
-                       title=f"{it.name}" + (f" [{prod}]" if prod else "") + " · 8h 평균", height=280, show_target=False)
+                       title=f"{it.name}" + (f" [{prod}]" if prod else "") + " · 8h 평균", height=400, show_target=False)
     if fig:
-        col.plotly_chart(fig, key=f"ov_{key}")
+        fig.update_xaxes(range=[end - pd.Timedelta(days=14), end + pd.Timedelta(hours=6)])   # 이벤트 음영이 축을 넓히지 않게
+        figs.append((f"ov_{key}_{prod or 'all'}", fig))
+if not figs:
+    st.caption("최근 14일 공정 데이터가 없습니다.")
+for i in range(0, len(figs), 2):                     # 한 줄에 2개씩 크게
+    row = st.columns(2)
+    for col, (k, fig) in zip(row, figs[i:i + 2]):
+        col.plotly_chart(fig, key=k)

@@ -21,6 +21,14 @@ from .store import SHEET_NAMES, DataStore
 FONT = "맑은 고딕"
 
 # ── 공정능력 표 ─────────────────────────────────────────────────────────
+
+def _floor_min(ks_min: float, *arrays) -> float:
+    """차트 y축 하한: 유효값이 하나도 없으면(28일 결과 미도래 등) KS 하한 기준으로."""
+    vals = np.concatenate([np.asarray(a, float).ravel() for a in arrays]) if arrays else np.array([])
+    vals = vals[np.isfinite(vals)]
+    lo = min(ks_min, float(vals.min())) if vals.size else ks_min
+    return float(np.floor(lo - 2))
+
 def capability_table(store: DataStore, registry: SpecRegistry, start=None, end=None,
                      key_only: bool = False) -> pd.DataFrame:
     rows = []
@@ -603,7 +611,7 @@ def build_management_ppt(store: DataStore, registry: SpecRegistry, events_df: pd
             {"name": f"사내 하한 {lim28.lsl:g}", "values": [lim28.lsl] * len(cats), "color": d.WARN, "width": 1.25, "dash": True},
             {"name": f"KS 하한 {lim28.ks_min:g}", "values": [lim28.ks_min] * len(cats), "color": d.DANGER, "width": 1.25},
         ], 0.6, 1.7, 8.6, 5.1, y_title="MPa", name="Strength chart",
-            y_min=float(np.floor(min(lim28.ks_min, np.nanmin(np.r_[act, pred])) - 2)))
+            y_min=_floor_min(lim28.ks_min, act, pred))
         d.box(s, 9.5, 1.75, 3.25, 5.0, d.CARD, name="Strength notes")
         notes = [("판독 포인트", {"bold": True, "size": 15})]
         if np.isfinite(np.nanmean(act)):

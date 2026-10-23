@@ -66,6 +66,45 @@ def _to_minutes(v):
             return v
     return v
 
+# LIMS 내보내기는 '미시험' 칸을 0 으로 채운다 → 0 은 빈 값으로 본다(28일 강도 0 MPa 같은 가짜 이탈 방지).
+# 0 이 실제 값일 수 있는 항목(배합 투입비율·석회석 첨가율)과 DCS 운전값(킬른)은 제외.
+ZERO_IS_MISSING_TABLES = ("raw_meal", "clinker", "cement", "physical", "xrd")
+ZERO_OK = {"cem_ls", "rm_mx_lime", "rm_mx_shale", "rm_mx_silica", "rm_mx_silica2", "rm_mx_ash", "rm_mx_sago",
+           "rm_mx_iron", "rm_mx_sand", "rm_mx_total"}
+SAMPLE_TIME_NAMES = ("채취시간", "시료채취시간", "채취시각", "채취time")
+
+
+def zero_to_nan(df: pd.DataFrame, name: str) -> tuple[pd.DataFrame, dict]:
+    """측정 항목의 0 을 NaN 으로(미시험). → (df, {열: 바꾼 건수})."""
+    counts: dict[str, int] = {}
+    if name not in ZERO_IS_MISSING_TABLES:
+        return df, counts
+    for c in RAW_COLUMNS.get(name, []):
+        if c in TEXT_COLUMNS or c in ZERO_OK or c not in df.columns:
+            continue
+        col = pd.to_numeric(df[c], errors="coerce")
+        m = col == 0
+        if m.any():
+            counts[c] = int(m.sum())
+            df[c] = col.mask(m)
+    return df, counts
+
+
+def _combine_sample_time(df: pd.DataFrame) -> pd.DataFrame:
+    """'채취일'(날짜) + '채취시간'(HH:MM) 을 합쳐 timestamp 로 — 하루 여러 시료가 한 행으로 합쳐지지 않게."""
+    tcol = next((c for c in df.columns if _norm_header(c) in {_norm_header(x) for x in SAMPLE_TIME_NAMES}), None)
+    if tcol is None or "timestamp" not in df.columns:
+        return df
+    base = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
+    if base.dropna().empty or ((base.dropna() - base.dropna().dt.normalize()) != pd.Timedelta(0)).any():
+        return df.drop(columns=[tcol])                  # 이미 시각이 들어 있으면 그대로
+    mins = df[tcol].map(_to_minutes)
+    off = pd.to_timedelta(pd.to_numeric(mins, errors="coerce").fillna(0), unit="m")
+    df = df.copy()
+    df["timestamp"] = base.dt.normalize() + off
+    return df.drop(columns=[tcol])
+
+
 # 엑셀 템플릿 시트명 ↔ 테이블
 SHEET_NAMES = {"raw_meal": "생료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성",
                "xrd": "클링커일일"}
@@ -110,9 +149,9 @@ COL_ALIASES: dict[str, dict[str, str]] = {
             "총크롬": "clk_cr", "총크롬(cr)": "clk_cr", "6가크롬": "clk_crvi", "6가크롬(cr6)": "clk_crvi"},
 }
 # 품명(품종) 값 정규화: LIMS '1종시멘트 벌크' 등 → '1종'
-PRODUCT_ALIASES = [("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("2종", "2종"),
-                   ("중용열", "4종"), ("4종", "4종"), ("5종", "5종"), ("내황산", "5종"), ("고로", "고로슬래그"),
-                   ("슬래그", "고로슬래그"), ("플라이", "플라이애시"), ("fly", "플라이애시")]
+PRODUCT_ALIASES = [("고로", "고로슬래그 2종"), ("슬래그", "고로슬래그 2종"), ("1종", "1종"), ("opc", "1종"),
+                   ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("중용열", "2종"), ("2종", "2종"), ("4종", "4종"),
+                   ("5종", "5종"), ("내황산", "5종"), ("플라이", "플라이애시"), ("fly", "플라이애시")]
 
 
 # LIMS 원본 내보내기 파일 제목(A1 등) → QMS 표. 받은 파일을 그대로 폴더에 넣어도 인식한다.
@@ -259,6 +298,7 @@ def enrich(raw: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
         for c in RAW_COLUMNS.get(name, []):        # 일부 항목만 들어온 경우(LIMS 연동 등)에도 파생값 계산이 멈추지 않게 빈 열 보충
             if c not in df.columns:
                 df[c] = None if c in TEXT_COLUMNS else np.nan
+        df, _ = zero_to_nan(df, name)                 # 예전에 0(미시험)으로 저장된 값도 빈 값으로
         if name == "raw_meal" and len(df):
             df = chem.add_raw_meal_moduli(df)
         if name == "clinker" and len(df):
@@ -481,6 +521,7 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
         if "timestamp" not in df.columns:
             errors.append(f"[{SHEET_NAMES[name]}] 채취일(timestamp) 열이 없습니다.")
             continue
+        df = _combine_sample_time(df)                    # 채취일 + 채취시간
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
         df = df[df["timestamp"].notna()]  # 설명 행·빈 행 제거
         if TABLES[name]["by_product"] and "product" not in df.columns:
@@ -497,6 +538,10 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
                 df[c] = df[c].map(_to_minutes)
             if c not in TEXT_COLUMNS:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
+        df, zeros = zero_to_nan(df, name)
+        if zeros:
+            messages.append(f"[{SHEET_NAMES[name]}] 값 0 = '미시험'으로 보고 빈 칸 처리: "
+                            + ", ".join(f"{c} {n}건" for c, n in zeros.items()))
         df = df[["timestamp"] + known]
         if len(df) == 0:
             messages.append(f"[{SHEET_NAMES[name]}] 데이터 행이 없습니다.")

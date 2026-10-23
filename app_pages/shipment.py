@@ -47,10 +47,11 @@ c = colors()
 first, last = df_all["date"].min(), df_all["date"].max()
 
 # ── 공통 필터 ───────────────────────────────────────────────────────────
-prods = [p for p in ["1종", "3종", "2종", "4종", "5종", "고로슬래그"] if p in set(df_all.get("product", []))]
-prods += [p for p in sorted(set(df_all.get("product", []))) if p not in prods]
+have_prod = df_all["product"].value_counts().to_dict() if "product" in df_all else {}
+prods = list(S.PRODUCTS) + [p for p in sorted(have_prod) if p not in S.PRODUCTS]
 f0, f1, f2, f3, f4, f5 = st.columns([0.9, 1.3, 1, 1.2, 1.2, 1])
-product = f0.selectbox("품종", ["전체", *prods], help="1종·3종 등 시멘트 품종. LIMS 품명(예: 1종시멘트 벌크)에서 자동 인식합니다.")
+product = f0.selectbox("품종", ["전체", *prods], format_func=lambda p: p if p == "전체" else f"{p} ({have_prod.get(p, 0)}건)",
+                       help="1종·3종·고로슬래그 2종. LIMS 품명(예: 3종시멘트 벌크, 2종고로슬래그시멘트 벌크)에서 자동 인식합니다.")
 preset = f1.selectbox("기간", ["최근 90일", "최근 180일", "최근 1년", "전체", "직접 지정"], index=1)
 if preset == "직접 지정":
     rng = f1.date_input("기간 지정", value=(max(first, last - pd.Timedelta(days=180)).date(), last.date()), min_value=first.date(),
@@ -79,7 +80,11 @@ st.caption(f"저장 자료 {len(df_all)}건 ({first:%Y-%m-%d} ~ {last:%Y-%m-%d})
            + ("품종: " + " · ".join(f"{k} {v}건" for k, v in n_prod.items()) + " · " if n_prod else "")
            + "제품 구분: " + " · ".join(f"{k} {v}건" for k, v in n_kind.items()))
 if df.empty:
-    st.warning("조건에 맞는 자료가 없습니다. 기간·제품 구분 조건을 바꿔 보세요.")
+    if product != "전체" and not have_prod.get(product):
+        st.warning(f"**{product}** 출하 자료가 아직 없습니다. LIMS에서 {product} 시멘트성적을 내려받아 "
+                   "📥 데이터 관리 화면에서 올려 주세요(품명으로 품종을 자동 인식합니다). 품종을 '전체'로 바꾸면 업로드 탭이 보입니다.")
+    else:
+        st.warning("조건에 맞는 자료가 없습니다. 기간·제품 구분 조건을 바꿔 보세요.")
     st.stop()
 
 tab1, tab2, tab3, tab4, tab6, tab5 = st.tabs(["📊 한눈에", "📈 항목 상세", "🧱 혼합재·강도", "🎯 관리기준(연도별)", "⚓ 양하지", "📥 업로드·데이터"])

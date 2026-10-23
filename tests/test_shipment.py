@@ -402,7 +402,8 @@ def test_shipment_product_split_and_filter():
     from qms import shipment as S
 
     assert S._product("1종시멘트 벌크") == "1종" and S._product("3종시멘트 벌크") == "3종"
-    assert S._product("") == "1종" and S._product("2종고로슬래그시멘트") in ("2종", "고로슬래그")
+    assert S._product("") == "1종" and S._product("2종고로슬래그시멘트 벌크") == S.SLAG2 == "고로슬래그 2종"
+    assert S._product("중용열 2종") == "2종" and set(S.PRODUCTS) == {"1종", "3종", "고로슬래그 2종"}
     head = ["채취일", "품명", "첨가재명칭", "석회석비율", "첨가재비율", "LOI", "Al2O3", "MgO", "SO3(XRF)",
             "압축강도1일(MPa)", "압축강도3일(MPa)", "압축강도7일(MPa)", "압축강도28일(MPa)", "45㎛", "Blaine", "주도", "비고"]
     aoa = [["시멘트성적"], ["검사일"], head,
@@ -413,3 +414,47 @@ def test_shipment_product_split_and_filter():
     f1 = S.apply_filters(sp.records, product="1종")
     assert len(f1) == 1 and f1.iloc[0]["product"] == "1종"
     assert len(S.apply_filters(sp.records, product="전체")) == 2
+
+
+def test_same_day_products_do_not_overwrite(tmp_path, monkeypatch):
+    """LOT 번호가 없는 자료(업데이트 양식)에서 같은 날 1종·3종이 서로 덮어쓰지 않는다."""
+    from qms import shipment as S
+
+    monkeypatch.setattr(S, "SHIP_DB_PATH", tmp_path / "ship.db")
+    head = ["채취일", "품명", "첨가재명칭", "석회석비율", "첨가재비율", "LOI", "Al2O3", "MgO", "SO3(XRF)",
+            "압축강도1일(MPa)", "압축강도3일(MPa)", "압축강도7일(MPa)", "압축강도28일(MPa)", "45㎛", "Blaine", "주도", "비고"]
+    rows = [["2026-10-01", "1종시멘트 벌크", "FA", 3, 5, 1.9, 6.0, 3.8, 2.5, 15, 38, 46, 57.1, 6.6, 3810, 27.5, "수성1호"],
+            ["2026-10-01", "3종시멘트 벌크", "", 0, 0, 1.8, 5.9, 3.7, 2.4, 22, 44, 50, 61.0, 7.0, 4200, 28.0, "수성2호"],
+            ["2026-10-01", "2종고로슬래그시멘트 벌크", "", 0, 0, 1.5, 9.0, 4.0, 2.0, 8, 20, 30, 45.0, 3.0, 4000, 28.0, "수성3호"]]
+    sp = S.parse_aoa([["시멘트성적"], ["검사일"], head, *rows])
+    assert not sp.errors and len(sp.records) == 3
+    S.save_shipment(sp.records)
+    d = S.load_shipment()
+    assert d["product"].value_counts().to_dict() == {"1종": 1, "3종": 1, "고로슬래그 2종": 1}
+
+
+def test_lims_zero_is_missing_and_sample_time_combined():
+    """LIMS '미시험 0'은 빈 값(배합비율·석회석첨가율은 0 유지), 채취일+채취시간을 합쳐 하루 여러 시료를 보존."""
+    import io
+
+    import openpyxl
+
+    from qms import store
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["크링커성적"])
+    ws.append(["검사일 : 2026-10-01"])
+    ws.append(["로트번호", "검사일", "채취일", "품명", "채취시간", "CaO", "SiO2", "F-CaO(습식)", "용중"])
+    ws.append(["L1", "2026-10-01", "2026-10-01", "1종크링커", "01:00", 65.8, 21.3, 1.1, 0])
+    ws.append(["L2", "2026-10-01", "2026-10-01", "1종크링커", "05:00", 65.6, 21.4, 0, 1310])
+    buf = io.BytesIO()
+    wb.save(buf)
+    res = store.parse_upload(buf.getvalue(), "x.xlsx")
+    clk = res.tables["clinker"]
+    assert len(clk) == 2 and list(clk["timestamp"].dt.hour) == [1, 5]          # 같은 날 2개 시료 보존
+    assert pd.isna(clk.iloc[0]["clk_lw"]) and pd.isna(clk.iloc[1]["clk_fcao"])  # 0 → 미시험
+    assert any("미시험" in m for m in res.messages)
+    df = pd.DataFrame({"timestamp": pd.to_datetime(["2026-10-01"]), "rm_mx_iron": [0.0], "rm_cao": [0.0]})
+    out, cnt = store.zero_to_nan(df.copy(), "raw_meal")
+    assert out.iloc[0]["rm_mx_iron"] == 0.0 and pd.isna(out.iloc[0]["rm_cao"]) and cnt == {"rm_cao": 1}

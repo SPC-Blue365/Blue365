@@ -258,7 +258,9 @@ def get_design() -> DesignModels:
 
 
 def refresh() -> None:
+    """저장된 데이터·기준을 다시 읽도록 캐시를 비운다(업로드·자동 반영 직후 화면 갱신용)."""
     st.cache_resource.clear()
+    st.cache_data.clear()
 
 
 # ── 색상(dataviz 기준 팔레트: 계열=파랑, 임계선=상태색) ─────────────────
@@ -575,11 +577,15 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
             st.title(title)
             st.caption(" · ".join(([subtitle] if subtitle else []) + parts))
         with right:
+            if st.button("🔄 새로고침", width="stretch", type="secondary", key="qms_refresh",
+                         help="저장된 데이터(업로드·매일 자동 반영 결과)와 기준을 다시 불러와 이 화면을 새로 계산합니다."):
+                refresh()
+                st.session_state["qms_refreshed"] = True
+                st.rerun()
+            if st.session_state.pop("qms_refreshed", False):
+                st.toast("최신 데이터로 새로고침했습니다.", icon="🔄")
             b1, b2 = st.columns(2)
             with b1.popover("🛠 도구", width="stretch"):
-                if st.button("🔄 새로고침", width="stretch", help="데이터·기준을 다시 불러와 재분석합니다."):
-                    refresh()
-                    st.rerun()
                 st.toggle("📱 태블릿 보기", key="qms_tablet",
                           help="그래프 위를 손가락으로 쓸어도 화면이 스크롤되도록 그래프의 '끌어서 확대'를 끕니다(값은 탭해서 확인). "
                                "태블릿·휴대폰 브라우저나 QR 주소로 접속하면 자동으로 켜집니다.")

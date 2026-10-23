@@ -104,9 +104,11 @@ ROLE_ALIASES = {
     "product": ("품명", "품종", "제품명", "제품구분", "시멘트종류"),
 }
 # 품종(1종/3종 등) — LIMS '1종시멘트 벌크' 같은 품명 문자열에서 뽑는다. 비면 1종으로 본다.
-_PRODUCT_KEYS = (("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("2종", "2종"),
-                 ("중용열", "4종"), ("4종", "4종"), ("내황산", "5종"), ("5종", "5종"), ("고로", "고로슬래그"),
-                 ("슬래그", "고로슬래그"))
+# '2종고로슬래그시멘트'는 포틀랜드 2종(중용열)과 다른 고로슬래그 시멘트(KS L 5210) 2종이므로 따로 구분한다.
+SLAG2 = "고로슬래그 2종"
+PRODUCTS = ("1종", "3종", SLAG2)          # 출하시멘트 화면에 항상 보이는 품종
+_PRODUCT_KEYS = (("고로", SLAG2), ("슬래그", SLAG2), ("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"),
+                 ("hes", "3종"), ("중용열", "2종"), ("2종", "2종"), ("4종", "4종"), ("내황산", "5종"), ("5종", "5종"))
 
 
 def _product(v) -> str:
@@ -515,7 +517,7 @@ def parse_aoa(aoa: list[list], overrides: dict | None = None, header_row: int | 
     df["mix_total"] = df["ls"].fillna(0) + df["addr"].fillna(0)
     df.loc[df["ls"].isna() & df["addr"].isna(), "mix_total"] = np.nan
     # 같은 LOT(없으면 날짜) 중복 → 나중 행이 우선
-    df["_k"] = np.where(df["lot"] != "", df["lot"], df["date"].dt.strftime("%Y-%m-%d"))
+    df["_k"] = _key_series(df)
     dup = int(df.duplicated("_k", keep="last").sum())
     df = df.drop_duplicates("_k", keep="last").drop(columns="_k").sort_values("date").reset_index(drop=True)
     known_ships = {n for n, c in ship_count.items() if c >= 5}
@@ -589,7 +591,10 @@ def shipment_mtime() -> float:
 
 
 def _key_series(df: pd.DataFrame) -> pd.Series:
-    return pd.Series(np.where(df["lot"].fillna("") != "", df["lot"], df["date"].dt.strftime("%Y-%m-%d")), index=df.index)
+    """중복 판정 키: LOT 번호, 없으면 '날짜|품종'(같은 날 1종·3종이 서로 덮어쓰지 않게)."""
+    prod = df["product"].fillna("1종").astype(str) if "product" in df else pd.Series("1종", index=df.index)
+    by_date = df["date"].dt.strftime("%Y-%m-%d") + "|" + prod
+    return pd.Series(np.where(df["lot"].fillna("") != "", df["lot"], by_date), index=df.index)
 
 
 def load_shipment_raw() -> pd.DataFrame:

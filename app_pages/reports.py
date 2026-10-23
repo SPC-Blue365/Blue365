@@ -53,14 +53,30 @@ def _build(kind: str, start, end, org: str, cache_key: tuple):
 key = (len(ctx.events), str(store.period()), len(edf))
 b1, b2 = st.columns(2)
 stamp = datetime.now().strftime("%Y%m%d")
-with b1:
-    st.download_button("⬇️ 경영진 보고 PPT", _build("ppt", start, end, org, key),
-                       file_name=f"품질관리현황보고_{start:%Y%m%d}_{end:%Y%m%d}.pptx",
-                       mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                       type="primary", width="stretch")
-with b2:
-    st.download_button("⬇️ 데이터 엑셀", _build("xlsx", start, end, org, key),
-                       file_name=f"품질데이터_{start:%Y%m%d}_{end:%Y%m%d}.xlsx",
-                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
+
+
+def _safe(kind: str):
+    """보고서 생성이 실패해도 화면 전체가 멈추지 않게 — 원인을 보여 주고 나머지 기능은 계속 쓸 수 있게 한다."""
+    try:
+        return _build(kind, start, end, org, key), None
+    except Exception as exc:  # noqa: BLE001 - 사용자에게 원인 표시
+        import traceback
+        return None, (f"{type(exc).__name__}: {exc}", traceback.format_exc())
+
+
+for col, kind, label, fname, mime, primary in (
+        (b1, "ppt", "⬇️ 경영진 보고 PPT", f"품질관리현황보고_{start:%Y%m%d}_{end:%Y%m%d}.pptx",
+         "application/vnd.openxmlformats-officedocument.presentationml.presentation", True),
+        (b2, "xlsx", "⬇️ 데이터 엑셀", f"품질데이터_{start:%Y%m%d}_{end:%Y%m%d}.xlsx",
+         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", False)):
+    with col:
+        data, err = _safe(kind)
+        if data is not None:
+            st.download_button(label, data, file_name=fname, mime=mime, type="primary" if primary else "secondary",
+                               width="stretch")
+        else:
+            st.error(f"{label.split()[-1]} 생성 실패 — {err[0][:300]}  \n보고 기간을 바꿔 보거나, 아래 원문을 캡처해 보내 주세요.")
+            with st.expander("오류 원문(개발 확인용)"):
+                st.code(err[1][-3000:])
 st.caption("개별 이상 건의 상세 보고서(5단계 분석 PPT)는 🧪 원인 진단·솔루션 화면에서 만들 수 있습니다. "
            "보고서의 원인 판정은 데이터 기반 1차 판단이며, 회의에서 현장 확인 결과로 확정하십시오.")
