@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from qms import ship_dest, shipment
+from qms import incoming, ship_dest, shipment
 from qms.alerts import detect_events
 from qms.diagnosis import diagnose
 from qms.lims import load_lims_config, sync
@@ -66,6 +66,15 @@ def import_folder(folder: Path) -> list[str]:
                 msg = f"선박 기본 양하지 {ship_dest.save_master(merged)}척"
             shutil.move(str(f), done / f.name)
             logs.append(f"[반영] {f.name}: {msg}")
+            continue
+        if incoming.looks_like_incoming(content, f.name):           # 원료·석고·고령토 인수검사
+            p = incoming.parse_incoming(content, f.name)
+            if p.errors:
+                logs.append(f"[오류] {f.name}: {'; '.join(p.errors)}")
+                continue
+            n = incoming.save_incoming(p.rows)
+            shutil.move(str(f), done / f.name)
+            logs.append(f"[반영] {f.name}: {p.kind} 인수검사 누계 {n}행")
             continue
         res = parse_upload(content, f.name)
         if res.errors:

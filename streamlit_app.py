@@ -34,6 +34,7 @@ L.apply_shipment(LABELS)
 pages = [
     st.Page("app_pages/overview.py", title=L.menu("종합 현황", LABELS), icon="🏠", default=True),
     st.Page("app_pages/shipment.py", title=L.menu("출하시멘트", LABELS), icon="🚢"),
+    st.Page("app_pages/incoming.py", title=L.menu("인수검사", LABELS), icon="📦"),
     st.Page("app_pages/charts.py", title=L.menu("그래프 보기", LABELS), icon="📉"),
     st.Page("app_pages/monitor.py", title=L.menu("공정 모니터링", LABELS), icon="📈"),
     st.Page("app_pages/spc.py", title=L.menu("SPC", LABELS), icon="📊"),

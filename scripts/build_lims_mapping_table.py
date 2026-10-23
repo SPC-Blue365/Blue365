@@ -110,7 +110,7 @@ def build():
         raw_title = str(ws.cell(1, 1).value or "").strip() or "LIMS 파일"
         hdr = [ws.cell(3, c).value for c in range(1, ws.max_column + 1) if ws.cell(3, c).value]
         if any(s in t for s in TITLE_SKIP):
-            summ.append([raw_title, "현재 QMS 표 없음(인수검사)", 0, f"열 {len(hdr)}개", "보류"])
+            summ.append([raw_title, "📦 인수검사 화면(별도 관리)", f"메타+성분 {len(hdr)}열", "합부·거래처·성분 저장", "✅ 반영"])
             _style(summ, sr, 5, GREY, (1, 2))
             sr += 1
             continue

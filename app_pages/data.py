@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from qms import ship_dest, shipment
+from qms import incoming, ship_dest, shipment
 from qms.demo import SCENARIOS, generate_demo_data, scenario_table
 from qms.standards import TABLES
 from qms.store import SHEET_NAMES, clear_db, load_raw, parse_upload, save_raw, template_workbook
@@ -41,6 +41,20 @@ with tab1:
     elif up is not None and ship_dest.looks_like_dest(up.getvalue(), up.name):
         st.info("**선박 양하지** 자료입니다(선박·양하지[·일자] 열). 출하시멘트 기록에 자동으로 연결됩니다.", icon="⚓")
         dest_panel(up.getvalue(), up.name, key="data_dest")
+    elif up is not None and incoming.looks_like_incoming(up.getvalue(), up.name):
+        p = incoming.parse_incoming(up.getvalue(), up.name)
+        for m in p.messages:
+            st.write("•", m)
+        for e in p.errors:
+            st.error(e)
+        if not p.rows.empty:
+            st.info(f"**{p.kind} 인수검사** 자료입니다. 전용 화면(📦 인수검사)에서 관리합니다.", icon="📦")
+            with st.expander(f"미리보기 ({len(p.rows)}행)"):
+                st.dataframe(p.rows.drop(columns=["성분"]).head(50), hide_index=True)
+            if st.button("저장", type="primary", key="save_incoming"):
+                n = incoming.save_incoming(p.rows)
+                st.success(f"인수검사 저장 완료(누계 {n}행). 📦 인수검사 화면에서 확인하세요.")
+                st.rerun()
     elif up is not None:
         res = parse_upload(up.getvalue(), up.name)
         for m in res.messages:
