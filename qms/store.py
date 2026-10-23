@@ -78,10 +78,11 @@ COL_ALIASES: dict[str, dict[str, str]] = {
     "clinker": {**_COMMON_ALIASES, "cao": "clk_cao", "sio2": "clk_sio2", "al2o3": "clk_al2o3", "fe2o3": "clk_fe2o3",
                 "mgo": "clk_mgo", "so3(xrf)": "clk_so3", "so3": "clk_so3", "k2o": "clk_k2o", "na2o": "clk_na2o",
                 "f-cao(습식)": "clk_fcao", "f-cao(xrf)": "clk_fcao", "fcao": "clk_fcao", "유리석회": "clk_fcao",
-                "자유석회": "clk_fcao", "용적비중": "clk_lw", "리터중량": "clk_lw", "lw": "clk_lw"},
+                "자유석회": "clk_fcao", "용적비중": "clk_lw", "리터중량": "clk_lw", "용중": "clk_lw", "lw": "clk_lw"},
     "cement": {**_COMMON_ALIASES, "blaine": "cem_blaine", "분말도": "cem_blaine", "45㎛": "cem_r45", "45um": "cem_r45",
                "so3(xrf)": "cem_so3", "so3": "cem_so3", "loi": "cem_loi", "강열감량": "cem_loi", "mgo": "cem_mgo",
-               "석회석비율": "cem_ls", "석회석": "cem_ls", "밀피드": "cem_mill_feed", "밀출구온도": "cem_mill_temp"},
+               "석회석비율": "cem_ls", "석회석": "cem_ls", "밀피드": "cem_mill_feed", "밀출구온도": "cem_mill_temp",
+               "원료온도": "cem_mill_temp"},
     "physical": {**_COMMON_ALIASES, "초결시간(분)": "phy_ist", "초결시간": "phy_ist", "초결": "phy_ist",
                  "종결시간(hh:mm)": "phy_fst", "종결시간": "phy_fst", "종결": "phy_fst", "autoclave": "phy_autoclave",
                  "오토클레이브": "phy_autoclave", "압축강도1일(mpa)": "phy_s1", "압축강도1일": "phy_s1", "강도1일": "phy_s1",
@@ -100,6 +101,13 @@ COL_ALIASES: dict[str, dict[str, str]] = {
 PRODUCT_ALIASES = [("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("2종", "2종"),
                    ("중용열", "4종"), ("4종", "4종"), ("5종", "5종"), ("내황산", "5종"), ("고로", "고로슬래그"),
                    ("슬래그", "고로슬래그"), ("플라이", "플라이애시"), ("fly", "플라이애시")]
+
+
+# LIMS 원본 내보내기 파일 제목(A1 등) → QMS 표. 받은 파일을 그대로 폴더에 넣어도 인식한다.
+# 인수검사(원료·석고·고령토)는 현재 QMS 공정 표가 없어 매핑하지 않는다(무시).
+LIMS_TITLE_MAP = [("조합원료", "raw_meal"), ("크링커", "clinker"), ("클링커", "clinker"),
+                  ("시멘트공정", "cement"), ("시멘트성적", "physical")]
+LIMS_SKIP_TITLES = ("인수검사", "고령토", "석고")
 
 
 def _norm_header(s) -> str:
@@ -122,6 +130,27 @@ def normalize_product(v) -> str:
         if _norm_header(key) in s:
             return code
     return str(v).strip()
+
+
+def detect_lims_sheet(raw: pd.DataFrame) -> tuple[str, int] | None:
+    """LIMS 원본 내보내기 시트(제목 1행 + 머리글 3행 구조) → (QMS 표, 머리글행 번호). 아니면 None."""
+    nrows = min(len(raw), 8)
+    ts_aliases = {k for k, v in _COMMON_ALIASES.items() if v == "timestamp"}
+    hrow = None
+    for r in range(nrows):
+        cells = [_norm_header(v) for v in raw.iloc[r].tolist()]
+        if sum(bool(c) for c in cells) >= 6 and any(c in ts_aliases for c in cells):
+            hrow = r
+            break
+    if hrow is None:
+        return None
+    title = " ".join(_norm_header(v) for r in range(hrow) for v in raw.iloc[r].tolist() if _norm_header(v))
+    if any(skip in title for skip in (_norm_header(s) for s in LIMS_SKIP_TITLES)):
+        return None
+    for key, tbl in LIMS_TITLE_MAP:
+        if _norm_header(key) in title:
+            return tbl, hrow
+    return None
 
 
 def apply_column_aliases(df: pd.DataFrame, name: str) -> pd.DataFrame:
@@ -412,12 +441,26 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
             return UploadResult({}, [], [f"CSV 파일을 읽을 수 없습니다: {exc}"])
     else:
         try:
-            sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
+            sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, header=None)
         except Exception as exc:  # noqa: BLE001 - 사용자에게 원인 메시지 표시
             return UploadResult({}, [], [f"엑셀 파일을 읽을 수 없습니다: {exc}"])
-        frames = {name_by_sheet[s]: df for s, df in sheets.items() if s in name_by_sheet}
+        frames = {}
+        for s, raw in sheets.items():
+            if raw.empty:
+                continue
+            if s in name_by_sheet:                     # 템플릿 시트(시트명으로 인식, 머리글 1행)
+                tbl, hrow = name_by_sheet[s], 0
+            else:                                      # LIMS 원본 파일(제목+머리글 3행으로 인식)
+                det = detect_lims_sheet(raw)
+                if det is None:
+                    continue
+                tbl, hrow = det
+            df = raw.iloc[hrow + 1:].copy()
+            df.columns = [c if c is not None else "" for c in raw.iloc[hrow].tolist()]
+            frames.setdefault(tbl, df)                 # 같은 표가 여러 시트면 첫 시트만
         if not frames:
-            return UploadResult({}, [], ["인식 가능한 시트가 없습니다. 템플릿의 시트명(생료/킬른/클링커/시멘트/물성/클링커일일)을 사용하세요."])
+            return UploadResult({}, [], [("인식 가능한 시트가 없습니다. 템플릿 시트명(생료/클링커/시멘트/물성/클링커일일) "
+                                          "또는 LIMS 원본 파일(조합원료·크링커·시멘트공정·시멘트성적)을 사용하세요.")])
 
     for name, df in frames.items():
         df = apply_column_aliases(df.copy(), name)      # LIMS·한글 머리글 → 내부 열 이름

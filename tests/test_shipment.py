@@ -357,3 +357,41 @@ def test_generated_update_workbook_ingests():
     aoa = [[ws.cell(r, c).value for c in range(1, ws.max_column + 1)] for r in range(1, ws.max_row + 1)]
     sp = S.parse_aoa(aoa)
     assert not sp.errors and sp.report["rows"] > 0 and not sp.report["missing"]
+
+
+def test_lims_raw_export_auto_detected_by_title():
+    """LIMS 원본 파일(제목 1행 + 머리글 3행)을 복사·붙여넣기 없이 제목으로 표를 자동 인식한다."""
+    import io
+
+    import openpyxl
+
+    from qms import store
+
+    def lims_book(title, headers, row):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append([title])
+        ws.append(["검사일 : 2026-10-01 ~ 2026-10-23"])
+        ws.append(headers)
+        ws.append(row)
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
+    clk = lims_book("크링커성적", ["로트번호", "검사일", "채취일", "품명", "CaO", "SiO2", "F-CaO(습식)", "용중", "C3S"],
+                    ["L1", "2026-10-01", "2026-10-01", "1종크링커", 65.8, 21.3, 1.1, 1320, 62.0])
+    res = store.parse_upload(clk, "크링커성적.xlsx")
+    assert not res.errors and "clinker" in res.tables
+    row0 = res.tables["clinker"].iloc[0]
+    assert row0["clk_cao"] == 65.8 and row0["clk_fcao"] == 1.1 and row0["clk_lw"] == 1320
+    assert "clk_c3s" not in res.tables["clinker"].columns          # C3S 는 QMS 가 계산(저장 안 함)
+
+    rm = lims_book("6_7호조합원료성적", ["로트번호", "채취일", "품명", "CaO", "SiO2", "Al2O3", "Fe2O3", "LSF"],
+                   ["L", "2026-10-02", "1/2종조합원료", 43.1, 13.6, 3.3, 2.1, 95.0])
+    assert store.parse_upload(rm, "조합원료.xlsx").tables["raw_meal"].iloc[0]["rm_cao"] == 43.1
+
+    # 인수검사 류는 QMS 표가 없어 무시
+    gyp = lims_book("석고류 인수검사", ["로트번호", "채취일", "품명", "SO3(XRF)", "순도"],
+                    ["L", "2026-10-03", "탈황석고", 44.0, 95.0])
+    r2 = store.parse_upload(gyp, "석고.xlsx")
+    assert not r2.tables and "인식 가능한 시트가 없습니다" in r2.errors[0]
