@@ -306,3 +306,54 @@ def test_chart_page_starts_on_source_with_data():
     assert at2.radio(key="cv_source").value == "출하시멘트"
     assert at2.multiselect(key="cv_ship_keys").value == ["s1", "s3", "s7", "s28"]
     S.clear_shipment()
+
+
+def test_lims_korean_headers_and_setting_time_minutes():
+    """LIMS·한글 머리글(채취일·CaO·압축강도28일 등)을 공정 데이터 업로드에서 인식하고, 품명·응결시간을 정규화한다."""
+    import io
+
+    import openpyxl
+
+    from qms import store
+
+    assert store.normalize_product("1종시멘트 벌크") == "1종"
+    assert store.normalize_product("조강 3종") == "3종"
+    assert store._to_minutes("06:33") == 393 and store._to_minutes(262) == 262
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "클링커"
+    ws.append(["채취일", "CaO", "SiO2", "F-CaO(습식)"])
+    ws.append(["2026-10-01", 65.8, 21.3, 1.2])
+    ws2 = wb.create_sheet("물성")
+    ws2.append(["채취일", "품명", "초결시간(분)", "종결시간(HH:MM)", "압축강도28일(MPa)", "6가크롬"])
+    ws2.append(["2026-10-01", "1종시멘트 벌크", 262, "06:33", 57.1, 0.1])
+    buf = io.BytesIO()
+    wb.save(buf)
+    res = store.parse_upload(buf.getvalue(), "x.xlsx")
+    assert not res.errors
+    clk = res.tables["clinker"]
+    assert {"clk_cao", "clk_sio2", "clk_fcao"} <= set(clk.columns) and clk.iloc[0]["clk_cao"] == 65.8
+    phy = res.tables["physical"]
+    assert phy.iloc[0]["product"] == "1종" and phy.iloc[0]["phy_fst"] == 393 and phy.iloc[0]["phy_s28"] == 57.1
+    assert phy.iloc[0]["phy_crvi"] == 0.1
+
+
+def test_generated_update_workbook_ingests():
+    """배포용 업데이트 양식(scripts/build_lims_update_workbook.py 결과)을 QMS가 빈 오류로 읽어들인다."""
+    from pathlib import Path
+
+    from qms import shipment as S
+    from qms import store
+
+    f = Path(__file__).resolve().parent.parent / "docs" / "Blue365_QMS_업데이트_양식.xlsx"
+    if not f.exists():
+        import pytest
+        pytest.skip("양식 파일이 아직 생성되지 않음")
+    res = store.parse_upload(f.read_bytes(), str(f))
+    assert not res.errors
+    assert {"raw_meal", "clinker", "cement", "physical", "xrd"} <= set(res.tables)
+    import openpyxl
+    ws = openpyxl.load_workbook(f, data_only=True)["출하시멘트"]
+    aoa = [[ws.cell(r, c).value for c in range(1, ws.max_column + 1)] for r in range(1, ws.max_row + 1)]
+    sp = S.parse_aoa(aoa)
+    assert not sp.errors and sp.report["rows"] > 0 and not sp.report["missing"]

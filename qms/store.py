@@ -39,11 +39,105 @@ RAW_COLUMNS: dict[str, list[str]] = {
     "xrd": ["xrd_alite", "xrd_belite", "xrd_c3a", "xrd_c4af", "xrd_fcao", "xrd_periclase", "clk_cr", "clk_crvi"],
 }
 TEXT_COLUMNS = {"product", "sand_lot", "operator"}
+TIME_MIN_COLUMNS = {"phy_ist", "phy_fst"}      # 응결시간: 분 단위 저장('HH:MM'·시각으로 들어오면 변환)
+
+
+def _to_minutes(v):
+    """'06:33'·datetime.time → 분. 이미 숫자면 그대로. 변환 불가면 그대로 둬 to_numeric 이 NaN 처리."""
+    import datetime as _dt
+
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return v
+    if isinstance(v, _dt.time):
+        return v.hour * 60 + v.minute
+    if isinstance(v, _dt.datetime):
+        return v.hour * 60 + v.minute
+    s = str(v).strip()
+    if ":" in s:
+        parts = s.split(":")
+        try:
+            return int(parts[0]) * 60 + int(parts[1])
+        except (ValueError, IndexError):
+            return v
+    return v
 
 # 엑셀 템플릿 시트명 ↔ 테이블
 SHEET_NAMES = {"raw_meal": "생료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성",
                "xrd": "클링커일일"}
 SHEET_ALIASES = {"XRD": "xrd", "클링커XRD": "xrd"}
+
+# LIMS·사람이 읽는 한글 머리글 → 내부 열 이름. LIMS에서 받은 엑셀을 그대로 붙여넣어도 인식한다.
+# 같은 이름(예: CaO)이 표마다 다른 열로 가므로 표별로 따로 둔다. 키는 정규화해 비교한다.
+_COMMON_ALIASES = {"채취일": "timestamp", "시료채취일": "timestamp", "채취일시": "timestamp", "검사일": "timestamp",
+                   "검사일자": "timestamp", "일자": "timestamp", "날짜": "timestamp", "품명": "product", "품종": "product"}
+COL_ALIASES: dict[str, dict[str, str]] = {
+    "raw_meal": {**_COMMON_ALIASES, "cao": "rm_cao", "sio2": "rm_sio2", "al2o3": "rm_al2o3", "fe2o3": "rm_fe2o3",
+                 "mgo": "rm_mgo", "so3(xrf)": "rm_so3", "so3": "rm_so3", "k2o": "rm_k2o", "na2o": "rm_na2o",
+                 "90㎛": "rm_r90", "90um": "rm_r90", "r90": "rm_r90", "200㎛": "rm_r200", "200um": "rm_r200",
+                 "r200": "rm_r200", "loi": "rm_loi", "강열감량": "rm_loi"},
+    "clinker": {**_COMMON_ALIASES, "cao": "clk_cao", "sio2": "clk_sio2", "al2o3": "clk_al2o3", "fe2o3": "clk_fe2o3",
+                "mgo": "clk_mgo", "so3(xrf)": "clk_so3", "so3": "clk_so3", "k2o": "clk_k2o", "na2o": "clk_na2o",
+                "f-cao(습식)": "clk_fcao", "f-cao(xrf)": "clk_fcao", "fcao": "clk_fcao", "유리석회": "clk_fcao",
+                "자유석회": "clk_fcao", "용적비중": "clk_lw", "리터중량": "clk_lw", "lw": "clk_lw"},
+    "cement": {**_COMMON_ALIASES, "blaine": "cem_blaine", "분말도": "cem_blaine", "45㎛": "cem_r45", "45um": "cem_r45",
+               "so3(xrf)": "cem_so3", "so3": "cem_so3", "loi": "cem_loi", "강열감량": "cem_loi", "mgo": "cem_mgo",
+               "석회석비율": "cem_ls", "석회석": "cem_ls", "밀피드": "cem_mill_feed", "밀출구온도": "cem_mill_temp"},
+    "physical": {**_COMMON_ALIASES, "초결시간(분)": "phy_ist", "초결시간": "phy_ist", "초결": "phy_ist",
+                 "종결시간(hh:mm)": "phy_fst", "종결시간": "phy_fst", "종결": "phy_fst", "autoclave": "phy_autoclave",
+                 "오토클레이브": "phy_autoclave", "압축강도1일(mpa)": "phy_s1", "압축강도1일": "phy_s1", "강도1일": "phy_s1",
+                 "압축강도3일(mpa)": "phy_s3", "압축강도3일": "phy_s3", "강도3일": "phy_s3",
+                 "압축강도7일(mpa)": "phy_s7", "압축강도7일": "phy_s7", "강도7일": "phy_s7",
+                 "압축강도28일(mpa)": "phy_s28", "압축강도28일": "phy_s28", "강도28일": "phy_s28",
+                 "6가크롬": "phy_crvi", "6가크롬(cr6)": "phy_crvi", "crvi": "phy_crvi", "담당자": "operator",
+                 "표준사lot": "sand_lot", "표준사": "sand_lot"},
+    "xrd": {**_COMMON_ALIASES, "alite": "xrd_alite", "alite(c3s)": "xrd_alite", "c3s": "xrd_alite",
+            "belite": "xrd_belite", "belite(c2s)": "xrd_belite", "c2s": "xrd_belite", "c3a": "xrd_c3a",
+            "c4af": "xrd_c4af", "fcao": "xrd_fcao", "f-cao": "xrd_fcao", "유리석회": "xrd_fcao",
+            "periclase": "xrd_periclase", "주기석": "xrd_periclase", "mgo결정": "xrd_periclase",
+            "총크롬": "clk_cr", "총크롬(cr)": "clk_cr", "6가크롬": "clk_crvi", "6가크롬(cr6)": "clk_crvi"},
+}
+# 품명(품종) 값 정규화: LIMS '1종시멘트 벌크' 등 → '1종'
+PRODUCT_ALIASES = [("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("2종", "2종"),
+                   ("중용열", "4종"), ("4종", "4종"), ("5종", "5종"), ("내황산", "5종"), ("고로", "고로슬래그"),
+                   ("슬래그", "고로슬래그"), ("플라이", "플라이애시"), ("fly", "플라이애시")]
+
+
+def _norm_header(s) -> str:
+    """머리글 정규화: NFKC(㎛·아래첨자 변환) · 소문자 · 공백/기호 제거(㎛, um 은 보존)."""
+    import re
+    import unicodedata
+
+    if s is None:
+        return ""
+    t = unicodedata.normalize("NFKC", str(s)).strip().lower().replace("μ", "u").replace("µ", "u")
+    return re.sub(r"\s+", "", t)
+
+
+def normalize_product(v) -> str:
+    """품명 문자열을 품종 코드로. 이미 '1종' 등이면 그대로, LIMS '1종시멘트 벌크'면 '1종'."""
+    if v is None:
+        return ""
+    s = _norm_header(v)
+    for key, code in PRODUCT_ALIASES:
+        if _norm_header(key) in s:
+            return code
+    return str(v).strip()
+
+
+def apply_column_aliases(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    """엑셀 머리글(내부 이름 또는 LIMS·한글 이름)을 내부 열 이름으로 바꾼다. 매핑이 겹치면 먼저 나온 열을 쓴다."""
+    amap = COL_ALIASES.get(name, {})
+    valid = set(RAW_COLUMNS.get(name, [])) | {"timestamp", "product"}
+    rename, seen = {}, set()
+    for col in df.columns:
+        if col in valid and col not in seen:                       # 이미 내부 이름
+            seen.add(col)
+            continue
+        key = amap.get(_norm_header(col))
+        if key and key not in seen:
+            rename[col] = key
+            seen.add(key)
+    return df.rename(columns=rename) if rename else df
 
 
 def _connect(path: Path) -> sqlite3.Connection:
@@ -326,20 +420,24 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
             return UploadResult({}, [], ["인식 가능한 시트가 없습니다. 템플릿의 시트명(생료/킬른/클링커/시멘트/물성/클링커일일)을 사용하세요."])
 
     for name, df in frames.items():
+        df = apply_column_aliases(df.copy(), name)      # LIMS·한글 머리글 → 내부 열 이름
         if "timestamp" not in df.columns:
-            errors.append(f"[{SHEET_NAMES[name]}] timestamp 열이 없습니다.")
+            errors.append(f"[{SHEET_NAMES[name]}] 채취일(timestamp) 열이 없습니다.")
             continue
-        df = df.copy()
         df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
         df = df[df["timestamp"].notna()]  # 설명 행·빈 행 제거
         if TABLES[name]["by_product"] and "product" not in df.columns:
-            errors.append(f"[{SHEET_NAMES[name]}] product(품종) 열이 필요합니다.")
+            errors.append(f"[{SHEET_NAMES[name]}] 품명(product) 열이 필요합니다.")
             continue
+        if "product" in df.columns:
+            df["product"] = df["product"].map(normalize_product)
         known = [c for c in RAW_COLUMNS[name] if c in df.columns]
         unknown = [c for c in df.columns if c not in RAW_COLUMNS[name] and c != "timestamp"]
         if unknown:
             messages.append(f"[{SHEET_NAMES[name]}] 인식하지 않은 열은 무시: {', '.join(map(str, unknown))}")
         for c in known:
+            if c in TIME_MIN_COLUMNS:                       # 응결시간: 'HH:MM'·시각값도 분으로
+                df[c] = df[c].map(_to_minutes)
             if c not in TEXT_COLUMNS:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
         df = df[["timestamp"] + known]
