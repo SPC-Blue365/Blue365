@@ -27,13 +27,18 @@ ALERT_DB_PATH = DATA_DIR / "alerts.db"   # 알림 처리상태는 별도 DB(데�
 # 업로드·저장 대상 원 데이터 열(파생값 제외)
 RAW_COLUMNS: dict[str, list[str]] = {
     "raw_meal": ["rm_cao", "rm_sio2", "rm_al2o3", "rm_fe2o3", "rm_mgo", "rm_so3", "rm_k2o", "rm_na2o",
-                 "rm_r90", "rm_r200", "rm_loi"],
+                 "rm_r90", "rm_r200", "rm_loi",
+                 # 조합원료 투입비율(%) — 생료 배합. 라인(4·5/6·7)에 따라 쓰는 원료가 다르다.
+                 "rm_mx_lime", "rm_mx_shale", "rm_mx_silica", "rm_mx_silica2", "rm_mx_ash", "rm_mx_sago",
+                 "rm_mx_iron", "rm_mx_sand", "rm_mx_total"],
     "kiln": ["kiln_feed", "coal_rate", "kiln_bzt", "kiln_o2", "kiln_co", "kiln_torque", "kiln_calc_temp",
              "kiln_sec_air"],
     "clinker": ["clk_cao", "clk_sio2", "clk_al2o3", "clk_fe2o3", "clk_mgo", "clk_so3", "clk_k2o", "clk_na2o",
                 "clk_fcao", "clk_lw"],
     "cement": ["product", "cem_blaine", "cem_r45", "cem_so3", "cem_loi", "cem_mgo", "cem_ls", "cem_mill_feed",
-               "cem_mill_temp"],
+               "cem_mill_temp",
+               # 완성시멘트(밀 출구) 화학성분 — LSF·SM·IM 참고지수 계산에 사용
+               "cem_cao", "cem_sio2", "cem_al2o3", "cem_fe2o3", "cem_na2o", "cem_k2o", "cem_cl", "cem_fcao"],
     "physical": ["product", "phy_ist", "phy_fst", "phy_autoclave", "phy_s1", "phy_s3", "phy_s7", "phy_s28",
                  "phy_crvi", "lab_temp", "lab_rh", "lab_cure_temp", "sand_lot", "operator"],
     "xrd": ["xrd_alite", "xrd_belite", "xrd_c3a", "xrd_c4af", "xrd_fcao", "xrd_periclase", "clk_cr", "clk_crvi"],
@@ -74,7 +79,12 @@ COL_ALIASES: dict[str, dict[str, str]] = {
     "raw_meal": {**_COMMON_ALIASES, "cao": "rm_cao", "sio2": "rm_sio2", "al2o3": "rm_al2o3", "fe2o3": "rm_fe2o3",
                  "mgo": "rm_mgo", "so3(xrf)": "rm_so3", "so3": "rm_so3", "k2o": "rm_k2o", "na2o": "rm_na2o",
                  "90㎛": "rm_r90", "90um": "rm_r90", "r90": "rm_r90", "200㎛": "rm_r200", "200um": "rm_r200",
-                 "r200": "rm_r200", "loi": "rm_loi", "강열감량": "rm_loi"},
+                 "r200": "rm_r200", "loi": "rm_loi", "강열감량": "rm_loi",
+                 "석회석(%)": "rm_mx_lime", "석회석": "rm_mx_lime", "경석(%)": "rm_mx_shale", "shale(%)": "rm_mx_shale",
+                 "규석(%)": "rm_mx_silica", "규석": "rm_mx_silica", "실리카(%)": "rm_mx_silica2", "실리카": "rm_mx_silica2",
+                 "석탄회(%)": "rm_mx_ash", "coalshale(%)": "rm_mx_ash", "삼고(%)": "rm_mx_sago",
+                 "고품위삼고(%)": "rm_mx_sago", "철질(%)": "rm_mx_iron", "철질": "rm_mx_iron", "주물사(%)": "rm_mx_sand",
+                 "주물사": "rm_mx_sand", "투입량계(%)": "rm_mx_total", "투입량계": "rm_mx_total"},
     "clinker": {**_COMMON_ALIASES, "cao": "clk_cao", "sio2": "clk_sio2", "al2o3": "clk_al2o3", "fe2o3": "clk_fe2o3",
                 "mgo": "clk_mgo", "so3(xrf)": "clk_so3", "so3": "clk_so3", "k2o": "clk_k2o", "na2o": "clk_na2o",
                 "f-cao(습식)": "clk_fcao", "f-cao(xrf)": "clk_fcao", "fcao": "clk_fcao", "유리석회": "clk_fcao",
@@ -82,7 +92,9 @@ COL_ALIASES: dict[str, dict[str, str]] = {
     "cement": {**_COMMON_ALIASES, "blaine": "cem_blaine", "분말도": "cem_blaine", "45㎛": "cem_r45", "45um": "cem_r45",
                "so3(xrf)": "cem_so3", "so3": "cem_so3", "loi": "cem_loi", "강열감량": "cem_loi", "mgo": "cem_mgo",
                "석회석비율": "cem_ls", "석회석": "cem_ls", "밀피드": "cem_mill_feed", "밀출구온도": "cem_mill_temp",
-               "원료온도": "cem_mill_temp"},
+               "원료온도": "cem_mill_temp", "cao": "cem_cao", "sio2": "cem_sio2", "al2o3": "cem_al2o3",
+               "fe2o3": "cem_fe2o3", "na2o": "cem_na2o", "k2o": "cem_k2o", "cl(xrf)": "cem_cl", "cl": "cem_cl",
+               "f-cao(xrf)": "cem_fcao", "f-cao(습식)": "cem_fcao", "fcao": "cem_fcao"},
     "physical": {**_COMMON_ALIASES, "초결시간(분)": "phy_ist", "초결시간": "phy_ist", "초결": "phy_ist",
                  "종결시간(hh:mm)": "phy_fst", "종결시간": "phy_fst", "종결": "phy_fst", "autoclave": "phy_autoclave",
                  "오토클레이브": "phy_autoclave", "압축강도1일(mpa)": "phy_s1", "압축강도1일": "phy_s1", "강도1일": "phy_s1",
@@ -251,6 +263,8 @@ def enrich(raw: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
             df = chem.add_raw_meal_moduli(df)
         if name == "clinker" and len(df):
             df = chem.add_clinker_derived(df)
+        if name == "cement" and len(df) and df.get("cem_cao") is not None and df["cem_cao"].notna().any():
+            df = chem.add_raw_meal_moduli(df, prefix="cem_")   # 완성시멘트 LSF·SM·IM(참고) — Bogue 는 석고·석회석 영향으로 미산출
         out[name] = df
     return out
 
