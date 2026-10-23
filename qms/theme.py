@@ -23,7 +23,7 @@ THEME_CSS = f"""<style>
 [data-testid="stHeader"] .rc-overflow-item-rest [data-testid="stTopNavSection"] p::after {{ content:"더보기"; font-size:14px; }}
 
 /* 본문 폭·여백: 제목 띠가 화면 끝까지 닿도록 좌우 여백을 변수로 관리 */
-[data-testid="stMainBlockContainer"] {{ max-width:100% !important; padding:3.75rem var(--q-pad) 3rem !important; }}
+[data-testid="stMainBlockContainer"] {{ max-width:1480px !important; margin-left:auto !important; margin-right:auto !important; padding:3.75rem var(--q-pad) 3rem !important; }}
 .st-key-qms_hero {{ background:var(--q-navy); color:#fff; margin:0 calc(-1 * var(--q-pad)) 1.2rem; width:calc(100% + 2 * var(--q-pad)) !important; max-width:none !important; padding:1.1rem var(--q-pad) 1.5rem; }}
 .st-key-qms_hero * {{ color:#fff; }}
 .st-key-qms_hero h1 {{ font-size:2rem; font-weight:800; padding:.15rem 0 .2rem; margin:0; }}

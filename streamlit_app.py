@@ -46,7 +46,6 @@ pages = [
     st.Page("app_pages/calculator.py", title=L.menu("화학 계산기", LABELS), icon="🧮"),
     st.Page("app_pages/reports.py", title=L.menu("보고서", LABELS), icon="📑"),
     st.Page("app_pages/data.py", title=L.menu("데이터 관리", LABELS), icon="📥"),
-    st.Page("app_pages/lims.py", title=L.menu("LIMS", LABELS), icon="🔗"),
     st.Page("app_pages/settings.py", title=L.menu("설정", LABELS), icon="⚙️"),
 ]
 

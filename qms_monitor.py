@@ -86,9 +86,53 @@ def import_folder(folder: Path) -> list[str]:
     return logs
 
 
+def sync_file(path: Path) -> list[str]:
+    """고정된 한 개 워크북(공정·출하시멘트·인수검사 시트 혼재 가능)을 제자리에서 읽어 반영한다(파일을 옮기지 않음).
+
+    매일 같은 파일(예: Blue365_QMS.xlsx)을 덮어써 두면 작업 스케줄러가 이 함수로 다시 읽어 반영한다.
+    """
+    import io
+
+    import openpyxl
+
+    logs: list[str] = []
+    if not path.is_file():
+        return [f"[오류] 파일이 없습니다: {path}"]
+    content = path.read_bytes()
+
+    res = parse_upload(content, path.name)                       # 공정 데이터(템플릿·LIMS 원본 시트)
+    if res.tables:
+        counts = save_raw(res.tables, replace=False)
+        logs.append("공정 데이터: " + ", ".join(f"{k} {v}행" for k, v in counts.items()))
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    except Exception as exc:  # noqa: BLE001
+        logs.append(f"[경고] 출하·인수검사 시트 확인 실패: {exc}")
+        return logs
+    for ws in wb.worksheets:
+        aoa = [list(r) for r in ws.iter_rows(values_only=True)]
+        if not aoa:
+            continue
+        if shipment.detect(aoa):                                 # 출하시멘트 시트
+            sp = shipment.parse_aoa(aoa)
+            if not sp.errors:
+                r = shipment.save_shipment(sp.records)
+                logs.append(f"출하시멘트({ws.title}): 추가 {r['added']}·갱신 {r['updated']}")
+                continue
+        ip = incoming.parse_incoming_df(pd.DataFrame(aoa))        # 인수검사 시트
+        if not ip.errors and not ip.rows.empty:
+            n = incoming.save_incoming(ip.rows)
+            logs.append(f"인수검사({ws.title}·{ip.kind}): 누계 {n}행")
+    if not logs:
+        logs.append("반영할 데이터를 찾지 못했습니다(시트·머리글 확인).")
+    return logs
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Blue365 QMS 무인 감시")
     ap.add_argument("--import-dir", type=Path, help="자동 반영할 데이터 파일 폴더")
+    ap.add_argument("--sync-file", type=Path, help="고정 워크북 1개를 제자리에서 반영(매일 같은 파일 갱신용)")
     ap.add_argument("--since-hours", type=float, default=24, help="최근 N시간 내 종료된 이벤트만 발송(기본 24)")
     ap.add_argument("--dry-run", action="store_true", help="발송하지 않고 대상만 출력")
     ap.add_argument("--sync-lims", action="store_true", help="LIMS 결과 증분 동기화 후 감시")
@@ -106,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.import_dir:
         for line in import_folder(args.import_dir):
+            print(line)
+
+    if args.sync_file:
+        for line in sync_file(args.sync_file):
             print(line)
 
     store = load_store()

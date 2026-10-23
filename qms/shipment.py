@@ -101,7 +101,22 @@ ROLE_ALIASES = {
     "additive": ("첨가재명칭", "첨가재", "첨가재명", "혼화재명칭", "혼합재명칭"),
     "ships": ("비고", "선박", "선박명", "모선", "출항선박"),
     "lot": ("limslotno", "erplotno", "lotno", "로트번호"),
+    "product": ("품명", "품종", "제품명", "제품구분", "시멘트종류"),
 }
+# 품종(1종/3종 등) — LIMS '1종시멘트 벌크' 같은 품명 문자열에서 뽑는다. 비면 1종으로 본다.
+_PRODUCT_KEYS = (("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("2종", "2종"),
+                 ("중용열", "4종"), ("4종", "4종"), ("내황산", "5종"), ("5종", "5종"), ("고로", "고로슬래그"),
+                 ("슬래그", "고로슬래그"))
+
+
+def _product(v) -> str:
+    s = norm(v)
+    if not s:
+        return "1종"
+    for key, code in _PRODUCT_KEYS:
+        if norm(key) in s:
+            return code
+    return str(v).strip() or "1종"
 META_COLS = ["date", "lot", "additive", "mix_total", "n_ship", "ships", "ship_ok", "product_kind", "dest_hint", "ship_raw"]
 KINDS = ("일반", "저염", "저염·일반 혼재")
 LOW_CL_WORD = "저염"
@@ -458,6 +473,7 @@ def parse_aoa(aoa: list[list], overrides: dict | None = None, header_row: int | 
             continue
         rec = {"date": d, "lot": "" if _blank(get("lot")) else str(get("lot")).strip(),
                "additive": "" if _blank(get("additive")) else str(get("additive")).strip(),
+               "product": _product(get("product")),
                "ship_raw": re.sub(r"\s+", " ", str(get("ships"))).strip() if not _blank(get("ships")) else ""}
         for it in ITEMS:
             if it.key not in idx:
@@ -592,10 +608,12 @@ def load_shipment_raw() -> pd.DataFrame:
 def save_shipment(new: pd.DataFrame) -> dict:
     """같은 LOT(없으면 날짜)는 새 파일 값으로 갱신하되, 새 파일에서 빈 칸(미시험)인 항목은 기존 값을 유지한다."""
     old = load_shipment_raw()
-    cols = ["date", "lot", "additive", *ITEM_COLS, "mix_total", "n_ship", "ships", "ship_ok", "product_kind", "dest_hint",
-            "ship_hints", "ship_raw", "extra"]
+    cols = ["date", "lot", "additive", "product", *ITEM_COLS, "mix_total", "n_ship", "ships", "ship_ok", "product_kind",
+            "dest_hint", "ship_hints", "ship_raw", "extra"]
     if "ship_hints" not in new:
         new = new.assign(ship_hints="{}")
+    if "product" not in new:
+        new = new.assign(product="1종")
     new = new[cols].copy()
     new["_k"] = _key_series(new)
     if old.empty or "lot" not in old:
@@ -648,6 +666,10 @@ def load_shipment() -> pd.DataFrame:
     df = load_shipment_raw()
     if df.empty or "extra" not in df:
         return df
+    if "product" not in df.columns:                 # 예전 저장본 호환: 품종 없으면 1종
+        df["product"] = "1종"
+    else:
+        df["product"] = df["product"].fillna("1종").replace("", "1종")
     ex = df["extra"].apply(lambda s: json.loads(s) if isinstance(s, str) and s else {})
     exdf = pd.DataFrame(list(ex)).add_prefix("x:") if len(ex) else pd.DataFrame(index=df.index)
     return pd.concat([df.drop(columns="extra"), exdf], axis=1)
@@ -735,12 +757,14 @@ def limits_frame(std: dict, df: pd.DataFrame, key: str) -> pd.DataFrame:
 
 # ── 필터·판정·통계 ──────────────────────────────────────────────────────
 def apply_filters(df: pd.DataFrame, start=None, end=None, additive: str | None = None, mode: str = "전체",
-                  kind: str = "일반 제품만", dest: str | None = None) -> pd.DataFrame:
+                  kind: str = "일반 제품만", dest: str | None = None, product: str | None = None) -> pd.DataFrame:
     m = pd.Series(True, index=df.index)
     if start is not None:
         m &= df["date"] >= pd.Timestamp(start)
     if end is not None:
         m &= df["date"] <= pd.Timestamp(end)
+    if product and product != "전체" and "product" in df:
+        m &= df["product"] == product
     if additive:
         m &= df["additive"] == additive
     if mode == "1모선 단독 시험만":

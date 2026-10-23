@@ -47,7 +47,10 @@ c = colors()
 first, last = df_all["date"].min(), df_all["date"].max()
 
 # ── 공통 필터 ───────────────────────────────────────────────────────────
-f1, f2, f3, f4, f5 = st.columns([1.3, 1, 1.2, 1.2, 1])
+prods = [p for p in ["1종", "3종", "2종", "4종", "5종", "고로슬래그"] if p in set(df_all.get("product", []))]
+prods += [p for p in sorted(set(df_all.get("product", []))) if p not in prods]
+f0, f1, f2, f3, f4, f5 = st.columns([0.9, 1.3, 1, 1.2, 1.2, 1])
+product = f0.selectbox("품종", ["전체", *prods], help="1종·3종 등 시멘트 품종. LIMS 품명(예: 1종시멘트 벌크)에서 자동 인식합니다.")
 preset = f1.selectbox("기간", ["최근 90일", "최근 180일", "최근 1년", "전체", "직접 지정"], index=1)
 if preset == "직접 지정":
     rng = f1.date_input("기간 지정", value=(max(first, last - pd.Timedelta(days=180)).date(), last.date()), min_value=first.date(),
@@ -69,10 +72,12 @@ dest = f5.selectbox("양하지", ["전체", *dest_opts], format_func=lambda d: d
                     help="선박별 양하지(운항 기록 → 비고 괄호 → 선박 기본값 순)로 자동 연결. 한 날짜에 양하지가 다른 배가 섞이면 ‘복수 양하지’.")
 add_sel = None if additive == "전체" else additive
 dest_sel = None if dest == "전체" else dest
-df = S.apply_filters(df_all, start, end, add_sel, mode, kind, dest_sel)
+df = S.apply_filters(df_all, start, end, add_sel, mode, kind, dest_sel, product=product)
+n_prod = df_all["product"].value_counts().to_dict() if "product" in df_all else {}
 n_kind = df_all["product_kind"].value_counts().to_dict()
 st.caption(f"저장 자료 {len(df_all)}건 ({first:%Y-%m-%d} ~ {last:%Y-%m-%d}) → 현재 조건 **{len(df)}건**. "
-           f"제품 구분: " + " · ".join(f"{k} {v}건" for k, v in n_kind.items()))
+           + ("품종: " + " · ".join(f"{k} {v}건" for k, v in n_prod.items()) + " · " if n_prod else "")
+           + "제품 구분: " + " · ".join(f"{k} {v}건" for k, v in n_kind.items()))
 if df.empty:
     st.warning("조건에 맞는 자료가 없습니다. 기간·제품 구분 조건을 바꿔 보세요.")
     st.stop()

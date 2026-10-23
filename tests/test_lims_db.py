@@ -169,30 +169,6 @@ def test_password_is_never_written_to_config_or_log(lims_sqlite, monkeypatch, tm
     monkeypatch.setenv("QMS_LIMS_PASSWORD", "env-pw")
     assert lims._secret("password") == "env-pw" and lims.secret_source("password") == "환경변수 QMS_LIMS_PASSWORD"
     assert rep.sources
-
-
-def test_lims_page_db_mode_renders(lims_sqlite):
-    cfg = lims.LimsConfig(enabled=True, mode="db", db=lims_sqlite, sources=list(_sources(lims_sqlite)))
-    lims.save_lims_config(cfg)
-    try:
-        at = AppTest.from_file(APP, default_timeout=240)
-        at.run()
-        at.switch_page("app_pages/lims.py")
-        at.run()
-        assert not at.exception, [e.value for e in at.exception]
-        labels = [t.label for t in at.tabs]
-        assert labels[:2] == ["① 연결 설정", "② 가져올 곳·항목 매칭"]
-        assert any(b.label == "🩺 연결 확인" for b in at.button)
-        assert any(b.label == "💾 가져올 곳 저장" for b in at.button)
-        assert at.text_input(key="ldb_sqlite").value == lims_sqlite["database"]
-        next(b for b in at.button if b.label == "🩺 연결 확인").click()
-        at.run()
-        assert not at.exception and any("접속 성공" in s.value for s in at.success)
-    finally:
-        lims.LIMS_CONFIG_PATH.unlink(missing_ok=True)
-        S.clear_shipment()
-
-
 def test_partial_items_from_lims_do_not_break_derived_values():
     """LIMS에서 일부 항목(예: 클링커 CaO만)만 들어와도 LSF·SM 등 파생값 계산과 화면이 멈추지 않는다."""
     from qms.store import build_store

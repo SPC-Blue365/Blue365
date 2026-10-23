@@ -138,6 +138,15 @@
 - 매칭표 갱신: 조합원료 19열·시멘트공정 15열 인식, 인수검사는 '📦 인수검사 화면' 표시.
 - 미결: 합부판정이 LIMS에 비어있는 경우가 많음(원료·고령토) → 관리기준 대비 자동 판정 로직은 공장 기준 확정 후. 시멘트성적→물성+출하 중복 반영 정리.
 
+**완료(15차, 2026-10-23): 사용자 피드백 일괄 반영(출하 1종/3종·화면폭·LIMS 제거·적용확인·인수검사 기준·자동반영 스케줄)**
+- 출하시멘트 품종(1종/3종): shipment ROLE_ALIASES에 product 추가, _product()로 품명→품종, save/load/apply_filters·화면 품종 필터. (1종 70·3종 16 확인)
+- 화면 가로폭: theme.py stMainBlockContainer max-width 1480px 중앙정렬(제목 띠는 전폭 유지).
+- LIMS 탭 제거: streamlit_app 메뉴에서 lims 제외, app_pages/lims.py 삭제. qms/lims*·ui_lims 모듈은 qms_monitor --sync-lims 용으로 유지. 관련 테스트(test_app PAGES·test_lims_db 페이지렌더) 갱신.
+- 데이터 적용 확인: data.py '데이터 현황'에 출하시멘트·인수검사 행 추가, 적용 버튼 라벨 '✅ ...적용(저장)', 저장 결과를 session_state last_apply로 상단에 지속 표시.
+- 인수검사 사내 기준·자동판정: incoming.load/save_standards(data/incoming_standards.json), judge_one/judge_frame(JUDGE_ITEMS=SiO2·Al2O3·Fe2O3·MgO·SO3·K2O·수분, 대상 품명 포함어·min/max). 화면에 data_editor 기준 설정 + 최종판정(LIMS 우선, 없으면 자동) + 판정사유. parse_incoming_df 분리.
+- 자동반영 스케줄: qms_monitor --sync-file(고정 워크북 제자리 반영, 공정+출하+인수검사 시트). 자동반영_실행.bat / 자동반영_매일등록.bat(cp949·CRLF·-text, schtasks DAILY 06:00, %~dp0data\Blue365_QMS.xlsx). 미검증: 실제 Windows 작업 스케줄러 등록(Wine 불가).
+- 테스트 164건. 브라우저 렌더 확인(출하 품종필터·인수검사 자동판정·데이터 현황).
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).

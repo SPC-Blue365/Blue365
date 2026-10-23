@@ -17,14 +17,25 @@ ctx = get_ctx()
 reg, store = ctx.registry, ctx.store
 page_header(ctx, "📥 데이터 관리")
 
+if st.session_state.get("last_apply"):
+    st.success("✅ " + st.session_state["last_apply"])
+
 st.subheader("데이터 현황")
+st.caption("업로드·자동 반영이 제대로 됐는지 여기서 바로 확인하세요. 행 수와 종료일(가장 최근 데이터)이 바뀌면 반영된 것입니다.")
 rows = []
 for name, meta in TABLES.items():
     df = store.tables.get(name, pd.DataFrame())
     rows.append({"구분": meta["label"], "측정 주기": meta["freq"], "품종 구분": "예" if meta["by_product"] else "-",
                  "행 수": len(df), "시작": df["timestamp"].min() if len(df) else None,
                  "종료": df["timestamp"].max() if len(df) else None})
-st.dataframe(pd.DataFrame(rows), hide_index=True, column_config={
+_ship = shipment.load_shipment()
+rows.append({"구분": "🚢 출하시멘트", "측정 주기": "1일", "품종 구분": "예", "행 수": len(_ship),
+             "시작": _ship["date"].min() if len(_ship) else None, "종료": _ship["date"].max() if len(_ship) else None})
+_inc = incoming.load_incoming()
+rows.append({"구분": "📦 인수검사", "측정 주기": "입고시", "품종 구분": "-", "행 수": len(_inc),
+             "시작": pd.to_datetime(_inc["채취일"]).min() if len(_inc) else None,
+             "종료": pd.to_datetime(_inc["채취일"]).max() if len(_inc) else None})
+st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
     "시작": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),
     "종료": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm")})
 if ctx.demo:
@@ -51,9 +62,10 @@ with tab1:
             st.info(f"**{p.kind} 인수검사** 자료입니다. 전용 화면(📦 인수검사)에서 관리합니다.", icon="📦")
             with st.expander(f"미리보기 ({len(p.rows)}행)"):
                 st.dataframe(p.rows.drop(columns=["성분"]).head(50), hide_index=True)
-            if st.button("저장", type="primary", key="save_incoming"):
+            if st.button("✅ 인수검사 적용(저장)", type="primary", key="save_incoming"):
                 n = incoming.save_incoming(p.rows)
-                st.success(f"인수검사 저장 완료(누계 {n}행). 📦 인수검사 화면에서 확인하세요.")
+                st.session_state["last_apply"] = (f"{pd.Timestamp.now():%Y-%m-%d %H:%M} · {p.kind} 인수검사 "
+                                                  f"{len(p.rows)}행 반영 → 누계 {n}행. 📦 인수검사 화면에서 확인하세요.")
                 st.rerun()
     elif up is not None:
         res = parse_upload(up.getvalue(), up.name)
@@ -66,13 +78,15 @@ with tab1:
                 with st.expander(f"미리보기: {SHEET_NAMES[name]} ({len(df)}행)"):
                     st.dataframe(df.head(50), hide_index=True)
             replace_demo = st.checkbox("데모 데이터를 지우고 업로드 데이터만 사용", value=ctx.demo)
-            if st.button("저장", type="primary"):
+            if st.button("✅ 공정 데이터 적용(저장)", type="primary"):
                 if replace_demo:
                     clear_db()
                     DEMO_FLAG.unlink(missing_ok=True)
                 counts = save_raw(res.tables, replace=False)
                 refresh()
-                st.success("저장 완료: " + ", ".join(f"{SHEET_NAMES[k]} {v}행" for k, v in counts.items()))
+                st.session_state["last_apply"] = (f"{pd.Timestamp.now():%Y-%m-%d %H:%M} · 공정 데이터 반영 → "
+                                                  + ", ".join(f"{SHEET_NAMES[k]} {v}행" for k, v in counts.items())
+                                                  + ". 공정 모니터링·그래프 보기 화면에서 확인하세요.")
                 st.rerun()
 
 with tab2:

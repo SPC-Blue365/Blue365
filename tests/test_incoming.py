@@ -53,3 +53,29 @@ def test_process_file_is_not_incoming():
     proc = _book("시멘트성적", ["채취일", "품명", "압축강도28일(MPa)"], [["2026-09-01", "1종시멘트 벌크", 57.1]])
     assert not I.looks_like_incoming(proc, "시멘트성적.xlsx")
     assert I.parse_incoming(proc, "x.xlsx").errors
+
+
+def test_incoming_standards_auto_judge(tmp_path, monkeypatch):
+    """사내 기준(항목·최소/최대)으로 LIMS 합부판정이 빈 건을 자동 합/불 판정한다."""
+    monkeypatch.setattr(I, "STD_PATH", tmp_path / "std.json")
+    I.save_standards([{"대상": "규석", "항목": "SiO2", "min": 88, "max": None},
+                      {"대상": "", "항목": "수분", "min": None, "max": 5},
+                      {"대상": "", "항목": "엉뚱", "min": 1, "max": 2}])        # 목록 밖 항목은 저장에서 제외
+    assert len(I.load_standards()) == 2
+    # 규석 SiO2 85 → 불합격
+    assert I.judge_one({"SiO2": 85.0, "수분": 3.0}, "규석", I.load_standards())[0] == I.FAIL
+    # 규석 SiO2 90, 수분 6 → 불합격(수분 초과, SO3(XRF) 변형도 매칭 확인은 아래)
+    assert I.judge_one({"SiO2": 90.0, "수분": 6.0}, "규석", I.load_standards())[0] == I.FAIL
+    # 규석 SiO2 90, 수분 3 → 합격
+    assert I.judge_one({"SiO2": 90.0, "수분": 3.0}, "규석", I.load_standards())[0] == I.PASS
+    # 기준이 안 걸리는 품목 → 보류('')
+    assert I.judge_one({"CaO": 50.0}, "석회석", I.load_standards())[0] == ""
+
+    import pandas as pd
+    df = pd.DataFrame([{"검사종류": "원료·부원료", "채취일": pd.Timestamp("2026-10-01"), "거래처": "A", "품명": "규석",
+                        "합부판정": "", "비고": "", "성분": '{"SiO2": 85.0, "수분": 2.0}'},
+                       {"검사종류": "원료·부원료", "채취일": pd.Timestamp("2026-10-02"), "거래처": "B", "품명": "규석",
+                        "합부판정": "합격", "비고": "", "성분": '{"SiO2": 80.0}'}])  # LIMS 판정 우선
+    j = I.judge_frame(df, I.load_standards())
+    assert list(j["자동판정"]) == [I.FAIL, I.FAIL]
+    assert list(j["최종판정"]) == [I.FAIL, "합격"]       # 2행은 LIMS '합격'이 우선

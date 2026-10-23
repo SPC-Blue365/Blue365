@@ -19,6 +19,10 @@ import pandas as pd
 from .standards import DATA_DIR
 
 INCOMING_DB_PATH = DATA_DIR / "incoming.db"
+STD_PATH = DATA_DIR / "incoming_standards.json"
+
+# 합부판정에 쓸 수 있는 항목(사용자가 이 중에서 골라 기준값 입력)
+JUDGE_ITEMS = ["SiO2", "Al2O3", "Fe2O3", "MgO", "SO3", "K2O", "수분"]
 
 # 제목(정규화) → 검사종류 이름
 TITLE_KIND = [("조합원료", None), ("크링커", None), ("클링커", None), ("시멘트", None),   # 공정 파일은 여기서 제외
@@ -104,6 +108,10 @@ def parse_incoming(file_bytes: bytes, filename: str = "") -> IncomingParse:
         raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=0, header=None)
     except Exception as exc:  # noqa: BLE001
         return IncomingParse(pd.DataFrame(), "", [], [f"엑셀을 읽을 수 없습니다: {exc}"])
+    return parse_incoming_df(raw)
+
+
+def parse_incoming_df(raw: pd.DataFrame) -> IncomingParse:
     hrow = _find_header(raw)
     if hrow is None:
         return IncomingParse(pd.DataFrame(), "", [], ["머리글(채취일/검사일)을 찾지 못했습니다."])
@@ -212,3 +220,84 @@ def summary(df: pd.DataFrame | None = None) -> dict:
     fails = df[df["합부판정"] == FAIL][["채취일", "검사종류", "거래처", "품명", "비고"]].sort_values("채취일", ascending=False)
     return {"total": total, "pass": npass, "fail": nfail,
             "fail_rate": round(100 * nfail / total, 1) if total else 0.0, "by_kind": by_kind, "fails": fails}
+
+
+# ── 사내 인수검사 기준·자동 합부판정 ──────────────────────────────────────
+def load_standards() -> list[dict]:
+    """기준 규칙 목록: [{'대상': 품명 포함 키워드(빈값=전체), '항목': 'SiO2', 'min': 88, 'max': None}]."""
+    if STD_PATH.exists():
+        try:
+            d = json.loads(STD_PATH.read_text(encoding="utf-8"))
+            return d if isinstance(d, list) else d.get("rules", [])
+        except (OSError, json.JSONDecodeError):
+            pass
+    return []
+
+
+def save_standards(rules: list[dict]) -> None:
+    STD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    clean = []
+    for r in rules:
+        item = (r.get("항목") or "").strip()
+        if item not in JUDGE_ITEMS:
+            continue
+        lo, hi = r.get("min"), r.get("max")
+        if lo is None and hi is None:
+            continue
+        clean.append({"대상": (r.get("대상") or "").strip(), "항목": item,
+                      "min": None if lo is None else float(lo), "max": None if hi is None else float(hi)})
+    STD_PATH.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _comp_value(comp: dict, item: str):
+    """성분(dict)에서 항목값 찾기 — 'SO3' 는 'SO3(XRF)' 같은 변형도 매칭."""
+    target = _norm(item)
+    for k, v in comp.items():
+        nk = _norm(k)
+        if nk == target or nk.startswith(target):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def judge_one(comp: dict, product: str, rules: list[dict]) -> tuple[str, list[str]]:
+    """기준 대비 자동 판정 → ('합격'/'불합격'/'', 사유목록). 적용된 기준이 하나도 없으면 ''."""
+    applied, fails = 0, []
+    pn = _norm(product)
+    for r in rules:
+        tgt = _norm(r.get("대상", ""))
+        if tgt and tgt not in pn:
+            continue
+        val = _comp_value(comp, r["항목"])
+        if val is None:
+            continue
+        applied += 1
+        lo, hi = r.get("min"), r.get("max")
+        if lo is not None and val < lo:
+            fails.append(f"{r['항목']} {val} < 최소 {lo}")
+        if hi is not None and val > hi:
+            fails.append(f"{r['항목']} {val} > 최대 {hi}")
+    if applied == 0:
+        return "", []
+    return (FAIL if fails else PASS), fails
+
+
+def judge_frame(df: pd.DataFrame, rules: list[dict] | None = None) -> pd.DataFrame:
+    """자동판정·최종판정·판정사유 열을 더한다. 최종판정 = LIMS 합부판정 우선, 없으면 자동판정."""
+    rules = load_standards() if rules is None else rules
+    out = df.copy()
+    autos, reasons = [], []
+    for _, r in out.iterrows():
+        try:
+            comp = json.loads(r["성분"]) if isinstance(r.get("성분"), str) and r["성분"] else {}
+        except (json.JSONDecodeError, TypeError):
+            comp = {}
+        j, why = judge_one(comp, str(r.get("품명", "")), rules)
+        autos.append(j)
+        reasons.append(" / ".join(why))
+    out["자동판정"] = autos
+    out["판정사유"] = reasons
+    out["최종판정"] = out["합부판정"].where(out["합부판정"].isin([PASS, FAIL]), pd.Series(autos, index=out.index))
+    return out
