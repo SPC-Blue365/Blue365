@@ -1,6 +1,5 @@
 """조회 전용 HTML 현황판: 데이터만으로(Streamlit 없이) 단일 파일 생성·오프라인 그래프 포함·기록본 보관."""
 
-from pathlib import Path
 
 import pandas as pd
 
@@ -43,9 +42,10 @@ def test_shipment_ks_limits_are_per_product(tmp_path, monkeypatch):
 
 
 def test_monitor_snapshot_option(tmp_path):
-    import qms_monitor
     import contextlib
     import io
+
+    import qms_monitor
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         qms_monitor.main(["--snapshot", str(tmp_path / "snap"), "--dry-run"])
