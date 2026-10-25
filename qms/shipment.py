@@ -712,35 +712,56 @@ def _clean(v):
     return None if np.isnan(f) else f
 
 
-def ks_default(key: str) -> dict:
+# 품종별 KS 참고값(1종과 다른 항목만). 3종 = KS L 5201 조강 포틀랜드 시멘트(공정 데이터 기준표 standards.py 와 같은 값).
+KS_BY_PRODUCT = {
+    "3종": {"so3": (None, 4.5), "blaine": (3300.0, None), "s1": (10.0, None), "s3": (20.0, None), "s7": (32.5, None),
+            "s28": (47.5, None)},
+}
+# 고로슬래그 시멘트(KS L 5210)는 KS 값을 아직 확인·입력하지 않았다 → 1종 값을 잘못 쓰지 않도록 KS 판정 생략(사내 기준만).
+KS_NOT_SET = {SLAG2}
+
+
+def years_key(product: str | None = None) -> str:
+    """품종별 기준 저장 위치. 1종은 예전 저장본('years')을 그대로 쓴다(하위 호환)."""
+    return "years" if product in (None, "", "1종", "전체") else f"years@{product}"
+
+
+def ks_default(key: str, product: str | None = None) -> dict:
+    if product in KS_NOT_SET:
+        return {"ks_min": None, "ks_max": None}
+    over = KS_BY_PRODUCT.get(product or "", {}).get(key)
+    if over is not None:
+        return {"ks_min": over[0], "ks_max": over[1]}
     it = BY_KEY.get(key)
     return {"ks_min": it.ks_min if it else None, "ks_max": it.ks_max if it else None}
 
 
-def effective_limits(std: dict, key: str, year: int) -> dict:
-    """해당 연도의 기준. 그 연도에 저장된 값이 없으면 직전 연도 값을 승계, 없으면 KS 참고값만."""
-    years = sorted(int(y) for y in std.get("years", {}) if str(y).isdigit())
+def effective_limits(std: dict, key: str, year: int, product: str | None = None) -> dict:
+    """해당 연도·품종의 기준. 그 연도에 저장된 값이 없으면 직전 연도 값을 승계, 없으면 KS 참고값만."""
+    yk = years_key(product)
+    years = sorted(int(y) for y in std.get(yk, {}) if str(y).isdigit())
     for y in reversed([y for y in years if y <= year]):
-        e = std["years"][str(y)].get(key)
+        e = std[yk][str(y)].get(key)
         if e is not None:
             return {**{f: _clean(e.get(f)) for f in LIMIT_FIELDS}, "note": e.get("note", ""), "from_year": y}
-    return {"lsl": None, "usl": None, "target": None, **ks_default(key), "note": "", "from_year": None}
+    return {"lsl": None, "usl": None, "target": None, **ks_default(key, product), "note": "", "from_year": None}
 
 
-def year_table(std: dict, year: int) -> pd.DataFrame:
+def year_table(std: dict, year: int, product: str | None = None) -> pd.DataFrame:
     """편집용 표(항목별 1행). 저장 안 된 연도는 직전 연도 값을 승계해 보여 준다."""
     rows = []
+    yk = years_key(product)
     for it in ITEMS:
-        e = effective_limits(std, it.key, year)
-        own = str(year) in std.get("years", {}) and it.key in std["years"][str(year)]
+        e = effective_limits(std, it.key, year, product)
+        own = str(year) in std.get(yk, {}) and it.key in std[yk][str(year)]
         rows.append({"key": it.key, "항목": it.name, "단위": it.unit, "KS 하한": e["ks_min"], "KS 상한": e["ks_max"],
                      "사내 하한": e["lsl"], "사내 상한": e["usl"], "목표": e["target"], "비고(변경 사유 등)": e["note"],
                      "출처": f"{year}년 입력" if own else (f"{e['from_year']}년 승계" if e["from_year"] else "KS 참고값")})
     return pd.DataFrame(rows)
 
 
-def save_year(std: dict, year: int, table: pd.DataFrame) -> dict:
-    ys = std.setdefault("years", {})
+def save_year(std: dict, year: int, table: pd.DataFrame, product: str | None = None) -> dict:
+    ys = std.setdefault(years_key(product), {})
     ent = {}
     for _, r in table.iterrows():
         ent[r["key"]] = {"ks_min": _clean(r["KS 하한"]), "ks_max": _clean(r["KS 상한"]), "lsl": _clean(r["사내 하한"]),
@@ -753,10 +774,14 @@ def save_year(std: dict, year: int, table: pd.DataFrame) -> dict:
 
 
 def limits_frame(std: dict, df: pd.DataFrame, key: str) -> pd.DataFrame:
-    """각 행(채취일의 연도)에 맞는 기준값을 붙인 표 — 연도가 바뀌면 기준선도 계단식으로 바뀐다."""
+    """각 행(채취일의 연도·품종)에 맞는 기준값을 붙인 표 — 연도가 바뀌면 기준선도 계단식으로 바뀐다."""
     years = df["date"].dt.year
-    cache = {y: effective_limits(std, key, int(y)) for y in years.dropna().unique()}
-    out = pd.DataFrame({f: years.map(lambda y, f=f: cache[y][f] if y in cache else None) for f in LIMIT_FIELDS}, index=df.index)
+    prods = df["product"].fillna("1종").astype(str) if "product" in df else pd.Series("1종", index=df.index)
+    cache: dict = {}
+    for y, p in set(zip(years.dropna().astype(int), prods)):
+        cache[(y, p)] = effective_limits(std, key, int(y), p)
+    out = pd.DataFrame({f: [cache[(int(y), p)][f] if (not pd.isna(y) and (int(y), p) in cache) else None
+                            for y, p in zip(years, prods)] for f in LIMIT_FIELDS}, index=df.index)
     return out.astype(float)
 
 

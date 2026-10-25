@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 title Blue365 QMS - 자동 반영(지정 엑셀 1회 반영)
-rem 매일 지정한 엑셀 1개를 읽어 품질 DB에 반영한다(작업 스케줄러가 호출). 파일은 옮기지 않는다.
+rem 매일 지정한 엑셀 1개를 읽어 품질 DB에 반영하고, 조회 전용 HTML 현황판(현황판\Blue365_현황_최신.html)을 만든다.
 
 set "SYNCFILE=%~1"
 if "%SYNCFILE%"=="" set "SYNCFILE=%~dp0data\Blue365_QMS.xlsx"
@@ -20,7 +20,7 @@ if not exist "%SYNCFILE%" goto nofile
 if not exist "%~dp0logs" mkdir "%~dp0logs"
 
 echo [%date% %time%] 반영 시작: "%SYNCFILE%" >> "%~dp0logs\auto_sync.log"
-%PY% "%~dp0qms_monitor.py" --sync-file "%SYNCFILE%" >> "%~dp0logs\auto_sync.log" 2>&1
+%PY% "%~dp0qms_monitor.py" --sync-file "%SYNCFILE%" --snapshot "%~dp0현황판" >> "%~dp0logs\auto_sync.log" 2>&1
 set "RC=%ERRORLEVEL%"
 echo [%date% %time%] 종료 코드 %RC% >> "%~dp0logs\auto_sync.log"
 echo. >> "%~dp0logs\auto_sync.log"

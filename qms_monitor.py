@@ -133,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Blue365 QMS 무인 감시")
     ap.add_argument("--import-dir", type=Path, help="자동 반영할 데이터 파일 폴더")
     ap.add_argument("--sync-file", type=Path, help="고정 워크북 1개를 제자리에서 반영(매일 같은 파일 갱신용)")
+    ap.add_argument("--snapshot", type=Path, help="조회 전용 HTML 현황판을 이 폴더에 저장(최신본 + 기록/날짜본)")
     ap.add_argument("--since-hours", type=float, default=24, help="최근 N시간 내 종료된 이벤트만 발송(기본 24)")
     ap.add_argument("--dry-run", action="store_true", help="발송하지 않고 대상만 출력")
     ap.add_argument("--sync-lims", action="store_true", help="LIMS 결과 증분 동기화 후 감시")
@@ -155,6 +156,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.sync_file:
         for line in sync_file(args.sync_file):
             print(line)
+
+    if args.snapshot:
+        try:
+            from qms.snapshot import write_snapshot
+            paths = write_snapshot(args.snapshot)
+            print(f"[현황판] 저장: {paths[0]} (기록본 {paths[1].name})")
+        except Exception as exc:  # noqa: BLE001 - 현황판 실패가 알림 발송을 막지 않게
+            print(f"[현황판] 만들지 못했습니다: {type(exc).__name__}: {exc}")
 
     store = load_store()
     if store.is_empty():

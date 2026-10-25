@@ -168,3 +168,4 @@ cython_debug/
 #.idea/
 # 대시보드 빌드 생성물(빌드 시 재생성)
 dashboard/src/data.json
+현황판/

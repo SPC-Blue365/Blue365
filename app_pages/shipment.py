@@ -286,33 +286,39 @@ with tab4:
     st.markdown("공장 **사내 관리기준**을 연도별로 직접 입력하세요. KS 기준은 참고값으로 미리 들어 있으며 이 표에서 고칠 수도 있습니다. "
                 "채취일의 연도에 해당하는 기준으로 판정하므로, 연도가 바뀌어도 지난 자료는 그 해 기준으로 평가됩니다.")
     st.caption(f"KS 참고값 출처: {S.KS_REF}. 사내 기준은 비워 두면 ‘기준 없음’입니다.")
-    saved_years = sorted(int(y) for y in std.get("years", {}))
+    y0, y1, y2 = st.columns([1, 1, 2.6])
+    std_prod = y0.selectbox("품종", list(S.PRODUCTS), index=list(S.PRODUCTS).index(product) if product in S.PRODUCTS else 0,
+                            key="ship_std_prod", help="품종마다 KS·사내 기준이 다릅니다(예: 3종 SO₃ 4.5%, 28일 47.5MPa).")
+    ykey = S.years_key(std_prod)
+    if std_prod in S.KS_NOT_SET:
+        st.info(f"{std_prod}는 KS 참고값(KS L 5210)을 아직 넣지 않았습니다. 1종 값으로 잘못 판정하지 않도록 KS 판정은 생략하고, "
+                "아래 표의 KS·사내 칸에 입력한 값으로만 판정합니다.", icon="ℹ️")
+    saved_years = sorted(int(y) for y in std.get(ykey, {}))
     data_years = sorted(int(y) for y in df_all["date"].dt.year.unique())
-    y1, y2 = st.columns([1, 3])
     year = int(y1.number_input("적용 연도", min_value=2000, max_value=2100, value=int(last.year), step=1))
     y2.caption("저장된 연도: " + (", ".join(map(str, saved_years)) if saved_years else "없음") + " · 자료가 있는 연도: " + ", ".join(map(str, data_years))
                + " · 저장하지 않은 연도는 직전 연도 기준을 승계합니다.")
-    table = S.year_table(std, year)
+    table = S.year_table(std, year, std_prod)
     ed = st.data_editor(
-        table, hide_index=True, key=f"ship_std_{year}_{len(saved_years)}", disabled=["key", "항목", "단위", "출처"], height=min(36 * (len(table) + 1) + 4, 700),
+        table, hide_index=True, key=f"ship_std_{std_prod}_{year}_{len(saved_years)}", disabled=["key", "항목", "단위", "출처"], height=min(36 * (len(table) + 1) + 4, 700),
         column_config={"key": None, **{col: st.column_config.NumberColumn(format="%g") for col in ["KS 하한", "KS 상한", "사내 하한", "사내 상한", "목표"]},
                        "비고(변경 사유 등)": st.column_config.TextColumn(width="medium")})
     b1, b2 = st.columns(2)
-    if b1.button(f"{year}년 기준 저장", type="primary"):
-        S.save_year(std, year, ed)
-        st.success(f"{year}년 관리기준을 저장했습니다. 판정이 새 기준으로 다시 계산됩니다.")
+    if b1.button(f"{std_prod} · {year}년 기준 저장", type="primary"):
+        S.save_year(std, year, ed, std_prod)
+        st.success(f"{std_prod} {year}년 관리기준을 저장했습니다. 판정이 새 기준으로 다시 계산됩니다.")
         st.rerun()
-    if str(year) in std.get("years", {}) and b2.button(f"{year}년 입력 삭제(직전 연도 승계로 복귀)"):
-        std["years"].pop(str(year), None)
+    if str(year) in std.get(ykey, {}) and b2.button(f"{std_prod} {year}년 입력 삭제(직전 연도 승계로 복귀)"):
+        std[ykey].pop(str(year), None)
         S.save_ship_standards(std)
         st.rerun()
     if saved_years:
-        st.markdown("##### 연도별 사내 관리기준 변경 이력")
+        st.markdown(f"##### {std_prod} 연도별 사내 관리기준 변경 이력")
         hist = []
         for it in S.ITEMS:
             row = {"항목": it.name}
             for y in saved_years:
-                e = std["years"][str(y)].get(it.key) or {}
+                e = std[ykey][str(y)].get(it.key) or {}
                 lo, hi, tg = e.get("lsl"), e.get("usl"), e.get("target")
                 row[str(y)] = " ~ ".join(x for x in (f"≥{lo:g}" if lo is not None else "", f"≤{hi:g}" if hi is not None else "") if x) + (f" (목표 {tg:g})" if tg is not None else "") or "-"
             hist.append(row)
