@@ -490,3 +490,24 @@ def test_lims_zero_is_missing_and_sample_time_combined():
     df = pd.DataFrame({"timestamp": pd.to_datetime(["2026-10-01"]), "rm_mx_iron": [0.0], "rm_cao": [0.0]})
     out, cnt = store.zero_to_nan(df.copy(), "raw_meal")
     assert out.iloc[0]["rm_mx_iron"] == 0.0 and pd.isna(out.iloc[0]["rm_cao"]) and cnt == {"rm_cao": 1}
+
+
+def test_shipment_page_mix_items_do_not_duplicate_columns():
+    """항목을 석회석·첨가재 비율로 골라도 이탈 목록 표의 열 이름이 겹치지 않는다(이전: Duplicate column names)."""
+    S.clear_shipment()
+    rec = S.parse_upload(make_xlsx(), "a.xlsx").records
+    rng = np.random.default_rng(3)
+    for c in ("ls", "addr"):                                  # 약간의 변동 + 마지막 무렵 이탈 1건(이탈 목록이 나오게)
+        rec[c] = 5 + rng.normal(0, 0.1, len(rec))
+        rec.loc[len(rec) - 3, c] = 9.0
+    S.save_shipment(rec)
+    at = AppTest.from_file(APP, default_timeout=240)
+    at.run()
+    at.switch_page("app_pages/shipment.py")
+    at.run()
+    sb = next(w for w in at.selectbox if w.label == "항목")
+    for k in ("ls", "addr"):
+        sb = next(w for w in at.selectbox if w.label == "항목")
+        sb.set_value(k).run()
+        assert not at.exception, [e.value for e in at.exception]
+    S.clear_shipment()

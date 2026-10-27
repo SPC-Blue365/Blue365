@@ -73,3 +73,14 @@ def test_verification_plan_columns(demo):
     plan = dx.verification_plan()
     assert list(plan.columns) == ["순위", "축", "원인 가설", "판정", "근거 점수", "확인 방법(데이터·시험)", "담당(제안)", "기한"]
     assert plan.iloc[0]["기한"].startswith("즉시")
+
+
+def test_missing_series_has_time_index_for_period_compare(demo):
+    """없는 항목(예: 28일 강도 예측값이 아직 없음)의 빈 시계열도 기간 비교가 되어야 한다.
+    이전: 빈 RangeIndex와 Timestamp 비교로 진단·보고서(PPT·엑셀)에서 TypeError."""
+    import pandas as pd
+
+    store, reg, *_ = demo
+    s = store.series("__없는항목__", reg)
+    assert isinstance(s.index, pd.DatetimeIndex)
+    assert len(s[(s.index >= pd.Timestamp("2026-01-01")) & (s.index <= pd.Timestamp("2026-02-01"))]) == 0

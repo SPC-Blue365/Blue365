@@ -89,7 +89,7 @@ else:
             except (json.JSONDecodeError, TypeError):
                 comp = {}
             if comp:
-                st.dataframe(pd.DataFrame([{"항목": k2, "값": v2} for k2, v2 in comp.items()]), hide_index=True, width="stretch")
+                st.dataframe(pd.DataFrame([{"항목": k2, "값": "" if v2 is None else str(v2)} for k2, v2 in comp.items()]), hide_index=True, width="stretch")
             else:
                 st.caption("성분값이 없습니다.")
 

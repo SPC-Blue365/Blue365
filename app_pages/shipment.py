@@ -212,9 +212,9 @@ with tab2:
         flagged = (j.ks_out | j.plant_out).to_numpy() | j.r1
         if flagged.any():
             with st.expander(f"기준·관리한계 이탈 {int(flagged.sum())}건 목록"):
-                tb = sub[flagged][["date", "additive", "ls", "addr", key, "n_ship", "ships", "product_kind"]].copy()
+                tb = sub[flagged][list(dict.fromkeys(["date", "additive", "ls", "addr", key, "n_ship", "ships", "product_kind"]))].copy()  # 항목이 석회석·첨가재 비율이면 열 중복 방지
                 tb["사유"] = ["KS 이탈" if a else ("사내 기준 이탈" if b else "관리한계(±3σ) 이탈") for a, b in zip(j.ks_out.to_numpy()[flagged], j.plant_out.to_numpy()[flagged])]
-                st.dataframe(tb.rename(columns={"date": "채취일", "additive": "첨가재", "ls": "석회석(%)", "addr": "첨가재(%)", "n_ship": "모선 수", "ships": "선박", "product_kind": "제품 구분", key: labels[key]}),
+                st.dataframe(tb.rename(columns={"date": "채취일", "additive": "첨가재", "ls": "석회석(%)", "addr": "첨가재(%)", "n_ship": "모선 수", "ships": "선박", "product_kind": "제품 구분"} | {key: labels[key]}),
                              hide_index=True)
         if key == "cl":
             cmp_ = S.apply_filters(df_all, start, end, add_sel, mode, "저염 포함 전체", dest_sel)

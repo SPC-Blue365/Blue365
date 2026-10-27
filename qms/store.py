@@ -253,8 +253,8 @@ class DataStore:
                start: datetime | None = None, end: datetime | None = None) -> pd.Series:
         """항목의 시계열(timestamp 인덱스, 결측 제거)."""
         df = self.table_of(key, registry)
-        if df is None or key not in df.columns:
-            return pd.Series(dtype=float)
+        if df is None or key not in df.columns:              # 빈 결과도 시각 인덱스(기간 비교 시 TypeError 방지)
+            return pd.Series(dtype=float, index=pd.DatetimeIndex([], name="timestamp"))
         if product is not None and "product" in df.columns:
             df = df[df["product"] == product]
         s = df.set_index("timestamp")[key].astype(float).dropna()

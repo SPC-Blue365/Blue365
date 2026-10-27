@@ -168,6 +168,11 @@
 - 원인: 표로 보기(`qms/charts.py` wide_table)가 항목별 시계열을 `pd.concat(axis=1)`로 합칠 때 같은 일시 값이 둘 이상이면 실패. 출하시멘트 그래프가 품종을 거르지 않아 같은 날 1종·3종 로트가 섞인 것이 직접 계기.
 - 수정: wide_table은 (일시, 같은 일시 내 순번)으로 병합해 값을 모두 남김·같은 이름 열은 "#2" 붙임. 그래프 보기(출하시멘트)에 품종 선택(cv_ship_product, 건수 표시) 추가, 기준선도 품종별 `effective_limits(..., product)` 적용.
 - 시험: test_wide_table_keeps_duplicate_timestamps, test_chart_page_separates_products_on_same_dates(수정 전 같은 오류 재현 확인). 전체 171 통과.
+**완료(19차, 2026-10-27): 전체 탭 오류 점검(실제 LIMS 원본 10종 + 출하시멘트 907건 적재 후 15개 화면의 선택상자·버튼 자동 순회)**
+- 진단·종합현황 '진단'·보고서(PPT·엑셀): `TypeError: '>=' not supported between ndarray and Timestamp` — `DataStore.series`가 없는 항목(예: pred_s28 미산출)에 RangeIndex 빈 시리즈를 돌려줌 → DatetimeIndex 빈 시리즈로 수정(앞서 사용자가 본 보고서 탭 오류의 원인으로 추정).
+- 출하시멘트: 항목을 석회석·첨가재 비율로 고르면 이탈 목록 표 열 중복(Duplicate column names) → 열 목록 중복 제거.
+- 인수검사: 비교 표 '값' 열 혼합형(Arrow 변환 경고) → 문자열로 표시.
+- 시험 2건 추가(수정 전 실패 확인). 전체 173 통과. 점검 스크립트는 저장소에 넣지 않음(실제 LIMS 파일 사용).
 
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
