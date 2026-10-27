@@ -54,7 +54,7 @@ st.subheader("① 현상 정의와 정량화")
 c1, c2 = st.columns([2.2, 1])
 with c1:
     fig = trend_figure(ctx, e.item_key, e.product, start=e.start - pd.Timedelta(days=7),
-                       end=e.end + pd.Timedelta(days=3), height=340)
+                       end=e.end + pd.Timedelta(days=3), height=340, line=e.line)
     if fig:
         fig.add_vrect(x0=e.start, x1=e.end if e.end > e.start else e.start + pd.Timedelta(hours=2),
                       line=dict(width=1.5, color="#d03b3b"), fillcolor="rgba(0,0,0,0)",
@@ -134,17 +134,17 @@ with d1:
         st.session_state["issue_ppt"] = (e.event_id, build_issue_ppt(dx, store, reg))
     if st.session_state.get("issue_ppt", (None,))[0] == e.event_id:
         st.download_button("⬇️ PPT 내려받기", st.session_state["issue_ppt"][1],
-                           file_name=f"이상분석_{e.item_name}_{e.start:%Y%m%d}.pptx",
+                           file_name=f"이상분석_{e.item_name.replace("/", "")}_{e.start:%Y%m%d}.pptx",
                            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                            width="stretch")
 with d2:
     st.download_button("📝 분석 내용 텍스트(회의록·메일용)", diagnosis_markdown(dx).encode("utf-8"),
-                       file_name=f"이상분석_{e.item_name}_{e.start:%Y%m%d}.md", mime="text/markdown", width="stretch")
+                       file_name=f"이상분석_{e.item_name.replace("/", "")}_{e.start:%Y%m%d}.md", mime="text/markdown", width="stretch")
 with d3:
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xw:
         rank.to_excel(xw, sheet_name="원인우선순위", index=False)
         plan.to_excel(xw, sheet_name="검증계획", index=False)
         pd.DataFrame(dx.ks_eval).to_excel(xw, sheet_name="KS평가", index=False)
-    st.download_button("📊 검증계획 엑셀", buf.getvalue(), file_name=f"검증계획_{e.item_name}_{e.start:%Y%m%d}.xlsx",
+    st.download_button("📊 검증계획 엑셀", buf.getvalue(), file_name=f"검증계획_{e.item_name.replace("/", "")}_{e.start:%Y%m%d}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")

@@ -40,19 +40,30 @@ def capability_table(store: DataStore, registry: SpecRegistry, start=None, end=N
             lim = item.limits_for(product)
             if lim.lsl is None and lim.usl is None:
                 continue
-            s = store.series(item.key, registry, product, start, end)
-            if len(s) < 5:
-                continue
-            cap = capability(s, lim.lsl, lim.usl)
-            ks = ("≥ " + f"{lim.ks_min:g}") if lim.ks_min is not None else (("≤ " + f"{lim.ks_max:g}") if lim.ks_max is not None else "-")
-            rows.append({"공정": item.stage, "항목": item.name, "품종": product or "-", "단위": item.unit, "n": cap["n"],
-                         "평균": round(cap["mean"], item.decimals + 1), "표준편차": round(cap["std"], item.decimals + 2),
-                         "사내 하한": lim.lsl, "사내 상한": lim.usl, "KS": ks,
-                         "Cpk": round(cap["Cpk"], 2) if np.isfinite(cap["Cpk"]) else np.nan,
-                         "Ppk": round(cap["Ppk"], 2) if np.isfinite(cap["Ppk"]) else np.nan,
-                         "기준이탈(%)": round(cap["out_pct"], 1) if np.isfinite(cap["out_pct"]) else np.nan,
-                         "등급": capability_grade(cap["Cpk"]), "item_key": item.key})
+            for line in (store.item_lines(item.key, registry, product) or [None]):     # 공정구분이 있으면 호기·밀별
+                s = store.series(item.key, registry, product, start, end, line=line)
+                if len(s) < 5:
+                    continue
+                rows.append(_cap_row(item, product, line, lim, s))
     return pd.DataFrame(rows)
+
+
+def scope_text(r) -> str:
+    """표 한 줄의 품종·공정구분 표시(예: '1종', '6K', '1종 2C/M', '-')."""
+    t = " ".join(str(r.get(c)) for c in ("품종", "공정구분") if r.get(c) not in (None, "", "-") and pd.notna(r.get(c)))
+    return t or "-"
+
+
+def _cap_row(item, product, line, lim, s) -> dict:
+    cap = capability(s, lim.lsl, lim.usl)
+    ks = ("≥ " + f"{lim.ks_min:g}") if lim.ks_min is not None else (("≤ " + f"{lim.ks_max:g}") if lim.ks_max is not None else "-")
+    return {"공정": item.stage, "항목": item.name, "품종": product or "-", "공정구분": line or "-", "단위": item.unit,
+            "n": cap["n"], "평균": round(cap["mean"], item.decimals + 1), "표준편차": round(cap["std"], item.decimals + 2),
+            "사내 하한": lim.lsl, "사내 상한": lim.usl, "KS": ks,
+            "Cpk": round(cap["Cpk"], 2) if np.isfinite(cap["Cpk"]) else np.nan,
+            "Ppk": round(cap["Ppk"], 2) if np.isfinite(cap["Ppk"]) else np.nan,
+            "기준이탈(%)": round(cap["out_pct"], 1) if np.isfinite(cap["out_pct"]) else np.nan,
+            "등급": capability_grade(cap["Cpk"]), "item_key": item.key}
 
 
 # ── 엑셀 ────────────────────────────────────────────────────────────────
@@ -198,7 +209,7 @@ def kpi_summary(store: DataStore, registry: SpecRegistry, events_df: pd.DataFram
     cap = capability_table(store, registry, start, end, key_only=True)
     if len(cap):
         weak = cap[cap["Cpk"] < 1.0]
-        out["공정능력 부족 항목(Cpk<1.0)"] = (len(weak), ", ".join(f"{r['항목']}({r['품종']})" for _, r in weak.iterrows())[:200] or "없음")
+        out["공정능력 부족 항목(Cpk<1.0)"] = (len(weak), ", ".join(f"{r['항목']}({scope_text(r)})" for _, r in weak.iterrows())[:200] or "없음")
     return out
 
 
@@ -515,10 +526,10 @@ def _daily(series: pd.Series) -> pd.Series:
     return series.resample("1D").mean()
 
 
-def _chart_series_for_item(store: DataStore, registry: SpecRegistry, key: str, product, start, end):
-    """차트용 시계열: 고빈도 데이터는 8시간 평균, 일 데이터는 그대로."""
+def _chart_series_for_item(store: DataStore, registry: SpecRegistry, key: str, product, start, end, line=None):
+    """차트용 시계열: 고빈도 데이터는 8시간 평균, 일 데이터는 그대로. line 이 없고 호기가 여럿이면 전 호기 평균."""
     item = registry[key]
-    s = store.series(key, registry, product, start, end)
+    s = store.series(key, registry, product, start, end, line=line)
     rule = TABLES[item.table].get("spc_resample")
     if rule and len(s):
         span_days = (s.index.max() - s.index.min()).days if len(s) > 1 else 0
@@ -637,7 +648,8 @@ def build_management_ppt(store: DataStore, registry: SpecRegistry, events_df: pd
             continue
         daily = (ser.index.to_series().diff().median() or pd.Timedelta("1D")) >= pd.Timedelta("1D")
         cats = [_fmt_cat(t, daily) for t in ser.index]
-        lines = [{"name": item.name + ("(일평균)" if daily else "(8h 평균)"), "values": ser.to_numpy(float),
+        multi = len(store.item_lines(key, registry, product)) >= 2
+        lines = [{"name": item.name + ("(일평균" if daily else "(8h 평균") + (", 전 호기)" if multi else ")"), "values": ser.to_numpy(float),
                   "color": d.SERIES[0], "width": 1.75}]
         if lim.usl is not None:
             lines.append({"name": f"사내 상한 {lim.usl:g}", "values": [lim.usl] * len(cats), "color": d.WARN, "dash": True, "width": 1.25})
@@ -695,7 +707,7 @@ def build_management_ppt(store: DataStore, registry: SpecRegistry, events_df: pd
             lim_txt = " ~ ".join(f"{v:g}" for v in (r["사내 하한"], r["사내 상한"]) if pd.notna(v))
             lim_txt = (("≥ " if pd.notna(r["사내 하한"]) and pd.isna(r["사내 상한"]) else
                         "≤ " if pd.isna(r["사내 하한"]) and pd.notna(r["사내 상한"]) else "") + lim_txt)
-            rows.append({"공정": r["공정"], "항목": r["항목"], "품종": r["품종"], "평균": f"{r['평균']:g} {r['단위']}",
+            rows.append({"공정": r["공정"], "항목": r["항목"], "품종": scope_text(r), "평균": f"{r['평균']:g} {r['단위']}",
                          "사내 기준": lim_txt, "KS": r["KS"], "Cpk": f"{r['Cpk']:.2f}" if pd.notna(r["Cpk"]) else "-",
                          "등급": r["등급"]})
             fills[(i, "등급")] = (gcol.get(r["등급"], "FFFFFF"), d.INK)
@@ -805,7 +817,8 @@ def build_issue_ppt(dx: Diagnosis, store: DataStore, registry: SpecRegistry, org
     s = d.slide()
     d.title(s, "① 현상 정의와 정량화", f"{e.rule_desc} — {item.name}")
     pad = pd.Timedelta(days=7)
-    ser = _chart_series_for_item(store, registry, e.item_key, e.product, e.start - pad, e.end + pd.Timedelta(days=3))
+    ser = _chart_series_for_item(store, registry, e.item_key, e.product, e.start - pad, e.end + pd.Timedelta(days=3),
+                                 line=e.line)
     if len(ser):
         daily = TABLES[item.table].get("spc_resample") is None
         cats = [_fmt_cat(t, daily) for t in ser.index]

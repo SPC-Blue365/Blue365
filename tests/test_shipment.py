@@ -371,24 +371,24 @@ def test_lims_korean_headers_and_setting_time_minutes():
 
 
 def test_generated_update_workbook_ingests():
-    """배포용 업데이트 양식(scripts/build_lims_update_workbook.py 결과)을 QMS가 빈 오류로 읽어들인다."""
+    """배포용 통합 업로드 양식(docs/, 빈 양식)을 QMS가 오류 없이 읽고, 출하시멘트 시트 머리글을 모두 인식한다."""
     from pathlib import Path
 
+    import openpyxl
+
     from qms import shipment as S
-    from qms import store
+    from qms import workbook
 
     f = Path(__file__).resolve().parent.parent / "docs" / "Blue365_QMS_업데이트_양식.xlsx"
     if not f.exists():
         import pytest
         pytest.skip("양식 파일이 아직 생성되지 않음")
-    res = store.parse_upload(f.read_bytes(), str(f))
-    assert not res.errors
-    assert {"raw_meal", "clinker", "cement", "physical", "xrd"} <= set(res.tables)
-    import openpyxl
+    parts = workbook.analyze(f.read_bytes(), f.name)
+    assert parts.is_template and not parts.errors
     ws = openpyxl.load_workbook(f, data_only=True)["출하시멘트"]
-    aoa = [[ws.cell(r, c).value for c in range(1, ws.max_column + 1)] for r in range(1, ws.max_row + 1)]
-    sp = S.parse_aoa(aoa)
-    assert not sp.errors and sp.report["rows"] > 0 and not sp.report["missing"]
+    headers = [c.value for c in ws[3]]
+    idx = S.match_headers(headers)
+    assert set(range(len(headers))) == set(idx.values()), [h for j, h in enumerate(headers) if j not in idx.values()]
 
 
 def test_lims_raw_export_auto_detected_by_title():

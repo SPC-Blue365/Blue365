@@ -117,6 +117,13 @@ def _product_for(item, event: AlertEvent) -> str | None:
     return event.product if TABLES[item.table]["by_product"] else None
 
 
+def _line_for(item, event: AlertEvent, store: DataStore) -> str | None:
+    """근거 자료의 공정구분: 이벤트 호기(예: 6K)가 그 표에도 있으면 같은 호기만, 없으면(예: 시멘트밀 ↔ 클링커) 전체."""
+    if not event.line:
+        return None
+    return event.line if event.line in store.lines(item.table) else None
+
+
 def _baseline(s: pd.Series, ws: pd.Timestamp, days: int) -> pd.Series:
     base = s[(s.index >= ws - pd.Timedelta(days=days)) & (s.index < ws)]
     if len(base) < 3:
@@ -163,7 +170,7 @@ def evaluate_check(check: Check, event: AlertEvent, store: DataStore, registry: 
         return Evidence(check, check.item, None, "데이터 없음", f"{check.item}: 항목 정의 없음")
     product = _product_for(item, event)
 
-    s = store.series(check.item, registry, product)
+    s = store.series(check.item, registry, product, line=_line_for(item, event, store))
     win = s[(s.index >= ws) & (s.index <= we)]
     base = _baseline(s, ws, days)
     nd = item.decimals
@@ -256,7 +263,7 @@ def evaluate_hypothesis(h: Hypothesis, event: AlertEvent, store: DataStore, regi
 
 def _quantify(event: AlertEvent, store: DataStore, registry: SpecRegistry, settings: dict) -> dict:
     item = registry[event.item_key]
-    s = store.series(event.item_key, registry, event.product)
+    s = store.series(event.item_key, registry, event.product, line=event.line)
     win = s[(s.index >= event.start) & (s.index <= event.end)]
     base = _baseline(s, event.start, int(settings.get("evidence_baseline_days", 14)))
     nd = item.decimals
@@ -281,7 +288,7 @@ def _quantify(event: AlertEvent, store: DataStore, registry: SpecRegistry, setti
     q["n_exceed"] = n_ex
     dur = q["duration_h"]
     dur_txt = f"{dur / 24:.1f}일" if dur >= 48 else f"{dur:.0f}시간" if dur > 0 else "단일 시점"
-    prod = f"[{event.product}] " if event.product else ""
+    prod = "".join(f"[{t}] " for t in (event.product, event.line) if t)
     ks_word = "KS 기준" if item.ks_label == "KS" else item.ks_label
     limit_word = "관리한계" if event.rule.startswith("R") else (ks_word if event.rule == "KS" else "사내 관리기준")
     q["limit_word"] = limit_word
@@ -316,7 +323,7 @@ def _ks_evaluation(event: AlertEvent, ph: Phenomenon, store: DataStore, registry
                     else registry.products_for(key))
         for product in products:
             lim = item.limits_for(product)
-            s = store.series(key, registry, product)
+            s = store.series(key, registry, product, line=_line_for(item, event, store))
             win = s[(s.index >= ws) & (s.index <= we)]
             nd = item.decimals
             row = {"항목": item.name, "품종": product or "-", "평가 구간": f"{ws:%m/%d %H:%M} ~ {we:%m/%d %H:%M}",

@@ -3,9 +3,10 @@
 import pandas as pd
 import streamlit as st
 
-from qms.reports import capability_table
+from qms.reports import capability_table, scope_text
 from qms.spc import capability, capability_grade, rule_name
 from qms.standards import STAGES, TABLES
+from qms.store import line_label
 from qms.ui import fmt, get_ctx, histogram_figure, page_header, spc_figure
 
 ctx = get_ctx()
@@ -19,12 +20,18 @@ if period is None:
 tab1, tab2 = st.tabs(["관리도·공정능력 (항목별)", "공정능력 현황 (전체 항목)"])
 with tab1:
     keys = [i.key for s in STAGES for i in reg.by_stage(s) if (i.limits or i.rules) and not i.ks_is_method]
-    c1, c2, c3, c4 = st.columns([2.2, 1, 1.6, 1.2])
+    c1, c2, c5, c3, c4 = st.columns([2.2, 0.9, 1.2, 1.5, 1.2])
     key = c1.selectbox("항목", keys, index=keys.index("clk_fcao") if "clk_fcao" in keys else 0,
                        format_func=lambda k: f"[{reg[k].stage}] {reg[k].label()}", key="spc_item")
     item = reg[key]
     prods = reg.products_for(key)
     product = c2.selectbox("품종", prods, format_func=lambda p: p or "구분 없음", key="spc_prod")
+    item_lines = store.item_lines(key, reg, product)
+    if item_lines:                                   # 관리도는 호기·밀 하나씩(섞으면 관리한계가 부풀어 판정이 무뎌짐)
+        line = c5.selectbox("공정구분(호기·밀)", item_lines, format_func=line_label, key=f"spc_line_{key}")
+    else:
+        line = None
+        c5.selectbox("공정구분(호기·밀)", ["구분 없음"], disabled=True, key="spc_line_na")
     rng = c3.date_input("기간", value=(period[0].date(), period[1].date()), min_value=period[0].date(),
                         max_value=period[1].date(), key="spc_range")
     rs = TABLES[item.table].get("spc_resample")
@@ -33,7 +40,7 @@ with tab1:
     if not isinstance(rng, (list, tuple)) or len(rng) != 2:
         st.stop()
     start, end = pd.Timestamp(rng[0]), pd.Timestamp(rng[1]) + pd.Timedelta(hours=23, minutes=59)
-    raw = store.series(key, reg, product, start, end)
+    raw = store.series(key, reg, product, start, end, line=line)
     s = raw.resample(rs).mean().dropna() if (rs and basis.startswith(rs)) else raw
     if len(s) < 10:
         st.warning("관리도를 그리기에 데이터가 부족합니다(10점 미만).")
@@ -83,5 +90,5 @@ with tab2:
             })
             weak = t[t["Cpk"] < 1.0]
             if len(weak):
-                st.warning(f"공정능력 부족(Cpk<1.0) {len(weak)}개 항목: " + ", ".join(f"{r['항목']}({r['품종']})" for _, r in weak.iterrows()))
+                st.warning(f"공정능력 부족(Cpk<1.0) {len(weak)}개 항목: " + ", ".join(f"{r['항목']}({scope_text(r)})" for _, r in weak.iterrows()))
             st.download_button("공정능력 표 CSV", t.to_csv(index=False).encode("utf-8-sig"), "capability.csv", "text/csv")

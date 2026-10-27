@@ -19,20 +19,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from qms import incoming, ship_dest, shipment
+from qms import ship_dest, workbook
 from qms.alerts import detect_events
 from qms.diagnosis import diagnose
 from qms.lims import load_lims_config, sync
 from qms.notify import dispatch, load_config
 from qms.prediction import attach_predictions
 from qms.standards import load_registry, load_settings
-from qms.store import (
-    load_alert_status,
-    load_store,
-    parse_upload,
-    save_raw,
-    update_alert_status,
-)
+from qms.store import load_alert_status, load_store, update_alert_status
 
 
 def import_folder(folder: Path) -> list[str]:
@@ -43,15 +37,6 @@ def import_folder(folder: Path) -> list[str]:
         if f.suffix.lower() not in (".xlsx", ".xls", ".csv") or not f.is_file():
             continue
         content = f.read_bytes()
-        if shipment.looks_like_shipment(content, f.name):          # LIMS 출하시멘트 일일 로트 표
-            p = shipment.parse_upload(content, f.name)
-            if p.errors:
-                logs.append(f"[오류] {f.name}: {'; '.join(p.errors)}")
-                continue
-            r = shipment.save_shipment(p.records)
-            shutil.move(str(f), done / f.name)
-            logs.append(f"[반영] {f.name}: 출하시멘트 추가 {r['added']}건·갱신 {r['updated']}건")
-            continue
         if ship_dest.looks_like_dest(content, f.name):              # 선박 운항(양하지) 기록·기본 양하지
             p = ship_dest.parse_dest_upload(content, f.name)
             if p.errors:
@@ -67,22 +52,13 @@ def import_folder(folder: Path) -> list[str]:
             shutil.move(str(f), done / f.name)
             logs.append(f"[반영] {f.name}: {msg}")
             continue
-        if incoming.looks_like_incoming(content, f.name):           # 원료·석고·고령토 인수검사
-            p = incoming.parse_incoming(content, f.name)
-            if p.errors:
-                logs.append(f"[오류] {f.name}: {'; '.join(p.errors)}")
-                continue
-            n = incoming.save_incoming(p.rows)
-            shutil.move(str(f), done / f.name)
-            logs.append(f"[반영] {f.name}: {p.kind} 인수검사 누계 {n}행")
+        parts = workbook.analyze(content, f.name)                   # 공정·출하시멘트·인수검사(한 파일에 섞여 있어도)
+        if not parts.kinds:
+            logs.append(f"[오류] {f.name}: {'; '.join(parts.errors) or '반영할 데이터를 찾지 못했습니다(시트·머리글 확인).'}")
             continue
-        res = parse_upload(content, f.name)
-        if res.errors:
-            logs.append(f"[오류] {f.name}: {'; '.join(res.errors)}")
-            continue
-        counts = save_raw(res.tables, replace=False)
+        out = workbook.apply(parts)
         shutil.move(str(f), done / f.name)
-        logs.append(f"[반영] {f.name}: " + ", ".join(f"{k} {v}행" for k, v in counts.items()))
+        logs.append(f"[반영] {f.name}: " + " / ".join(out))
     return logs
 
 
@@ -91,40 +67,12 @@ def sync_file(path: Path) -> list[str]:
 
     매일 같은 파일(예: Blue365_QMS.xlsx)을 덮어써 두면 작업 스케줄러가 이 함수로 다시 읽어 반영한다.
     """
-    import io
-
-    import openpyxl
-
-    logs: list[str] = []
     if not path.is_file():
         return [f"[오류] 파일이 없습니다: {path}"]
-    content = path.read_bytes()
-
-    res = parse_upload(content, path.name)                       # 공정 데이터(템플릿·LIMS 원본 시트)
-    if res.tables:
-        counts = save_raw(res.tables, replace=False)
-        logs.append("공정 데이터: " + ", ".join(f"{k} {v}행" for k, v in counts.items()))
-
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True, read_only=True)
-    except Exception as exc:  # noqa: BLE001
-        logs.append(f"[경고] 출하·인수검사 시트 확인 실패: {exc}")
-        return logs
-    for ws in wb.worksheets:
-        aoa = [list(r) for r in ws.iter_rows(values_only=True)]
-        if not aoa:
-            continue
-        if shipment.detect(aoa):                                 # 출하시멘트 시트
-            sp = shipment.parse_aoa(aoa)
-            if not sp.errors:
-                r = shipment.save_shipment(sp.records)
-                logs.append(f"출하시멘트({ws.title}): 추가 {r['added']}·갱신 {r['updated']}")
-                continue
-        ip = incoming.parse_incoming_df(pd.DataFrame(aoa))        # 인수검사 시트
-        if not ip.errors and not ip.rows.empty:
-            n = incoming.save_incoming(ip.rows)
-            logs.append(f"인수검사({ws.title}·{ip.kind}): 누계 {n}행")
-    if not logs:
+    parts = workbook.analyze(path.read_bytes(), path.name)
+    logs = parts.summary() + [f"[오류] {e}" for e in parts.errors]
+    logs += workbook.apply(parts)
+    if not parts.kinds:
         logs.append("반영할 데이터를 찾지 못했습니다(시트·머리글 확인).")
     return logs
 

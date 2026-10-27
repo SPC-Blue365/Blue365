@@ -70,13 +70,19 @@ for i, stage in enumerate(stage_order):
         for _key, grp in sub.groupby("item_key", sort=False):
             worst_i = max(grp["status"], key=lambda s: SEVERITY_ORDER[s])
             nd, unit = int(grp["decimals"].iloc[0]), grp["unit"].iloc[0]
-            if grp["product"].notna().any():
-                vals = " · ".join(f"{r['product']} **{fmt(r['last_value'], nd)}**" for _, r in grp.iterrows())
+            has_line = "line" in grp and grp["line"].notna().any()
+            if len(grp) > 1 or grp["product"].notna().any() or has_line:     # 품종·호기별 최신값을 한 줄에
+                def _tag(r):
+                    t = " ".join(str(x) for x in (r.get("product"), r.get("line")) if isinstance(x, str) and x)
+                    return t or "구분 없음"
+                vals = " · ".join(f"{SEVERITY_ICON[r['status']] if len(grp) > 1 else ''}{_tag(r)} **{fmt(r['last_value'], nd)}**"
+                                  for _, r in grp.iterrows())
                 vals += f" {unit}"
             else:
                 vals = f"**{fmt(grp['last_value'].iloc[0], nd, unit)}**"
             last = grp["last_time"].max()
-            st.markdown(f"{SEVERITY_ICON[worst_i]} {grp['item_name'].iloc[0]} — {vals} "
+            base = reg[_key].name if _key in reg else grp["item_name"].iloc[0]
+            st.markdown(f"{SEVERITY_ICON[worst_i]} {base} — {vals} "
                         f"<span style='color:gray;font-size:0.85em'>({last:%m/%d %H:%M})</span>", unsafe_allow_html=True)
 
 # ── 조치 필요 알림 + 강도 추이 ──────────────────────────────────────────

@@ -6,10 +6,11 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from qms import incoming, ship_dest, shipment
+from qms import incoming, ship_dest, shipment, workbook
 from qms.demo import SCENARIOS, generate_demo_data, scenario_table
 from qms.standards import TABLES
 from qms.store import SHEET_NAMES, clear_db, load_raw, parse_upload, save_raw, template_workbook
+from qms.upload_template import build_upload_template
 from qms.ui import DEMO_FLAG, get_ctx, page_header, refresh
 from qms.ui_ship import dest_panel, parsed_panel
 
@@ -46,7 +47,34 @@ with tab1:
     st.markdown("엑셀(시트: 원료·킬른·클링커·시멘트·물성) 또는 CSV(파일명에 테이블명 포함, 예: `clinker_2026-10.csv`)를 올리세요. "
                 "같은 측정일시(+품종)는 업로드 값으로 덮어씁니다.")
     up = st.file_uploader("파일 선택", type=["xlsx", "xls", "csv"])
-    if up is not None and shipment.looks_like_shipment(up.getvalue(), up.name):
+    parts = workbook.analyze(up.getvalue(), up.name) if up is not None and not up.name.lower().endswith(".csv") else None
+    if parts is not None and (parts.is_template or len(parts.kinds) >= 2):      # 통합 업로드 양식(공정+출하+인수검사)
+        st.info("**통합 업로드 양식**입니다. 시트별로 읽은 내용을 확인하고 한 번에 적용하세요: "
+                + (" · ".join(parts.kinds) or "읽은 데이터 없음"), icon="🗂️")
+        for m in parts.summary():
+            st.write("•", m)
+        for e in parts.errors:
+            st.error(e)
+        for name, df in parts.process.tables.items():
+            with st.expander(f"미리보기: {SHEET_NAMES[name]} ({len(df)}행)"):
+                st.dataframe(df.head(50), hide_index=True)
+        for sn, p in parts.ships:
+            with st.expander(f"미리보기: 출하시멘트·{sn} ({len(p.records)}건)"):
+                st.dataframe(p.records.head(50), hide_index=True)
+        for sn, p in parts.incomings:
+            with st.expander(f"미리보기: 인수검사·{sn} ({len(p.rows)}행)"):
+                st.dataframe(p.rows.drop(columns=["성분"]).head(50), hide_index=True)
+        if parts.kinds:
+            replace_demo = st.checkbox("데모 데이터를 지우고 업로드 데이터만 사용", value=ctx.demo, key="wb_replace_demo")
+            if st.button("✅ 통합 양식 전체 적용(저장)", type="primary", key="wb_apply"):
+                if replace_demo:
+                    clear_db()
+                    DEMO_FLAG.unlink(missing_ok=True)
+                logs = workbook.apply(parts)
+                refresh()
+                st.session_state["last_apply"] = f"{pd.Timestamp.now():%Y-%m-%d %H:%M} · " + " / ".join(logs)
+                st.rerun()
+    elif up is not None and shipment.looks_like_shipment(up.getvalue(), up.name):
         st.info("LIMS **출하시멘트 일일 로트** 형식입니다. 전용 화면(🚢 출하시멘트)에서 관리하며, 아래에서 바로 저장할 수 있습니다.", icon="🚢")
         parsed_panel(up.getvalue(), up.name, key="data_ship")
     elif up is not None and ship_dest.looks_like_dest(up.getvalue(), up.name):
@@ -90,12 +118,16 @@ with tab1:
                 st.rerun()
 
 with tab2:
-    st.markdown("항목 코드(열 이름)와 설명(2행)이 들어 있는 입력 양식입니다. 예시 5행이 포함되어 있습니다.")
-    sample = {k: v.head(5) for k, v in load_raw().items()}
-    st.download_button("⬇️ 데이터 입력 템플릿(엑셀)", template_workbook(reg, sample), file_name="QMS_데이터입력템플릿.xlsx",
+    st.markdown("**통합 업로드 양식** — 한 파일에 공정별 시트(원료·킬른·클링커·클링커일일·시멘트·물성)와 출하시멘트·인수검사가 들어 있습니다. "
+                "각 시트의 **공정구분**(킬른 4K~7K · 원료밀 R/M · 시멘트밀 C/M)과 **품명**은 목록에서 고르고, 5행부터 LIMS 값을 붙여넣으세요.")
+    st.download_button("⬇️ 통합 업로드 양식(엑셀)", build_upload_template(), file_name="Blue365_QMS_업데이트_양식.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
-    st.markdown("**연계 방식(단계별 권장)**: ① 엑셀 업로드(현재) → ② LIMS·DCS 내보내기 파일을 폴더에 저장하면 "
-                "`qms_monitor.py --import-dir` 가 주기적으로 자동 반영 → ③ DB/OPC-UA 직접 연계(차기 단계)")
+    st.caption("채운 파일은 위 ‘⬆️ 업로드’에 올리거나, 매일 자동 반영 파일(data\\Blue365_QMS.xlsx)로 저장하면 06:00에 자동 반영됩니다. "
+               "LIMS에서 받은 원본 파일을 그대로 올려도 인식합니다.")
+    with st.expander("내부 항목 코드 양식(고급 — 열 이름이 QMS 내부 코드)"):
+        sample = {k: v.head(5) for k, v in load_raw().items()}
+        st.download_button("⬇️ 내부 코드 템플릿(엑셀)", template_workbook(reg, sample), file_name="QMS_데이터입력템플릿.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tab3:
     st.markdown("가상의 공장 데이터(원료→소성→클링커→분쇄→강도 인과관계 반영)와 이상 시나리오 6종을 생성합니다.")

@@ -56,6 +56,7 @@ class AlertEvent:
     message: str
     patterns: list[str] = field(default_factory=list)
     is_prediction: bool = False
+    line: str | None = None   # 공정구분(호기·밀, 예: 6K) — 구분 있는 자료는 호기별로 따로 판정
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -64,7 +65,7 @@ class AlertEvent:
 
     @property
     def label(self) -> str:
-        prod = f"[{self.product}] " if self.product else ""
+        prod = f"[{self.product}] " if self.product else ""   # 호기는 item_name 에 붙어 있음(예: '클링커 f-CaO · 6K')
         return f"{SEVERITY_ICON[self.severity]} {prod}{self.item_name} — {self.rule_desc}"
 
 
@@ -110,8 +111,20 @@ def _period(start: pd.Timestamp, end: pd.Timestamp) -> str:
 
 
 def detect_item_events(series: pd.Series, item, product: str | None, settings: dict,
-                       stats: ControlStats | None = None) -> list[AlertEvent]:
-    """단일 항목·품종 시계열에서 이벤트를 검출한다."""
+                       stats: ControlStats | None = None, line: str | None = None) -> list[AlertEvent]:
+    """단일 항목·품종(·공정구분) 시계열에서 이벤트를 검출한다."""
+    events = _detect_item_events(series, item, product, settings, stats)
+    if line:
+        for e in events:
+            e.line = line
+            e.event_id = _event_id(e.event_id, line)
+            e.item_name = f"{item.name} · {line}"
+            e.message = f"[{line}] {e.message}"
+    return events
+
+
+def _detect_item_events(series: pd.Series, item, product: str | None, settings: dict,
+                        stats: ControlStats | None = None) -> list[AlertEvent]:
     s = series.dropna()
     if len(s) == 0:
         return []
@@ -218,10 +231,11 @@ def detect_events(store: DataStore, registry: SpecRegistry, settings: dict,
         if not (item.limits or item.rules):
             continue
         for product in registry.products_for(item.key):
-            s = store.series(item.key, registry, product)
-            if len(s) == 0:
-                continue
-            events.extend(detect_item_events(s, item, product, settings))
+            for line in _scopes(store, registry, item.key, product):
+                s = store.series(item.key, registry, product, line=line)
+                if len(s) == 0:
+                    continue
+                events.extend(detect_item_events(s, item, product, settings, line=line or None))
     if start is not None:
         events = [e for e in events if e.end >= pd.Timestamp(start)]
     if end is not None:
@@ -230,9 +244,21 @@ def detect_events(store: DataStore, registry: SpecRegistry, settings: dict,
     return events
 
 
+def _scopes(store: DataStore, registry: SpecRegistry, key: str, product: str | None) -> list[str | None]:
+    """판정 단위: 공정구분이 있는 자료는 호기·밀별(+구분 없는 예전 자료 ""), 없으면 전체 하나(None)."""
+    lines = store.item_lines(key, registry, product)
+    if not lines:
+        return [None]
+    df = store.table_of(key, registry)
+    if product is not None and "product" in df.columns:
+        df = df[df["product"] == product]
+    legacy = bool((df["line"].fillna("") == "").to_numpy()[df[key].notna().to_numpy()].any())
+    return [*lines, *([""] if legacy else [])]
+
+
 def events_frame(events: list[AlertEvent], status: pd.DataFrame | None = None) -> pd.DataFrame:
     """이벤트 목록 → 표. status(알림 처리상태)를 병합한다."""
-    cols = ["event_id", "severity", "stage", "product", "item_name", "rule_desc", "direction", "start", "end",
+    cols = ["event_id", "severity", "stage", "product", "line", "item_name", "rule_desc", "direction", "start", "end",
             "n_points", "worst_value", "limit_value", "unit", "patterns", "message", "item_key", "rule",
             "is_prediction"]
     if not events:
@@ -250,23 +276,25 @@ def events_frame(events: list[AlertEvent], status: pd.DataFrame | None = None) -
 
 def latest_status(store: DataStore, registry: SpecRegistry, settings: dict,
                   events: list[AlertEvent] | None = None, recent_points: int = 1) -> pd.DataFrame:
-    """핵심관리항목의 최신값과 현재 상태(가장 최근 점이 속한 이벤트의 심각도)."""
+    """핵심관리항목의 최신값과 현재 상태(가장 최근 점이 속한 이벤트의 심각도). 공정구분이 있으면 호기·밀별 한 줄."""
     events = events if events is not None else detect_events(store, registry, settings)
     rows = []
     for item in registry.key_items():
         for product in registry.products_for(item.key):
-            s = store.series(item.key, registry, product)
-            if len(s) == 0:
-                continue
-            last_ts = s.index[-recent_points]
-            sev = "정상"
-            for e in events:
-                if e.item_key == item.key and e.product == product and e.end >= last_ts:
-                    if SEVERITY_ORDER[e.severity] > SEVERITY_ORDER[sev]:
+            for line in _scopes(store, registry, item.key, product):
+                s = store.series(item.key, registry, product, line=line)
+                if len(s) == 0:
+                    continue
+                last_ts = s.index[-recent_points]
+                sev = "정상"
+                for e in events:
+                    if (e.item_key == item.key and e.product == product and (e.line or "") == (line or "")
+                            and e.end >= last_ts and SEVERITY_ORDER[e.severity] > SEVERITY_ORDER[sev]):
                         sev = e.severity
-            lim = item.limits_for(product)
-            rows.append({"stage": item.stage, "item_key": item.key, "item_name": item.name, "product": product,
-                         "unit": item.unit, "decimals": item.decimals, "last_time": s.index[-1],
-                         "last_value": float(s.iloc[-1]), "target": lim.target, "lsl": lim.lsl, "usl": lim.usl,
-                         "ks_min": lim.ks_min, "ks_max": lim.ks_max, "status": sev})
+                lim = item.limits_for(product)
+                rows.append({"stage": item.stage, "item_key": item.key,
+                             "item_name": item.name + (f" · {line}" if line else ""), "product": product,
+                             "line": line or None, "unit": item.unit, "decimals": item.decimals,
+                             "last_time": s.index[-1], "last_value": float(s.iloc[-1]), "target": lim.target,
+                             "lsl": lim.lsl, "usl": lim.usl, "ks_min": lim.ks_min, "ks_max": lim.ks_max, "status": sev})
     return pd.DataFrame(rows)

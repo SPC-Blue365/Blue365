@@ -38,13 +38,14 @@ PROC_NAME = [("조합원료", "조합원료성적(원료·킬른 피드)"), ("�
              ("3종시멘트성적", "3종시멘트성적(출하)"), ("시멘트성적", "시멘트성적(1종·출하)")]
 META = {store._norm_header(x) for x in (
     "로트번호", "검사일", "담당자", "비고", "자료생성일", "최종수정일", "전송", "ERP LOT.NO", "LIMS LOT.NO", "분석방법",
-    "채취시간", "공정구분", "투입SILO", "파일구분", "샘플위치", "시멘트밀공정", "시멘트구분", "크링커공정", "클링커공정",
+    "채취시간", "투입SILO", "파일구분", "샘플위치", "시멘트구분",            # 공정구분·크링커공정·시멘트밀공정 → 공정구분(line)으로 저장
     "클링커구분", "스크린구분", "수출크링커구분", "입도상태", "요입위치", "요입인출SILO", "직송여부", "특이사항",
     "투입인출사이로", "구치장여부", "품위구분", "거래처", "수량", "합부판정", "색상", "채취일")}
 DERIVED = {store._norm_header(x) for x in ("HM", "SM", "IM", "LSF", "C3S", "C2S", "C3A", "C4AF", "TA", "SD", "A/S",
                                           "mC3S", "Coating tendency", "Liquid Phase", "KFUI", "TargetC3S", "ActualC3S")}
 TITLE_SKIP = tuple(store._norm_header(s) for s in store.LIMS_SKIP_TITLES)
-QNAME = {"timestamp": "채취일(기준)", "product": "품명(품종)", "rm_cao": "원료 CaO", "rm_sio2": "원료 SiO2",
+QNAME = {"timestamp": "채취일(기준)", "product": "품명(품종)", "line": "공정구분(호기·밀)", "grade": "종류(품명 원문)",
+         "rm_cao": "원료 CaO", "rm_sio2": "원료 SiO2",
          "rm_al2o3": "원료 Al2O3", "rm_fe2o3": "원료 Fe2O3", "rm_mgo": "원료 MgO", "rm_so3": "원료 SO3",
          "rm_k2o": "원료 K2O", "rm_na2o": "원료 Na2O", "rm_r90": "원료 90㎛", "rm_r200": "원료 200㎛", "rm_loi": "원료 LOI",
          "clk_cao": "클링커 CaO", "clk_sio2": "클링커 SiO2", "clk_al2o3": "클링커 Al2O3", "clk_fe2o3": "클링커 Fe2O3",

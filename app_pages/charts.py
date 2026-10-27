@@ -9,6 +9,7 @@ from qms import charts as CH
 from qms import ship_dest as D
 from qms import shipment as S
 from qms.standards import TABLES
+from qms.store import line_label, line_sort_key
 from qms.ui import get_ctx, page_header
 
 ctx = get_ctx()
@@ -20,7 +21,7 @@ st.caption("보고 싶은 항목을 여러 개 고르고 기간·집계를 정�
 
 STATE_KEYS = ("cv_source", "cv_ship_keys", "cv_proc_keys", "cv_product", "cv_period", "cv_range", "cv_agg", "cv_ma", "cv_mode",
               "cv_cols", "cv_limits", "cv_points", "cv_title", "cv_add", "cv_ship_mode", "cv_kind", "cv_dest",
-              "cv_ship_product")
+              "cv_ship_product", "cv_lines")
 
 
 @st.cache_data(show_spinner=False)
@@ -103,6 +104,13 @@ else:
     keys = st.multiselect("항목(여러 개 선택)", opts, key="cv_proc_keys", format_func=lambda k: lab[k])
     by_prod = any(TABLES[reg[k].table]["by_product"] for k in keys)
     product = st.selectbox("품종", ["1종", "3종"], key="cv_product") if by_prod else None
+    line_opts = sorted({ln for k in keys for ln in store.item_lines(k, reg)}, key=line_sort_key)
+    if line_opts:                                   # 호기·밀이 다르면 다른 그래프(같은 시각 값을 섞지 않음)
+        ss["cv_lines"] = [v for v in ss.get("cv_lines", line_opts) if v in line_opts] or line_opts
+        sel_lines = st.multiselect("공정구분(호기·밀)", line_opts, key="cv_lines", format_func=line_label,
+                                   help="고른 호기·밀마다 따로 그립니다. 예: 클링커 f-CaO 4K·5K·6K·7K")
+    else:
+        sel_lines = []
 
 # ── 기간·표시 방법 ──────────────────────────────────────────────────────
 for k, v in (("cv_period", "최근 180일"), ("cv_ma", 0), ("cv_cols", 2), ("cv_limits", True), ("cv_points", True)):
@@ -157,12 +165,14 @@ else:
     for k in keys:
         it = reg[k]
         prod = product if TABLES[it.table]["by_product"] else None
-        s = CH.aggregate(store.series(k, reg, prod, start, end), CH.AGGS[agg])
-        name = it.name + (f" [{prod}]" if prod else "")
-        series.append((name, it.unit, s))
-        if show_lim:
-            lim = it.limits_for(prod)
-            limits[name] = {"ks_min": lim.ks_min, "ks_max": lim.ks_max, "lsl": lim.lsl, "usl": lim.usl, "target": lim.target}
+        k_lines = [ln for ln in sel_lines if ln in store.item_lines(k, reg, prod)] or [None]
+        for ln in k_lines:
+            s = CH.aggregate(store.series(k, reg, prod, start, end, line=ln), CH.AGGS[agg])
+            name = it.name + (f" [{prod}]" if prod else "") + (f" · {ln}" if ln else "")
+            series.append((name, it.unit, s))
+            if show_lim:
+                lim = it.limits_for(prod)
+                limits[name] = {"ks_min": lim.ks_min, "ks_max": lim.ks_max, "lsl": lim.lsl, "usl": lim.usl, "target": lim.target}
 
 empty = [n for n, _, s in series if s.empty]
 if empty:

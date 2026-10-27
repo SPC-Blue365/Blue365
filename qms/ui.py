@@ -352,20 +352,30 @@ def add_event_shading(fig: go.Figure, events: list[AlertEvent], start=None, end=
 
 def trend_figure(ctx: Ctx, key: str, product: str | None, start=None, end=None, resample: str | None = None,
                  title: str | None = None, height: int = 320, show_events: bool = True,
-                 show_target: bool = True) -> go.Figure | None:
+                 show_target: bool = True, line: str | None = None) -> go.Figure | None:
+    """항목 추이. line(공정구분)을 주면 그 호기·밀만, 안 주면 호기가 여럿일 때 호기별 선을 겹쳐 그린다."""
+    from .charts import SERIES
+
     reg = ctx.registry
     item = reg[key]
-    s = ctx.store.series(key, reg, product, start, end)
-    if len(s) == 0:
-        return None
+    lines = [line] if line else ctx.store.item_lines(key, reg, product)
+    multi = line is None and len(lines) >= 2
+    groups = [(ln, ctx.store.series(key, reg, product, start, end, line=ln)) for ln in lines[: len(SERIES)]] if multi \
+        else [(line, ctx.store.series(key, reg, product, start, end, line=line))]
     if resample:
-        s = s.resample(resample).mean().dropna()
+        groups = [(ln, s.resample(resample).mean().dropna()) for ln, s in groups]
+    groups = [(ln, s) for ln, s in groups if len(s)]
+    if not groups:
+        return None
     c = colors()
     fig = go.Figure()
     daily = TABLES[item.table].get("spc_resample") is None
-    fig.add_trace(go.Scatter(x=s.index, y=s.values, mode="lines+markers" if (daily or len(s) < 120) else "lines",
-                             name=item.name, line=dict(color=c["series"], width=2), marker=dict(size=8 if daily else 5),
-                             hovertemplate=f"%{{y:,.{item.decimals}f}} {item.unit}<extra>{item.name}</extra>"))
+    for i, (ln, s) in enumerate(groups):
+        col = SERIES[i] if multi else c["series"]
+        name = ln if multi else item.name
+        fig.add_trace(go.Scatter(x=s.index, y=s.values, mode="lines+markers" if (daily or len(s) < 120) else "lines",
+                                 name=name, line=dict(color=col, width=2), marker=dict(size=8 if daily else 5, color=col),
+                                 hovertemplate=f"%{{y:,.{item.decimals}f}} {item.unit}<extra>{name}</extra>"))
     if key == "phy_s28":
         p = ctx.store.series("pred_s28", reg, product, start, end)
         if len(p):
@@ -373,11 +383,11 @@ def trend_figure(ctx: Ctx, key: str, product: str | None, start=None, end=None, 
                                      line=dict(color=c["pred"], width=2, dash="dash"), marker=dict(size=8),
                                      hovertemplate="%{y:.1f} MPa<extra>예측</extra>"))
     add_limit_lines(fig, item, product, show_target)
-    if show_events:
-        evs = [e for e in ctx.events if e.item_key == key and e.product == product]
+    if show_events and not multi:
+        evs = [e for e in ctx.events if e.item_key == key and e.product == product and (e.line or None) == (line or None)]
         add_event_shading(fig, evs, start, end)
     _base_layout(fig, title, height, item.unit)
-    fig.update_layout(showlegend=key == "phy_s28")
+    fig.update_layout(showlegend=key == "phy_s28" or multi)
     return fig
 
 
