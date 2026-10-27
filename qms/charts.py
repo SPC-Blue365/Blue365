@@ -90,11 +90,19 @@ def overlay_figure(series: list[tuple[str, str, pd.Series]], standardize: bool, 
 
 
 def wide_table(series: list[tuple[str, str, pd.Series]]) -> pd.DataFrame:
+    """항목별 시계열을 일시 기준 한 표로. 같은 일시에 값이 여럿(원자료·같은 날 여러 로트)이면 행을 나눠 모두 남긴다."""
     if not series:
         return pd.DataFrame()
-    df = pd.concat({f"{n} ({u})" if u else n: s for n, u, s in series}, axis=1).sort_index()
-    df.index.name = "일시"
-    return df.reset_index()
+    out, seen = None, {}
+    for n, u, s in series:
+        col = f"{n} ({u})" if u else n
+        seen[col] = seen.get(col, 0) + 1
+        if seen[col] > 1:                                   # 같은 이름 항목이 둘이면 열 이름이 겹치지 않게
+            col = f"{col} #{seen[col]}"
+        s = s.sort_index()
+        f = pd.DataFrame({"일시": s.index, "_순번": s.groupby(level=0).cumcount().to_numpy(), col: s.to_numpy()})
+        out = f if out is None else out.merge(f, on=["일시", "_순번"], how="outer")
+    return out.sort_values(["일시", "_순번"]).drop(columns="_순번").reset_index(drop=True)
 
 
 # ── 저장된 보기 ─────────────────────────────────────────────────────────

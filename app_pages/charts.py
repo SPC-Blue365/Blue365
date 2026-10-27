@@ -19,7 +19,8 @@ st.caption("보고 싶은 항목을 여러 개 고르고 기간·집계를 정�
            "다음부터 한 번에 불러옵니다. 항목 이름·단위는 ⚙️ 설정 → ✏️ 용어·제목에서 바꿀 수 있습니다.")
 
 STATE_KEYS = ("cv_source", "cv_ship_keys", "cv_proc_keys", "cv_product", "cv_period", "cv_range", "cv_agg", "cv_ma", "cv_mode",
-              "cv_cols", "cv_limits", "cv_points", "cv_title", "cv_add", "cv_ship_mode", "cv_kind", "cv_dest")
+              "cv_cols", "cv_limits", "cv_points", "cv_title", "cv_add", "cv_ship_mode", "cv_kind", "cv_dest",
+              "cv_ship_product")
 
 
 @st.cache_data(show_spinner=False)
@@ -72,6 +73,12 @@ if source == "출하시멘트":
         ss["cv_ship_keys"] = [k for k in ("s1", "s3", "s7", "s28") if k in opts]
     ss["cv_ship_keys"] = [k for k in ss["cv_ship_keys"] if k in opts]
     keys = st.multiselect("항목(여러 개 선택)", opts, key="cv_ship_keys", format_func=lambda k: lab[k])
+    pcnt = ship_df["product"].value_counts() if "product" in ship_df else pd.Series(dtype=int)
+    if ss.get("cv_ship_product") not in S.PRODUCTS:          # 처음엔 자료가 있는 첫 품종
+        ss["cv_ship_product"] = next((p for p in S.PRODUCTS if pcnt.get(p, 0)), S.PRODUCTS[0])
+    ship_prod = st.selectbox("품종", list(S.PRODUCTS), key="cv_ship_product",
+                             format_func=lambda p: f"{p} ({int(pcnt.get(p, 0))}건)",
+                             help="1종·3종·고로슬래그 2종은 규격이 달라 섞어 그리지 않습니다.")
     with st.expander("출하 조건(첨가재·모선 수·제품 구분·양하지)"):
         f1, f2, f3, f4 = st.columns(4)
         adds = sorted(a for a in ship_df["additive"].dropna().unique() if a)
@@ -129,7 +136,8 @@ series: list[tuple[str, str, pd.Series]] = []
 limits: dict[str, dict] = {}
 std = S.load_ship_standards()
 if source == "출하시멘트":
-    dfx = S.apply_filters(ship_df, start, end, None if add == "전체" else add, smode, kind, None if dest == "전체" else dest)
+    dfx = S.apply_filters(ship_df, start, end, None if add == "전체" else add, smode, kind, None if dest == "전체" else dest,
+                          product=ship_prod)
     for k in keys:
         sub = dfx[dfx[k].notna()]
         s = pd.Series(sub[k].astype(float).values, index=pd.DatetimeIndex(sub["date"]))
@@ -140,7 +148,7 @@ if source == "출하시멘트":
         if show_lim and it and len(s):
             lims = {}
             for f in CH.LIMIT_STYLE:
-                vals = [S.effective_limits(std, k, int(ts.year)).get(f) for ts in s.index]
+                vals = [S.effective_limits(std, k, int(ts.year), ship_prod).get(f) for ts in s.index]
                 ser = pd.Series([float(v) if v is not None else float("nan") for v in vals], index=s.index)
                 if ser.notna().any():
                     lims[f] = ser
@@ -166,7 +174,7 @@ if not series:
 
 if title:
     st.subheader(title)
-st.caption(f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} · {agg}" + (f" · 이동평균 {ma}점" if ma else "")
+st.caption((f"{ship_prod} · " if source == "출하시멘트" else "") + f"{start:%Y-%m-%d} ~ {end:%Y-%m-%d} · {agg}" + (f" · 이동평균 {ma}점" if ma else "")
            + (" · 0(시험 전)은 미시험으로 제외" if source == "출하시멘트" else ""))
 
 if mode == "항목별 그래프":

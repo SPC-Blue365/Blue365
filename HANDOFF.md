@@ -164,6 +164,11 @@
 - 출하시멘트 기준 버그(사실): 연도별 기준만 있고 품종 구분이 없어 3종도 1종 KS(SO₃ 3.5%)로 판정 → 3종 SO₃ '위험' 오판. KS_BY_PRODUCT(3종: SO₃ 4.5, Blaine 3300, 1/3/7/28일 10/20/32.5/47.5 — standards.py 레지스트리와 동일), 고로슬래그 2종은 KS_NOT_SET(KS L 5210 값 미입력 → KS 판정 생략). 저장 위치 years(1종, 하위호환) / years@3종 / years@고로슬래그 2종. limits_frame 이 행별 (연도, 품종)로 기준 적용. 관리기준 탭에 품종 선택.
 - 테스트 169건. 미결: 고로슬래그 2종 KS(KS L 5210) 값 확인·입력, charts.py 그래프빌더의 출하 기준선은 아직 1종 기준.
 
+**완료(18차, 2026-10-27): 그래프 보기 오류 수정(ValueError: cannot reindex on an axis with duplicate labels)**
+- 원인: 표로 보기(`qms/charts.py` wide_table)가 항목별 시계열을 `pd.concat(axis=1)`로 합칠 때 같은 일시 값이 둘 이상이면 실패. 출하시멘트 그래프가 품종을 거르지 않아 같은 날 1종·3종 로트가 섞인 것이 직접 계기.
+- 수정: wide_table은 (일시, 같은 일시 내 순번)으로 병합해 값을 모두 남김·같은 이름 열은 "#2" 붙임. 그래프 보기(출하시멘트)에 품종 선택(cv_ship_product, 건수 표시) 추가, 기준선도 품종별 `effective_limits(..., product)` 적용.
+- 시험: test_wide_table_keeps_duplicate_timestamps, test_chart_page_separates_products_on_same_dates(수정 전 같은 오류 재현 확인). 전체 171 통과.
+
 **다음 작업**
 1. 사용자 피드백 반영(판정 기준·화면). 사내 관리기준 수치는 사용자가 입력하므로 임의로 채우지 않는다.
 2. 선박별 양하지 자료가 오면 선박·양하지 연결(추정 없이 기록된 값만 사용).

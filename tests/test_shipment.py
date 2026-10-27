@@ -308,6 +308,38 @@ def test_chart_page_starts_on_source_with_data():
     S.clear_shipment()
 
 
+def test_wide_table_keeps_duplicate_timestamps():
+    """같은 일시에 값이 여럿(원자료·같은 날 여러 로트)이어도 표가 깨지지 않고 값을 모두 남긴다(이전: ValueError duplicate labels)."""
+    from qms import charts as CH
+    t = pd.to_datetime(["2026-01-01", "2026-01-01", "2026-01-02"])
+    a = pd.Series([1.0, 2.0, 3.0], index=t)
+    b = pd.Series([9.0], index=t[2:])
+    tbl = CH.wide_table([("a", "MPa", a), ("b", "", b), ("a", "MPa", a)])
+    assert list(tbl.columns) == ["일시", "a (MPa)", "b", "a (MPa) #2"]
+    assert len(tbl) == 3 and tbl["a (MPa)"].tolist() == [1.0, 2.0, 3.0] and tbl["b"].notna().sum() == 1
+
+
+def test_chart_page_separates_products_on_same_dates():
+    """1종·3종이 같은 날 출하돼도 그래프 보기가 오류 없이 그려지고, 품종을 골라 따로 본다."""
+    S.clear_shipment()
+    rec = S.parse_upload(make_xlsx(), "a.xlsx").records
+    r3 = rec.copy()
+    r3["product"] = "3종"
+    if "lot" in r3:
+        r3["lot"] = r3["lot"].astype(str) + "-3"
+    S.save_shipment(pd.concat([rec, r3], ignore_index=True))
+    at = AppTest.from_file(APP, default_timeout=240)
+    at.run()
+    at.switch_page("app_pages/charts.py")
+    at.run()
+    at.selectbox(key="cv_agg").set_value("원자료").run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.selectbox(key="cv_ship_product").value == "1종"
+    at.selectbox(key="cv_ship_product").set_value("3종").run()
+    assert not at.exception, [e.value for e in at.exception]
+    S.clear_shipment()
+
+
 def test_lims_korean_headers_and_setting_time_minutes():
     """LIMS·한글 머리글(채취일·CaO·압축강도28일 등)을 공정 데이터 업로드에서 인식하고, 품명·응결시간을 정규화한다."""
     import io
