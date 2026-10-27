@@ -1,11 +1,11 @@
-"""원료 배합 설계(조합 계산) · 클링커 성분 예측 · 생료→클링커 전환 검증.
+"""원료 배합 설계(조합 계산) · 클링커 성분 예측 · 원료→클링커 전환 검증.
 
 배합 계산식 (근거: 물질수지 + Lea & Parker LSF, ASTM C150 Bogue)
 -----------------------------------------------------------------
   x_i    원료 i의 건조 기준 배합비(합계 1)
   ox_ij  원료 i의 산화물 j 함량(%, 건조 기준),  L_i 원료 i의 강열감량(%)
   a      클링커 1 kg에 흡수되는 석탄회(kg) = 석탄 원단위(kg/t-clk)/1000 × 회분(%)/100 × 흡수율(%)/100
-  D(x)   = Σ x_i·(1 − L_i/100)                                   (생료 1 kg 강열 후 잔량)
+  D(x)   = Σ x_i·(1 − L_i/100)                                   (원료 1 kg 강열 후 잔량)
   클링커 산화물  C_j = (1 − a)·Σx_i·ox_ij / D + a·ash_j
   ⇔ C_j·D = Σ x_i·[(1 − a)·ox_ij + a·ash_j·(1 − L_i/100)] ≡ E_j(x)   ← x 에 대해 선형
 
@@ -20,12 +20,12 @@
     - 원가 최소 LP(scipy.optimize.linprog, 목표 허용편차 내)
   로 푼다. 분모·SO3·f-CaO 는 해에 따라 바뀌므로 3회 반복 갱신한다.
 
-  '생료 기준' 목표를 고르면 LSF·SM·IM 식에서 a = 0 (석탄회 미반영)으로 계산한다.
+  '원료 기준' 목표를 고르면 LSF·SM·IM 식에서 a = 0 (석탄회 미반영)으로 계산한다.
 
 클링커 예측
   - 주성분: 위 물질수지. K2O·Na2O·SO3 는 잔류율(휘발·바이패스 손실)을 곱한다.
   - SO3: (원료 SO3 + 석탄 황분×2.5) × 잔류율
-  - f-CaO: 공장 데이터로 학습한 소성성 회귀식(LSF·SM·생료 90μm 잔사·소성대 온도) 또는 경험식
+  - f-CaO: 공장 데이터로 학습한 소성성 회귀식(LSF·SM·원료 90μm 잔사·소성대 온도) 또는 경험식
   - XRD 광물: 같은 날 XRD 실측과 Bogue 계산값의 회귀(공장 데이터) — 없으면 Bogue 값을 그대로 사용
 
 ※ 기본 원료 성분·단가·킬른 계수는 예시값(추정)이다. 공장 원료 분석값으로 바꿔 사용해야 한다.
@@ -129,7 +129,7 @@ class KilnParams:
     k2o_retention: float = 85.0      # K2O 잔류율(%) — 바이패스 운전 시 낮아짐
     na2o_retention: float = 95.0     # Na2O 잔류율(%)
     fcao: float = 1.0                # 예상 f-CaO(%) — 소성 모델 미사용 시
-    r90: float = 13.0                # 생료 90μm 잔사(%) — f-CaO 예측 입력
+    r90: float = 13.0                # 원료 90μm 잔사(%) — f-CaO 예측 입력
     bzt: float = 1420.0              # 소성대 온도(℃) — f-CaO 예측 입력
     ash: dict = field(default_factory=lambda: dict(ASH_DEFAULT))
 
@@ -151,7 +151,7 @@ class KilnParams:
 
 @dataclass
 class MixTargets:
-    basis: str = "clinker"           # clinker: 클링커 기준(석탄회 반영) | raw: 생료 기준
+    basis: str = "clinker"           # clinker: 클링커 기준(석탄회 반영) | raw: 원료 기준
     values: dict = field(default_factory=lambda: {"LSF": 95.0, "SM": 2.50, "IM": 1.60, "C3S": 57.0})
     enabled: dict = field(default_factory=lambda: {"LSF": True, "SM": True, "IM": True, "C3S": False})
     weights: dict = field(default_factory=lambda: {"LSF": 1.0, "SM": 1.0, "IM": 1.0, "C3S": 1.0})
@@ -202,7 +202,7 @@ def _fcao_training_frame(store) -> pd.DataFrame:
     rm = store.tables.get("raw_meal", pd.DataFrame())
     if len(rm) and "rm_r90" in rm:
         r = rm[["timestamp", "rm_r90"]].dropna().sort_values("timestamp").copy()
-        r["timestamp"] = r["timestamp"] + pd.Timedelta(hours=2)          # 생료 → 클링커 약 2시간
+        r["timestamp"] = r["timestamp"] + pd.Timedelta(hours=2)          # 원료 → 클링커 약 2시간
         d = pd.merge_asof(d, r, on="timestamp", direction="backward", tolerance=pd.Timedelta(hours=4))
     kiln = store.tables.get("kiln", pd.DataFrame())
     if len(kiln) and "kiln_bzt" in kiln:
@@ -212,7 +212,7 @@ def _fcao_training_frame(store) -> pd.DataFrame:
 
 
 def fit_fcao_model(store, min_n: int = 30) -> FcaoModel:
-    """클링커 f-CaO ~ LSF + SM + 생료 R90(2h 전) + 소성대 온도(0~4h 평균) 회귀. 데이터 부족 시 경험식."""
+    """클링커 f-CaO ~ LSF + SM + 원료 R90(2h 전) + 소성대 온도(0~4h 평균) 회귀. 데이터 부족 시 경험식."""
     d = _fcao_training_frame(store)
     need = ["clk_fcao", "clk_lsf", "clk_sm", "rm_r90", "kiln_bzt"]
     if len(d) == 0 or any(c not in d for c in need):
@@ -302,7 +302,7 @@ def fit_xrd_map(store, min_n: int = 10) -> XrdMap:
     return XrdMap(base | coef, rmse, n, "공장 데이터 학습(XRD↔Bogue 회귀)")
 
 
-# ── 배합 → 생료 → 클링커 ────────────────────────────────────────────────
+# ── 배합 → 원료 → 클링커 ────────────────────────────────────────────────
 def _clean(mats: pd.DataFrame) -> pd.DataFrame:
     df = mats.copy()
     for c in MATERIAL_COLUMNS:
@@ -319,7 +319,7 @@ def _clean(mats: pd.DataFrame) -> pd.DataFrame:
 
 
 def raw_meal_composition(mats: pd.DataFrame, x: np.ndarray) -> dict:
-    """건조 생료 조성(%) — x 는 사용 원료 배합비(합계 1)."""
+    """건조 원료 조성(%) — x 는 사용 원료 배합비(합계 1)."""
     ox = mats[OXIDES].to_numpy(float)
     comp = {o: float(v) for o, v in zip(OXIDES, x @ ox)}
     comp["LOI"] = float(x @ mats["LOI"].to_numpy(float))
@@ -328,7 +328,7 @@ def raw_meal_composition(mats: pd.DataFrame, x: np.ndarray) -> dict:
 
 def predict_clinker(mats: pd.DataFrame, x: np.ndarray, kp: KilnParams, fcao: float | None = None,
                     fcao_model: FcaoModel | None = None, xrd_map: XrdMap | None = None) -> dict:
-    """배합비 → 생료 → 클링커 화학·모듈러스·Bogue·액상량·(XRD 예측). fcao 를 주지 않으면 모델/기본값 사용."""
+    """배합비 → 원료 → 클링커 화학·모듈러스·Bogue·액상량·(XRD 예측). fcao 를 주지 않으면 모델/기본값 사용."""
     mats = _clean(mats)
     x = np.asarray(x, float)
     raw = raw_meal_composition(mats, x)
@@ -361,7 +361,7 @@ def predict_clinker(mats: pd.DataFrame, x: np.ndarray, kp: KilnParams, fcao: flo
         "C3S": float(ph["C3S"]), "C2S": float(ph["C2S"]), "C3A": float(ph["C3A"]), "C4AF": float(ph["C4AF"]),
         "liquid": float(chem.liquid_phase_1450(clk["Al2O3"], clk["Fe2O3"], clk["MgO"], clk["K2O"], clk["Na2O"])),
         "na2oeq": float(chem.na2o_eq(clk["Na2O"], clk["K2O"])),
-        # 생료(건조) t / 클링커 t
+        # 원료(건조) t / 클링커 t
         "kiln_factor": (1 - a) / D,
     }
     out["BI"] = float(chem.burnability_index(out["C3S"], out["C3A"], out["C4AF"]))
@@ -626,7 +626,7 @@ def sensitivity(mats: pd.DataFrame, x: np.ndarray, kp: KilnParams, step: float =
 
 # ── 공장 실적 기반 보정·검증 ────────────────────────────────────────────
 def estimate_loi(rm: pd.DataFrame) -> pd.Series:
-    """생료 강열감량 — 실측(rm_loi)이 없으면 CO₂ 화학양론 추정(0.785·CaO + 1.092·MgO + 0.6)."""
+    """원료 강열감량 — 실측(rm_loi)이 없으면 CO₂ 화학양론 추정(0.785·CaO + 1.092·MgO + 0.6)."""
     est = 0.785 * rm["rm_cao"] + 1.092 * rm["rm_mgo"] + 0.6
     if "rm_loi" in rm:
         return rm["rm_loi"].where(rm["rm_loi"].notna(), est)
@@ -634,7 +634,7 @@ def estimate_loi(rm: pd.DataFrame) -> pd.Series:
 
 
 def conversion_check(store, kp: KilnParams, lag_hours: float = 2.0) -> tuple[pd.DataFrame, dict]:
-    """생료 실측 → (물질수지) 클링커 예측 vs 클링커 실측. 반환: (시점별 비교표, 요약)."""
+    """원료 실측 → (물질수지) 클링커 예측 vs 클링커 실측. 반환: (시점별 비교표, 요약)."""
     rm = store.tables.get("raw_meal", pd.DataFrame())
     clk = store.tables.get("clinker", pd.DataFrame())
     need_rm = ["rm_cao", "rm_sio2", "rm_al2o3", "rm_fe2o3", "rm_mgo"]
@@ -680,7 +680,7 @@ def conversion_check(store, kp: KilnParams, lag_hours: float = 2.0) -> tuple[pd.
 
 
 def estimate_coal_rate(store) -> float | None:
-    """DCS 석탄 투입량(t/h)·원료 투입량(t/h)과 생료 강열감량으로 석탄 원단위(kg/t-clk) 추정."""
+    """DCS 석탄 투입량(t/h)·원료 투입량(t/h)과 원료 강열감량으로 석탄 원단위(kg/t-clk) 추정."""
     kiln = store.tables.get("kiln", pd.DataFrame())
     rm = store.tables.get("raw_meal", pd.DataFrame())
     if len(kiln) == 0 or not {"coal_rate", "kiln_feed"} <= set(kiln.columns) or len(rm) == 0:
@@ -717,7 +717,7 @@ def design_workbook(mats: pd.DataFrame, targets: MixTargets, kp: KilnParams, res
                                        "H2O": "수분(%)", "Cr": "총Cr(mg/kg)", "cost": "단가(원/t 습윤)",
                                        "min": "하한(%)", "max": "상한(%)", "fixed": "고정(%)"})
     cond = pd.DataFrame(
-        [("목표 기준", "클링커(석탄회 반영)" if targets.basis == "clinker" else "생료"), ("계산 방식", res.mode)]
+        [("목표 기준", "클링커(석탄회 반영)" if targets.basis == "clinker" else "원료"), ("계산 방식", res.mode)]
         + [(f"목표 {TARGET_LABELS[k]}", f"{targets.values[k]:g}" + ("" if targets.enabled.get(k) else " (미사용)"))
            for k in TARGET_KEYS]
         + [("석탄 원단위(kg/t-clk)", kp.coal_kg_per_t), ("석탄 회분(%)", kp.coal_ash), ("회분 흡수율(%)", kp.ash_absorption),
@@ -725,15 +725,15 @@ def design_workbook(mats: pd.DataFrame, targets: MixTargets, kp: KilnParams, res
            ("Na₂O 잔류율(%)", kp.na2o_retention), ("흡수 석탄회 a(kg/kg-clk)", round(kp.a, 5))],
         columns=["항목", "값"])
     comp = pd.DataFrame({"성분": OXIDES + ["LOI"],
-                         "생료(건조, %)": [cl["raw"][o] for o in OXIDES] + [cl["raw"]["LOI"]],
+                         "원료(건조, %)": [cl["raw"][o] for o in OXIDES] + [cl["raw"]["LOI"]],
                          "클링커 예측(%)": [cl["clinker"].get(o, np.nan) for o in OXIDES] + [np.nan]})
     mod = pd.DataFrame([
-        ("생료 LSF", cl["raw_lsf"]), ("생료 SM", cl["raw_sm"]), ("생료 IM", cl["raw_im"]),
+        ("원료 LSF", cl["raw_lsf"]), ("원료 SM", cl["raw_sm"]), ("원료 IM", cl["raw_im"]),
         ("클링커 LSF", cl["LSF"]), ("클링커 SM", cl["SM"]), ("클링커 IM", cl["IM"]),
         ("C₃S(Bogue)", cl["C3S"]), ("C₂S(Bogue)", cl["C2S"]), ("C₃A(Bogue)", cl["C3A"]), ("C₄AF(Bogue)", cl["C4AF"]),
         ("액상량 1450℃(%)", cl["liquid"]), ("Na₂Oeq(%)", cl["na2oeq"]), ("f-CaO 예측(%)", cl["fcao"]),
         ("XRD 알라이트 예측(%)", cl["xrd"]["alite"]), ("XRD 벨라이트 예측(%)", cl["xrd"]["belite"]),
-        ("생료/클링커(t/t)", cl["kiln_factor"]), ("원료비(원/t-클링커)", res.cost_per_t_clk)], columns=["항목", "값"])
+        ("원료/클링커(t/t)", cl["kiln_factor"]), ("원료비(원/t-클링커)", res.cost_per_t_clk)], columns=["항목", "값"])
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as xw:
         pd.DataFrame({"배합 설계서": [
@@ -743,7 +743,7 @@ def design_workbook(mats: pd.DataFrame, targets: MixTargets, kp: KilnParams, res
         res.table().round(3).to_excel(xw, sheet_name="배합결과", index=False)
         mat.to_excel(xw, sheet_name="원료성분", index=False)
         cond.to_excel(xw, sheet_name="목표·조건", index=False)
-        comp.round(3).to_excel(xw, sheet_name="생료·클링커조성", index=False)
+        comp.round(3).to_excel(xw, sheet_name="원료·클링커조성", index=False)
         mod.round(3).to_excel(xw, sheet_name="클링커예측", index=False)
         for ws in xw.book.worksheets:
             for cell in ws[1]:

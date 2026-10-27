@@ -33,7 +33,7 @@ def test_s1_underburning_is_top_cause_of_fcao(demo):
 def test_s2_raw_meal_lsf_is_top_cause_of_fcao(demo):
     store, reg, settings, _, events = demo
     dx = diagnose(_find(events, "clk_fcao", 8, "SPEC"), store, reg, settings)
-    assert "생료 LSF" in dx.results[0].hyp.title
+    assert "원료 LSF" in dx.results[0].hyp.title
 
 
 def test_s5_test_error_identified(demo):

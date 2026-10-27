@@ -33,7 +33,7 @@ GREEN = PatternFill("solid", fgColor="E8F3E8")
 GREY = PatternFill("solid", fgColor="F2F2F2")
 
 # 파일 제목(정규화 포함) → 사람이 읽는 공정명. detect_lims_sheet 가 표를 정하고, 여기선 이름만 붙인다.
-PROC_NAME = [("조합원료", "조합원료성적(생료·킬른 피드)"), ("수출크링커", "수출크링커성적(6·7호)"),
+PROC_NAME = [("조합원료", "조합원료성적(원료·킬른 피드)"), ("수출크링커", "수출크링커성적(6·7호)"),
              ("크링커", "크링커성적(4·5호)"), ("시멘트공정", "시멘트공정(밀 출구)"),
              ("3종시멘트성적", "3종시멘트성적(출하)"), ("시멘트성적", "시멘트성적(1종·출하)")]
 META = {store._norm_header(x) for x in (
@@ -44,9 +44,9 @@ META = {store._norm_header(x) for x in (
 DERIVED = {store._norm_header(x) for x in ("HM", "SM", "IM", "LSF", "C3S", "C2S", "C3A", "C4AF", "TA", "SD", "A/S",
                                           "mC3S", "Coating tendency", "Liquid Phase", "KFUI", "TargetC3S", "ActualC3S")}
 TITLE_SKIP = tuple(store._norm_header(s) for s in store.LIMS_SKIP_TITLES)
-QNAME = {"timestamp": "채취일(기준)", "product": "품명(품종)", "rm_cao": "생료 CaO", "rm_sio2": "생료 SiO2",
-         "rm_al2o3": "생료 Al2O3", "rm_fe2o3": "생료 Fe2O3", "rm_mgo": "생료 MgO", "rm_so3": "생료 SO3",
-         "rm_k2o": "생료 K2O", "rm_na2o": "생료 Na2O", "rm_r90": "생료 90㎛", "rm_r200": "생료 200㎛", "rm_loi": "생료 LOI",
+QNAME = {"timestamp": "채취일(기준)", "product": "품명(품종)", "rm_cao": "원료 CaO", "rm_sio2": "원료 SiO2",
+         "rm_al2o3": "원료 Al2O3", "rm_fe2o3": "원료 Fe2O3", "rm_mgo": "원료 MgO", "rm_so3": "원료 SO3",
+         "rm_k2o": "원료 K2O", "rm_na2o": "원료 Na2O", "rm_r90": "원료 90㎛", "rm_r200": "원료 200㎛", "rm_loi": "원료 LOI",
          "clk_cao": "클링커 CaO", "clk_sio2": "클링커 SiO2", "clk_al2o3": "클링커 Al2O3", "clk_fe2o3": "클링커 Fe2O3",
          "clk_mgo": "클링커 MgO", "clk_so3": "클링커 SO3", "clk_k2o": "클링커 K2O", "clk_na2o": "클링커 Na2O",
          "clk_fcao": "클링커 유리석회(f-CaO)", "clk_lw": "클링커 용적비중(용중)", "cem_blaine": "시멘트 Blaine",
@@ -55,7 +55,7 @@ QNAME = {"timestamp": "채취일(기준)", "product": "품명(품종)", "rm_cao"
          "phy_ist": "초결시간", "phy_fst": "종결시간", "phy_autoclave": "Autoclave", "phy_s1": "압축강도 1일",
          "phy_s3": "압축강도 3일", "phy_s7": "압축강도 7일", "phy_s28": "압축강도 28일", "phy_crvi": "6가크롬",
          "operator": "담당자"}
-TBL_SHEET = {"raw_meal": "생료", "clinker": "클링커", "cement": "시멘트", "physical": "물성 + 출하시멘트"}
+TBL_SHEET = {"raw_meal": "원료", "clinker": "클링커", "cement": "시멘트", "physical": "물성 + 출하시멘트"}
 
 
 def _title(ws) -> str:

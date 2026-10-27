@@ -114,7 +114,7 @@ def rawmix_context(res, targets, kp) -> dict:
         "task": "원료 배합 설계 결과 검토(클링커 계수 예측)",
         "mode": res.mode, "feasible": res.feasible, "messages": res.messages, "active_bounds": res.active_bounds,
         "targets": {k: {"value": targets.values[k], "enabled": bool(targets.enabled.get(k))} for k in targets.values},
-        "target_basis": "클링커 기준(석탄회 흡수 반영)" if targets.basis == "clinker" else "생료 기준",
+        "target_basis": "클링커 기준(석탄회 흡수 반영)" if targets.basis == "clinker" else "원료 기준",
         "mix": [{"material": r["원료"], "category": r["구분"], "dry_pct": _r(r["건조 배합비(%)"], 2),
                  "wet_pct": _r(r["습윤 배합비(%)"], 2)} for _, r in res.table().iterrows()],
         "raw_meal": {"LSF": _r(cl["raw_lsf"], 2), "SM": _r(cl["raw_sm"], 3), "IM": _r(cl["raw_im"], 3),

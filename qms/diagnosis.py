@@ -87,7 +87,7 @@ class Diagnosis:
             due = {"데이터 지지": "즉시(24시간 내)", "부분 확인": "3일 이내",
                    "데이터 없음(추정)": "3일 이내(현장 확인)"}.get(r.verdict, "필요 시")
             rows.append({"순위": i, "축": r.hyp.axis, "원인 가설": r.hyp.title, "판정": r.verdict,
-                         "근거 점수": r.evidence_score if r.evidence_score is not None else "-",
+                         "근거 점수": str(r.evidence_score) if r.evidence_score is not None else "-",   # 숫자·"-" 혼합 방지(표 변환 경고)
                          "확인 방법(데이터·시험)": " / ".join(r.hyp.verify), "담당(제안)": r.hyp.owner, "기한": due})
         return pd.DataFrame(rows)
 

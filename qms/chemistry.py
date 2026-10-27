@@ -125,7 +125,7 @@ def burnability_index(c3s: Number, c3a: Number, c4af: Number) -> Number:
 
 
 def add_raw_meal_moduli(df: pd.DataFrame, prefix: str = "rm_") -> pd.DataFrame:
-    """생료 데이터프레임에 LSF/SM/IM 파생 열을 추가한다(입력은 수정하지 않음)."""
+    """원료 데이터프레임에 LSF/SM/IM 파생 열을 추가한다(입력은 수정하지 않음)."""
     p = prefix
     out = df.copy()
     out[f"{p}lsf"] = lsf(out[f"{p}cao"], out[f"{p}sio2"], out[f"{p}al2o3"], out[f"{p}fe2o3"])

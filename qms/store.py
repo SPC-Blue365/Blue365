@@ -28,7 +28,7 @@ ALERT_DB_PATH = DATA_DIR / "alerts.db"   # 알림 처리상태는 별도 DB(데�
 RAW_COLUMNS: dict[str, list[str]] = {
     "raw_meal": ["rm_cao", "rm_sio2", "rm_al2o3", "rm_fe2o3", "rm_mgo", "rm_so3", "rm_k2o", "rm_na2o",
                  "rm_r90", "rm_r200", "rm_loi",
-                 # 조합원료 투입비율(%) — 생료 배합. 라인(4·5/6·7)에 따라 쓰는 원료가 다르다.
+                 # 조합원료 투입비율(%) — 원료 배합. 라인(4·5/6·7)에 따라 쓰는 원료가 다르다.
                  "rm_mx_lime", "rm_mx_shale", "rm_mx_silica", "rm_mx_silica2", "rm_mx_ash", "rm_mx_sago",
                  "rm_mx_iron", "rm_mx_sand", "rm_mx_total"],
     "kiln": ["kiln_feed", "coal_rate", "kiln_bzt", "kiln_o2", "kiln_co", "kiln_torque", "kiln_calc_temp",
@@ -106,9 +106,9 @@ def _combine_sample_time(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # 엑셀 템플릿 시트명 ↔ 테이블
-SHEET_NAMES = {"raw_meal": "생료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성",
+SHEET_NAMES = {"raw_meal": "원료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성",
                "xrd": "클링커일일"}
-SHEET_ALIASES = {"XRD": "xrd", "클링커XRD": "xrd"}
+SHEET_ALIASES = {"XRD": "xrd", "클링커XRD": "xrd", "생료": "raw_meal"}   # 생료: 예전 양식 시트 이름(호환)
 
 # LIMS·사람이 읽는 한글 머리글 → 내부 열 이름. LIMS에서 받은 엑셀을 그대로 붙여넣어도 인식한다.
 # 같은 이름(예: CaO)이 표마다 다른 열로 가므로 표별로 따로 둔다. 키는 정규화해 비교한다.
@@ -513,7 +513,7 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx") -> UploadResu
             df.columns = [c if c is not None else "" for c in raw.iloc[hrow].tolist()]
             frames.setdefault(tbl, df)                 # 같은 표가 여러 시트면 첫 시트만
         if not frames:
-            return UploadResult({}, [], [("인식 가능한 시트가 없습니다. 템플릿 시트명(생료/클링커/시멘트/물성/클링커일일) "
+            return UploadResult({}, [], [("인식 가능한 시트가 없습니다. 템플릿 시트명(원료/클링커/시멘트/물성/클링커일일) "
                                           "또는 LIMS 원본 파일(조합원료·크링커·시멘트공정·시멘트성적)을 사용하세요.")])
 
     for name, df in frames.items():

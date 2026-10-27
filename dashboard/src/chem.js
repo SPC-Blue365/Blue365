@@ -52,7 +52,7 @@
     };
   }
 
-  // ── 배합 → 생료 → 클링커 (수동 forward 계산) ──
+  // ── 배합 → 원료 → 클링커 (수동 forward 계산) ──
   const OXIDES = ["SiO2", "Al2O3", "Fe2O3", "CaO", "MgO", "SO3", "K2O", "Na2O"];
   const ASH_DEFAULT = { SiO2: 55.0, Al2O3: 25.0, Fe2O3: 7.0, CaO: 5.0, MgO: 1.5, K2O: 1.0, Na2O: 0.4 };
 

@@ -43,7 +43,7 @@ if ctx.demo:
 
 tab1, tab2, tab3, tab4 = st.tabs(["⬆️ 업로드", "📄 입력 템플릿", "🧪 데모 데이터", "⬇️ 내보내기·삭제"])
 with tab1:
-    st.markdown("엑셀(시트: 생료·킬른·클링커·시멘트·물성) 또는 CSV(파일명에 테이블명 포함, 예: `clinker_2026-10.csv`)를 올리세요. "
+    st.markdown("엑셀(시트: 원료·킬른·클링커·시멘트·물성) 또는 CSV(파일명에 테이블명 포함, 예: `clinker_2026-10.csv`)를 올리세요. "
                 "같은 측정일시(+품종)는 업로드 값으로 덮어씁니다.")
     up = st.file_uploader("파일 선택", type=["xlsx", "xls", "csv"])
     if up is not None and shipment.looks_like_shipment(up.getvalue(), up.name):
@@ -98,7 +98,7 @@ with tab2:
                 "`qms_monitor.py --import-dir` 가 주기적으로 자동 반영 → ③ DB/OPC-UA 직접 연계(차기 단계)")
 
 with tab3:
-    st.markdown("가상의 공장 데이터(생료→소성→클링커→분쇄→강도 인과관계 반영)와 이상 시나리오 6종을 생성합니다.")
+    st.markdown("가상의 공장 데이터(원료→소성→클링커→분쇄→강도 인과관계 반영)와 이상 시나리오 6종을 생성합니다.")
     c1, c2, c3 = st.columns(3)
     days = c1.number_input("기간(일)", 30, 365, 120)
     end_d = c2.date_input("종료일", value=date.today())

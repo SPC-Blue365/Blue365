@@ -9,7 +9,7 @@ from qms.ui import get_ctx, page_header
 ctx = get_ctx()
 reg = ctx.registry
 page_header(ctx, "🧮 시멘트 화학 계산기")
-tab1, tab2, tab3 = st.tabs(["클링커·생료 계산", "3성분 원료 조합 계산", "계산식·출처"])
+tab1, tab2, tab3 = st.tabs(["클링커·원료 계산", "3성분 원료 조합 계산", "계산식·출처"])
 
 with tab1:
     st.caption("XRF 분석값(질량 %)을 입력하면 LSF·SM·IM, Bogue 광물 조성, 1450 ℃ 액상량을 계산합니다.")
@@ -24,21 +24,21 @@ with tab1:
     k2o = c[1].number_input("K₂O", value=0.80, step=0.05, format="%.2f")
     na2o = c[2].number_input("Na₂O", value=0.18, step=0.02, format="%.2f")
     fcao = c[3].number_input("f-CaO", value=1.0, step=0.1, format="%.2f", help="Bogue 계산 시 CaO에서 차감")
-    mode = c[4].selectbox("시료", ["클링커", "생료(킬른 피드)", "시멘트(석고 보정)"])
+    mode = c[4].selectbox("시료", ["클링커", "원료(킬른 피드)", "시멘트(석고 보정)"])
 
     l = chem.lsf(cao, sio2, al2o3, fe2o3, so3, gypsum_correction=mode.startswith("시멘트"))
     sm = chem.silica_modulus(sio2, al2o3, fe2o3)
     im = chem.iron_modulus(al2o3, fe2o3)
     st.subheader("결과")
     m = st.columns(3)
-    pref = "rm" if mode.startswith("생료") else "clk"
+    pref = "rm" if mode.startswith("원료") else "clk"
     for col, (name, val, key) in zip(m, (("LSF", l, f"{pref}_lsf"), ("SM", sm, f"{pref}_sm"), ("IM", im, f"{pref}_im"))):
         lim = reg[key].limits_for(None) if key in reg else None
         rng = (f"사내 {lim.lsl:g}~{lim.usl:g}" if lim and lim.lsl is not None and lim.usl is not None else "")
         ok = (lim is None or lim.lsl is None or lim.usl is None or lim.lsl <= val <= lim.usl)
         col.metric(name, f"{val:.2f}", delta=(("✅ " if ok else "⚠️ ") + rng) if rng else None, delta_color="off",
                    delta_arrow="off")
-    if not mode.startswith("생료"):
+    if not mode.startswith("원료"):
         ph = chem.bogue(cao, sio2, al2o3, fe2o3, so3, fcao)
         liq = chem.liquid_phase_1450(al2o3, fe2o3, mgo, k2o, na2o)
         m = st.columns(6)
@@ -54,7 +54,7 @@ with tab1:
         if mgo > 2.0:
             st.caption("MgO가 2%를 넘으면 LSF 식(Lea & Parker)과 액상량 식의 MgO 항 적용 범위를 벗어납니다(액상량은 2.0%로 제한).")
     else:
-        st.caption("생료는 소성 전 상태이므로 광물 조성 대신 모듈러스로 관리합니다. 생료 LSF는 석탄회 흡수로 클링커보다 높게 관리합니다.")
+        st.caption("원료는 소성 전 상태이므로 광물 조성 대신 모듈러스로 관리합니다. 원료 LSF는 석탄회 흡수로 클링커보다 높게 관리합니다.")
 
 with tab2:
     st.caption("목표 LSF·SM을 동시에 만족하는 3성분(예: 석회석·점토·철광석) 배합비를 계산합니다(건조 기준).")

@@ -46,13 +46,13 @@ PRODUCTS: dict[str, str] = {
     "3종": "조강 포틀랜드 시멘트 (KS L 5201 3종)",
 }
 
-STAGES: list[str] = ["원료(생료)", "소성(킬른)", "클링커", "시멘트(분쇄)", "제품 물성", "시험 조건"]
+STAGES: list[str] = ["원료", "소성(킬른)", "클링커", "시멘트(분쇄)", "제품 물성", "시험 조건"]
 
 # 데이터 테이블 정의. spc_resample: SPC 판정규칙을 적용할 집계 단위.
 # 2시간·1시간 데이터는 자기상관이 커서 원 데이터에 런(run) 규칙을 적용하면 허위 경보가 많으므로
 # 8시간(근무조) 평균에 적용한다. 규격·관리기준 이탈은 개별값 기준으로 판정한다.
 TABLES: dict[str, dict] = {
-    "raw_meal": {"label": "생료(킬른 피드)", "freq": "2시간", "by_product": False, "spc_resample": "8h", "merge_gap": "12h"},
+    "raw_meal": {"label": "원료(킬른 피드)", "freq": "2시간", "by_product": False, "spc_resample": "8h", "merge_gap": "12h"},
     "kiln": {"label": "킬른 운전(DCS)", "freq": "1시간", "by_product": False, "spc_resample": "8h", "merge_gap": "12h"},
     "clinker": {"label": "클링커", "freq": "2시간", "by_product": False, "spc_resample": "8h", "merge_gap": "12h"},
     "cement": {"label": "시멘트(밀 출구)", "freq": "2시간", "by_product": True, "spc_resample": "8h", "merge_gap": "12h"},
@@ -109,27 +109,27 @@ def _default_items() -> list[ItemSpec]:
     items: list[ItemSpec] = []
     add = items.append
 
-    # ── 원료(생료 / 킬른 피드) ─────────────────────────────────────────────
-    for key, name in [("rm_cao", "생료 CaO"), ("rm_sio2", "생료 SiO₂"), ("rm_al2o3", "생료 Al₂O₃"),
-                      ("rm_fe2o3", "생료 Fe₂O₃"), ("rm_so3", "생료 SO₃"), ("rm_k2o", "생료 K₂O"),
-                      ("rm_na2o", "생료 Na₂O")]:
-        add(ItemSpec(key, name, "원료(생료)", "raw_meal", "%", 2, basis="모니터링 항목(기준 미설정)"))
-    add(ItemSpec("rm_mgo", "생료 MgO", "원료(생료)", "raw_meal", "%", 2,
+    # ── 원료(킬른 피드) ─────────────────────────────────────────────
+    for key, name in [("rm_cao", "원료 CaO"), ("rm_sio2", "원료 SiO₂"), ("rm_al2o3", "원료 Al₂O₃"),
+                      ("rm_fe2o3", "원료 Fe₂O₃"), ("rm_so3", "원료 SO₃"), ("rm_k2o", "원료 K₂O"),
+                      ("rm_na2o", "원료 Na₂O")]:
+        add(ItemSpec(key, name, "원료", "raw_meal", "%", 2, basis="모니터링 항목(기준 미설정)"))
+    add(ItemSpec("rm_mgo", "원료 MgO", "원료", "raw_meal", "%", 2,
                  {"*": _L(usl=2.5)}, rules=("R1",),
-                 description="석회석 내 백운석(돌로마이트) 혼입 지표. 클링커 MgO≈생료×1.55"))
-    add(ItemSpec("rm_lsf", "생료 LSF", "원료(생료)", "raw_meal", "", 1,
+                 description="석회석 내 백운석(돌로마이트) 혼입 지표. 클링커 MgO≈원료×1.55"))
+    add(ItemSpec("rm_lsf", "원료 LSF", "원료", "raw_meal", "", 1,
                  {"*": _L(lsl=97.0, usl=101.0, target=99.0)}, rules=QC_RULES, key_item=True,
-                 description="석탄회 흡수로 클링커 LSF는 생료보다 약 3~4 낮아짐(공장별 상이)"))
-    add(ItemSpec("rm_sm", "생료 SM", "원료(생료)", "raw_meal", "", 2,
+                 description="석탄회 흡수로 클링커 LSF는 원료보다 약 3~4 낮아짐(공장별 상이)"))
+    add(ItemSpec("rm_sm", "원료 SM", "원료", "raw_meal", "", 2,
                  {"*": _L(lsl=2.35, usl=2.75, target=2.55)}, rules=QC_RULES, key_item=True))
-    add(ItemSpec("rm_im", "생료 IM", "원료(생료)", "raw_meal", "", 2,
+    add(ItemSpec("rm_im", "원료 IM", "원료", "raw_meal", "", 2,
                  {"*": _L(lsl=1.40, usl=1.80, target=1.58)}, rules=QC_RULES))
-    add(ItemSpec("rm_r90", "생료 90μm 잔사", "원료(생료)", "raw_meal", "%", 1,
+    add(ItemSpec("rm_r90", "원료 90μm 잔사", "원료", "raw_meal", "%", 1,
                  {"*": _L(usl=16.0, target=13.0)}, rules=QC_RULES, key_item=True,
                  description="조대 석영·방해석 입자 → 소성성 저하, f-CaO 상승"))
-    add(ItemSpec("rm_r200", "생료 200μm 잔사", "원료(생료)", "raw_meal", "%", 2,
+    add(ItemSpec("rm_r200", "원료 200μm 잔사", "원료", "raw_meal", "%", 2,
                  {"*": _L(usl=1.5, target=1.0)}, rules=("R1",)))
-    add(ItemSpec("rm_loi", "생료 강열감량", "원료(생료)", "raw_meal", "%", 2, basis="모니터링 항목(기준 미설정)",
+    add(ItemSpec("rm_loi", "원료 강열감량", "원료", "raw_meal", "%", 2, basis="모니터링 항목(기준 미설정)",
                  description="미측정 시 CO₂ 화학양론(0.785·CaO + 1.092·MgO)으로 추정해 클링커 예측에 사용"))
 
     # ── 소성(킬른 DCS) ────────────────────────────────────────────────────

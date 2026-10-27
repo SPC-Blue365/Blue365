@@ -22,7 +22,7 @@ def test_lsq_mix_hits_clinker_targets_within_bounds(mats):
     lo, hi = res.mats["min"].to_numpy() / 100, res.mats["max"].to_numpy() / 100
     assert np.all(res.x >= lo - 1e-9) and np.all(res.x <= hi + 1e-9)
     assert res.wet.sum() == pytest.approx(1.0)
-    # 석탄회 흡수로 생료 LSF 가 클링커보다 높다(약 3~5)
+    # 석탄회 흡수로 원료 LSF 가 클링커보다 높다(약 3~5)
     assert 2.0 < res.clinker["raw_lsf"] - res.clinker["LSF"] < 6.0
 
 

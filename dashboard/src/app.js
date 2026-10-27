@@ -292,7 +292,7 @@
   function catCount(cat) { return MATS.filter((m) => m.category === cat && String(m.name || "").trim() !== "").length; }
   function renderRawmix(root) {
     root.appendChild(el("h2", {}, ["원료 배합 설계 (수동)"]));
-    root.appendChild(el("p", { class: "hint" }, ["구분별로 후보 원료를 최대 5종 등록하고, '사용'을 켠 원료의 건조 배합비(%)를 입력하면 생료·클링커 계수치와 Bogue 광물을 계산합니다. (자동 최적화는 설치형 앱 기능)"]));
+    root.appendChild(el("p", { class: "hint" }, ["구분별로 후보 원료를 최대 5종 등록하고, '사용'을 켠 원료의 건조 배합비(%)를 입력하면 원료·클링커 계수치와 Bogue 광물을 계산합니다. (자동 최적화는 설치형 앱 기능)"]));
     const tcard = el("div", { class: "card" });
     tcard.appendChild(el("div", { class: "tablewrap", id: "mat-table" }));
     // 후보 추가 컨트롤
@@ -317,7 +317,7 @@
 
     root.appendChild(el("div", { class: "metrics", id: "mix-sum" }));
     root.appendChild(el("div", { class: "cols2" }, [
-      el("div", { class: "card" }, [el("h3", {}, ["생료·클링커 조성"]), el("div", { class: "tablewrap", id: "mix-comp" })]),
+      el("div", { class: "card" }, [el("h3", {}, ["원료·클링커 조성"]), el("div", { class: "tablewrap", id: "mix-comp" })]),
       el("div", { class: "card" }, [el("h3", {}, ["건조 배합비"]), el("div", { class: "chart", id: "mix-bar" })]),
     ]));
     root.appendChild(el("div", { class: "btnrow" }, [el("button", { class: "btn", onclick: exportMixExcel }, ["⬇️ 배합 설계서(엑셀)"])]));
@@ -364,15 +364,15 @@
     const r = C.predictClinker(MATS, ratios, KP, KP.fcao);
     sumEl.innerHTML = "";
     sumEl.appendChild(metric("배합비 합계", fmt(sum, 1) + " %", Math.abs(sum - 100) < .05 ? "green" : "amber", Math.abs(sum - 100) < .05 ? "정규화됨" : "합계 100%로 정규화 계산"));
-    sumEl.appendChild(metric("클링커 LSF", fmt(r.LSF, 1), "blue", "생료 " + fmt(r.rawLsf, 1)));
+    sumEl.appendChild(metric("클링커 LSF", fmt(r.LSF, 1), "blue", "원료 " + fmt(r.rawLsf, 1)));
     sumEl.appendChild(metric("클링커 SM", fmt(r.SM, 2), "blue"));
     sumEl.appendChild(metric("클링커 IM", fmt(r.IM, 2), "blue"));
     sumEl.appendChild(metric("C₃S(Bogue)", fmt(r.C3S, 1) + " %", "blue", "C₂S " + fmt(r.C2S, 1)));
     sumEl.appendChild(metric("액상량 1450℃", fmt(r.liquid, 1) + " %", "blue"));
-    sumEl.appendChild(metric("생료/클링커", fmt(r.kilnFactor, 3) + " t/t", "blue", "흡수 석탄회 " + fmt(r.a, 4)));
+    sumEl.appendChild(metric("원료/클링커", fmt(r.kilnFactor, 3) + " t/t", "blue", "흡수 석탄회 " + fmt(r.a, 4)));
     // 조성표
     const t = el("table");
-    t.appendChild(el("tr", {}, [el("th", { class: "txt" }, ["성분"]), el("th", {}, ["생료(건조)%"]), el("th", {}, ["클링커 예측%"])]));
+    t.appendChild(el("tr", {}, [el("th", { class: "txt" }, ["성분"]), el("th", {}, ["원료(건조)%"]), el("th", {}, ["클링커 예측%"])]));
     MATOX.forEach((o) => t.appendChild(el("tr", {}, [el("td", { class: "txt" }, [MATOXL[o]]), el("td", {}, [fmt(r.raw[o], 2)]), el("td", {}, [fmt(r.clinker[o], 2)])])));
     t.appendChild(el("tr", {}, [el("td", { class: "txt" }, ["강열감량"]), el("td", {}, [fmt(r.raw.LOI, 2)]), el("td", {}, ["—"])]));
     $("#mix-comp").innerHTML = ""; $("#mix-comp").appendChild(t);
@@ -1040,11 +1040,11 @@
     const mat = [["사용", "원료", "구분", ...MATOX, "강열감량", "수분", "총Cr", "배합비%"]];
     MATS.forEach((m) => mat.push([m.use ? "Y" : "", m.name, m.category, ...MATOX.map((o) => +m[o] || 0), +m.LOI || 0, +m.H2O || 0, +m.Cr || 0, +m.ratio || 0]));
     XLSX.utils.book_append_sheet(wb, sheetFromAoa(mat), "원료성분");
-    const comp = [["성분", "생료(건조)%", "클링커예측%"]];
+    const comp = [["성분", "원료(건조)%", "클링커예측%"]];
     MATOX.forEach((o) => comp.push([MATOXL[o], round(r.raw[o], 3), round(r.clinker[o], 3)]));
     comp.push(["강열감량", round(r.raw.LOI, 3), ""]);
-    XLSX.utils.book_append_sheet(wb, sheetFromAoa(comp), "생료·클링커");
-    const mod = [["항목", "값"], ["생료 LSF", round(r.rawLsf, 1)], ["클링커 LSF", round(r.LSF, 1)], ["클링커 SM", round(r.SM, 2)], ["클링커 IM", round(r.IM, 2)], ["C3S(Bogue)", round(r.C3S, 1)], ["C2S", round(r.C2S, 1)], ["C3A", round(r.C3A, 1)], ["C4AF", round(r.C4AF, 1)], ["액상량1450", round(r.liquid, 1)], ["Na2Oeq", round(r.na2oeq, 2)], ["f-CaO(입력)", round(r.fcao, 2)], ["생료/클링커(t/t)", round(r.kilnFactor, 3)]];
+    XLSX.utils.book_append_sheet(wb, sheetFromAoa(comp), "원료·클링커");
+    const mod = [["항목", "값"], ["원료 LSF", round(r.rawLsf, 1)], ["클링커 LSF", round(r.LSF, 1)], ["클링커 SM", round(r.SM, 2)], ["클링커 IM", round(r.IM, 2)], ["C3S(Bogue)", round(r.C3S, 1)], ["C2S", round(r.C2S, 1)], ["C3A", round(r.C3A, 1)], ["C4AF", round(r.C4AF, 1)], ["액상량1450", round(r.liquid, 1)], ["Na2Oeq", round(r.na2oeq, 2)], ["f-CaO(입력)", round(r.fcao, 2)], ["원료/클링커(t/t)", round(r.kilnFactor, 3)]];
     XLSX.utils.book_append_sheet(wb, sheetFromAoa(mod), "클링커예측");
     XLSX.writeFile(wb, "배합설계서.xlsx");
   }

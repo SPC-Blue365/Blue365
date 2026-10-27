@@ -168,7 +168,7 @@
       STAGE_WORDS.forEach(([t, ws]) => { if (ws.some((w) => nm.includes(w))) itemStages[it.key].add(t); });
       if (/^pred_/.test(it.key)) return;                      // 계산(예측) 항목은 불러오기 대상이 아님
       addAlias(it.name, it.key); addAlias(it.key, it.key);
-      addAlias(it.name.replace(/^(생료|클링커|시멘트|xrd|킬른)\s*/i, ""), it.key);
+      addAlias(it.name.replace(/^(생료|원료|클링커|시멘트|xrd|킬른)\s*/i, ""), it.key);
       const parts = it.key.split("_"); const suffix = parts.slice(1).join("_");
       [suffix, it.key].forEach((s) => (BASES[s] || []).forEach((a) => addAlias(a, it.key)));
     });

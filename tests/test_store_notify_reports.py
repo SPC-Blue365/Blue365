@@ -111,3 +111,19 @@ def test_csv_upload_reads_korean_excel_cp949():
     assert list(res.tables["physical"]["product"]) == ["1종", "3종"]
     res2 = parse_upload(df.to_csv(index=False).encode("utf-8-sig"), "physical.csv")
     assert res2.tables["physical"]["phy_s3"].iloc[1] == 33.0
+
+
+def test_old_raw_meal_sheet_name_still_recognized(demo_raw):
+    """용어를 '생료'→'원료'로 바꾼 뒤에도 예전 양식의 '생료' 시트를 원료(raw_meal)로 읽는다."""
+    import io
+
+    import openpyxl
+
+    data = template_workbook(SpecRegistry(), {k: v.head(5) for k, v in demo_raw.items()})
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    assert "원료" in wb.sheetnames and "생료" not in wb.sheetnames
+    wb["원료"].title = "생료"
+    buf = io.BytesIO()
+    wb.save(buf)
+    res = parse_upload(buf.getvalue(), "old.xlsx")
+    assert not res.errors and len(res.tables["raw_meal"]) == 5

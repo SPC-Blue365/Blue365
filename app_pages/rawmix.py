@@ -98,13 +98,13 @@ with tab1:
 
     st.markdown("**목표 계수**")
     b1, b2, b3 = st.columns([1.3, 1.3, 1.4])
-    basis = b1.radio("목표 기준", ["클링커 기준(석탄회 흡수 반영)", "생료(킬른 피드) 기준"], key="rm_basis",
+    basis = b1.radio("목표 기준", ["클링커 기준(석탄회 흡수 반영)", "원료(킬른 피드) 기준"], key="rm_basis",
                      help="클링커 기준: 석탄회가 흡수된 소성 후 클링커 조성으로 목표를 맞춥니다(권장).")
     mode = b2.radio("계산 방식", ["최소자승(목표 근접)", "원가 최소(허용편차 내)"], key="rm_mode",
                     help="원가 최소: LSF ±0.3, SM·IM ±0.02, C₃S ±0.5 안에서 원료비가 가장 낮은 배합")
     c3s_basis = b3.radio("C₃S 목표 기준", ["Bogue 계산값", "XRD 알라이트(보정식 환산)"], key="rm_c3s_basis",
                          help=f"XRD 보정식: {dm.xrd.source}")
-    is_raw = basis.startswith("생료")
+    is_raw = basis.startswith("원료")
     tc = st.columns(4)
     defaults = {"LSF": (99.0 if is_raw else 95.0, True), "SM": (2.55 if is_raw else 2.50, True),
                 "IM": (1.58 if is_raw else 1.60, True), "C3S": (64.0 if c3s_basis.startswith("XRD") else 57.0, False)}
@@ -133,7 +133,7 @@ with tab1:
         fcao_mode = k8.selectbox("f-CaO", ["소성성 모델 예측", "직접 입력"], help=dm.fcao.equation())
         k9, k10, k11, _ = st.columns(4)
         fcao_in = k9.number_input("f-CaO 입력값(%)", value=1.0, step=0.1, disabled=fcao_mode != "직접 입력")
-        r90 = k10.number_input("생료 90μm 잔사(%)", value=13.0, step=0.5, help="f-CaO 예측 입력")
+        r90 = k10.number_input("원료 90μm 잔사(%)", value=13.0, step=0.5, help="f-CaO 예측 입력")
         bzt = k11.number_input("소성대 온도(℃)", value=1420.0, step=5.0, help="f-CaO 예측 입력")
         st.caption(f"f-CaO 모델: {dm.fcao.source} · {dm.fcao.equation()}"
                    + (f" · 학습 {dm.fcao.n}점, RMSE {dm.fcao.rmse:.2f}%" if dm.fcao.n else " (공장 데이터 부족 시 경험식)"))
@@ -154,7 +154,7 @@ with tab1:
         for col, k in zip(mc, rmx.TARGET_KEYS):
             v = res.achieved[k]
             lab = ("XRD 알라이트" if (k == "C3S" and targets.c3s_basis == "xrd") else rmx.TARGET_LABELS[k]) + \
-                  (" (생료)" if (is_raw and k != "C3S") else " (클링커)")
+                  (" (원료)" if (is_raw and k != "C3S") else " (클링커)")
             if k in res.deviation:
                 d = res.deviation[k]
                 ok = abs(d) <= rmx.TOL[k] + 1e-9
@@ -177,21 +177,21 @@ with tab1:
         with right:
             st.plotly_chart(single_bar_figure(tbl["원료"].tolist(), tbl["건조 배합비(%)"].tolist(), "%", height=260,
                                               title="건조 배합비(%)", fmt_str="{:.2f}"), key="rm_bar")
-        with st.expander("생료·클링커 화학 조성 / 원료 민감도"):
+        with st.expander("원료·클링커 화학 조성 / 원료 민감도"):
             cl = res.clinker
             comp = pd.DataFrame({"성분": [rmx.OXIDE_LABELS[o] for o in rmx.OXIDES] + ["강열감량"],
-                                 "생료(건조, %)": [cl["raw"][o] for o in rmx.OXIDES] + [cl["raw"]["LOI"]],
+                                 "원료(건조, %)": [cl["raw"][o] for o in rmx.OXIDES] + [cl["raw"]["LOI"]],
                                  "클링커 예측(%)": [cl["clinker"].get(o) for o in rmx.OXIDES] + [None]})
             e1, e2 = st.columns([1, 1.4])
             e1.dataframe(comp, hide_index=True, column_config={
-                "생료(건조, %)": st.column_config.NumberColumn(format="%.2f"),
+                "원료(건조, %)": st.column_config.NumberColumn(format="%.2f"),
                 "클링커 예측(%)": st.column_config.NumberColumn(format="%.2f")})
             sens = rmx.sensitivity(res.mats, res.x, kp)
             e2.markdown("**원료 1%p 증량 시(나머지 비례 감량) 클링커 계수 변화**")
             e2.dataframe(sens, hide_index=True, column_config={
                 c: st.column_config.NumberColumn(format="%+.3f") for c in sens.columns[1:]})
-            st.caption(f"생료/클링커 = {cl['kiln_factor']:.3f} t/t · 흡수 석탄회 a = {kp.a:.4f} kg/kg-클링커 · "
-                       f"생료 LSF {cl['raw_lsf']:.1f} → 클링커 LSF {cl['LSF']:.1f} (석탄회 흡수로 낮아짐)")
+            st.caption(f"원료/클링커 = {cl['kiln_factor']:.3f} t/t · 흡수 석탄회 a = {kp.a:.4f} kg/kg-클링커 · "
+                       f"원료 LSF {cl['raw_lsf']:.1f} → 클링커 LSF {cl['LSF']:.1f} (석탄회 흡수로 낮아짐)")
         st.download_button("⬇️ 배합 설계서(엑셀)", rmx.design_workbook(mats, targets, kp, res), file_name="배합설계서.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
 
@@ -250,17 +250,17 @@ with tab2:
                 st.markdown("- **XRD 보정식** (XRD 실측 = b₀ + b₁ × Bogue 계산값, 같은 날 짝)")
                 st.dataframe(xt, hide_index=True, column_config={c: st.column_config.NumberColumn(format="%.3f")
                                                                  for c in ("절편 b₀", "기울기 b₁", "잔차 RMSE")})
-        st.subheader("실적 검증: 생료 실측 → 클링커 예측 vs 클링커 실측")
+        st.subheader("실적 검증: 원료 실측 → 클링커 예측 vs 클링커 실측")
         chk, summ = rmx.conversion_check(store, kp)
         if len(chk) == 0:
-            st.info("생료·클링커 실측 데이터가 있어야 검증할 수 있습니다.")
+            st.info("원료·클링커 실측 데이터가 있어야 검증할 수 있습니다.")
         else:
             recent = chk[chk["timestamp"] >= chk["timestamp"].max() - pd.Timedelta(days=14)]
             c = colors()
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=recent["timestamp"], y=recent["LSF 실측"], mode="lines", name="클링커 LSF 실측",
                                      line=dict(color=c["series"], width=2)))
-            fig.add_trace(go.Scatter(x=recent["timestamp"], y=recent["LSF 예측"], mode="lines", name="생료 기반 예측",
+            fig.add_trace(go.Scatter(x=recent["timestamp"], y=recent["LSF 예측"], mode="lines", name="원료 기반 예측",
                                      line=dict(color=c["pred"], width=1.5, dash="dash")))
             fig.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
                               legend=dict(orientation="h", y=1.1, x=1, xanchor="right"), yaxis_title="LSF")
@@ -272,7 +272,7 @@ with tab2:
             ratio = summ["a_eff"] / summ["a_set"] * 100 if summ["a_set"] else np.nan
             v4.metric("석탄회 흡수(실적 추정)", f"{summ['a_eff']:.4f}", delta=f"설정 {summ['a_set']:.4f} 대비 {ratio:.0f}%",
                       delta_color="off", delta_arrow="off", border=True,
-                      help="생료→클링커 산화물 변화로 역산한 클링커 1 kg당 흡수 석탄회(kg)")
+                      help="원료→클링커 산화물 변화로 역산한 클링커 1 kg당 흡수 석탄회(kg)")
             if np.isfinite(ratio) and abs(ratio - 100) > 5:
                 st.info(f"실적 기준 석탄회 흡수량이 설정값의 {ratio:.0f}%입니다. 소성 조건의 '회분 흡수율'을 약 {absorb * ratio / 100:.0f}%로 "
                         "보정하면 예측 정확도가 좋아집니다(추정).", icon="💡")
