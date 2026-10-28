@@ -145,3 +145,21 @@ def test_every_process_template_header_is_recognized():
         valid = set(RAW_COLUMNS[tbl]) | {"timestamp"}
         left = [c for c in df.columns if c not in valid and c != "채취시간"]
         assert not left, (spec.name, left)
+
+
+def test_future_year_typo_is_corrected():
+    """2029-09-25 같은 연도 오타는 올해로, 검사일이 있으면 검사일 연도로 고쳐 읽는다(고쳐도 미래면 제외)."""
+    from qms.store import fix_future_dates
+    now = pd.Timestamp.now().normalize()
+    past = now - pd.Timedelta(days=30)
+    df = pd.DataFrame({"d": [past.replace(year=now.year + 3), past, now.replace(year=now.year + 1) + pd.Timedelta(days=10)],
+                       "ref": [pd.NaT, pd.NaT, pd.NaT]})
+    out, fixed, dropped = fix_future_dates(df, "d")
+    assert out["d"].iloc[0] == past and len(out) == 2 and fixed and dropped
+    inc = pd.DataFrame({"채취일": [pd.Timestamp("2027-08-05")], "검사일": [pd.Timestamp("2025-08-06")]})
+    out2, fixed2, _ = fix_future_dates(inc, "채취일", ref_col="검사일")
+    assert out2["채취일"].iloc[0] == pd.Timestamp("2025-08-05") and "2025-08-05" in fixed2
+
+
+def test_plant_specific_line_code():
+    assert normalize_line("SA1KL3") == "3K" and normalize_line("5_1R/M") == "5-1R/M"

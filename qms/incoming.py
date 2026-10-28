@@ -148,9 +148,10 @@ def parse_incoming_df(raw: pd.DataFrame) -> IncomingParse:
     df = pd.DataFrame(out)
     if df.empty:
         return IncomingParse(df, kind, [], ["날짜가 있는 데이터 행이 없습니다."])
-    from .store import drop_future_rows
-    df, fut = drop_future_rows(df, "채취일")
-    future_msg = [f"[{kind}] ⚠ 미래 날짜 {fut}행은 입력 오류로 보고 제외했습니다 — 채취일을 확인하세요."] if fut else []
+    from .store import fix_future_dates
+    df, fixed, dropped = fix_future_dates(df, "채취일", ref_col="검사일")      # 연도 오타는 검사일 연도로
+    future_msg = ([f"[{kind}] ⚠ 미래 채취일을 입력 오타로 보고 검사일 연도로 고쳐 읽었습니다: {fixed} — 원본도 고쳐 주세요."] if fixed else []) \
+        + ([f"[{kind}] ⚠ 고쳐도 미래인 채취일 행은 제외했습니다: {dropped}"] if dropped else [])
     if df.empty:
         return IncomingParse(df, kind, future_msg, ["날짜가 있는 데이터 행이 없습니다."])
     n_pass = int((df["합부판정"] == PASS).sum())

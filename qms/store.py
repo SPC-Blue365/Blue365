@@ -218,6 +218,10 @@ def normalize_product(v) -> str:
     return str(v).strip()
 
 
+# 공장 고유 표기 → 공정구분 코드(사용자 확인)
+LINE_CODE_ALIASES = {"SA1KL3": "3K"}
+
+
 def normalize_line(v) -> str:
     """공정구분 값 정규화: '4호기'·'4 k'·'#4' → '4K', '6RM'·'6 R/M' → '6R/M', '2CM' → '2C/M'. 모르면 원문(공백 제거)."""
     import re
@@ -228,6 +232,8 @@ def normalize_line(v) -> str:
     t = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(v))).upper().lstrip("#").replace("_", "-")   # 5_1R/M = 5-1R/M
     if t in ("", "NAN", "NONE", "0"):
         return ""
+    if t in LINE_CODE_ALIASES:
+        return LINE_CODE_ALIASES[t]
     m = re.fullmatch(r"(\d+)(?:K|KILN|호기|호|호킬른|킬른)", t)
     if m:
         return f"{int(m.group(1))}K"
@@ -648,9 +654,11 @@ def _clean_frame(df: pd.DataFrame, name: str, tag: str, messages: list[str], err
     df = _combine_sample_time(df)                    # 채취일 + 채취시간
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
     df = df[df["timestamp"].notna()]  # 설명 행·빈 행 제거
-    df, fut = drop_future_rows(df, "timestamp")
-    if fut:
-        messages.append(f"[{tag}] ⚠ 미래 날짜 {fut}행은 입력 오류로 보고 제외했습니다 — 채취일을 확인하세요.")
+    df, fixed, dropped = fix_future_dates(df, "timestamp")
+    if fixed:
+        messages.append(f"[{tag}] ⚠ 미래 날짜를 입력 오타로 보고 연도를 고쳐 읽었습니다: {fixed} — 원본 채취일도 고쳐 주세요.")
+    if dropped:
+        messages.append(f"[{tag}] ⚠ 고쳐도 미래인 날짜 행은 제외했습니다: {dropped}")
     if TABLES[name]["by_product"] and "product" not in df.columns:
         errors.append(f"[{tag}] 품명(product) 열이 필요합니다.")
         return None
@@ -685,16 +693,37 @@ def _clean_frame(df: pd.DataFrame, name: str, tag: str, messages: list[str], err
     return df
 
 
-def drop_future_rows(df: pd.DataFrame, col: str, grace_days: int = 1) -> tuple[pd.DataFrame, str]:
-    """오늘+1일 이후 날짜(예: 2029년) 행 제외 → (남은 표, '건수(예: 날짜…)' 또는 '')."""
-    if df.empty:
-        return df, ""
+def fix_future_dates(df: pd.DataFrame, col: str, ref_col: str | None = None, grace_days: int = 1) -> tuple[pd.DataFrame, str, str]:
+    """미래 날짜(예: 2029-09-25 입력 오타)는 연도만 고쳐 읽는다 → (표, '고친 내역', '뺀 내역').
+
+    고칠 연도 = 같은 행 기준일(ref_col, 예: 인수검사 검사일)의 연도, 없으면 올해. 고쳐도 미래면 그 행은 뺀다.
+    """
+    if df.empty or col not in df:
+        return df, "", ""
     ts = pd.to_datetime(df[col], errors="coerce")
-    fut = ts > pd.Timestamp.now().normalize() + pd.Timedelta(days=grace_days)
+    limit = pd.Timestamp.now().normalize() + pd.Timedelta(days=grace_days)
+    fut = ts > limit
     if not fut.any():
-        return df, ""
-    ex = ", ".join(sorted({f"{t:%Y-%m-%d}" for t in ts[fut]})[:3])
-    return df[~fut], f"{int(fut.sum())}({ex}{'…' if fut.sum() > 3 else ''})"
+        return df, "", ""
+    df = df.copy()
+    ref = pd.to_datetime(df[ref_col], errors="coerce") if ref_col and ref_col in df else pd.Series(pd.NaT, index=df.index)
+    fixed, dropped = [], []
+    for i in df.index[fut]:
+        t = ts[i]
+        r = ref[i]
+        year = r.year if pd.notna(r) and r <= limit else pd.Timestamp.now().year
+        try:
+            new = t.replace(year=year)
+        except ValueError:                                           # 2월 29일 → 평년
+            new = t.replace(year=year, day=28)
+        if new <= limit:
+            df.at[i, col] = new
+            fixed.append(f"{t:%Y-%m-%d}→{new:%Y-%m-%d}")
+        else:
+            dropped.append(f"{t:%Y-%m-%d}")
+    if dropped:
+        df = df.drop(index=[i for i in df.index[fut] if pd.to_datetime(df.at[i, col]) > limit])
+    return df, ", ".join(fixed[:5]) + ("…" if len(fixed) > 5 else ""), ", ".join(dropped[:5])
 
 
 def _fix_swapped_fineness(df: pd.DataFrame) -> tuple[pd.DataFrame, bool]:
