@@ -55,10 +55,11 @@ def _fill_template() -> bytes:
         "원료": [["2026-10-01", "02:00", "6K", "1/2종조합원료", 42.6, 12.3, 3.6, 2.2, 2.6, 0.4, 0.7, 0.09, 35.4],
                 ["2026-10-01", "02:00", "7K", "1/2종조합원료", 42.7, 12.2, 3.6, 2.2, 2.5, 0.4, 0.7, 0.09, 35.5],
                 ["2026-10-01", "00:00", "6R/M", "1/2종조합원료", 42.3, 12.5, 3.6, 2.3, 2.6, 0.3, 0.7, 0.09, 35.6]],
-        "클링커": [["2026-10-01", "00:00", "6K", "1/2종크링커", 64.07, 20.99, 5.49, 3.07, 3.82, 0.49, 1.02, 0.22, 0.56],
-                 ["2026-10-01", "00:00", "7K", "1/2종크링커", 64.05, 21.01, 5.5, 2.95, 3.84, 0.57, 1.17, 0.23, 1.04]],
-        "시멘트": [["2026-10-01", "00:00", "2C/M", "1종", 3720, 7.2, 2.48]],
-        "물성": [["2026-10-01", "1종", 250, "06:30", 0.1, 16.0, 38.0, 46.0, 57.0]],
+        "원료 잔사": [["2026-10-01", "00:00", "6R/M", "1/2종조합원료", 13.2, 1.7]],          # 원료 시트 6R/M 행과 합쳐짐
+        "클링커(6K,7K)": [["2026-10-01", "00:00", "6K", "내수", "6-4호", 64.07, 20.99, 5.49, 3.07, 3.82, 0.49, 1.02, 0.22, 0.56, 214, 1466, 135],
+                         ["2026-10-01", "00:00", "7K", "수출클링커", "6-3호", 64.05, 21.01, 5.5, 2.95, 3.84, 0.57, 1.17, 0.23, 1.04]],
+        "클링커(4K,5K)": [["2026-10-01", "01:00", "5K", "내수", "5호", 64.2, 21.3, 5.3, 3.2, 4.8, 0.3, 0.9, 0.2, 0.73]],
+        "시멘트": [["2026-10-01", "00:00", "2C/M", "1종시멘트 벌크", "구내9호", 7.2, 3720, 2.48]],
     }
     for sn, rows in put.items():
         ws = wb[sn]
@@ -87,13 +88,33 @@ def test_empty_template_reads_nothing_and_no_errors():
 
 def test_filled_template_roundtrip_keeps_lines():
     parts = workbook.analyze(_fill_template(), "양식.xlsx")
-    assert parts.kinds == ["공정 데이터"] and not parts.errors and not parts.ships            # 물성 시트를 출하시멘트로 오인하지 않음
+    assert parts.kinds == ["공정 데이터"] and not parts.errors and not parts.ships            # 공정 시트를 출하시멘트로 오인하지 않음
     t = parts.process.tables
-    assert sorted(t["raw_meal"]["line"]) == ["6K", "6R/M", "7K"] and set(t["raw_meal"]["grade"]) == {"1/2종조합원료"}
-    assert sorted(t["clinker"]["line"]) == ["6K", "7K"] and t["clinker"]["clk_fcao"].tolist() == [0.56, 1.04]
-    assert t["cement"]["line"].tolist() == ["2C/M"] and t["cement"]["product"].tolist() == ["1종"]
-    assert t["physical"]["phy_fst"].tolist() == [390]                                          # 06:30 → 390분
-    assert t["raw_meal"]["timestamp"].dt.hour.tolist() == [2, 2, 0]                            # 채취일+채취시간
+    raw = t["raw_meal"]
+    assert sorted(raw["line"]) == ["6K", "6R/M", "6R/M", "7K"] and set(raw["grade"]) == {"1/2종조합원료"}   # 원료 + 원료 잔사
+    assert raw.loc[raw["rm_r90"].notna(), "line"].tolist() == ["6R/M"]
+    clk = t["clinker"]                                                                          # 클링커 시트 2개 합침
+    assert sorted(clk["line"]) == ["5K", "6K", "7K"] and set(clk["silo"]) == {"6-4호", "6-3호", "5호"}
+    assert clk.loc[clk["line"] == "6K", ["clk_cl", "clk_f", "clk_temp"]].iloc[0].tolist() == [214, 1466, 135]
+    cem = t["cement"]
+    assert cem["line"].tolist() == ["2C/M"] and cem["product"].tolist() == ["1종"] and cem["silo"].tolist() == ["구내9호"]
+    assert cem["cem_r45"].tolist() == [7.2] and cem["cem_blaine"].tolist() == [3720]             # LIMS 순서: 45㎛ → Blaine
+    assert raw["timestamp"].dt.hour.tolist() == [2, 2, 0, 0]                                    # 채취일+채취시간
+
+
+def test_swapped_blaine_r45_columns_are_fixed():
+    """Blaine 열에 45㎛ 값, 45㎛ 열에 Blaine 값이 통째로 들어오면 바로잡고 알린다."""
+    from qms.store import _fix_swapped_fineness
+    df = pd.DataFrame({"cem_blaine": [5.6, 6.2, 5.9, 0.9, 6.0], "cem_r45": [3560, 3560, 3600, 4770, 3700]})
+    out, swapped = _fix_swapped_fineness(df)
+    assert swapped and out["cem_blaine"].tolist() == [3560, 3560, 3600, 4770, 3700]
+    assert not _fix_swapped_fineness(out)[1]
+
+
+def test_sheet_names_with_suffix_map_to_tables():
+    from qms.store import template_table
+    assert [template_table(n) for n in ("원료 잔사", "클링커(6K,7K)", "클링커일일", "시멘트", "출하시멘트(1종)", "인수검사(원료)")] == \
+        ["raw_meal", "clinker", "xrd", "cement", None, None]
 
 
 def test_lims_raw_header_names_map_to_line():

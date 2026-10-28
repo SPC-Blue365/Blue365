@@ -148,10 +148,15 @@ def parse_incoming_df(raw: pd.DataFrame) -> IncomingParse:
     df = pd.DataFrame(out)
     if df.empty:
         return IncomingParse(df, kind, [], ["날짜가 있는 데이터 행이 없습니다."])
+    from .store import drop_future_rows
+    df, fut = drop_future_rows(df, "채취일")
+    future_msg = [f"[{kind}] ⚠ 미래 날짜 {fut}행은 입력 오류로 보고 제외했습니다 — 채취일을 확인하세요."] if fut else []
+    if df.empty:
+        return IncomingParse(df, kind, future_msg, ["날짜가 있는 데이터 행이 없습니다."])
     n_pass = int((df["합부판정"] == PASS).sum())
     n_fail = int((df["합부판정"] == FAIL).sum())
     msg = [f"[{kind}] {len(df)}행 인식 ({df['채취일'].min():%Y-%m-%d} ~ {df['채취일'].max():%Y-%m-%d})",
-           f"합격 {n_pass} · 불합격 {n_fail} · 판정없음 {len(df) - n_pass - n_fail} · 성분항목 {len(comp_cols)}개"]
+           f"합격 {n_pass} · 불합격 {n_fail} · 판정없음 {len(df) - n_pass - n_fail} · 성분항목 {len(comp_cols)}개", *future_msg]
     return IncomingParse(df, kind, msg, [])
 
 

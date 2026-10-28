@@ -18,6 +18,12 @@ ctx = get_ctx()
 reg, store = ctx.registry, ctx.store
 page_header(ctx, "📥 데이터 관리")
 
+
+@st.cache_data(show_spinner="파일을 시트별로 읽는 중…(큰 파일은 10~30초)", max_entries=3)
+def _analyze(content: bytes, name: str):
+    """같은 파일은 다시 읽지 않음(적용 버튼을 눌러 화면이 다시 그려질 때 대기 시간 없이)."""
+    return workbook.analyze(content, name)
+
 if st.session_state.get("last_apply"):
     st.success("✅ " + st.session_state["last_apply"])
 
@@ -47,14 +53,32 @@ with tab1:
     st.markdown("엑셀(시트: 원료·킬른·클링커·시멘트·물성) 또는 CSV(파일명에 테이블명 포함, 예: `clinker_2026-10.csv`)를 올리세요. "
                 "같은 측정일시(+품종)는 업로드 값으로 덮어씁니다.")
     up = st.file_uploader("파일 선택", type=["xlsx", "xls", "csv"])
-    parts = workbook.analyze(up.getvalue(), up.name) if up is not None and not up.name.lower().endswith(".csv") else None
+    parts = _analyze(up.getvalue(), up.name) if up is not None and not up.name.lower().endswith(".csv") else None
     if parts is not None and (parts.is_template or len(parts.kinds) >= 2):      # 통합 업로드 양식(공정+출하+인수검사)
-        st.info("**통합 업로드 양식**입니다. 시트별로 읽은 내용을 확인하고 한 번에 적용하세요: "
-                + (" · ".join(parts.kinds) or "읽은 데이터 없음"), icon="🗂️")
-        for m in parts.summary():
-            st.write("•", m)
+        if parts.kinds:
+            st.info("**통합 업로드 양식**입니다. 아래 버튼을 누르면 읽은 내용을 한 번에 저장합니다: " + " · ".join(parts.kinds), icon="🗂️")
+            b1, b2 = st.columns([1.4, 2])
+            replace_demo = b2.checkbox("데모 데이터를 지우고 업로드 데이터만 사용", value=ctx.demo, key="wb_replace_demo")
+            if b1.button("✅ 통합 양식 전체 적용(저장)", type="primary", key="wb_apply", width="stretch"):
+                with st.spinner("저장 중…(행이 많으면 수십 초 걸릴 수 있습니다)"):
+                    if replace_demo:
+                        clear_db()
+                        DEMO_FLAG.unlink(missing_ok=True)
+                    logs = workbook.apply(parts)
+                refresh()
+                st.session_state["last_apply"] = f"{pd.Timestamp.now():%Y-%m-%d %H:%M} · " + " / ".join(logs)
+                st.rerun()
+        else:
+            st.warning("통합 양식이지만 저장할 데이터 행을 찾지 못했습니다. 각 시트 **5행부터** 값이 있는지, **채취일** 칸이 날짜인지 확인하세요.",
+                       icon="⚠️")
         for e in parts.errors:
             st.error(e)
+        warn = [m for m in parts.summary() if "⚠" in m]
+        for m in warn:
+            st.warning(m)
+        with st.expander(f"읽은 내용 자세히 ({len(parts.summary())}줄)", expanded=False):
+            for m in parts.summary():
+                st.write("•", m)
         for name, df in parts.process.tables.items():
             with st.expander(f"미리보기: {SHEET_NAMES[name]} ({len(df)}행)"):
                 st.dataframe(df.head(50), hide_index=True)
@@ -64,16 +88,6 @@ with tab1:
         for sn, p in parts.incomings:
             with st.expander(f"미리보기: 인수검사·{sn} ({len(p.rows)}행)"):
                 st.dataframe(p.rows.drop(columns=["성분"]).head(50), hide_index=True)
-        if parts.kinds:
-            replace_demo = st.checkbox("데모 데이터를 지우고 업로드 데이터만 사용", value=ctx.demo, key="wb_replace_demo")
-            if st.button("✅ 통합 양식 전체 적용(저장)", type="primary", key="wb_apply"):
-                if replace_demo:
-                    clear_db()
-                    DEMO_FLAG.unlink(missing_ok=True)
-                logs = workbook.apply(parts)
-                refresh()
-                st.session_state["last_apply"] = f"{pd.Timestamp.now():%Y-%m-%d %H:%M} · " + " / ".join(logs)
-                st.rerun()
     elif up is not None and shipment.looks_like_shipment(up.getvalue(), up.name):
         st.info("LIMS **출하시멘트 일일 로트** 형식입니다. 전용 화면(🚢 출하시멘트)에서 관리하며, 아래에서 바로 저장할 수 있습니다.", icon="🚢")
         parsed_panel(up.getvalue(), up.name, key="data_ship")

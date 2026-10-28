@@ -256,6 +256,20 @@ def _scopes(store: DataStore, registry: SpecRegistry, key: str, product: str | N
     return [*lines, *([""] if legacy else [])]
 
 
+# 원인 진단 화면의 이벤트 분류(찾기 쉽게) — 항목 키 우선, 나머지는 공정 단계
+EVENT_CATEGORIES = ("강도", "응결·안정도", "분말도", "6가크롬", "원료", "소성·클링커", "시멘트(분쇄)", "시험 조건")
+_CAT_BY_KEY = {**{k: "강도" for k in ("phy_s1", "phy_s3", "phy_s7", "phy_s28", "pred_s28")},
+               **{k: "응결·안정도" for k in ("phy_ist", "phy_fst", "phy_autoclave")},
+               **{k: "분말도" for k in ("cem_blaine", "cem_r45", "rm_r90", "rm_r200")},
+               **{k: "6가크롬" for k in ("phy_crvi", "clk_crvi", "clk_cr")}}
+_CAT_BY_STAGE = {"원료": "원료", "소성(킬른)": "소성·클링커", "클링커": "소성·클링커", "시멘트(분쇄)": "시멘트(분쇄)",
+                 "시험 조건": "시험 조건", "제품 물성": "강도"}
+
+
+def event_category(e: AlertEvent) -> str:
+    return _CAT_BY_KEY.get(e.item_key) or _CAT_BY_STAGE.get(e.stage, e.stage)
+
+
 def events_frame(events: list[AlertEvent], status: pd.DataFrame | None = None) -> pd.DataFrame:
     """이벤트 목록 → 표. status(알림 처리상태)를 병합한다."""
     cols = ["event_id", "severity", "stage", "product", "line", "item_name", "rule_desc", "direction", "start", "end",

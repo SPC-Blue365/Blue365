@@ -5,11 +5,11 @@ import io
 import pandas as pd
 import streamlit as st
 
-from qms.alerts import SEVERITY_ICON, SEVERITY_ORDER
+from qms.alerts import EVENT_CATEGORIES, SEVERITY_ICON, SEVERITY_ORDER, event_category
 from qms.diagnosis import VERDICT_ICON, VERDICT_LEGEND, diagnose, diagnosis_markdown
 from qms.knowledge import AXIS_ICON
 from qms.reports import build_issue_ppt
-from qms.store import load_alert_status
+from qms.store import line_sort_key, load_alert_status
 from qms.ui import fmt, get_ctx, page_header, trend_figure
 
 ctx = get_ctx()
@@ -21,20 +21,76 @@ if not ctx.events:
     st.info("분석할 이상 이벤트가 없습니다.")
     st.stop()
 
-only_major = st.toggle("위험·경고만 보기", value=True)
-events = sorted([e for e in ctx.events if not only_major or e.severity != "주의"],
+# ── 이벤트 고르기: 분류 → 조건 → 표에서 선택 ─────────────────────────────
+def _keep(key: str, opts: list) -> None:
+    """분류·조건이 바뀌어 이전 선택값이 목록에 없으면 '전체'로."""
+    if st.session_state.get(key, "전체") not in ["전체", *opts]:
+        st.session_state[key] = "전체"
+
+
+cats = {c: [e for e in ctx.events if event_category(e) == c] for c in EVENT_CATEGORIES}
+cats = {c: v for c, v in cats.items() if v}
+ss = st.session_state
+sel_id = ss.get("selected_event_id")
+linked = ss.pop("dx_linked", None)                         # 종합 현황·알림에서 '진단'으로 넘어온 이벤트(한 번만)
+pre = ctx.event(linked) if linked else None
+if pre:                                                    # 넘어온 이벤트가 보이도록 조건을 맞춤
+    ss["dx_cat"] = event_category(pre)
+    for k in ("dx_prod", "dx_line", "dx_item"):
+        ss[k] = "전체"
+    ss["dx_per"], ss["dx_sev"] = "전체", ["위험", "경고", "주의"]
+if "dx_cat" not in ss or ss["dx_cat"] not in [*cats, "전체"]:
+    ss["dx_cat"] = "강도" if "강도" in cats else "전체"
+cat = st.segmented_control("분류", [*cats, "전체"], key="dx_cat",
+                           format_func=lambda c: f"{c} ({len(cats[c]) if c in cats else len(ctx.events)})") or "전체"
+pool = ctx.events if cat == "전체" else cats.get(cat, [])
+last = min(max(e.end for e in ctx.events), pd.Timestamp.now())     # 미래 날짜 자료가 있어도 오늘 기준
+f1, f2, f3, f4, f5 = st.columns([1.3, 1.1, 1, 1.1, 1.6])
+ss.setdefault("dx_sev", ["위험", "경고", "주의"])
+ss.setdefault("dx_per", "최근 1년")
+sevs = f1.multiselect("심각도", ["위험", "경고", "주의"], key="dx_sev",
+                      format_func=lambda v: f"{SEVERITY_ICON[v]} {v}")
+per = f2.selectbox("기간(종료일 기준)", ["최근 30일", "최근 90일", "최근 1년", "전체"], key="dx_per")
+days = {"최근 30일": 30, "최근 90일": 90, "최근 1년": 365}.get(per)
+pool = [e for e in pool if e.severity in sevs and (days is None or e.end >= last - pd.Timedelta(days=days))]
+prods = sorted({e.product for e in pool if e.product})
+_keep("dx_prod", prods)
+prod = f3.selectbox("품종", ["전체", *prods], key="dx_prod")
+pool = [e for e in pool if prod == "전체" or e.product == prod]
+lines = sorted({e.line for e in pool if e.line}, key=line_sort_key)
+_keep("dx_line", lines)
+line = f4.selectbox("공정구분", ["전체", *lines], key="dx_line")
+pool = [e for e in pool if line == "전체" or e.line == line]
+item_opts = sorted({e.item_key for e in pool}, key=lambda k: reg[k].name if k in reg else k)
+_keep("dx_item", item_opts)
+item_k = f5.selectbox("항목", ["전체", *item_opts], key="dx_item",
+                      format_func=lambda k: "전체" if k == "전체" else (reg[k].name if k in reg else k))
+events = sorted([e for e in pool if item_k == "전체" or e.item_key == item_k],
                 key=lambda e: (e.end, SEVERITY_ORDER[e.severity]), reverse=True)
-sel_id = st.session_state.get("selected_event_id")
-if sel_id and all(e.event_id != sel_id for e in events):
-    ev = ctx.event(sel_id)
-    if ev:
-        events = [ev] + events
-ids = [e.event_id for e in events]
-idx = ids.index(sel_id) if sel_id in ids else 0
-labels = {e.event_id: f"{SEVERITY_ICON[e.severity]} {e.end:%m/%d} · " + (f"[{e.product}] " if e.product else "")
-          + f"{e.item_name} — {e.rule_desc}" for e in events}
-choice = st.selectbox("분석할 이벤트", ids, index=idx, format_func=lambda i: labels[i])
-st.session_state["selected_event_id"] = choice
+if not events:
+    st.info("이 조건에 맞는 이벤트가 없습니다. 심각도(주의 포함)·기간(전체)·분류(전체)를 넓혀 보세요.")
+    st.stop()
+SHOW = 300
+tbl = pd.DataFrame([{"상태": f"{SEVERITY_ICON[e.severity]} {e.severity}", "종료": e.end, "품종": e.product or "-",
+                     "공정구분": e.line or "-", "항목": reg[e.item_key].name if e.item_key in reg else e.item_name,
+                     "내용": e.rule_desc, "점수": e.n_points,
+                     "최악값": f"{fmt(e.worst_value, e.decimals)} {e.unit}"} for e in events[:SHOW]])
+st.caption(f"조건에 맞는 이벤트 {len(events)}건" + (f" (최근 {SHOW}건 표시)" if len(events) > SHOW else "")
+           + " · 표에서 한 줄을 누르면 아래에 원인 진단이 나옵니다.")
+pick = st.dataframe(tbl, hide_index=True, height=min(38 + 35 * len(tbl), 320), on_select="rerun",
+                    selection_mode="single-row", key="dx_table", width="stretch",
+                    column_config={"종료": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm")})
+rows = pick.selection.rows if pick is not None and hasattr(pick, "selection") else []
+ids = [e.event_id for e in events[:SHOW]]
+if pre and pre.event_id in ids:
+    choice = pre.event_id
+elif rows and rows[0] < len(ids):
+    choice = ids[rows[0]]
+elif sel_id in ids:
+    choice = sel_id
+else:
+    choice = ids[0]
+ss["selected_event_id"] = choice
 e = ctx.event(choice)
 dx = diagnose(e, store, reg, ctx.settings)
 q = dx.quant

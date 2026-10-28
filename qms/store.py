@@ -36,9 +36,9 @@ RAW_COLUMNS: dict[str, list[str]] = {
                  "rm_mx_iron", "rm_mx_sand", "rm_mx_total"],
     "kiln": ["line", "kiln_feed", "coal_rate", "kiln_bzt", "kiln_o2", "kiln_co", "kiln_torque", "kiln_calc_temp",
              "kiln_sec_air"],
-    "clinker": ["line", "grade", "clk_cao", "clk_sio2", "clk_al2o3", "clk_fe2o3", "clk_mgo", "clk_so3", "clk_k2o", "clk_na2o",
-                "clk_fcao", "clk_lw"],
-    "cement": ["line", "product", "cem_blaine", "cem_r45", "cem_so3", "cem_loi", "cem_mgo", "cem_ls", "cem_mill_feed",
+    "clinker": ["line", "grade", "silo", "clk_cao", "clk_sio2", "clk_al2o3", "clk_fe2o3", "clk_mgo", "clk_so3", "clk_k2o", "clk_na2o",
+                "clk_fcao", "clk_lw", "clk_cl", "clk_f", "clk_temp"],
+    "cement": ["line", "product", "silo", "cem_blaine", "cem_r45", "cem_so3", "cem_loi", "cem_mgo", "cem_ls", "cem_mill_feed",
                "cem_mill_temp",
                # 완성시멘트(밀 출구) 화학성분 — LSF·SM·IM 참고지수 계산에 사용
                "cem_cao", "cem_sio2", "cem_al2o3", "cem_fe2o3", "cem_na2o", "cem_k2o", "cem_cl", "cem_fcao"],
@@ -46,7 +46,7 @@ RAW_COLUMNS: dict[str, list[str]] = {
                  "phy_crvi", "lab_temp", "lab_rh", "lab_cure_temp", "sand_lot", "operator"],
     "xrd": ["line", "grade", "xrd_alite", "xrd_belite", "xrd_c3a", "xrd_c4af", "xrd_fcao", "xrd_periclase", "clk_cr", "clk_crvi"],
 }
-TEXT_COLUMNS = {"product", "sand_lot", "operator", "line", "grade"}
+TEXT_COLUMNS = {"product", "sand_lot", "operator", "line", "grade", "silo"}
 # 공정구분(line)을 갖는 표 — 같은 채취 시각이라도 호기·밀이 다르면 다른 행(예: 6K·7K 동시 채취)
 LINE_TABLES = ("raw_meal", "kiln", "clinker", "cement", "xrd")
 TIME_MIN_COLUMNS = {"phy_ist", "phy_fst"}      # 응결시간: 분 단위 저장('HH:MM'·시각으로 들어오면 변환)
@@ -113,6 +113,17 @@ def _combine_sample_time(df: pd.DataFrame) -> pd.DataFrame:
 # 엑셀 템플릿 시트명 ↔ 테이블
 SHEET_NAMES = {"raw_meal": "원료", "kiln": "킬른", "clinker": "클링커", "cement": "시멘트", "physical": "물성",
                "xrd": "클링커일일"}
+def template_table(sheet_name: str) -> str | None:
+    """양식 시트 이름 → 표. '클링커(6K,7K)'·'원료 잔사'처럼 뒤에 설명을 붙여도 앞부분으로 인식('클링커일일'이 '클링커'보다 먼저)."""
+    n = _norm_header(sheet_name)
+    names = {_norm_header(v): k for k, v in SHEET_NAMES.items()} | {_norm_header(k): v for k, v in SHEET_ALIASES.items()} \
+        | {k: k for k in SHEET_NAMES}
+    for cand in sorted(names, key=len, reverse=True):
+        if cand and n.startswith(cand):
+            return names[cand]
+    return None
+
+
 # 업로드 양식의 안내용 시트(자료로 읽지 않음)
 INFO_SHEETS = frozenset({"사용법", "항목사전", "공정구분", "코드표", "LIMS매핑", "작성예시"})
 SHEET_ALIASES = {"XRD": "xrd", "클링커XRD": "xrd", "생료": "raw_meal"}   # 생료: 예전 양식 시트 이름(호환)
@@ -141,12 +152,15 @@ COL_ALIASES: dict[str, dict[str, str]] = {
              "주모터부하": "kiln_torque", "킬른부하": "kiln_torque", "torque": "kiln_torque",
              "하소로출구온도": "kiln_calc_temp", "하소로온도": "kiln_calc_temp", "2차공기온도": "kiln_sec_air"},
     "clinker": {**_COMMON_ALIASES, **_LINE_ALIASES, **_GRADE_ALIASES, "클링커공정": "line", "크링커공정": "line",
-                "킬른": "line", "cao": "clk_cao", "sio2": "clk_sio2", "al2o3": "clk_al2o3", "fe2o3": "clk_fe2o3",
+                "킬른": "line", "클링커투입사일로": "silo", "투입사일로": "silo", "투입silo": "silo", "사일로": "silo",
+                "cl(xrf)": "clk_cl", "cl": "clk_cl", "f(xrf)": "clk_f", "f": "clk_f", "온도": "clk_temp",
+                "클링커온도": "clk_temp", "cao": "clk_cao", "sio2": "clk_sio2", "al2o3": "clk_al2o3", "fe2o3": "clk_fe2o3",
                 "mgo": "clk_mgo", "so3(xrf)": "clk_so3", "so3": "clk_so3", "k2o": "clk_k2o", "na2o": "clk_na2o",
                 "f-cao(습식)": "clk_fcao", "f-cao(xrf)": "clk_fcao", "fcao": "clk_fcao", "유리석회": "clk_fcao",
                 "자유석회": "clk_fcao", "용적비중": "clk_lw", "리터중량": "clk_lw", "용중": "clk_lw", "lw": "clk_lw"},
     "cement": {**_COMMON_ALIASES, **_LINE_ALIASES, "시멘트밀공정": "line", "시멘트밀": "line", "밀": "line",
-               "종류": "product", "blaine": "cem_blaine", "분말도": "cem_blaine", "45㎛": "cem_r45", "45um": "cem_r45",
+               "종류": "product", "시멘트투입사일로": "silo", "투입사일로": "silo", "투입silo": "silo",
+               "사일로": "silo", "blaine": "cem_blaine", "분말도": "cem_blaine", "45㎛": "cem_r45", "45um": "cem_r45",
                "so3(xrf)": "cem_so3", "so3": "cem_so3", "loi": "cem_loi", "강열감량": "cem_loi", "mgo": "cem_mgo",
                "석회석비율": "cem_ls", "석회석": "cem_ls", "밀피드": "cem_mill_feed", "밀출구온도": "cem_mill_temp",
                "원료온도": "cem_mill_temp", "cao": "cem_cao", "sio2": "cem_sio2", "al2o3": "cem_al2o3",
@@ -169,8 +183,9 @@ COL_ALIASES: dict[str, dict[str, str]] = {
 }
 _TS_ALIASES = {k for k, v in _COMMON_ALIASES.items() if v == "timestamp"} | {"timestamp", "일시"}
 # 품명(품종) 값 정규화: LIMS '1종시멘트 벌크' 등 → '1종'
-PRODUCT_ALIASES = [("고로", "고로슬래그 2종"), ("슬래그", "고로슬래그 2종"), ("1종", "1종"), ("opc", "1종"),
-                   ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("중용열", "2종"), ("2종", "2종"), ("4종", "4종"),
+PRODUCT_ALIASES = [("고로슬래그3종", "고로슬래그 3종"), ("3종고로", "고로슬래그 3종"), ("슬래그3종", "고로슬래그 3종"),
+                   ("고로", "고로슬래그 2종"), ("슬래그", "고로슬래그 2종"), ("1종", "1종"), ("opc", "1종"),
+                   ("3종", "3종"), ("조강", "3종"), ("hes", "3종"), ("중용열", "2종"), ("2종", "고로슬래그 2종"), ("4종", "4종"),
                    ("5종", "5종"), ("내황산", "5종"), ("플라이", "플라이애시"), ("fly", "플라이애시")]
 
 
@@ -210,15 +225,15 @@ def normalize_line(v) -> str:
 
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return ""
-    t = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(v))).upper().lstrip("#")
+    t = re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(v))).upper().lstrip("#").replace("_", "-")   # 5_1R/M = 5-1R/M
     if t in ("", "NAN", "NONE", "0"):
         return ""
     m = re.fullmatch(r"(\d+)(?:K|KILN|호기|호|호킬른|킬른)", t)
     if m:
         return f"{int(m.group(1))}K"
-    m = re.fullmatch(r"(\d+)(?:R/?M|원료밀)", t)
+    m = re.fullmatch(r"(\d+(?:-\d+)?)(?:R/?M|원료밀)", t)
     if m:
-        return f"{int(m.group(1))}R/M"
+        return f"{m.group(1).lstrip('0') or '0'}R/M"
     m = re.fullmatch(r"(\d+)(?:C/?M|시멘트밀|밀)", t)
     if m:
         return f"{int(m.group(1))}C/M"
@@ -231,9 +246,9 @@ def line_sort_key(v: str):
     """4K·5K·6K·7K → 4R/M… → 2C/M… 순(킬른 피드가 먼저)."""
     import re
 
-    m = re.match(r"(\d+)(.*)", v or "")
+    m = re.match(r"(\d+)(?:-(\d+))?(.*)", v or "")
     order = {"K": 0, "R/M": 1, "C/M": 2}
-    return (order.get(m.group(2), 3), int(m.group(1)), v) if m else (9, 0, v or "")
+    return (order.get(m.group(3), 3), int(m.group(1)), int(m.group(2) or 0), v) if m else (9, 0, 0, v or "")
 
 
 def line_label(v: str) -> str:
@@ -478,8 +493,43 @@ def load_raw(path: Path = DB_PATH) -> dict[str, pd.DataFrame]:
     return raw
 
 
-def load_store(path: Path = DB_PATH) -> DataStore:
-    return build_store(load_raw(path))
+# 출하시멘트(로트) → 물성 표: 업로드 양식에 '물성' 시트가 없어도 강도·응결·안정도로 알림·원인 진단·강도 예측이 동작하게
+_SHIP_TO_PHY = (("s1", "phy_s1"), ("s3", "phy_s3"), ("s7", "phy_s7"), ("s28", "phy_s28"), ("fst", "phy_fst"),
+                ("x:Autoclave", "phy_autoclave"), ("x:초결시간(분)", "phy_ist"), ("x:초결시간", "phy_ist"),
+                # 같은 로트의 품질값(강도 예측 입력 — 시멘트공정 일평균보다 로트 값이 우선)
+                ("blaine", "lot_blaine"), ("r45", "lot_r45"), ("so3", "lot_so3"), ("loi", "lot_loi"),
+                ("ls", "lot_ls"), ("addr", "lot_addr"))
+
+
+def shipment_physical() -> pd.DataFrame:
+    """출하시멘트 로트를 물성 형식으로. 같은 날·품종 로트가 여럿이면 1분씩 띄워 모두 남긴다."""
+    try:
+        from . import shipment as S
+        df = S.load_shipment()
+    except Exception:  # noqa: BLE001 - 출하시멘트 DB가 없거나 읽기 실패 → 물성 보강 없음
+        return pd.DataFrame()
+    if df.empty or "date" not in df:
+        return pd.DataFrame()
+    out = pd.DataFrame({"timestamp": pd.to_datetime(df["date"], errors="coerce"), "product": df["product"].astype(str)})
+    for src, dst in _SHIP_TO_PHY:
+        if src in df.columns and dst not in out.columns:
+            out[dst] = pd.to_numeric(df[src], errors="coerce")
+    out = out[out["timestamp"].notna()].sort_values(["timestamp", "product"]).reset_index(drop=True)
+    day = out["timestamp"].dt.normalize()
+    out["timestamp"] = day + pd.to_timedelta(out.groupby([day, out["product"]]).cumcount(), unit="m")
+    vals = [c for c in out.columns if c.startswith("phy_")]          # 강도·응결 값이 하나라도 있는 로트만
+    return out[out[vals].notna().any(axis=1)] if vals else out.iloc[0:0]
+
+
+def load_store(path: Path = DB_PATH, with_shipment: bool | None = None) -> DataStore:
+    """저장 데이터 → DataStore. 기본 DB면 출하시멘트 강도를 물성 표에 보강(같은 날·품종은 물성 시트 값 우선)."""
+    raw = load_raw(path)
+    if with_shipment if with_shipment is not None else path == DB_PATH:
+        sp = shipment_physical()
+        if len(sp):
+            cur = raw.get("physical")
+            raw["physical"] = merge_rows(sp, cur if cur is not None and len(cur) else None, ["timestamp", "product"])
+    return build_store(raw)
 
 
 def clear_db(path: Path = DB_PATH, alert_path: Path | None = ALERT_DB_PATH) -> None:
@@ -589,6 +639,76 @@ def read_csv_bytes(data: bytes, **kwargs) -> pd.DataFrame:
     return pd.read_csv(io.BytesIO(data), encoding=CSV_ENCODINGS[-1], **kwargs)
 
 
+def _clean_frame(df: pd.DataFrame, name: str, tag: str, messages: list[str], errors: list[str]) -> pd.DataFrame | None:
+    """시트 한 개 → 내부 열 이름·형식으로 정리. 쓸 행이 없으면 None."""
+    df = apply_column_aliases(df.copy(), name)      # LIMS·한글 머리글 → 내부 열 이름
+    if "timestamp" not in df.columns:
+        errors.append(f"[{tag}] 채취일(timestamp) 열이 없습니다.")
+        return None
+    df = _combine_sample_time(df)                    # 채취일 + 채취시간
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
+    df = df[df["timestamp"].notna()]  # 설명 행·빈 행 제거
+    df, fut = drop_future_rows(df, "timestamp")
+    if fut:
+        messages.append(f"[{tag}] ⚠ 미래 날짜 {fut}행은 입력 오류로 보고 제외했습니다 — 채취일을 확인하세요.")
+    if TABLES[name]["by_product"] and "product" not in df.columns:
+        errors.append(f"[{tag}] 품명(product) 열이 필요합니다.")
+        return None
+    if "product" in df.columns:
+        df["product"] = df["product"].map(normalize_product)
+    if "line" in df.columns:
+        df["line"] = df["line"].map(normalize_line)
+    for c in ("grade", "silo"):
+        if c in df.columns:
+            df[c] = df[c].map(lambda v: "" if v is None or (isinstance(v, float) and np.isnan(v)) else str(v).strip())
+    known = [c for c in RAW_COLUMNS[name] if c in df.columns]
+    unknown = [c for c in df.columns if c not in RAW_COLUMNS[name] and c != "timestamp"]
+    if unknown:
+        messages.append(f"[{tag}] 인식하지 않은 열은 무시: {', '.join(map(str, unknown))}")
+    for c in known:
+        if c in TIME_MIN_COLUMNS:                       # 응결시간: 'HH:MM'·시각값도 분으로
+            df[c] = df[c].map(_to_minutes)
+        if c not in TEXT_COLUMNS:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+    df, swapped = _fix_swapped_fineness(df)
+    if swapped:
+        messages.append(f"[{tag}] ⚠ Blaine 열에 45㎛ 잔사 값이, 45㎛ 열에 Blaine 값이 들어 있어 서로 바꿔 읽었습니다(열 순서 확인 필요).")
+    df, zeros = zero_to_nan(df, name)
+    if zeros:
+        messages.append(f"[{tag}] 값 0 = '미시험'으로 보고 빈 칸 처리: "
+                        + ", ".join(f"{c} {n}건" for c, n in zeros.items()))
+    df = df[["timestamp"] + known]
+    if len(df) == 0:
+        messages.append(f"[{tag}] 데이터 행이 없습니다.")
+        return None
+    messages.append(f"[{tag}] {len(df)}행 인식 ({df['timestamp'].min():%Y-%m-%d} ~ {df['timestamp'].max():%Y-%m-%d})")
+    return df
+
+
+def drop_future_rows(df: pd.DataFrame, col: str, grace_days: int = 1) -> tuple[pd.DataFrame, str]:
+    """오늘+1일 이후 날짜(예: 2029년) 행 제외 → (남은 표, '건수(예: 날짜…)' 또는 '')."""
+    if df.empty:
+        return df, ""
+    ts = pd.to_datetime(df[col], errors="coerce")
+    fut = ts > pd.Timestamp.now().normalize() + pd.Timedelta(days=grace_days)
+    if not fut.any():
+        return df, ""
+    ex = ", ".join(sorted({f"{t:%Y-%m-%d}" for t in ts[fut]})[:3])
+    return df[~fut], f"{int(fut.sum())}({ex}{'…' if fut.sum() > 3 else ''})"
+
+
+def _fix_swapped_fineness(df: pd.DataFrame) -> tuple[pd.DataFrame, bool]:
+    """Blaine(보통 2,500~6,000 cm²/g)·45㎛ 잔사(보통 0~30 %) 열이 통째로 뒤바뀌었으면 바로잡는다(붙여넣기 열 순서 실수)."""
+    if not {"cem_blaine", "cem_r45"} <= set(df.columns):
+        return df, False
+    b, r = df["cem_blaine"].dropna(), df["cem_r45"].dropna()
+    if len(b) >= 5 and len(r) >= 5 and b.median() < 100 and r.median() > 1000:
+        df = df.copy()
+        df[["cem_blaine", "cem_r45"]] = df[["cem_r45", "cem_blaine"]].to_numpy()
+        return df, True
+    return df, False
+
+
 def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx", skip_sheets: set[str] | frozenset = frozenset()) -> UploadResult:
     """엑셀(시트=테이블) 또는 CSV(파일명에 테이블명 포함) 업로드를 검증·변환한다. skip_sheets·안내 시트는 읽지 않는다."""
     messages: list[str] = []
@@ -601,7 +721,7 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx", skip_sheets: 
         if target is None:
             return UploadResult({}, [], ["CSV 파일명에 테이블명(raw_meal/kiln/clinker/cement/physical/xrd)을 포함하세요."])
         try:
-            frames = {target: read_csv_bytes(file_bytes)}
+            frames = {target: [(filename, read_csv_bytes(file_bytes))]}
         except Exception as exc:  # noqa: BLE001 - 사용자에게 원인 메시지 표시
             return UploadResult({}, [], [f"CSV 파일을 읽을 수 없습니다: {exc}"])
     else:
@@ -613,8 +733,8 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx", skip_sheets: 
         for s, raw in sheets.items():
             if raw.empty or s in skip_sheets or s in INFO_SHEETS:
                 continue
-            if s in name_by_sheet:                     # 템플릿 시트(시트명으로 인식) — 머리글은 채취일이 있는 첫 행(위에 제목 행 허용)
-                tbl = name_by_sheet[s]
+            if template_table(s):                      # 템플릿 시트(시트명으로 인식) — 머리글은 채취일이 있는 첫 행(위에 제목 행 허용)
+                tbl = template_table(s)
                 hrow = next((r for r in range(min(len(raw), 6))
                              if any(_norm_header(v) in _TS_ALIASES for v in raw.iloc[r].tolist())), 0)
             else:                                      # LIMS 원본 파일(제목+머리글 3행으로 인식)
@@ -624,46 +744,22 @@ def parse_upload(file_bytes: bytes, filename: str = "upload.xlsx", skip_sheets: 
                 tbl, hrow = det
             df = raw.iloc[hrow + 1:].copy()
             df.columns = [c if c is not None else "" for c in raw.iloc[hrow].tolist()]
-            frames.setdefault(tbl, df)                 # 같은 표가 여러 시트면 첫 시트만
+            frames.setdefault(tbl, []).append((s, df))  # 같은 표가 여러 시트(예: 클링커 4K·5K / 6K·7K, 원료 잔사)면 모두
         if not frames:
             return UploadResult({}, [], [("인식 가능한 시트가 없습니다. 템플릿 시트명(원료/클링커/시멘트/물성/클링커일일) "
                                           "또는 LIMS 원본 파일(조합원료·크링커·시멘트공정·시멘트성적)을 사용하세요.")])
 
-    for name, df in frames.items():
-        df = apply_column_aliases(df.copy(), name)      # LIMS·한글 머리글 → 내부 열 이름
-        if "timestamp" not in df.columns:
-            errors.append(f"[{SHEET_NAMES[name]}] 채취일(timestamp) 열이 없습니다.")
+    for name, parts in frames.items():
+        cleaned = []
+        for sheet, df in parts:
+            tag = SHEET_NAMES[name] if len(parts) == 1 else f"{SHEET_NAMES[name]}·{sheet}"
+            df = _clean_frame(df, name, tag, messages, errors)
+            if df is not None:
+                cleaned.append(df)
+        if not cleaned:
             continue
-        df = _combine_sample_time(df)                    # 채취일 + 채취시간
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce", format="mixed")
-        df = df[df["timestamp"].notna()]  # 설명 행·빈 행 제거
-        if TABLES[name]["by_product"] and "product" not in df.columns:
-            errors.append(f"[{SHEET_NAMES[name]}] 품명(product) 열이 필요합니다.")
-            continue
-        if "product" in df.columns:
-            df["product"] = df["product"].map(normalize_product)
-        if "line" in df.columns:
-            df["line"] = df["line"].map(normalize_line)
-        if "grade" in df.columns:
-            df["grade"] = df["grade"].map(lambda v: "" if v is None or (isinstance(v, float) and np.isnan(v)) else str(v).strip())
-        known = [c for c in RAW_COLUMNS[name] if c in df.columns]
-        unknown = [c for c in df.columns if c not in RAW_COLUMNS[name] and c != "timestamp"]
-        if unknown:
-            messages.append(f"[{SHEET_NAMES[name]}] 인식하지 않은 열은 무시: {', '.join(map(str, unknown))}")
-        for c in known:
-            if c in TIME_MIN_COLUMNS:                       # 응결시간: 'HH:MM'·시각값도 분으로
-                df[c] = df[c].map(_to_minutes)
-            if c not in TEXT_COLUMNS:
-                df[c] = pd.to_numeric(df[c], errors="coerce")
-        df, zeros = zero_to_nan(df, name)
-        if zeros:
-            messages.append(f"[{SHEET_NAMES[name]}] 값 0 = '미시험'으로 보고 빈 칸 처리: "
-                            + ", ".join(f"{c} {n}건" for c, n in zeros.items()))
-        df = df[["timestamp"] + known]
-        if len(df) == 0:
-            messages.append(f"[{SHEET_NAMES[name]}] 데이터 행이 없습니다.")
-            continue
+        df = pd.concat(cleaned, ignore_index=True) if len(cleaned) > 1 else cleaned[0]
         tables[name] = df
-        messages.append(f"[{SHEET_NAMES[name]}] {len(df)}행 인식 ({df['timestamp'].min():%Y-%m-%d} ~ "
-                        f"{df['timestamp'].max():%Y-%m-%d})")
+        if len(cleaned) > 1:
+            messages.append(f"[{SHEET_NAMES[name]}] 시트 {len(cleaned)}개 합계 {len(df)}행")
     return UploadResult(tables, messages, errors)

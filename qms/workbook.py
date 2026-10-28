@@ -13,9 +13,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from . import incoming, shipment
-from .store import INFO_SHEETS, SHEET_ALIASES, SHEET_NAMES, UploadResult, parse_upload, save_raw
-
-PROCESS_SHEETS = frozenset(SHEET_NAMES.values()) | frozenset(SHEET_ALIASES)
+from .store import INFO_SHEETS, SHEET_NAMES, UploadResult, parse_upload, save_raw, template_table
 
 
 @dataclass
@@ -28,7 +26,7 @@ class WorkbookParts:
     @property
     def is_template(self) -> bool:
         """통합 업로드 양식(공정 시트 이름이 있는 파일)인가."""
-        return bool(set(self.sheet_names) & PROCESS_SHEETS)
+        return any(template_table(sn) for sn in self.sheet_names)
 
     @property
     def kinds(self) -> list[str]:
@@ -65,12 +63,14 @@ def analyze(content: bytes, filename: str) -> WorkbookParts:
     except Exception:  # noqa: BLE001 - 읽지 못하면 공정 파서가 오류 메시지를 낸다
         sheets = []
     for sn, aoa in sheets:
-        if sn in INFO_SHEETS or sn in PROCESS_SHEETS or not aoa:
+        if sn in INFO_SHEETS or template_table(sn) or not aoa:
             continue
         if shipment.detect(aoa):                                   # 출하시멘트 시트
             ship_sheets.add(sn)
             p = shipment.parse_aoa(aoa, overrides)
             p.sheet = sn
+            if len(p.records) and ("고로" in sn or "슬래그" in sn):        # 시트 이름이 고로슬래그면 '2종' 등 품명을 고로슬래그로
+                p.records["product"] = p.records["product"].replace({"2종": shipment.SLAG2})
             if len(p.records):                                     # 머리글만 있는 빈 시트는 조용히 건너뜀
                 ships.append((sn, p))
             continue

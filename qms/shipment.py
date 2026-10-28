@@ -106,17 +106,22 @@ ROLE_ALIASES = {
 # 품종(1종/3종 등) — LIMS '1종시멘트 벌크' 같은 품명 문자열에서 뽑는다. 비면 1종으로 본다.
 # '2종고로슬래그시멘트'는 포틀랜드 2종(중용열)과 다른 고로슬래그 시멘트(KS L 5210) 2종이므로 따로 구분한다.
 SLAG2 = "고로슬래그 2종"
-PRODUCTS = ("1종", "3종", SLAG2)          # 출하시멘트 화면에 항상 보이는 품종
-_PRODUCT_KEYS = (("고로", SLAG2), ("슬래그", SLAG2), ("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"),
-                 ("hes", "3종"), ("중용열", "2종"), ("2종", "2종"), ("4종", "4종"), ("내황산", "5종"), ("5종", "5종"))
+SLAG3 = "고로슬래그 3종"
+PRODUCTS = ("1종", "3종", SLAG2, SLAG3)   # 출하시멘트 화면에 항상 보이는 품종(사용자 코드표 기준)
+_PRODUCT_KEYS = (("고로슬래그3종", SLAG3), ("3종고로", SLAG3), ("슬래그3종", SLAG3), ("고로", SLAG2), ("슬래그", SLAG2), ("1종", "1종"), ("opc", "1종"), ("3종", "3종"), ("조강", "3종"),
+                 ("hes", "3종"), ("중용열", "2종"), ("2종", SLAG2), ("4종", "4종"), ("내황산", "5종"), ("5종", "5종"))
+# '2종'만 있으면 고로슬래그 2종: 이 공장 LIMS '2종시멘트 벌크' = 고로슬래그 시멘트(첨가재 고로슬래그). 중용열 2종은 '중용열'로 구분
 
 
-def _product(v) -> str:
+def _product(v, additive=None) -> str:
+    """품명 → 품종. 첨가재가 고로슬래그인 '2종'(중용열 표기라도)은 고로슬래그 2종."""
     s = norm(v)
     if not s:
         return "1종"
     for key, code in _PRODUCT_KEYS:
         if norm(key) in s:
+            if code == "2종" and "슬래그" in norm(additive):
+                return SLAG2
             return code
     return str(v).strip() or "1종"
 META_COLS = ["date", "lot", "additive", "mix_total", "n_ship", "ships", "ship_ok", "product_kind", "dest_hint", "ship_raw"]
@@ -475,7 +480,7 @@ def parse_aoa(aoa: list[list], overrides: dict | None = None, header_row: int | 
             continue
         rec = {"date": d, "lot": "" if _blank(get("lot")) else str(get("lot")).strip(),
                "additive": "" if _blank(get("additive")) else str(get("additive")).strip(),
-               "product": _product(get("product")),
+               "product": _product(get("product"), get("additive")),
                "ship_raw": re.sub(r"\s+", " ", str(get("ships"))).strip() if not _blank(get("ships")) else ""}
         for it in ITEMS:
             if it.key not in idx:
@@ -718,7 +723,7 @@ KS_BY_PRODUCT = {
             "s28": (47.5, None)},
 }
 # 고로슬래그 시멘트(KS L 5210)는 KS 값을 아직 확인·입력하지 않았다 → 1종 값을 잘못 쓰지 않도록 KS 판정 생략(사내 기준만).
-KS_NOT_SET = {SLAG2}
+KS_NOT_SET = {SLAG2, SLAG3}
 
 
 def years_key(product: str | None = None) -> str:
@@ -964,12 +969,23 @@ def mix_effect(df: pd.DataFrame, key: str, controls: tuple[str, ...] = ("blaine"
         names.append(BY_KEY[c].name)
     A = np.column_stack(X)
     y = d[key].to_numpy(float)
-    beta, *_ = np.linalg.lstsq(A, y, rcond=None)
+    ok = np.isfinite(A).all(axis=1) & np.isfinite(y)              # 석회석·첨가재 비율이 빈 행 등(NaN)은 제외 — 남기면 SVD 미수렴 오류
+    A, y = A[ok], y[ok]
+    if len(y) < 30 or len(y) <= A.shape[1] or not np.ptp(A[:, 1:3], axis=0).any():
+        return None
+    try:
+        beta, *_ = np.linalg.lstsq(A, y, rcond=None)
+    except np.linalg.LinAlgError:
+        return None
     resid = y - A @ beta
     dof = len(y) - A.shape[1]
     sigma2 = float(resid @ resid) / dof if dof > 0 else np.nan
-    cov = sigma2 * np.linalg.pinv(A.T @ A)
-    se = np.sqrt(np.diag(cov))
-    r2 = 1 - float(resid @ resid) / float(((y - y.mean()) ** 2).sum())
+    try:
+        cov = sigma2 * np.linalg.pinv(A.T @ A)
+    except np.linalg.LinAlgError:
+        return None
+    se = np.sqrt(np.abs(np.diag(cov)))
+    sst = float(((y - y.mean()) ** 2).sum())
+    r2 = 1 - float(resid @ resid) / sst if sst > 0 else np.nan
     return {"n": len(y), "r2": r2, "coef": dict(zip(names, beta)), "se": dict(zip(names, se)), "mix_coef": float(beta[1]),
             "mix_se": float(se[1]), "controls": [BY_KEY[c].name for c in controls], "split": split}

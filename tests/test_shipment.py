@@ -385,10 +385,13 @@ def test_generated_update_workbook_ingests():
         pytest.skip("양식 파일이 아직 생성되지 않음")
     parts = workbook.analyze(f.read_bytes(), f.name)
     assert parts.is_template and not parts.errors
-    ws = openpyxl.load_workbook(f, data_only=True)["출하시멘트"]
-    headers = [c.value for c in ws[3]]
-    idx = S.match_headers(headers)
-    assert set(range(len(headers))) == set(idx.values()), [h for j, h in enumerate(headers) if j not in idx.values()]
+    wb = openpyxl.load_workbook(f, data_only=True)
+    ship_sheets = [n for n in wb.sheetnames if n.startswith("출하시멘트")]
+    assert len(ship_sheets) == 3
+    for sn in ship_sheets:                                    # 핵심 항목(강도·화학·분말도)은 모두 인식, 나머지는 '기타 항목'으로 저장
+        headers = [c.value for c in wb[sn][3]]
+        idx = S.match_headers(headers)
+        assert {"date", "lot", "product", "ships", "blaine", "r45", "s28", "so3"} <= set(idx), (sn, sorted(idx))
 
 
 def test_lims_raw_export_auto_detected_by_title():
@@ -435,7 +438,7 @@ def test_shipment_product_split_and_filter():
 
     assert S._product("1종시멘트 벌크") == "1종" and S._product("3종시멘트 벌크") == "3종"
     assert S._product("") == "1종" and S._product("2종고로슬래그시멘트 벌크") == S.SLAG2 == "고로슬래그 2종"
-    assert S._product("중용열 2종") == "2종" and set(S.PRODUCTS) == {"1종", "3종", "고로슬래그 2종"}
+    assert S._product("중용열 2종") == "2종" and set(S.PRODUCTS) == {"1종", "3종", "고로슬래그 2종", "고로슬래그 3종"}
     head = ["채취일", "품명", "첨가재명칭", "석회석비율", "첨가재비율", "LOI", "Al2O3", "MgO", "SO3(XRF)",
             "압축강도1일(MPa)", "압축강도3일(MPa)", "압축강도7일(MPa)", "압축강도28일(MPa)", "45㎛", "Blaine", "주도", "비고"]
     aoa = [["시멘트성적"], ["검사일"], head,
@@ -511,3 +514,18 @@ def test_shipment_page_mix_items_do_not_duplicate_columns():
         sb.set_value(k).run()
         assert not at.exception, [e.value for e in at.exception]
     S.clear_shipment()
+
+
+def test_mix_effect_ignores_blank_ratio_rows():
+    """석회석·첨가재 비율이 빈 행(NaN)이 있어도 회귀가 오류 없이 계산된다(이전: SVD did not converge)."""
+    rng = np.random.default_rng(5)
+    n = 80
+    ls = rng.choice([3.0, 5.0, 7.0], n)
+    addr = rng.choice([3.0, 5.0], n)
+    dm = pd.DataFrame({"ls": ls, "addr": addr, "mix_total": ls + addr, "additive": "플라이 애시",
+                       "blaine": rng.normal(3800, 80, n), "so3": rng.normal(2.6, 0.05, n),
+                       "s28": 60 - 0.8 * (ls + addr) + rng.normal(0, 0.5, n)})
+    dm.loc[:4, "ls"] = np.nan
+    e = S.mix_effect(dm, "s28", split=True)
+    assert e is not None and e["n"] == n - 5 and e["coef"]["석회석 비율(%p당)"] < 0
+    assert S._product("2종시멘트 벌크") == S.SLAG2 and S._product("중용열 2종") == "2종"

@@ -163,6 +163,11 @@ def _default_items() -> list[ItemSpec]:
     add(ItemSpec("clk_lw", "클링커 리터중량", "클링커", "clinker", "g/L", 0,
                  {"*": _L(lsl=1200, usl=1400, target=1300)}, rules=("R1",),
                  description="소성도 지표(측정 입도·방법에 따라 절대값 상이)"))
+    for key, name, unit, nd, desc in (
+            ("clk_cl", "클링커 Cl", "ppm", 0, "염소 — 바이패스·킬른 내 순환(코팅·링 형성) 지표"),
+            ("clk_f", "클링커 F", "ppm", 0, "불소 — 광화제. 과다 시 응결·초기강도 영향"),
+            ("clk_temp", "클링커 온도", "℃", 0, "냉각기 출구 클링커 온도(냉각 상태 지표)")):
+        add(ItemSpec(key, name, "클링커", "clinker", unit, nd, basis="모니터링 항목(기준 미설정)", description=desc))
     add(ItemSpec("clk_lsf", "클링커 LSF", "클링커", "clinker", "", 1,
                  {"*": _L(lsl=93.0, usl=97.5, target=95.0)}, rules=QC_RULES, key_item=True))
     add(ItemSpec("clk_sm", "클링커 SM", "클링커", "clinker", "", 2,

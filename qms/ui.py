@@ -617,4 +617,5 @@ def recent_events(ctx: Ctx, days: int = 7, min_sev: str = "주의") -> list[Aler
 
 def open_diagnosis(event_id: str) -> None:
     st.session_state["selected_event_id"] = event_id
+    st.session_state["dx_linked"] = event_id          # 원인 진단 화면이 이 이벤트로 분류·조건을 한 번 맞춤
     st.switch_page("app_pages/diagnosis.py")

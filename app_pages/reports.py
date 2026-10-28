@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from qms.alerts import SEVERITY_ORDER
 from qms.diagnosis import diagnose
 from qms.reports import build_excel_report, build_management_ppt, kpi_summary
 from qms.ui import get_ctx, page_header
@@ -42,9 +43,23 @@ kpi = kpi_summary(store, reg, edf, start, end)
 st.dataframe(pd.DataFrame([{"구분": k, "값": str(v[0]), "설명": v[1]} for k, v in kpi.items()]), hide_index=True)
 
 
+def _top_events(evs, n: int = 20):
+    """보고서에 넣을 원인 분석 대상: 위험 → 경고 순·최근 순, 같은 항목(품종·호기)은 1건만 — 자료가 많아도 빠르게."""
+    seen, out = set(), []
+    for e in sorted((e for e in evs if e.severity in ("위험", "경고")),
+                    key=lambda e: (SEVERITY_ORDER[e.severity], e.rule == "KS", e.end), reverse=True):
+        k = (e.item_key, e.product, e.line)
+        if k not in seen:
+            seen.add(k)
+            out.append(e)
+        if len(out) >= n:
+            break
+    return out
+
+
 @st.cache_data(show_spinner="보고서를 만드는 중…", max_entries=4)
 def _build(kind: str, start, end, org: str, cache_key: tuple):
-    dxs = [diagnose(e, store, reg, ctx.settings) for e in events if e.severity in ("위험", "경고")]
+    dxs = [diagnose(e, store, reg, ctx.settings) for e in _top_events(events)]
     if kind == "ppt":
         return build_management_ppt(store, reg, edf, dxs, start, end, org=org)
     return build_excel_report(store, reg, edf, dxs, start, end)
