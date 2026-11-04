@@ -572,7 +572,7 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
     period = ctx.store.period()
     recent = [e for e in ctx.events if period and e.end >= period[1] - pd.Timedelta(days=7)]
     counts = {k: sum(e.severity == k for e in recent) for k in ("위험", "경고", "주의")}
-    parts = []
+    parts = ["🛠 관리용(자료·기준·분석) — 조회·공유는 보고서 → 👀 보는용 현황판"]
     if period:
         parts.append(f"데이터 기간 {period[0]:%Y-%m-%d} ~ {period[1]:%Y-%m-%d}")
     if ctx.demo:

@@ -50,3 +50,26 @@ def test_monitor_snapshot_option(tmp_path):
     with contextlib.redirect_stdout(buf):
         qms_monitor.main(["--snapshot", str(tmp_path / "snap"), "--dry-run"])
     assert (tmp_path / "snap" / SN.LATEST_NAME).exists() and "[현황판] 저장" in buf.getvalue()
+
+
+def test_viewer_has_six_tabs_and_is_offline(tmp_path, monkeypatch, demo):
+    """보는용 현황판: 6개 탭(현황·모니터링·강도 예측·원인 진단·출하시멘트·자료 상태)을 담은 단일 오프라인 HTML."""
+    import json
+    import re
+
+    from qms import viewer as V
+    from qms.ui import Ctx
+    monkeypatch.setattr(S, "SHIP_DB_PATH", tmp_path / "ship.db")
+    ctx = Ctx(*demo, True)
+    payload = V.build_payload(ctx)
+    assert {"meta", "overview", "monitor", "predict", "diagnosis", "shipment", "status"} <= set(payload)
+    assert payload["meta"]["period"] and payload["diagnosis"]["cats"] and payload["predict"]
+    html = V.build_viewer(ctx)
+    assert html.lstrip().lower().startswith("<!doctype html>") and "/*__DATA__*/null" not in html
+    tabs = re.search(r"const TABS = (\[.*?\]);", html).group(1)
+    assert [k for k, _ in json.loads(tabs)] == ["overview", "monitor", "predict", "diagnosis", "shipment", "data"]
+    assert not re.search(r'<script[^>]+src="https?://', html)                    # 외부 스크립트 없음(사내망 오프라인)
+    data = json.loads(html.split("const D = ", 1)[1].split(";\n", 1)[0].replace("<\\/", "</"))
+    assert data["meta"]["demo"] is True and data["diagnosis"]["events"]
+    paths = SN.write_snapshot(tmp_path / "out", keep=2)
+    assert "Blue365 QMS 현황판" in paths[0].read_text(encoding="utf-8")

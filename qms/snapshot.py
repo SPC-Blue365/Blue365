@@ -1,4 +1,6 @@
-"""HTML 현황판(조회 전용 스냅샷) — 설치·실행 권한이 없는 PC에서 브라우저로 보는 단일 HTML 파일.
+"""HTML 현황판(조회 전용 스냅샷) — write_snapshot 은 보는용 현황판(qms/viewer.py)을 만들고, 실패하면 이 예전 형식으로 만든다.
+
+예전 형식: — 설치·실행 권한이 없는 PC에서 브라우저로 보는 단일 HTML 파일.
 
 매일 자동반영(qms_monitor --sync-file … --snapshot <폴더>) 직후 만들어 공유 드라이브에 둔다.
 그래프 라이브러리(plotly.js)를 파일 안에 넣으므로 인터넷이 없어도 열린다(약 5MB).
@@ -253,7 +255,11 @@ def write_snapshot(out_dir: Path, keep: int = 30, ctx=None) -> list[Path]:
     """out_dir 에 최신본 + 기록/날짜본 저장. 오래된 날짜본은 keep 개만 남긴다. → [최신본, 날짜본]."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    text = build_snapshot(ctx)
+    try:                                                  # 보는용 현황판(6개 탭, qms/viewer.py)
+        from .viewer import build_viewer
+        text = build_viewer(ctx)
+    except Exception:  # noqa: BLE001 - 새 현황판이 실패해도 예전 현황판은 만들어 둔다
+        text = build_snapshot(ctx)
     latest = out_dir / LATEST_NAME
     tmp = latest.with_suffix(".tmp")
     tmp.write_text(text, encoding="utf-8")

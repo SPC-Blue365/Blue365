@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blue365 QMS 현황판</title>
+<style>
+/* 보는용 현황판: 남색 머리 띠 → 처리 흐름 → 앱 창(탭 6개). 숫자는 아래 D(JSON)에서. 인터넷 없이 열림(글꼴은 PC 기본 글꼴) */
+:root {
+  --bg: #f5f6f8; --surface: #ffffff; --sunken: #eef1f5; --ink: #18212d; --muted: #5d6878; --faint: #8a94a3;
+  --line: #dde2e9; --brand: #1f3a5f; --brand-ink: #ffffff; --brand-soft: #e6edf6; --accent: #d9731a;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+  --ok: #0ca30c; --warn: #fab219; --serious: #ec835a; --bad: #d03b3b;
+  --ok-bg: #e5f5e5; --warn-bg: #fff3d6; --bad-bg: #fbe3e3; --band: rgba(42,120,214,.10);
+  --f-body: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --f-mono: "Consolas", "D2Coding", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #121417; --surface: #1b1f24; --sunken: #23282f; --ink: #eef1f5; --muted: #a8b1bd; --faint: #7c8694;
+  --line: #2e353e; --brand: #13253d; --brand-ink: #f2f5f9; --brand-soft: #1f3048; --accent: #f08a33;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --ok-bg: #16301a; --warn-bg: #3a2e10; --bad-bg: #3a1818; --band: rgba(57,135,229,.16); color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0 }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6 }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+h1, h2, h3 { line-height: 1.25; margin: 0 }
+.num, td.n, .kpi b { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+a { color: inherit }
+:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; border-radius: 4px }
+.hero { background: var(--brand); color: var(--brand-ink) }
+.hero .wrap { padding-block: 26px 24px; display: grid; gap: 10px }
+.eyebrow { font-size: 12px; letter-spacing: .1em; opacity: .8; display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.tag { border-radius: 999px; padding: 1px 10px; font-weight: 600; letter-spacing: .02em; background: rgba(255,255,255,.16) }
+.tag.demo { background: var(--accent); color: #fff }
+.hero h1 { font-size: clamp(24px, 3.6vw, 34px); font-weight: 700 }
+.hero p { margin: 0; opacity: .88; font-size: 14px }
+.app { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-block: 20px; overflow: hidden }
+.tabs { display: flex; gap: 2px; background: var(--sunken); border-bottom: 1px solid var(--line); padding: 6px 6px 0; overflow-x: auto }
+.tabs button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--muted); padding: 10px 14px; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 -2px 0 var(--brand) inset }
+.panel { padding: 20px; display: grid; gap: 16px }
+.panel > header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap }
+.panel h2 { font-size: 20px }
+.sub { color: var(--muted); font-size: 13.5px; margin: 4px 0 0 }
+.grid { display: grid; gap: 14px }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.box { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0 }
+.box h3 { font-size: 15px; margin-bottom: 8px }
+.kpi { display: grid; gap: 2px; align-content: start }
+.kpi small { color: var(--muted); font-size: 12.5px }
+.kpi b { font-size: 26px; font-weight: 600 }
+.kpi b span { font-size: 14px }
+.kpi em { font-style: normal; font-size: 12.5px; color: var(--muted) }
+.kpi.t-warn { box-shadow: inset 3px 0 0 var(--warn) } .kpi.t-bad { box-shadow: inset 3px 0 0 var(--bad) } .kpi.t-ok { box-shadow: inset 3px 0 0 var(--ok) }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--ink) }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50% }
+.ok { background: var(--ok-bg) } .ok::before { background: var(--ok) }
+.warn { background: var(--warn-bg) } .warn::before { background: var(--warn) }
+.bad { background: var(--bad-bg) } .bad::before { background: var(--bad) }
+.mute { background: var(--sunken) } .mute::before { background: var(--faint) }
+.chips { display: flex; gap: 6px; flex-wrap: wrap }
+.chips button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 4px 12px; border-radius: 999px; cursor: pointer }
+.chips button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand) }
+.ctrl { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start }
+.ctrl .lab { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 4px }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; border-bottom: 1px solid var(--line); padding: 7px 8px; white-space: nowrap }
+td { border-bottom: 1px solid var(--line); padding: 7px 8px; vertical-align: top }
+td.n, th.n { text-align: right }
+tr.sel td { background: var(--brand-soft) }
+tr.click { cursor: pointer } tr.click:hover td { background: var(--sunken) }
+.scroll { overflow-x: auto } .tall { max-height: 360px; overflow: auto }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 4px }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px }
+.chart { position: relative } .chart svg { display: block; width: 100%; height: auto }
+.axis text { fill: var(--muted); font-size: 11px; font-family: var(--f-mono) }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap; z-index: 2 }
+.note { font-size: 12.5px; color: var(--muted); margin: 0 }
+.frame5 { display: grid; gap: 12px }
+.frame5 .row { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start }
+.frame5 .no { font-family: var(--f-mono); font-weight: 600; background: var(--brand); color: var(--brand-ink); border-radius: 8px; text-align: center; padding: 3px 0; font-size: 13px }
+.frame5 ul { margin: 4px 0 0; padding-left: 18px }
+.hyp { display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(80px, 24%) 120px; gap: 6px 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13.5px }
+.hyp .ax { font-weight: 600; color: var(--muted) }
+.bar { height: 8px; border-radius: 4px; background: var(--sunken); overflow: hidden } .bar > i { display: block; height: 100%; background: var(--s1); border-radius: 4px }
+.calc { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end }
+.calc label { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 4px }
+.calc input { font: inherit; font-family: var(--f-mono); width: 120px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink) }
+.result { font-family: var(--f-mono); font-size: 22px; font-weight: 600 }
+@media (max-width: 600px) { .hide-sm { display: none } }
+.empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; padding: 16px; font-size: 14px }
+footer { color: var(--muted); font-size: 13px; padding-block: 4px 36px; display: grid; gap: 6px }
+@media (max-width: 860px) { .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)) } .g2 { grid-template-columns: 1fr } }
+@media (max-width: 600px) { .hyp { grid-template-columns: 56px minmax(0, 1fr) } .hyp .bar, .hyp .vd { grid-column: 2 } .panel { padding: 14px } .kpi b { font-size: 22px } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+</head>
+<body>
+<div class="hero"><div class="wrap">
+  <div class="eyebrow">시멘트 품질관리 시스템 <span class="tag">보는용 · 조회 전용</span><span class="tag demo" id="demotag" hidden>데모 데이터</span></div>
+  <h1>Blue365 QMS 현황판</h1>
+  <p id="meta"></p>
+</div></div>
+<main class="wrap">
+  <section class="app" aria-label="현황판">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div id="view"></div>
+  </section>
+  <footer>
+    <div>이 파일은 매일 06:00 자동반영 때 새로 만들어집니다. 자료 올리기·관리기준 입력·보고서 만들기는 <b>관리용 앱</b>(Blue365 QMS)에서 합니다.</div>
+    <div>KS 기준: KS L 5201(포틀랜드 시멘트) · 사내 관리기준은 관리용 앱 ⚙️ 설정의 값 · 예측값은 추정치이며 실측으로 확정해야 합니다.</div>
+  </footer>
+</main>
+<script>
+const D = /*__DATA__*/null;
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const f = (v, k = 1) => (v == null || !isFinite(v) ? "-" : Number(v).toFixed(k));
+const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
+const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const SEVCLS = { "위험": "bad", "경고": "warn", "주의": "warn", "정상": "ok" };
+const pill = (cls, t) => `<span class="pill ${cls}">${esc(t)}</span>`;
+const COLORS = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7", "--s8"];
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+if (!D) { $("view").innerHTML = '<div class="panel"><div class="empty">자료를 불러오지 못했습니다. 관리용 앱에서 현황판을 다시 만들어 주세요.</div></div>'; return; }
+$("meta").textContent = `생성 ${D.meta.generated} · 기준일 ${D.meta.ref}` + (D.meta.period ? ` · 자료 기간 ${D.meta.period[0]} ~ ${D.meta.period[1]}` : "");
+$("demotag").hidden = !D.meta.demo;
+
+// ── 선 그래프(SVG, 눈금 하나, 호버 툴팁) ───────────────────────────────
+function lineChart(host, { series, band, lines = [], dec = 1, unit = "", h = 300 }) {
+  const all = series.flatMap((s) => s.data.filter((p) => p[1] != null));
+  if (!all.length) { host.innerHTML = '<div class="empty">이 기간에 값이 없습니다.</div>'; return; }
+  let lo = Math.min(...all.map((p) => p[1])), hi = Math.max(...all.map((p) => p[1]));
+  for (const v of [...lines.map((l) => l.v), ...(band || [])]) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  const pad = (hi - lo) * 0.08 || 1, nonneg = lo >= 0; lo -= pad; hi += pad; if (nonneg) lo = Math.max(0, lo);   // 음수가 될 수 없는 값은 0 아래로 그리지 않음
+  const W = 900, H = h, L = 56, R = 14, T = 14, B = 30;
+  const x0 = Math.min(...all.map((p) => p[0])), x1 = Math.max(...all.map((p) => p[0]));
+  const X = (t) => L + (W - L - R) * (t - x0) / (x1 - x0 || 1), Y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  const tk = []; for (let i = 0; i <= 5; i++) tk.push(lo + (hi - lo) * i / 5);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map((q) => q.name).join(", "))} 추이"><g class="axis">`;
+  s += tk.map((v) => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--line")}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${f(v, dec)}</text>`).join("");
+  for (let i = 0; i <= 5; i++) { const t = x0 + (x1 - x0) * i / 5; s += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${md(t)}</text>`; }
+  s += "</g>";
+  if (band && band[0] != null && band[1] != null) s += `<rect x="${L}" width="${W - L - R}" y="${Y(band[1])}" height="${Y(band[0]) - Y(band[1])}" fill="${css("--band")}"/>`;
+  for (const ln of lines) if (ln.v != null) s += `<line x1="${L}" x2="${W - R}" y1="${Y(ln.v)}" y2="${Y(ln.v)}" stroke="${css(ln.c)}" stroke-width="1.5" ${ln.dash ? 'stroke-dasharray="6 4"' : ""}/><text x="${W - R - 4}" y="${Y(ln.v) - 5}" text-anchor="end" font-size="11" fill="${css("--muted")}">${esc(ln.label)}</text>`;
+  for (const q of series) {
+    const pts = q.data.filter((p) => p[1] != null); if (!pts.length) continue;
+    s += `<polyline fill="none" stroke="${css(q.color)}" stroke-width="2" stroke-linejoin="round" ${q.dash ? 'stroke-dasharray="5 4"' : ""} points="${pts.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"/>`;
+    const e = pts[pts.length - 1]; s += `<circle cx="${X(e[0])}" cy="${Y(e[1])}" r="4" fill="${css(q.color)}" stroke="${css("--surface")}" stroke-width="2"/>`;
+  }
+  s += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="${css("--faint")}" visibility="hidden"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg>`;
+  host.innerHTML = s + '<div class="tip" hidden></div>';
+  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), xh = host.querySelector(".xh");
+  svg.addEventListener("pointermove", (ev) => {
+    const r = svg.getBoundingClientRect(), t = x0 + ((ev.clientX - r.left) * W / r.width - L) / (W - L - R) * (x1 - x0);
+    const rows = series.map((q) => { let b = null; for (const p of q.data) if (p[1] != null && (!b || Math.abs(p[0] - t) < Math.abs(b[0] - t))) b = p; return b && { q, p: b }; }).filter(Boolean);
+    if (!rows.length) return; const at = rows[0].p[0];
+    xh.setAttribute("x1", X(at)); xh.setAttribute("x2", X(at)); xh.setAttribute("visibility", "visible");
+    tip.innerHTML = `<div style="color:var(--muted)">${ymd(at)}</div>` + rows.map(({ q, p }) => `<div><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(${q.color});margin-right:6px"></i>${esc(q.name)} <b class="num">${f(p[1], dec)}</b>${unit}</div>`).join("");
+    tip.hidden = false; tip.style.left = Math.min(Math.max(ev.clientX - r.left + 12, 0), r.width - tip.offsetWidth) + "px"; tip.style.top = "8px";
+  });
+  svg.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); });
+}
+const legend = (items) => `<div class="legend">${items.map(([n, c, dash]) => `<span><i style="background:var(${c})${dash ? ";opacity:.6" : ""}"></i>${esc(n)}</span>`).join("")}</div>`;
+const chips = (id, opts, cur, fmt = (x) => x) => `<div class="chips" id="${id}">${opts.map((o) => `<button aria-pressed="${o === cur}" data-v="${esc(o)}">${esc(fmt(o))}</button>`).join("")}</div>`;
+const onChip = (id, fn) => $(id).addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) fn(b.dataset.v); });
+
+// ── 탭 ───────────────────────────────────────────────────────────────
+const TABS = [["overview", "종합 현황"], ["monitor", "공정 모니터링"], ["predict", "강도 예측"], ["diagnosis", "원인 진단"], ["shipment", "출하시멘트"], ["data", "데이터 현황"]];
+const st = { item: (D.monitor.items[0] || {}).key, line: "전체", prod: D.predict.products[0], age: 28, cat: (D.diagnosis.cats[0] || {}).name || "전체", ev: null,
+             sprod: Object.keys(D.shipment.products)[0] };
+$("tabs").innerHTML = TABS.map(([id, t]) => `<button role="tab" data-id="${id}">${t}</button>`).join("");
+const view = $("view");
+function render(id) {
+  if (!TABS.some(([k]) => k === id)) id = "overview";
+  $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.id === id ? "true" : "false"));
+  ({ overview, monitor, predict, diagnosis, shipment, data })[id]();
+}
+$("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; if (location.hash !== "#" + b.dataset.id) location.hash = b.dataset.id; else render(b.dataset.id); });
+window.addEventListener("hashchange", () => render(location.hash.slice(1)));
+
+function overview() {
+  const O = D.overview;
+  const worst = O.stages.reduce((w, s) => (({ "위험": 3, "경고": 2, "주의": 1, "정상": 0 })[s.status] > ({ "위험": 3, "경고": 2, "주의": 1, "정상": 0 })[w] ? s.status : w), "정상");
+  view.innerHTML = `<div class="panel">
+    <header><div><h2>종합 현황</h2><p class="sub">기준일 ${esc(D.meta.ref)} · 공정별 핵심 항목의 최신 상태와 최근 14일 위험·경고</p></div>${pill(SEVCLS[worst], worst === "정상" ? "전 공정 정상" : `${worst} 있음`)}</header>
+    <div class="grid g4">${O.kpis.map((k) => `<div class="box kpi t-${k.tone}"><small>${esc(k.label)}</small><b>${esc(k.value)}${k.unit ? `<span> ${esc(k.unit)}</span>` : ""}</b><em>${esc(k.sub)}</em></div>`).join("") || '<div class="empty">표시할 지표가 없습니다.</div>'}</div>
+    <div class="grid g2">
+      <div class="box"><h3>공정별 상태</h3><table><tbody>${O.stages.map((s) => `<tr><td>${esc(s.stage)}</td><td>${esc(s.text)}</td><td class="n">${pill(SEVCLS[s.status], s.status)}</td></tr>`).join("") || '<tr><td>자료 없음</td></tr>'}</tbody></table></div>
+      <div class="box"><h3>조치가 필요한 알림 <span class="note">(최근 14일 위험·경고 ${O.n_recent}건 중 최근 8건)</span></h3>
+        ${O.alerts.length ? `<table><tbody>${O.alerts.map((a, i) => `<tr class="click" data-i="${i}"><td>${pill(SEVCLS[a.sev], a.sev)}</td><td>${esc(a.item)}<br><span class="note">${esc(a.desc)} · ${esc(a.period)}</span></td></tr>`).join("")}</tbody></table><p class="note" style="margin-top:8px">알림을 누르면 원인 진단 탭으로 이동합니다.</p>` : '<div class="empty">최근 14일 위험·경고 알림이 없습니다.</div>'}</div>
+    </div></div>`;
+  view.querySelectorAll("tr[data-i]").forEach((r) => r.addEventListener("click", () => { const a = O.alerts[+r.dataset.i]; st.cat = a.cat; st.ev = a.id; location.hash = "diagnosis"; }));
+}
+
+function monitor() {
+  const M = D.monitor, it = M.items.find((x) => x.key === st.item) || M.items[0];
+  if (!it) { view.innerHTML = '<div class="panel"><div class="empty">공정 자료가 없습니다.</div></div>'; return; }
+  const lines = it.lines.map((l) => l.line);
+  if (st.line !== "전체" && !lines.includes(st.line)) st.line = "전체";
+  const shown = (st.line === "전체" ? it.lines : it.lines.filter((l) => l.line === st.line)).slice(0, 8);
+  const lim = (v) => (v == null ? "-" : f(v, it.dec));
+  view.innerHTML = `<div class="panel">
+    <header><div><h2>공정 모니터링 · ${esc(it.name)}${it.prod ? ` [${esc(it.prod)}]` : ""}</h2><p class="sub">최근 ${M.days}일 · 8시간 평균 · 같은 시각이라도 호기·밀은 따로 저장·판정</p></div></header>
+    <div class="ctrl"><div><span class="lab">항목</span>${chips("mi", M.items.map((x) => x.key), it.key, (k) => M.items.find((x) => x.key === k).name)}</div>
+      <div><span class="lab">공정구분(호기·밀)</span>${chips("ml", ["전체", ...lines], st.line, (v) => (v === "전체" ? "전체(겹쳐 보기)" : v))}</div></div>
+    <div class="box">${legend(shown.map((l, i) => [l.label, COLORS[i % 8]]))}<div class="chart" id="mch"></div>
+      <p class="note">파란 띠 = 사내 관리기준 ${lim(it.lsl)} ~ ${lim(it.usl)} ${esc(it.unit)}${it.ks_min != null ? ` · KS ≥ ${it.ks_min}` : ""}${it.ks_max != null ? ` · KS ≤ ${it.ks_max}` : ""}${it.lines.length > 8 && st.line === "전체" ? " · 그래프는 8개까지 겹쳐 그림(호기를 골라 보세요)" : ""}</p></div>
+    <div class="box scroll"><h3>공정구분별 요약</h3><table><thead><tr><th>공정구분</th><th class="n">n</th><th class="n">최근값</th><th class="n">평균</th><th class="n">표준편차</th><th class="n">기준 이탈</th><th class="n">Cpk</th><th>상태</th></tr></thead><tbody>${it.lines.map((l) => {
+      const s = l.st, over = (it.usl != null && s.last > it.usl) || (it.lsl != null && s.last < it.lsl);
+      const p = over ? pill("warn", "최근값 이탈") : s.cpk != null && s.cpk < 1 ? pill("warn", "능력 부족") : s.cpk == null ? pill("mute", "기준 없음") : pill("ok", "정상");
+      return `<tr${l.line === st.line ? ' class="sel"' : ""}><td>${esc(l.label)}</td><td class="n">${s.n}</td><td class="n">${f(s.last, it.dec)} <span class="note">${esc(s.last_t)}</span></td><td class="n">${f(s.mean, it.dec)}</td><td class="n">${f(s.sd, it.dec + 1)}</td><td class="n">${s.out}점</td><td class="n">${f(s.cpk, 2)}</td><td>${p}</td></tr>`; }).join("")}</tbody></table>
+      <p class="note" style="margin-top:6px">Cpk 1.33 이상 충분 · 1.0 미만 개선 필요(사내 관리기준 기준)</p></div></div>`;
+  lineChart($("mch"), { series: shown.map((l, i) => ({ name: l.label, color: COLORS[i % 8], data: l.pts })), band: [it.lsl, it.usl], dec: it.dec, unit: ` ${it.unit}`,
+    lines: [it.ks_min != null ? { v: it.ks_min, c: "--bad", label: `KS ${it.ks_min}` } : null, it.ks_max != null ? { v: it.ks_max, c: "--bad", label: `KS ${it.ks_max}` } : null].filter(Boolean) });
+  onChip("mi", (v) => { st.item = v; st.line = "전체"; monitor(); }); onChip("ml", (v) => { st.line = v; monitor(); });
+}
+
+function predict() {
+  const P = D.predict;
+  if (!P.products.length) { view.innerHTML = '<div class="panel"><div class="empty">강도 실측 로트가 부족해 예측할 수 없습니다.</div></div>'; return; }
+  const ages = P.ages.filter((a) => P.data[`${st.prod}|${a}`]);
+  if (!ages.includes(st.age)) st.age = ages.includes(28) ? 28 : ages[ages.length - 1];
+  const E = P.data[`${st.prod}|${st.age}`];
+  if (!E) { view.innerHTML = '<div class="panel"><div class="empty">이 품종은 예측할 자료가 부족합니다.</div></div>'; return; }
+  const b = E.best, j = (v, lo) => (E.ks != null && v < E.ks ? pill("bad", "KS 미달 예측") : E.lsl != null && v < E.lsl ? pill("warn", "사내기준 미달 예측") : E.lsl != null && lo < E.lsl ? pill("warn", "하한 근접") : (E.ks == null && E.lsl == null ? pill("mute", "기준 미설정") : pill("ok", "양호")));
+  view.innerHTML = `<div class="panel">
+    <header><div><h2>압축강도 예측 · ${st.prod} ${st.age}일</h2><p class="sub">결과가 나오기 전에 앞 재령 강도·분말도·SO₃ 등으로 회귀 예측 · 로트마다 오차가 가장 작은 모델 사용 · 추정치</p></div></header>
+    <div class="ctrl"><div><span class="lab">품종</span>${chips("pp", P.products, st.prod)}</div><div><span class="lab">예측할 재령</span>${chips("pa", ages.map(String), String(st.age), (a) => `${a}일`)}</div></div>
+    ${b.n < 30 ? `<p class="note">${pill("warn", "신뢰도 낮음")} 학습 로트 ${b.n}개 — 30로트 이상 권장, 참고용으로만 보세요.</p>` : ""}
+    <div class="box">${legend([[`${st.age}일 실측`, "--s1"], ["예측(결과 미도래)", "--s2", true]])}<div class="chart" id="pch"></div>
+      <p class="note">${E.ks != null ? `빨간 선 = KS 하한 ${E.ks} MPa · ` : ""}${E.lsl != null ? `주황 점선 = 사내 하한 ${E.lsl} MPa` : "사내 하한 미설정"}</p></div>
+    <div class="grid g2">
+      <div class="box scroll"><h3>${st.age}일 결과가 아직 없는 로트 (${E.due.length})</h3>${E.due.length ? `<div class="tall"><table><thead><tr><th>채취일</th><th class="n">예측</th><th class="n">95% 구간</th><th>판정</th><th class="hide-sm">사용 모델</th></tr></thead><tbody>${E.due.map((d) => `<tr><td>${esc(d.t)}</td><td class="n"><b>${f(d.p)}</b></td><td class="n">${f(d.lo)}~${f(d.hi)}</td><td>${j(d.p, d.lo)}</td><td class="note hide-sm">${esc(d.model)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">결과를 기다리는 로트가 없습니다.</div>'}</div>
+      <div class="box"><h3>값을 넣어 바로 예측 — ${esc(b.label)}</h3><div class="calc" id="calc">${b.feats.map((x, i) => `<div><label for="cf${i}">${esc(x.label)}</label><input id="cf${i}" type="number" step="any" value="${x.v == null ? "" : x.v}"></div>`).join("")}
+        <div><label>예측 ${st.age}일</label><div class="result" id="cout"></div><div class="note" id="cj"></div></div></div>
+        <p class="note" style="margin-top:8px">기본값은 가장 최근 로트의 실제 값 · 학습 범위를 크게 벗어나면 맞지 않습니다(외삽, 추정).</p></div></div>
+    <div class="box scroll"><h3>예측 모델 (오차 작은 순)</h3><table><thead><tr><th>모델</th><th class="n">학습 로트</th><th class="n">R²</th><th class="n">오차 RMSE(MPa)</th></tr></thead><tbody>${E.models.map((m) => `<tr><td>${esc(m.label)}</td><td class="n">${m.n}</td><td class="n">${f(m.r2, 2)}</td><td class="n">${f(m.rmse, 2)}</td></tr>`).join("")}</tbody></table>
+      <p class="note" style="margin-top:6px">RMSE = 한 로트씩 빼고 학습해 예측한 오차(LOO) · 예측구간 = 예측값 ± 1.96×RMSE(약 95%)</p></div></div>`;
+  lineChart($("pch"), { series: [{ name: `${st.age}일 실측`, color: "--s1", data: E.series.map((r) => [r.t, r.a]) }, { name: "예측", color: "--s2", dash: true, data: E.series.filter((r) => r.p != null).map((r) => [r.t, r.p]) }],
+    lines: [E.ks != null ? { v: E.ks, c: "--bad", label: `KS ${E.ks}` } : null, E.lsl != null ? { v: E.lsl, c: "--serious", dash: true, label: `사내 ${E.lsl}` } : null].filter(Boolean), unit: " MPa" });
+  const calc = () => { let y = b.coef[0], ok = true; b.feats.forEach((x, i) => { const v = parseFloat($(`cf${i}`).value); if (!isFinite(v)) ok = false; y += b.coef[i + 1] * v; });
+    $("cout").textContent = ok ? `${f(y)} MPa` : "-"; $("cj").innerHTML = ok ? `95% 구간 ${f(y - 1.96 * b.rmse)} ~ ${f(y + 1.96 * b.rmse)} · ${j(y, y - 1.96 * b.rmse)}` : "숫자를 모두 넣어 주세요"; };
+  $("calc").addEventListener("input", calc); calc();
+  onChip("pp", (v) => { st.prod = v; predict(); }); onChip("pa", (v) => { st.age = +v; predict(); });
+}
+
+function diagnosis() {
+  const X = D.diagnosis, cats = X.cats.map((c) => c.name);
+  if (!X.events.length) { view.innerHTML = '<div class="panel"><div class="empty">최근 이상 이벤트가 없습니다.</div></div>'; return; }
+  if (st.cat !== "전체" && !cats.includes(st.cat)) st.cat = cats[0];
+  const list = X.events.filter((e) => st.cat === "전체" || e.cat === st.cat);
+  const withDx = list.filter((e) => e.dx), known = withDx.filter((e) => e.dx.registered);   // 원인 지식이 있는 진단을 먼저 보여 줌
+  let e = list.find((x) => x.id === st.ev) || known[0] || withDx[0] || list[0];
+  view.innerHTML = `<div class="panel">
+    <header><div><h2>원인 진단 · 솔루션</h2><p class="sub">최근 ${X.days}일 · ① 현상 정의 → ② 원인 가설 5축 → ③ 확인 방법 → ④ 단기 조치 vs 근본 대책 → ⑤ KS·관리기준 평가</p></div></header>
+    <div class="ctrl"><div><span class="lab">분류</span>${chips("dc", [...cats, "전체"], st.cat, (c) => `${c} (${c === "전체" ? X.events.length : X.cats.find((x) => x.name === c).n})`)}</div></div>
+    <div class="box scroll tall"><table><thead><tr><th>상태</th><th>종료</th><th>품종</th><th>항목</th><th>내용</th><th class="n">최악값</th><th>진단</th></tr></thead><tbody id="dtb">${list.map((x) => `<tr class="click${x === e ? " sel" : ""}" data-id="${esc(x.id)}"><td>${pill(SEVCLS[x.sev], x.sev)}</td><td>${esc(x.end)}</td><td>${esc(x.prod || "-")}</td><td>${esc(x.item)}</td><td>${esc(x.desc)}</td><td class="n">${f(x.worst, 2)} ${esc(x.unit)}</td><td>${x.dx ? "보기" : '<span class="note">관리용 앱</span>'}</td></tr>`).join("")}</tbody></table></div>
+    ${e && e.dx ? `<div class="box frame5"><h3>${esc(e.dx.title)}${e.prod ? ` [${esc(e.prod)}]` : ""}</h3><p class="note">${esc(e.dx.impact)}</p>
+      <div class="row"><div class="no">①</div><div><b>현상 정의·정량화</b><div>${esc(e.dx.quant)}</div><div class="note" style="margin-top:4px">종합 판단 — ${esc(e.dx.summary)}</div></div></div>
+      <div class="row"><div class="no">②</div><div><b>원인 가설 우선순위(5축)</b>${e.dx.hyp.map(([ax, h, sc, v]) => `<div class="hyp"><span class="ax">${esc(ax)}</span><span>${esc(h)}</span><div class="bar" title="근거 점수 ${sc == null ? "-" : sc}"><i style="width:${sc == null ? 0 : sc}%"></i></div><span class="vd">${esc(v)}</span></div>`).join("")}</div></div>
+      <div class="row"><div class="no">③</div><div><b>확인 방법(데이터·시험)</b><ul>${e.dx.verify.map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div></div>
+      <div class="row"><div class="no">④</div><div><b>단기 조치</b><ul>${e.dx.short.map((v) => `<li>${esc(v)}</li>`).join("") || "<li>-</li>"}</ul><b>근본 대책</b><ul>${e.dx.root.map((v) => `<li>${esc(v)}</li>`).join("") || "<li>-</li>"}</ul></div></div>
+      <div class="row"><div class="no">⑤</div><div><b>KS·관리기준 평가</b><ul>${e.dx.ks.map((k) => `<li>${esc(k.item)}${k.prod && k.prod !== "-" ? ` [${esc(k.prod)}]` : ""}: KS ${esc(k.ks)} · 사내 ${esc(k.plant)}</li>`).join("") || "<li>-</li>"}</ul></div></div>
+      <p class="note">근거 점수·판정은 공정 데이터로 자동 계산한 결과입니다. 원인은 확인 시험으로 확정하세요(추정 포함).</p></div>`
+    : `<div class="empty">이 이벤트의 상세 진단은 관리용 앱 🧪 원인 진단에서 볼 수 있습니다(현황판에는 분류마다 최근 대표 이벤트만 상세 진단을 넣습니다).</div>`}</div>`;
+  onChip("dc", (v) => { st.cat = v; st.ev = null; diagnosis(); });
+  $("dtb").addEventListener("click", (ev) => { const r = ev.target.closest("tr[data-id]"); if (r) { st.ev = r.dataset.id; diagnosis(); } });
+}
+
+function shipment() {
+  const S = D.shipment.products, prods = Object.keys(S);
+  if (!prods.length) { view.innerHTML = '<div class="panel"><div class="empty">출하시멘트 자료가 없습니다.</div></div>'; return; }
+  if (!prods.includes(st.sprod)) st.sprod = prods[0];
+  const p = S[st.sprod];
+  view.innerHTML = `<div class="panel">
+    <header><div><h2>출하시멘트 · ${esc(st.sprod)}</h2><p class="sub">최근 ${p.n}로트(${esc(p.first)} ~ ${esc(p.last)}) · KS L 5201 · 채취일 연도의 기준 적용</p></div>${p.ks_set ? pill(p.pass === p.n ? "ok" : "bad", `KS 적합 ${p.pass}/${p.n} 로트`) : pill("mute", "KS 기준 미입력")}</header>
+    <div class="ctrl"><div><span class="lab">품종</span>${chips("sp", prods, st.sprod)}</div></div>
+    <div class="box scroll"><h3>항목별 KS 판정</h3><table><thead><tr><th>항목</th><th class="n">n</th><th class="n">평균</th><th class="n">최소</th><th class="n">최대</th><th class="n">KS 기준</th><th>판정</th></tr></thead><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${r.n}</td><td class="n">${f(r.mean, r.dec)}</td><td class="n">${f(r.min, r.dec)}</td><td class="n">${f(r.max, r.dec)}</td><td class="n">${esc(r.ks)} ${esc(r.unit)}</td><td>${r.judge === "적합" ? pill("ok", "적합") : r.judge === "부적합" ? pill("bad", `부적합 ${r.n_bad}로트`) : pill("mute", r.judge)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="box scroll"><h3>최근 로트</h3><table><thead><tr><th>채취일</th><th class="n">3일</th><th class="n">7일</th><th class="n">28일</th><th>KS</th></tr></thead><tbody>${p.recent.map((r) => `<tr><td>${esc(r.d)}</td><td class="n">${f(r.s3)}</td><td class="n">${f(r.s7)}</td><td class="n">${r.s28 == null ? '<span class="note">미도래</span>' : f(r.s28)}</td><td>${p.ks_set ? (r.ok ? pill("ok", "적합") : pill("bad", "부적합")) : pill("mute", "-")}</td></tr>`).join("")}</tbody></table>
+      <p class="note" style="margin-top:6px">선박·양하지, 첨가재·석회석 비율 영향 분석은 관리용 앱 🚢 출하시멘트에서 볼 수 있습니다.</p></div></div>`;
+  onChip("sp", (v) => { st.sprod = v; shipment(); });
+}
+
+function data() {
+  view.innerHTML = `<div class="panel">
+    <header><div><h2>데이터 현황</h2><p class="sub">현황판에 반영된 자료의 양과 기간 · 생성 ${esc(D.meta.generated)}</p></div></header>
+    <div class="box scroll"><table><thead><tr><th>자료</th><th class="n">행 수</th><th>공정구분·종류</th><th>시작</th><th>최근</th></tr></thead><tbody>${D.status.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${r.rows.toLocaleString()}</td><td class="note">${esc(r.lines)}</td><td>${esc(r.first)}</td><td>${esc(r.last)}</td></tr>`).join("")}</tbody></table></div>
+    <div class="box"><h3>자료는 이렇게 들어옵니다</h3><table><tbody>
+      <tr><td>매일 06:00</td><td>공유 드라이브의 통합 업로드 파일(Blue365_QMS.xlsx)을 자동으로 읽고, 이 현황판을 새로 만듭니다.</td></tr>
+      <tr><td>바로 반영</td><td>관리용 앱 📥 데이터 관리에서 파일을 올리고 ‘적용’을 누릅니다.</td></tr>
+      <tr><td>지난 현황</td><td>같은 폴더의 ‘기록’ 폴더에 날짜별 현황판이 30일치 보관됩니다.</td></tr>
+    </tbody></table></div></div>`;
+}
+
+render(location.hash.slice(1));
+})();
+</script>
+</body>
+</html>

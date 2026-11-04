@@ -94,23 +94,25 @@ for col, kind, label, fname, mime, primary in (
             with st.expander("오류 원문(개발 확인용)"):
                 st.code(err[1][-3000:])
 st.divider()
-st.subheader("🌐 HTML 현황판 (조회 전용)")
-st.markdown("BAT 실행·설치가 안 되는 PC에서도 **더블클릭만으로 브라우저에서 보는** 한 파일짜리 현황판입니다(인터넷 불필요, 약 5MB). "
-            "요약 KPI · 핵심 공정 지표 · 28일 강도 · 출하시멘트 품종별 판정 · 인수검사 · 최근 알림이 들어갑니다.  \n"
-            "매일 자동반영을 등록해 두면 06:00에 `현황판\\Blue365_현황_최신.html` 이 자동으로 새로 만들어집니다.")
+st.subheader("👀 보는용 현황판 (공유용 · 조회 전용)")
+st.markdown("경영진·다른 부서·현장이 **설치 없이 더블클릭으로 보는** 한 파일짜리 현황판입니다(인터넷 불필요). "
+            "**종합 현황 · 공정 모니터링(호기·밀별) · 강도 예측(재령·품종) · 원인 진단 · 출하시멘트 · 데이터 현황** 6개 탭.  \n"
+            "매일 자동반영을 등록해 두면 06:00에 앱 폴더의 `현황판\\Blue365_현황_최신.html` 이 새로 만들어지고, "
+            "`현황판\\기록` 에 날짜별로 30일치가 보관됩니다. 공유 드라이브 접근 권한이 있는 사람은 이 파일을 열면 됩니다.  \n"
+            "이 앱(관리용)은 자료 올리기·관리기준 입력·보고서 만들기 등 **관리 업무**에 씁니다.")
 h1, h2 = st.columns(2)
-if h1.button("🌐 지금 현황판 만들기", width="stretch"):
-    from qms.snapshot import build_snapshot
-    with st.spinner("현황판을 만드는 중…(10~20초)"):
+if h1.button("👀 지금 보는용 현황판 만들기", width="stretch"):
+    from qms.viewer import build_viewer
+    with st.spinner("현황판을 만드는 중…(10~30초)"):
         try:
-            st.session_state["snap_html"] = build_snapshot(ctx).encode("utf-8")
+            st.session_state["snap_html"] = build_viewer(ctx).encode("utf-8")
             st.session_state["snap_err"] = None
         except Exception as exc:  # noqa: BLE001
             st.session_state["snap_html"], st.session_state["snap_err"] = None, f"{type(exc).__name__}: {exc}"
 if st.session_state.get("snap_err"):
     h2.error("현황판 생성 실패 — " + st.session_state["snap_err"][:300])
 if st.session_state.get("snap_html"):
-    h2.download_button("⬇️ 현황판 내려받기(.html)", st.session_state["snap_html"], type="primary", width="stretch",
+    h2.download_button("⬇️ 보는용 현황판 내려받기(.html)", st.session_state["snap_html"], type="primary", width="stretch",
                        file_name=f"Blue365_현황_{datetime.now():%Y%m%d_%H%M}.html", mime="text/html")
 
 st.caption("개별 이상 건의 상세 보고서(5단계 분석 PPT)는 🧪 원인 진단·솔루션 화면에서 만들 수 있습니다. "
