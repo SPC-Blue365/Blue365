@@ -17,6 +17,7 @@
   --shadow: 0 1px 2px rgba(0,0,0,.03), 0 6px 20px rgba(0,0,0,.045); --glow: 0 0 0 4px rgba(49,130,246,.14);
   --scrim: rgba(0,0,0,.42); --toast: #191f28; --toast-ink: #ffffff;
   --r-card: 20px; --r-well: 14px; --ease-out: cubic-bezier(.2,.8,.2,1); --spring: cubic-bezier(.34,1.56,.64,1);
+  --side: #fbfcfd; --hover: #eef1f4;
   --f-body: "Pretendard", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
   color-scheme: light;
 }
@@ -25,13 +26,13 @@
   --line: #30343b; --primary: #4593fc; --primary-soft: #1b2a42; --primary-ink: #8bbcff; --on-primary: #ffffff;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --ok-bg: #15301d; --warn-bg: #3a2f12; --bad-bg: #3b1a1a; --band: rgba(69,147,252,.16);
-  --shadow: 0 1px 2px rgba(0,0,0,.4); --glow: 0 0 0 4px rgba(69,147,252,.22); --toast: #f2f4f6; --toast-ink: #191f28; color-scheme: dark } }
+  --shadow: 0 1px 2px rgba(0,0,0,.4); --glow: 0 0 0 4px rgba(69,147,252,.22); --toast: #f2f4f6; --toast-ink: #191f28; --side: #17191e; --hover: #24282e; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #101114; --surface: #1c1e23; --well: #25282e; --ink: #f2f4f6; --ink2: #d1d6db; --muted: #a0a9b3; --faint: #7d8792;
   --line: #30343b; --primary: #4593fc; --primary-soft: #1b2a42; --primary-ink: #8bbcff; --on-primary: #ffffff;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --ok-bg: #15301d; --warn-bg: #3a2f12; --bad-bg: #3b1a1a; --band: rgba(69,147,252,.16);
-  --shadow: 0 1px 2px rgba(0,0,0,.4); --glow: 0 0 0 4px rgba(69,147,252,.22); --toast: #f2f4f6; --toast-ink: #191f28; color-scheme: dark }
+  --shadow: 0 1px 2px rgba(0,0,0,.4); --glow: 0 0 0 4px rgba(69,147,252,.22); --toast: #f2f4f6; --toast-ink: #191f28; --side: #17191e; --hover: #24282e; color-scheme: dark }
 * { box-sizing: border-box }
 html, body { margin: 0 }
 body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; word-break: keep-all; overflow-wrap: break-word;
@@ -43,23 +44,52 @@ a { color: var(--primary-ink) }
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px }
 .n, td.n, th.n { text-align: right; font-variant-numeric: tabular-nums }
 
-/* ── 고정 헤더 + 상단 탭(밑줄) ── */
+/* ── 앱 틀: 왼쪽 세로 메뉴(그룹별) + 오른쪽 화면(고정 머리 줄 → 내용) ── */
+.shell { display: grid; grid-template-columns: 252px minmax(0, 1fr); min-height: 100vh; transition: grid-template-columns .25s var(--ease-out) }
+.shell.mini { grid-template-columns: 76px minmax(0, 1fr) }
+.side { position: sticky; top: 0; height: 100vh; overflow-y: auto; background: var(--side); border-right: 1px solid var(--line); padding: 18px 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; scrollbar-width: thin }
+.brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 12px; font-weight: 800; font-size: 17px; letter-spacing: -.01em; white-space: nowrap }
+.logo { width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff; display: grid; place-items: center; flex: none }
+.logo svg { width: 18px; height: 18px }
+.brand small { font-size: 11px; color: var(--faint); font-weight: 700 }
+.collapse { margin-left: auto; width: 32px; height: 32px; border: 0; background: none; border-radius: 8px; cursor: pointer; color: var(--faint); display: grid; place-items: center }
+.collapse:hover { background: var(--hover); color: var(--ink) }
+.ws { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 10px 12px; margin-bottom: 6px; box-shadow: var(--shadow) }
+.ws .av { width: 32px; height: 32px; border-radius: 50%; background: var(--primary-soft); color: var(--primary-ink); display: grid; place-items: center; font-weight: 800; font-size: 13px; flex: none }
+.ws div { min-width: 0 } .ws b { display: block; font-size: 13.5px; white-space: nowrap } .ws small { color: var(--faint); font-size: 12px; white-space: nowrap }
+.grp { font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .12em; padding: 14px 10px 4px; white-space: nowrap }
+.navi { display: flex; align-items: center; gap: 11px; width: 100%; border: 1px solid transparent; background: none; border-radius: 12px; padding: 8px 10px; cursor: pointer; color: var(--ink2); font-size: 14.5px; text-align: left; white-space: nowrap; transition: background .15s }
+.navi svg { width: 19px; height: 19px; flex: none; color: var(--muted) }
+.navi:hover { background: var(--hover) }
+.navi[aria-current="page"] { background: var(--surface); border-color: var(--line); box-shadow: var(--shadow); font-weight: 700; color: var(--ink) }
+.navi[aria-current="page"] svg { color: var(--primary) }
+.navi .badge { margin-left: auto }
+.side .spacer { flex: 1; min-height: 12px }
+.upd { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 11px 12px; font-size: 12.5px; color: var(--muted); box-shadow: var(--shadow) }
+.upd b { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 13px }
+.upd b i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg) }
+.shell.mini .lbl, .shell.mini .ws div, .shell.mini .upd, .shell.mini .brand .txt, .shell.mini .navi .badge { display: none }
+.shell.mini .grp { height: 12px; padding: 0; font-size: 0 }
+.shell.mini .navi, .shell.mini .ws { justify-content: center; padding-inline: 0 }
+.shell.mini .navi { position: relative } .shell.mini .navi.has-b::after { content: ""; position: absolute; top: 6px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad) }
+.shell.mini .brand { flex-direction: column } .shell.mini .collapse { margin: 0 }
+.mainc { min-width: 0 }
 .top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
        border-bottom: 1px solid transparent; transition: border-color .2s }
 .top.scrolled { border-bottom-color: var(--line) }
-.bar { display: flex; align-items: center; gap: 10px; min-height: 56px }
-.brand { font-weight: 800; font-size: 17px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; white-space: nowrap }
-.brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft) }
+.bar { display: flex; align-items: center; gap: 10px; min-height: 60px }
+.mbrand { display: none; align-items: center; gap: 8px; font-weight: 800; font-size: 16px; white-space: nowrap }
+.mbrand .logo { width: 28px; height: 28px; border-radius: 8px } .mbrand .logo svg { width: 15px; height: 15px }
+.where { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.where b { color: var(--ink); font-weight: 700 }
 .tag { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-ink); font-size: 12.5px; font-weight: 700; white-space: nowrap }
 .tag.demo { background: var(--warn-bg); color: var(--ink2) }
+.refchip { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 13px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; color: var(--ink2); white-space: nowrap }
+.refchip i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg) }
 .grow { flex: 1 }
 .iconbtn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--ink2) }
 .iconbtn:hover { background: var(--well) }
 .iconbtn svg { width: 18px; height: 18px }
-.toptabs { display: flex; gap: 22px; overflow-x: auto; scrollbar-width: none }
-.toptabs button { position: relative; border: 0; background: none; padding: 8px 0 12px; cursor: pointer; color: var(--faint); font-size: 15px; font-weight: 700; white-space: nowrap }
-.toptabs button[aria-selected="true"] { color: var(--ink) }
-.toptabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2.5px; border-radius: 2px; background: var(--ink) }
 .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 800; line-height: 1; margin-left: 4px; vertical-align: 2px }
 
 /* ── 배너(맨 위 안내, 닫기 ×) ── */
@@ -87,6 +117,9 @@ a { color: var(--primary-ink) }
 .g-auto { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)) }
 .g-stage { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)) }
 .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+.g-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+@media (max-width: 1240px) { .g-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+@media (max-width: 560px) { .g-kpi { grid-template-columns: minmax(0, 1fr) } }
 .g12 { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) }
 .card { background: var(--surface); border-radius: var(--r-card); padding: 12px; box-shadow: var(--shadow); border: 2px solid transparent; min-width: 0;
         animation: rise .34s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 35ms); transition: border-color .2s, box-shadow .2s, transform .25s var(--spring) }
@@ -226,13 +259,19 @@ tr.selrow td { background: var(--primary-soft) }
 .coach { position: fixed; z-index: 65; max-width: 290px; background: var(--toast); color: var(--toast-ink); border-radius: 14px; padding: 12px 14px; font-size: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.25); animation: pop .3s var(--spring) }
 .coach::before { content: ""; position: absolute; left: 26px; top: -6px; width: 12px; height: 12px; background: var(--toast); transform: rotate(45deg) }
 .coach.up::before { top: auto; bottom: -6px }
+.coach.left::before { left: -6px; top: 22px }
 .coach button { margin-top: 8px; border: 0; border-radius: 999px; background: var(--primary); color: #fff; font-weight: 700; padding: 5px 14px; cursor: pointer }
 footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: grid; gap: 6px }
 
 @media (max-width: 860px) { .g2, .g12 { grid-template-columns: 1fr } }
+@media (max-width: 1080px) and (min-width: 721px) { .shell, .shell.mini { grid-template-columns: 76px minmax(0, 1fr) }
+  .shell .lbl, .shell .ws div, .shell .upd, .shell .brand .txt, .shell .navi .badge, .shell .collapse { display: none }
+  .shell .grp { height: 12px; padding: 0; font-size: 0 } .shell .navi, .shell .ws { justify-content: center; padding-inline: 0 }
+  .shell .navi { position: relative } .shell .navi.has-b::after { content: ""; position: absolute; top: 6px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad) }
+  .refchip { display: none } }
 @media (max-width: 720px) {
   body { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) }
-  .toptabs { display: none }
+  .shell, .shell.mini { grid-template-columns: minmax(0, 1fr) } .side { display: none } .mbrand { display: flex } .where, .refchip { display: none }
   .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--surface); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)) }
   .tabbar button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; padding: 4px 0; cursor: pointer; color: var(--faint); font-size: 10.5px; font-weight: 700; position: relative }
   .tabbar button svg { width: 22px; height: 22px }
@@ -246,7 +285,7 @@ footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: g
   .hide-sm { display: none }
   .hyp { grid-template-columns: 52px minmax(0, 1fr) } .hyp .pbar, .hyp .vd { grid-column: 2 }
   .hstep { grid-template-columns: 1fr; gap: 14px } .hstep > div { padding: 2px 0 0 42px; min-height: 30px } .hstep > div::after { display: none }
-  .big { font-size: 26px } .brand .full { display: none }
+  .big { font-size: 26px } #share span { display: none }
   .sum .tot .big { font-size: 34px }
 }
 @keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
@@ -255,19 +294,30 @@ footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: g
 @keyframes pop { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: none } }
 @keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }
-@media print { .top, .tabbar, .fab, .banner button { display: none !important } .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd } }
+@media print { .side, .top, .tabbar, .fab, .banner button { display: none !important } .shell { display: block } .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd } }
 </style>
 </head>
 <body>
+<div class="shell" id="shell">
+<aside class="side" aria-label="메뉴">
+  <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 9l4 6 3-4 4 7"/></svg></span><span class="txt">Blue365 <small>QMS</small></span>
+    <button class="collapse" id="collapse" aria-label="메뉴 접기" title="메뉴 접기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button></div>
+  <div class="ws" title="보는용 현황판 · 조회 전용"><span class="av">현</span><div><b>품질 현황판</b><small>보는용 · 조회 전용</small></div></div>
+  <nav id="tabs" aria-label="화면"></nav>
+  <div class="spacer"></div>
+  <div class="upd"><b><i></i>매일 06:00 자동 갱신</b><span id="genAt"></span><br>자료 올리기·기준 입력은 관리용 앱</div>
+</aside>
+<div class="mainc">
 <header class="top" id="top">
   <div class="wrap">
     <div class="bar">
-      <div class="brand"><i></i>Blue365 QMS<span class="full">&nbsp;현황판</span></div>
+      <div class="mbrand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 9l4 6 3-4 4 7"/></svg></span>Blue365</div>
+      <div class="where" id="where"></div>
       <span class="tag">보는용</span><span class="tag demo" id="demotag" hidden>데모</span>
       <span class="grow"></span>
+      <span class="refchip" id="refchip"></span>
       <button class="iconbtn" id="share" aria-label="공유"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg><span>공유</span></button>
     </div>
-    <nav class="toptabs" role="tablist" id="tabs" aria-label="화면"></nav>
   </div>
 </header>
 <div class="wrap" id="banners"></div>
@@ -276,6 +326,8 @@ footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: g
   <div>이 파일은 매일 06:00 자동반영 때 새로 만들어집니다. 자료 올리기·관리기준 입력·보고서 만들기는 <b>관리용 앱</b>(Blue365 QMS)에서 합니다.</div>
   <div>KS 기준: KS L 5201(포틀랜드 시멘트) · 사내 관리기준은 관리용 앱 ⚙️ 설정의 값 · 예측값은 추정치이며 실측으로 확정해야 합니다.</div>
 </footer></div>
+</div>
+</div>
 <nav class="tabbar" id="tabbar" aria-label="화면"></nav>
 <button class="fab" id="fab" aria-label="맨 위로"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg></button>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -416,12 +468,23 @@ const st = { item: (D.monitor.items[0] || {}).key, line: "전체", prod: D.predi
              sprod: Object.keys(D.shipment.products)[0], from: null };
 const nAlert = (D.overview.sev["위험"] || 0) + (D.overview.sev["경고"] || 0);
 const bdg = (id) => (id === "diagnosis" && nAlert ? `<span class="badge" aria-label="최근 14일 위험·경고 ${nAlert}건">${nAlert > 99 ? "99+" : nAlert}</span>` : "");
-$("tabs").innerHTML = TABS.map(([id, t]) => `<button role="tab" data-id="${id}">${t}${bdg(id)}</button>`).join("");
+const GROUPS = [[null, ["overview"]], ["공정", ["monitor"]], ["품질", ["predict", "shipment"]], ["분석", ["diagnosis"]], ["자료", ["data"]]];   // 왼쪽 세로 메뉴 묶음
+const TNAME = Object.fromEntries(TABS);
+$("tabs").innerHTML = GROUPS.map(([g, ids]) => (g ? `<div class="grp">${g}</div>` : "") + ids.map((id) =>
+  `<button class="navi${bdg(id) ? " has-b" : ""}" data-id="${id}" title="${TNAME[id]}">${svgI(id)}<span class="lbl">${TNAME[id]}</span>${bdg(id)}</button>`).join("")).join("");
+$("genAt").textContent = `생성 ${D.meta.generated}`;
+$("refchip").innerHTML = `<i></i>기준일 ${esc(D.meta.ref)}`;
+const setMini = (on) => { $("shell").classList.toggle("mini", on); const t = on ? "메뉴 펼치기" : "메뉴 접기"; $("collapse").setAttribute("aria-label", t); $("collapse").title = t; store.set("b365_side_mini", on ? "1" : ""); };
+$("collapse").addEventListener("click", () => setMini(!$("shell").classList.contains("mini")));
+if (store.get("b365_side_mini")) setMini(true);
 $("tabbar").innerHTML = TABS.map(([id]) => `<button role="tab" data-id="${id}">${svgI(id)}<span>${SHORT[id]}</span>${bdg(id)}</button>`).join("");
 const view = $("view");
 function render(id) {
   if (!TABS.some(([k]) => k === id)) id = "overview";
-  for (const nav of [$("tabs"), $("tabbar")]) nav.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.id === id ? "true" : "false"));
+  $("tabs").querySelectorAll("button").forEach((b) => (b.dataset.id === id ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current")));
+  $("tabbar").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.id === id ? "true" : "false"));
+  const grp = (GROUPS.find(([, ids]) => ids.includes(id)) || [])[0];
+  $("where").innerHTML = `현황판 › ${grp ? `${grp} › ` : ""}<b>${TNAME[id]}</b>`;
   closePop();
   ({ overview, monitor, predict, diagnosis, shipment, data })[id]();
   if (id !== "diagnosis") st.from = null;
@@ -448,7 +511,7 @@ function overview() {
   const tot = (sev["위험"] || 0) + (sev["경고"] || 0) + (sev["주의"] || 0), mx = Math.max(1, sev["위험"] || 0, sev["경고"] || 0, sev["주의"] || 0);
   view.innerHTML = `<div class="page">
     ${head(`종합 현황 · ${D.meta.ref} 기준`, h, `생성 ${esc(D.meta.generated)}${D.meta.period ? ` · 자료 기간 ${esc(D.meta.period[0])} ~ ${esc(D.meta.period[1])}` : ""}`)}
-    <div class="grid g-auto">${O.kpis.map((k, i) => card({ i, no: two(i), title: esc(k.label.replace(/\(.*\)$/, "")), en: `${esc(k.en || "")}${k.en ? " · " : ""}${esc(k.sub)}`,
+    <div class="grid g-kpi">${O.kpis.map((k, i) => card({ i, no: two(i), title: esc(k.label.replace(/\(.*\)$/, "")), en: `${esc(k.en || "")}${k.en ? " · " : ""}${esc(k.sub)}`,
       well: (k.ring != null ? ring(k.ring, k.ring === 100 ? "--ok" : "--bad") : "") + `<div class="big"${k.ring != null ? ' style="text-align:center;font-size:20px"' : ""}>${esc(k.value)}${k.unit ? `<span>${esc(k.unit)}</span>` : ""}</div>`
         + `<div class="note">${esc((k.label.match(/\((.*)\)$/) || [])[1] || "")}</div><span class="corner">${pill(...TONE[k.tone] || ["mute", "-"])}</span>` })).join("") || empty("표시할 지표가 없어요.")}</div>
     <h2 class="sec">공정별 상태 <small>원료 → 소성 → 클링커 → 분쇄 → 제품</small></h2>
@@ -610,14 +673,14 @@ function data() {
 
 // ── 처음 열었을 때 한 번만: 코치마크 ───────────────────────────────────
 function coach() {
-  if (store.get("b365_coach_v1")) return;
-  const mobile = innerWidth <= 720, anchor = mobile ? $("tabbar") : $("tabs"); const r = anchor.getBoundingClientRect();
+  if (store.get("b365_coach_v2")) return;
+  const mobile = innerWidth <= 720, anchor = mobile ? $("tabbar") : ($("tabs").querySelector("[data-id=diagnosis]") || $("tabs")); const r = anchor.getBoundingClientRect();
   const c = document.createElement("div"); c.className = "coach"; c.role = "dialog";
-  c.innerHTML = `<b>여기서 화면을 바꿔요</b><div>알림을 누르면 원인 진단으로 바로 넘어가요.</div><button>알겠어요</button>`;
+  c.innerHTML = `<b>${mobile ? "아래 탭" : "왼쪽 메뉴"}에서 화면을 바꿔요</b><div>빨간 숫자는 최근 14일 위험·경고 건수예요. 알림을 누르면 원인 진단으로 바로 넘어가요.</div><button>알겠어요</button>`;
   document.body.appendChild(c);
   if (mobile) { c.classList.add("up"); c.style.left = "16px"; c.style.bottom = `${innerHeight - r.top + 12}px`; }
-  else { c.style.left = `${Math.max(16, r.left)}px`; c.style.top = `${r.bottom + 10}px`; }
-  c.querySelector("button").addEventListener("click", () => { c.remove(); store.set("b365_coach_v1", "1"); });
+  else { c.classList.add("left"); c.style.left = `${r.right + 14}px`; c.style.top = `${Math.max(12, r.top - 8)}px`; }
+  c.querySelector("button").addEventListener("click", () => { c.remove(); store.set("b365_coach_v2", "1"); });
 }
 
 banners();
