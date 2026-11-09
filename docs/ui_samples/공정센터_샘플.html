@@ -1,0 +1,369 @@
+<title>Blue365 공정 센터</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 레이아웃: 옅은 그라데이션 바탕 위 흰 앱 틀 = 왼쪽 세로 메뉴(그룹별) + 오른쪽 작업 영역(머리 줄 → 요약 카드 3장 → 공정 카드 바둑판).
+   색: 파랑 한 색(Blue365 가이드) + 상태색은 상태에만. 주 버튼만 먹색. */
+:root {
+  --ground-a: #eef4ea; --ground-b: #e9f1f8; --shell: #ffffff; --side: #fbfcfd; --main: #f5f7fa; --card: #ffffff;
+  --ink: #191f28; --ink2: #333d4b; --muted: #6b7684; --faint: #98a2ae; --line: #e6e9ee; --line2: #eef1f4;
+  --blue: #3182f6; --blue-2: #8fbaf8; --blue-soft: #e8f3ff; --blue-ink: #1b64da; --past: #d5dbe2;
+  --ok: #0ca30c; --ok-bg: #e8f7ec; --warn: #e8a400; --warn-bg: #fff4d9; --bad: #d03b3b; --bad-bg: #fdecec; --stop-bg: #f0f2f5;
+  --dark-btn: #191f28; --dark-btn-ink: #ffffff; --orange: #f59e0b;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .05);
+  --shell-shadow: 0 30px 80px rgba(30, 50, 80, .12);
+  --f: "Pretendard", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --ground-a: #0f1612; --ground-b: #0e131b; --shell: #15181d; --side: #181b21; --main: #111418; --card: #1b1f25;
+  --ink: #f2f4f6; --ink2: #d6dbe1; --muted: #a0a9b3; --faint: #77818c; --line: #2b3038; --line2: #252a31;
+  --blue: #4593fc; --blue-2: #2f5f9e; --blue-soft: #1b2a42; --blue-ink: #8bbcff; --past: #3a414b;
+  --ok: #2fbf4f; --ok-bg: #15301d; --warn: #e3a92b; --warn-bg: #3a2f12; --bad: #e66767; --bad-bg: #3b1a1a; --stop-bg: #252a31;
+  --dark-btn: #f2f4f6; --dark-btn-ink: #15181d; --orange: #f0a92e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4); --shell-shadow: 0 30px 80px rgba(0, 0, 0, .5); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --ground-a: #0f1612; --ground-b: #0e131b; --shell: #15181d; --side: #181b21; --main: #111418; --card: #1b1f25;
+  --ink: #f2f4f6; --ink2: #d6dbe1; --muted: #a0a9b3; --faint: #77818c; --line: #2b3038; --line2: #252a31;
+  --blue: #4593fc; --blue-2: #2f5f9e; --blue-soft: #1b2a42; --blue-ink: #8bbcff; --past: #3a414b;
+  --ok: #2fbf4f; --ok-bg: #15301d; --warn: #e3a92b; --warn-bg: #3a2f12; --bad: #e66767; --bad-bg: #3b1a1a; --stop-bg: #252a31;
+  --dark-btn: #f2f4f6; --dark-btn-ink: #15181d; --orange: #f0a92e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4); --shell-shadow: 0 30px 80px rgba(0, 0, 0, .5); color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: linear-gradient(160deg, var(--ground-a), var(--ground-b)); color: var(--ink); font-family: var(--f); font-size: 14px; line-height: 1.5;
+       font-variant-numeric: tabular-nums; word-break: keep-all; -webkit-font-smoothing: antialiased; min-height: 100vh;
+       padding-block: 28px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+button, input, select { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 8px }
+svg { display: block }
+
+/* ── 앱 틀 ── */
+.shell { max-width: 1440px; margin: 0 auto; background: var(--shell); border-radius: 28px; box-shadow: var(--shell-shadow); display: grid; grid-template-columns: 272px minmax(0, 1fr); overflow: hidden; min-height: 860px; transition: grid-template-columns .25s cubic-bezier(.2,.8,.2,1) }
+.shell.mini { grid-template-columns: 76px minmax(0, 1fr) }
+
+/* ── 왼쪽 세로 메뉴 ── */
+.side { background: var(--side); border-right: 1px solid var(--line); padding: 20px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 12px }
+.logo { width: 34px; height: 34px; border-radius: 10px; background: var(--blue); display: grid; place-items: center; flex: none }
+.logo svg { width: 18px; height: 18px; color: #fff }
+.brand b { font-size: 17px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap }
+.brand b small { font-size: 11px; color: var(--faint); font-weight: 700; margin-left: 2px }
+.collapse { margin-left: auto; width: 32px; height: 32px; border: 0; background: none; border-radius: 8px; cursor: pointer; color: var(--faint); display: grid; place-items: center }
+.collapse:hover { background: var(--line2); color: var(--ink) }
+.ws { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px 12px; margin-bottom: 10px; box-shadow: var(--shadow); cursor: pointer; text-align: left; width: 100% }
+.ws div { min-width: 0; flex: 1 } .ws b { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis } .ws small { color: var(--faint); font-size: 12px; white-space: nowrap }
+.grp { font-size: 11px; font-weight: 700; color: var(--faint); letter-spacing: .12em; padding: 14px 10px 4px; white-space: nowrap }
+.nav { display: flex; align-items: center; gap: 11px; width: 100%; border: 1px solid transparent; background: none; border-radius: 12px; padding: 8px 10px; cursor: pointer; color: var(--ink2); font-size: 14.5px; text-align: left; white-space: nowrap; transition: background .15s }
+.nav svg { width: 19px; height: 19px; flex: none; color: var(--muted) }
+.nav:hover { background: var(--line2) }
+.nav[aria-current="page"] { background: var(--card); border-color: var(--line); box-shadow: var(--shadow); font-weight: 700; color: var(--ink) }
+.nav[aria-current="page"] svg { color: var(--blue) }
+.nav .cnt { margin-left: auto; min-width: 20px; height: 20px; border-radius: 999px; background: var(--orange); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; padding: 0 6px }
+.side .spacer { flex: 1 }
+.side hr { border: 0; border-top: 1px solid var(--line); margin: 8px 6px }
+.me { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow) }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--blue-soft); color: var(--blue-ink); display: grid; place-items: center; font-weight: 800; flex: none }
+.me div { min-width: 0 } .me b { display: block; font-size: 13.5px; white-space: nowrap } .me small { color: var(--faint); font-size: 12px; white-space: nowrap }
+.shell.mini .side .lbl, .shell.mini .grp, .shell.mini .ws div, .shell.mini .ws .chev, .shell.mini .me div, .shell.mini .brand b, .shell.mini .nav .cnt { display: none }
+.shell.mini .grp { display: block; height: 10px; padding: 0; font-size: 0 }
+.shell.mini .nav, .shell.mini .ws, .shell.mini .me { justify-content: center; padding-inline: 0 }
+.shell.mini .brand { flex-direction: column }
+.shell.mini .collapse { margin: 0 }
+
+/* ── 작업 영역 ── */
+.main { background: var(--main); padding: 26px 28px 32px; min-width: 0; display: grid; gap: 18px; align-content: start }
+.head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap }
+.head .ttl { flex: 1 1 260px; min-width: 0 }
+.head h1 { margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -.02em; text-wrap: balance }
+.head p { margin: 2px 0 0; color: var(--muted) }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+.btn.menu-btn { display: none }
+.chip-run { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 13.5px; color: var(--ink2); white-space: nowrap }
+.chip-run i { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px var(--ok-bg) }
+.search { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); width: 260px; max-width: 100% }
+.search svg { width: 17px; height: 17px; color: var(--faint); flex: none }
+.search input { border: 0; outline: 0; background: none; flex: 1; min-width: 0 }
+.search kbd { font-family: inherit; font-size: 11.5px; color: var(--faint); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); cursor: pointer; font-weight: 600; white-space: nowrap }
+.btn svg { width: 17px; height: 17px }
+.btn:hover { background: var(--line2) }
+.btn.dark { background: var(--dark-btn); color: var(--dark-btn-ink); border-color: var(--dark-btn) }
+.btn.dark:hover { opacity: .9 }
+.btn.icon { width: 40px; padding: 0; justify-content: center; position: relative }
+.btn.icon .dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); border: 2px solid var(--card) }
+
+/* ── 카드 ── */
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow); padding: 20px 22px; min-width: 0; position: relative;
+        animation: rise .34s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 40ms) }
+.card h2 { margin: 0; font-size: 15.5px; font-weight: 800; letter-spacing: -.01em }
+.card .sub { color: var(--muted); font-size: 13px; margin: 2px 0 0 }
+.more { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border: 0; background: none; border-radius: 8px; cursor: pointer; color: var(--faint); font-size: 18px; line-height: 1 }
+.more:hover { background: var(--line2); color: var(--ink) }
+.row1 { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 12px 0 10px }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px }
+.hbars { display: grid; gap: 9px }
+.hb { display: grid; grid-template-columns: 112px minmax(0, 1fr) 40px; gap: 12px; align-items: center; font-size: 13.5px; color: var(--ink2) }
+.hb .trk { display: flex; gap: 3px; height: 10px }
+.hb .trk i { height: 100%; border-radius: 4px; min-width: 4px; transition: width .7s cubic-bezier(.2,.8,.2,1) }
+.hb b { text-align: right; font-weight: 700 }
+.big { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-top: 10px; display: flex; align-items: center; gap: 10px }
+.big span { font-size: 16px; color: var(--muted); font-weight: 700; margin-left: -4px }
+.delta { font-size: 12px; font-weight: 800; color: var(--ok); background: var(--ok-bg); border-radius: 999px; padding: 2px 8px }
+.cols { display: flex; align-items: flex-end; gap: 6px; height: 110px; margin-top: 14px }
+.cols i { flex: 1; border-radius: 4px 4px 2px 2px; background: var(--past); min-height: 4px; transition: height .7s cubic-bezier(.2,.8,.2,1) }
+.cols i.now { background: var(--blue) }
+.axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--faint); margin-top: 6px }
+.donut { display: flex; align-items: center; gap: 18px; margin-top: 18px; flex-wrap: wrap }
+.donut .ring { position: relative; width: 132px; height: 132px; flex: none }
+.donut .ring svg { width: 132px; height: 132px; transform: rotate(-90deg) }
+.donut .ring circle { transition: stroke-dasharray .6s cubic-bezier(.2,.8,.2,1), stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1) }
+.donut .ring div { position: absolute; inset: 0; display: grid; place-items: center; text-align: center }
+.donut .ring b { font-size: 28px; font-weight: 800; display: block; line-height: 1 } .donut .ring small { color: var(--muted); font-size: 12px }
+.donut ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 13.5px; color: var(--ink2) }
+.donut li i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px }
+.donut li b { margin-left: 6px }
+
+/* ── 공정 카드 바둑판 ── */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
+.unit { padding: 0; display: flex; flex-direction: column }
+.unit .top { display: flex; gap: 12px; align-items: flex-start; padding: 20px 22px 0 }
+.uic { width: 40px; height: 40px; border-radius: 12px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; flex: none }
+.uic svg { width: 21px; height: 21px }
+.unit .nm { flex: 1; min-width: 0 } .unit .nm b { font-size: 15.5px; display: block } .unit .nm small { color: var(--muted); font-size: 13px }
+.st { font-size: 12px; font-weight: 700; border-radius: 8px; padding: 3px 9px; white-space: nowrap }
+.st.run { background: var(--ok-bg); color: var(--ok) } .st.warn { background: var(--warn-bg); color: var(--warn) } .st.stop { background: var(--stop-bg); color: var(--muted) }
+.kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 16px 22px 0 }
+.kv small { display: block; color: var(--faint); font-size: 12px } .kv b { font-size: 16px; font-weight: 800 }
+.kv b.w { color: var(--warn) }
+.spark { position: relative; height: 96px; margin: 14px 22px 0; display: flex; align-items: flex-end; gap: 5px }
+.spark i { flex: 1; border-radius: 3px 3px 1px 1px; background: var(--past); min-height: 3px; position: relative; transition: height .7s cubic-bezier(.2,.8,.2,1) }
+.spark i.now { background: var(--blue) } .spark i.over { background: var(--warn) } .spark i.off { background: var(--line); height: 3px !important }
+.spark .lim { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--bad); opacity: .55; pointer-events: none }
+.spark .lim span { position: absolute; right: 0; top: -17px; font-size: 11px; color: var(--muted); background: var(--card); padding-left: 4px }
+.unit .axis { padding: 0 22px }
+.unit .foot { margin-top: 16px; border-top: 1px solid var(--line); padding: 12px 22px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 13.5px }
+.sel { appearance: none; border: 1px solid var(--line); background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a2ae' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+       border-radius: 10px; height: 36px; padding: 0 34px 0 14px; font-weight: 700; color: var(--ink); cursor: pointer }
+
+/* ── 팝오버·토스트·서랍 ── */
+.pop { position: absolute; right: 0; top: 48px; width: 320px; max-width: calc(100vw - 32px); background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 40px rgba(0,0,0,.14); padding: 8px; z-index: 30; animation: pop .2s cubic-bezier(.34,1.56,.64,1) }
+.pop h3 { margin: 6px 10px 6px; font-size: 14px }
+.pop .it { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 10px; border-radius: 10px; font-size: 13px }
+.pop .it:hover { background: var(--line2) }
+.pop .it small { grid-column: 2; color: var(--muted) }
+.tag { font-size: 11.5px; font-weight: 800; border-radius: 6px; padding: 1px 7px; height: fit-content }
+.tag.bad { background: var(--bad-bg); color: var(--bad) } .tag.warn { background: var(--warn-bg); color: var(--warn) }
+.tip { position: fixed; pointer-events: none; z-index: 60; background: var(--dark-btn); color: var(--dark-btn-ink); font-size: 12px; padding: 5px 9px; border-radius: 8px; white-space: nowrap }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 16px); opacity: 0; background: var(--dark-btn); color: var(--dark-btn-ink); padding: 10px 18px; border-radius: 999px; font-weight: 600; transition: opacity .2s, transform .3s cubic-bezier(.34,1.56,.64,1); z-index: 70; pointer-events: none; max-width: calc(100vw - 32px) }
+.toast.on { opacity: 1; transform: translate(-50%, 0) }
+.scrim { display: none }
+.sample { font-size: 12px; color: var(--faint); text-align: center; margin-top: 4px }
+@keyframes rise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+@keyframes pop { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: none } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }
+
+@media (max-width: 1180px) { .row1 { grid-template-columns: 1fr 1fr } .row1 > :first-child { grid-column: 1 / -1 } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } .search { width: 220px } }
+@media (max-width: 900px) {
+  body { padding-block: 0 }
+  .shell, .shell.mini { grid-template-columns: minmax(0, 1fr); border-radius: 0; box-shadow: none; min-height: 100vh; margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))) calc(-1 * max(16px, env(safe-area-inset-right, 0px))) }
+  .side { position: fixed; z-index: 50; top: 0; bottom: 0; left: 0; width: 280px; max-width: 86vw; transform: translateX(-102%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+          padding-top: calc(20px + env(safe-area-inset-top, 0px)); padding-left: calc(14px + env(safe-area-inset-left, 0px)); overflow-y: auto }
+  .shell.open .side { transform: none; box-shadow: 0 0 60px rgba(0,0,0,.25) }
+  .shell.open .scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 45 }
+  .collapse { display: none }
+  .btn.menu-btn { display: inline-flex }
+  .main { padding: 18px max(16px, env(safe-area-inset-right, 0px)) 28px max(16px, env(safe-area-inset-left, 0px)) }
+  .search { order: 5; width: 100% }
+}
+@media (max-width: 640px) { .row1, .grid { grid-template-columns: minmax(0, 1fr) } .chip-run { display: none } .head h1 { font-size: 22px } .btn.dark span { display: none } .btn.dark { width: 40px; padding: 0; justify-content: center } }
+</style>
+
+<div class="shell" id="shell">
+  <aside class="side" id="side" aria-label="메뉴">
+    <div class="brand">
+      <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 9l4 6 3-4 4 7"/></svg></span>
+      <b>Blue365 <small>QMS</small></b>
+      <button class="collapse" id="collapse" aria-label="메뉴 접기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button>
+    </div>
+    <button class="ws" id="ws" title="공장 바꾸기"><span class="avatar">공</span><div><b>시멘트 1공장 (예시)</b><small>킬른 4기 · 시멘트밀 2기</small></div><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--faint);flex:none"><path d="m8 9 4-4 4 4M8 15l4 4 4-4"/></svg></button>
+    <nav id="nav"></nav>
+    <div class="spacer"></div>
+    <hr>
+    <button class="nav" data-name="기준·설정"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="lbl">기준·설정</span></button>
+    <div class="me"><span class="avatar">QC</span><div><b>품질관리팀</b><small>품질관리 담당</small></div></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main" id="main">
+    <div class="head">
+      <button class="btn icon menu-btn" id="menuBtn" aria-label="메뉴 열기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <div class="ttl"><h1 id="pageTitle">공정 센터</h1><p id="pageSub"></p></div>
+      <div class="tools">
+        <span class="chip-run"><i></i><span id="runChip"></span></span>
+        <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="항목·LOT·호기 검색" aria-label="검색"><kbd>Ctrl K</kbd></label>
+        <button class="btn" id="rules"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></svg>관리 기준</button>
+        <button class="btn dark" id="newReport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span>새 보고서</span></button>
+        <div style="position:relative">
+          <button class="btn icon" id="bell" aria-label="알림" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="dot"></span></button>
+          <div class="pop" id="bellPop" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <section class="row1">
+      <div class="card" style="--i:0">
+        <h2>공정별 판정</h2><p class="sub">이번 주 · 시험 결과를 관리기준과 비교</p>
+        <button class="more" aria-label="더 보기">⋯</button>
+        <div class="legend"><span><i style="background:var(--blue)"></i>기준 이내</span><span><i style="background:var(--warn)"></i>사내기준 이탈</span><span><i style="background:var(--bad)"></i>KS 이탈</span></div>
+        <div class="hbars" id="hbars"></div>
+      </div>
+      <div class="card" style="--i:1">
+        <h2>28일 압축강도</h2><button class="more" aria-label="더 보기">⋯</button>
+        <div class="big">52.7<span>MPa</span><span class="delta">+0.7</span></div>
+        <p class="sub">1종 평균 · 이번 주 출하 32로트 · KS ≥ 42.5</p>
+        <div class="cols" id="strength"></div>
+        <div class="axis"><span>지난주</span><span>이번 주</span></div>
+      </div>
+      <div class="card" style="--i:2">
+        <h2>알림 수준</h2><p class="sub">공정마다 이상이 생기면 어떻게 알릴지</p><button class="more" aria-label="더 보기">⋯</button>
+        <div class="donut"><div class="ring"><svg viewBox="0 0 132 132" id="donut"></svg><div><span><b id="dTot">6</b><small>공정</small></span></div></div><ul id="dLeg"></ul></div>
+      </div>
+    </section>
+
+    <section class="grid" id="units" aria-label="공정별 카드"></section>
+    <p class="sample">예시 자료로 만든 화면 샘플입니다. 실제 공장 수치가 아닙니다.</p>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const I = {
+  center: '<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+  inbox: '<path d="M4 4h16v16H4z"/><path d="M4 14h5l1 3h4l1-3h5"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  mill: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  kiln: '<path d="M3 15 21 9"/><path d="M3 15v3h18V9"/><path d="M7 6c0-1.5 1-2 1-3M11 6c0-1.5 1-2 1-3"/>',
+  clinker: '<circle cx="8" cy="15" r="3"/><circle cx="15" cy="9" r="3"/><circle cx="16" cy="17" r="2"/>',
+  cement: '<path d="M6 3h12l-2 18H8z"/><path d="M7 9h10"/>',
+  ship: '<path d="M3 17h18l-2 4H5z"/><path d="M5 17V9h14v8"/><path d="M12 5v4"/>',
+  box: '<path d="m3 7 9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/>',
+  spark: '<path d="M3 17l5-6 4 3 7-8"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+};
+const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[k]}</svg>`;
+
+// ── 왼쪽 메뉴(그룹별 세로 탭) ─────────────────────────────────────────
+const NAV = [
+  [null, [["공정 센터", "center"], ["조치 대기", "inbox", 3], ["알림 기록", "bell"]]],
+  ["공정", [["원료(원료밀)", "mill"], ["소성(킬른)", "kiln"], ["클링커", "clinker"], ["시멘트 분쇄", "cement"]]],
+  ["제품·자재", [["출하시멘트", "ship"], ["원료 인수검사", "box"]]],
+  ["분석", [["강도 예측", "spark"], ["원인 진단", "search"], ["SPC·그래프", "chart"]]],
+];
+$("nav").innerHTML = NAV.map(([g, items]) => (g ? `<div class="grp">${g}</div>` : "") + items.map(([n, ic, c]) =>
+  `<button class="nav" data-name="${n}"${n === "공정 센터" ? ' aria-current="page"' : ""} title="${n}">${svg(ic)}<span class="lbl">${n}</span>${c ? `<span class="cnt">${c}</span>` : ""}</button>`).join("")).join("");
+document.querySelectorAll(".side .nav").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".side .nav").forEach((x) => x.removeAttribute("aria-current"));
+  b.setAttribute("aria-current", "page");
+  $("shell").classList.remove("open");
+  if (b.dataset.name !== "공정 센터") toast(`샘플에서는 ‘공정 센터’ 화면만 만들었어요 (${b.dataset.name})`);
+}));
+const setMini = (on) => { $("shell").classList.toggle("mini", on); $("collapse").setAttribute("aria-label", on ? "메뉴 펼치기" : "메뉴 접기"); try { localStorage.setItem("b365_side_mini", on ? "1" : ""); } catch (e) { /* 저장 불가 */ } };
+$("collapse").addEventListener("click", () => setMini(!$("shell").classList.contains("mini")));
+try { if (localStorage.getItem("b365_side_mini")) setMini(true); } catch (e) { /* 저장 불가 */ }
+$("menuBtn").addEventListener("click", () => $("shell").classList.add("open"));
+$("scrim").addEventListener("click", () => $("shell").classList.remove("open"));
+$("ws").addEventListener("click", () => toast("공장 바꾸기 — 샘플에서는 1공장만 있어요"));
+
+// ── 예시 자료(실제 수치 아님) ─────────────────────────────────────────
+const UNITS = [
+  { id: "4K", name: "4K 킬른", desc: "클링커 f-CaO·LSF 관리", ic: "kiln", st: "run", k: [["시험, 7일", "312"], ["기준 이내", "96%"], ["f-CaO 평균", "0.92 %"]], lim: 1.8, max: 2.4,
+    d: [0.9, 1.1, 0.8, 1.0, 1.2, 0.9, 1.0, 0.8, 0.9, 1.0, 0.7, 0.9, 1.1, 0.9], mode: "확인 후 조치" },
+  { id: "5K", name: "5K 킬른", desc: "클링커 f-CaO·LSF 관리", ic: "kiln", st: "run", k: [["시험, 7일", "298"], ["기준 이내", "98%"], ["f-CaO 평균", "0.84 %"]], lim: 1.8, max: 2.4,
+    d: [0.8, 0.9, 1.0, 0.8, 0.7, 0.9, 1.0, 0.8, 0.9, 0.8, 0.8, 0.9, 0.8, 0.8], mode: "즉시 알림" },
+  { id: "6K", name: "6K 킬른", desc: "클링커 f-CaO·LSF 관리", ic: "kiln", st: "warn", k: [["시험, 7일", "286"], ["기준 이내", "88%"], ["f-CaO 평균", "1.46 %", true]], lim: 1.8, max: 2.4,
+    d: [1.0, 0.9, 1.1, 1.0, 1.2, 1.1, 1.0, 1.2, 1.4, 1.5, 1.9, 2.1, 1.6, 1.5], mode: "즉시 알림" },
+  { id: "7K", name: "7K 킬른", desc: "클링커 f-CaO·LSF 관리", ic: "kiln", st: "stop", k: [["시험, 7일", "96"], ["기준 이내", "100%"], ["f-CaO 평균", "0.95 %"]], lim: 1.8, max: 2.4,
+    d: [1.0, 0.9, 1.1, 0.8, 1.0, 0.9, 1.1, 0.9, 1.0, 0.9, 1.0, null, null, null], mode: "기록만", stopped: "정지 3일 전" },
+  { id: "3CM", name: "3C/M 시멘트밀", desc: "1종 Blaine·SO₃·45㎛ 관리", ic: "cement", st: "run", k: [["시험, 7일", "168"], ["기준 이내", "97%"], ["Blaine 평균", "3,720"]], lim: 3900, max: 4100, min: 3300, unit: "cm²/g",
+    d: [3690, 3710, 3750, 3700, 3680, 3720, 3740, 3700, 3730, 3760, 3710, 3690, 3720, 3740], mode: "확인 후 조치" },
+  { id: "5CM", name: "5C/M 시멘트밀", desc: "3종 Blaine·SO₃·45㎛ 관리", ic: "cement", st: "run", k: [["시험, 7일", "124"], ["기준 이내", "94%"], ["Blaine 평균", "4,610"]], lim: 4850, max: 5000, min: 4200, unit: "cm²/g",
+    d: [4580, 4600, 4620, 4590, 4640, 4610, 4630, 4600, 4650, 4620, 4590, 4880, 4610, 4600], mode: "즉시 알림" },
+];
+const JUDGE = [["4K 킬른", 300, 10, 2], ["5K 킬른", 292, 6, 0], ["6K 킬른", 252, 30, 4], ["7K 킬른", 96, 0, 0], ["3C/M 시멘트밀", 163, 5, 0], ["5C/M 시멘트밀", 117, 7, 0]];
+const MODES = [["즉시 알림", "--blue"], ["확인 후 조치", "--blue-2"], ["기록만", "--past"]];
+const STL = { run: ["run", "가동 중"], warn: ["warn", "주의"], stop: ["stop", "정지"] };
+
+const total = JUDGE.reduce((s, r) => s + r[1] + r[2] + r[3], 0);
+const nRun = UNITS.filter((u) => u.st !== "stop").length;
+$("pageSub").textContent = `${UNITS.length}개 공정 · 가동 ${nRun}, 정지 ${UNITS.length - nRun} · 이번 주 시험 ${total.toLocaleString()}건`;
+$("runChip").textContent = `${nRun}개 공정 가동 중`;
+
+// 공정별 판정(가로 누적 막대)
+const mx = Math.max(...JUDGE.map((r) => r[1] + r[2] + r[3]));
+$("hbars").innerHTML = JUDGE.map(([n, a, b, c]) => `<div class="hb"><span>${n}</span><div class="trk">`
+  + [[a, "--blue", "기준 이내"], [b, "--warn", "사내기준 이탈"], [c, "--bad", "KS 이탈"]].filter((x) => x[0]).map(([v, col, lab]) =>
+    `<i style="width:${(100 * v / mx).toFixed(1)}%;background:var(${col})" data-tip="${n} · ${lab} ${v}건"></i>`).join("")
+  + `</div><b>${a + b + c}</b></div>`).join("");
+
+// 28일 강도(지난주 회색 / 이번 주 파랑)
+const S28 = [52.1, 51.8, 52.4, 51.6, 52.0, 52.3, 51.9, 52.6, 53.1, 52.4, 52.9, 53.0, 52.2, 52.8];
+const lo = 50, hi = 54;
+$("strength").innerHTML = S28.map((v, i) => `<i class="${i >= 7 ? "now" : ""}" style="height:${(100 * (v - lo) / (hi - lo)).toFixed(0)}%" data-tip="${i >= 7 ? "이번 주" : "지난주"} ${["월", "화", "수", "목", "금", "토", "일"][i % 7]} · ${v.toFixed(1)} MPa"></i>`).join("");
+
+// 알림 수준(도넛)
+function donut() {
+  const cnt = MODES.map(([m]) => UNITS.filter((u) => u.mode === m).length);
+  const r = 54, c = 2 * Math.PI * r; let off = 0;
+  $("donut").innerHTML = `<circle cx="66" cy="66" r="${r}" fill="none" stroke="var(--line)" stroke-width="14"/>` + cnt.map((n, i) => {
+    if (!n) return ""; const len = c * n / UNITS.length - 3;
+    const s = `<circle cx="66" cy="66" r="${r}" fill="none" stroke="var(${MODES[i][1]})" stroke-width="14" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`;
+    off += c * n / UNITS.length; return s; }).join("");
+  $("dTot").textContent = UNITS.length;
+  $("dLeg").innerHTML = MODES.map(([m, col], i) => `<li><i style="background:var(${col})"></i>${m}<b>${cnt[i]}</b></li>`).join("");
+}
+
+// 공정 카드
+function units() {
+  $("units").innerHTML = UNITS.map((u, i) => {
+    const [cls, lab] = STL[u.st], base = u.min || 0, span = u.max - base;
+    const bars = u.d.map((v, j) => v == null ? `<i class="off" data-tip="${14 - j}일 전 · 정지"></i>`
+      : `<i class="${v > u.lim ? "over" : j >= 7 ? "now" : ""}" style="height:${Math.max(4, 100 * (v - base) / span).toFixed(0)}%" data-tip="${j === 13 ? "오늘" : `${13 - j}일 전`} · ${v.toLocaleString()}${u.unit ? " " + u.unit : " %"}${v > u.lim ? " · 사내 상한 초과" : ""}"></i>`).join("");
+    return `<article class="card unit" style="--i:${i + 3}">
+      <div class="top"><span class="uic">${svg(u.ic)}</span><div class="nm"><b>${u.name}</b><small>${u.desc}</small></div><span class="st ${cls}">${lab}</span></div>
+      <div class="kv">${u.k.map(([k, v, w]) => `<div><small>${k}</small><b class="${w ? "w" : ""}">${v}</b></div>`).join("")}</div>
+      <div class="spark" role="img" aria-label="${u.name} 최근 14일 일평균">${bars}<div class="lim" style="bottom:${(100 * (u.lim - base) / span).toFixed(0)}%"><span>사내 상한 ${u.lim.toLocaleString()}</span></div></div>
+      <div class="axis"><span>14일 전</span><b style="color:var(--ink2)">${u.stopped || "오늘"}</b></div>
+      <div class="foot"><label for="m-${u.id}">알림 수준</label><select class="sel" id="m-${u.id}" data-i="${i}">${MODES.map(([m]) => `<option${m === u.mode ? " selected" : ""}>${m}</option>`).join("")}</select></div>
+    </article>`; }).join("");
+}
+$("units").addEventListener("change", (e) => { const s = e.target.closest("select[data-i]"); if (!s) return; const u = UNITS[+s.dataset.i]; u.mode = s.value; donut(); toast(`${u.name} 알림 수준을 ‘${u.mode}’로 바꿨어요`); });
+
+// 막대 툴팁
+document.addEventListener("pointerover", (e) => { const t = e.target.closest("[data-tip]"); const tip = $("tip"); if (!t) { tip.hidden = true; return; }
+  tip.textContent = t.dataset.tip; tip.hidden = false; const r = t.getBoundingClientRect();
+  tip.style.left = Math.max(8, Math.min(innerWidth - tip.offsetWidth - 8, r.left + r.width / 2 - tip.offsetWidth / 2)) + "px"; tip.style.top = Math.max(8, r.top - tip.offsetHeight - 8) + "px"; });
+addEventListener("scroll", () => { $("tip").hidden = true; }, { passive: true });
+
+// 알림 종 · 검색 · 버튼
+const ALERTS = [["bad", "위험", "6K 킬른 f-CaO 2.1 %", "사내 상한 1.8 % 초과 · 어제 06:00"], ["warn", "경고", "5C/M Blaine 4,880 cm²/g", "사내 상한 4,850 초과 · 3일 전"], ["warn", "경고", "6K 킬른 f-CaO 1.9 %", "사내 상한 초과 · 4일 전"]];
+$("bellPop").innerHTML = `<h3>새 알림 ${ALERTS.length}건</h3>` + ALERTS.map(([c, s, t, d]) => `<div class="it"><span class="tag ${c}">${s}</span><b>${t}</b><small>${d}</small></div>`).join("");
+$("bell").addEventListener("click", (e) => { e.stopPropagation(); const p = $("bellPop"); p.hidden = !p.hidden; $("bell").setAttribute("aria-expanded", String(!p.hidden)); });
+document.addEventListener("click", (e) => { if (!e.target.closest("#bellPop")) { $("bellPop").hidden = true; $("bell").setAttribute("aria-expanded", "false"); } });
+document.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("q").focus(); } if (e.key === "Escape") { $("bellPop").hidden = true; $("shell").classList.remove("open"); } });
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.value.trim()) { const q = e.target.value.trim(); const hit = UNITS.find((u) => u.name.includes(q) || u.id.includes(q.toUpperCase()));
+  if (hit) { const el = $(`m-${hit.id}`).closest(".unit"); el.scrollIntoView({ behavior: "smooth", block: "center" }); el.style.borderColor = "var(--blue)"; setTimeout(() => (el.style.borderColor = ""), 1600); }
+  else toast(`‘${q}’에 맞는 공정이 없어요`); } });
+$("rules").addEventListener("click", () => toast("관리 기준 화면은 관리용 앱 ⚙️ 설정에 있어요"));
+$("newReport").addEventListener("click", () => toast("보고서를 만들고 있어요 — 샘플이라 파일은 생기지 않아요"));
+document.querySelectorAll(".more").forEach((b) => b.addEventListener("click", () => toast("더 보기 메뉴(샘플)")));
+let tt; function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("on"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("on"), 2200); }
+
+donut(); units();
+})();
+</script>
