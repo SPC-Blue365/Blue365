@@ -1,0 +1,1323 @@
+<title>Blue365 공정 지도</title>
+<style>
+/* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
+:root{
+  --bg:#F2F4F6; --card:#FFFFFF; --preview:#F4F6F9; --line:#E5E8EB;
+  --fg:#191F28; --fg2:#4E5968; --fg3:#8B95A1;
+  --accent:#3182F6; --accent-soft:#E8F3FF; --on-accent:#FFFFFF;
+  --ok:#0E9F6E; --ok-soft:#E3F6EE; --warn:#D98200; --warn-soft:#FFF3DF; --bad:#E5484D; --bad-soft:#FDECEC; --idle-soft:#EEF1F4;
+  --shadow:0 8px 28px rgba(25,31,40,.08),0 1px 3px rgba(25,31,40,.06);
+  --font:"Pretendard","Pretendard Variable",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --r:20px; --side:236px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1115; --card:#1A1D23; --preview:#22262D; --line:#2C3139;
+  --fg:#F2F4F6; --fg2:#B0B8C1; --fg3:#7E8794;
+  --accent:#4A90F7; --accent-soft:#1B2B45; --on-accent:#FFFFFF;
+  --ok:#2FBF85; --ok-soft:#173129; --warn:#F5A623; --warn-soft:#3A2D14; --bad:#F2646A; --bad-soft:#3D1D20; --idle-soft:#262A31;
+  --shadow:0 8px 28px rgba(0,0,0,.38),0 1px 3px rgba(0,0,0,.3); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0F1115; --card:#1A1D23; --preview:#22262D; --line:#2C3139;
+  --fg:#F2F4F6; --fg2:#B0B8C1; --fg3:#7E8794;
+  --accent:#4A90F7; --accent-soft:#1B2B45; --on-accent:#FFFFFF;
+  --ok:#2FBF85; --ok-soft:#173129; --warn:#F5A623; --warn-soft:#3A2D14; --bad:#F2646A; --bad-soft:#3D1D20; --idle-soft:#262A31;
+  --shadow:0 8px 28px rgba(0,0,0,.38),0 1px 3px rgba(0,0,0,.3); color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+.app{display:flex;height:100%}
+.side{width:var(--side);flex:none;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:18px 12px 12px;gap:6px;transition:width .28s var(--ease);overflow:hidden}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 14px;white-space:nowrap}
+.logo{width:34px;height:34px;border-radius:10px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;flex:none}
+.logo .ic{width:20px;height:20px}
+.brand b{font-size:17px;letter-spacing:-.2px;display:block}
+.brand small{font-size:11.5px;color:var(--fg3)}
+.grp{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--fg3);font-weight:600;letter-spacing:.4px;padding:14px 10px 6px;white-space:nowrap}
+.grp button{color:var(--fg3);display:grid;place-items:center;width:22px;height:22px;border-radius:6px}
+.grp button:hover{background:var(--preview)}
+.grp button .ic{width:16px;height:16px;transition:transform .25s var(--ease)}
+.grp.closed button .ic{transform:rotate(-90deg)}
+.nav{display:flex;align-items:center;gap:12px;padding:10px 10px;border-radius:12px;color:var(--fg2);font-weight:600;white-space:nowrap;position:relative;width:100%;text-align:left}
+.nav:hover{background:var(--preview)}
+.nav.on{background:var(--accent-soft);color:var(--accent)}
+.nav > span:not([data-ic]){flex:1;min-width:0}
+.nav [data-ic]{flex:none;display:grid}
+.nb{font-style:normal;font-size:11px;font-weight:700;min-width:20px;height:20px;padding:0 6px;border-radius:10px;display:inline-grid;place-items:center;background:var(--bad);color:#fff}
+.nb.w{background:var(--warn-soft);color:var(--warn)}
+.nb.z{background:var(--idle-soft);color:var(--fg3)}
+#areaNav{display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)}
+.grp.closed + #areaNav{max-height:0!important}
+.side-foot{margin-top:auto}
+.app.collapsed{--side:76px}
+.app.collapsed .side .brand div,.app.collapsed .side .nav span,.app.collapsed .side .grp span,.app.collapsed .side .grp button{display:none}
+.app.collapsed .side .nav .nb{position:absolute;top:4px;right:6px;min-width:16px;height:16px;font-size:10px;padding:0 4px}
+.app.collapsed .side .grp{padding:10px 0 4px;justify-content:center}
+.app.collapsed .side .grp::before{content:"";width:24px;height:1px;background:var(--line)}
+.app.collapsed .side .nav{justify-content:center;padding:10px 0}
+.app.collapsed .side-foot .ic{transform:rotate(180deg)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--card);border-bottom:1px solid var(--line);position:relative;z-index:30}
+.top .mbrand{display:none;align-items:center;gap:8px;font-weight:700}
+.top .mbrand .logo{width:28px;height:28px;border-radius:8px}
+.top .mbrand .logo .ic{width:16px;height:16px}
+.search{position:relative;flex:1;max-width:440px;min-width:0}
+.search .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--fg3);width:18px;height:18px}
+.search input{width:100%;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;padding:0 40px 0 38px;outline:none}
+.search input:focus{border-color:var(--accent);background:var(--card)}
+.search kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:600 11px var(--font);color:var(--fg3);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+.results{position:absolute;top:46px;left:0;right:0;background:var(--card);border-radius:16px;box-shadow:var(--shadow);border:1px solid var(--line);padding:6px;max-height:340px;overflow:auto}
+.results button{display:flex;gap:10px;align-items:center;width:100%;padding:9px 10px;border-radius:10px;text-align:left}
+.results button:hover,.results button.hi{background:var(--preview)}
+.results small{color:var(--fg3);margin-left:auto;white-space:nowrap}
+.results .empty{padding:12px;color:var(--fg3)}
+.spacer{flex:1}
+.plant{display:flex;align-items:center;gap:10px;padding:5px 12px 5px 6px;border:1px solid var(--line);border-radius:12px;white-space:nowrap}
+.plant .code{background:var(--accent);color:var(--on-accent);font-weight:800;font-size:12px;border-radius:8px;padding:5px 7px}
+.plant b{display:block;font-size:13px}
+.plant small{font-size:11.5px;color:var(--fg3)}
+.live{display:inline-flex;align-items:center;gap:7px;background:var(--ok-soft);color:var(--ok);font-weight:600;font-size:13px;border-radius:999px;padding:6px 12px;white-space:nowrap}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:pulse 2s var(--ease) infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 50%,transparent)}100%{box-shadow:0 0 0 8px transparent}}
+.icon-btn{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--fg2);position:relative;flex:none}
+.icon-btn:hover{background:var(--preview)}
+.icon-btn .dot{position:absolute;top:9px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--bad);border:2px solid var(--card)}
+.user{display:flex;align-items:center;gap:10px;padding-left:12px;border-left:1px solid var(--line);white-space:nowrap}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:13px}
+.user b{display:block;font-size:13px}
+.user small{font-size:11.5px;color:var(--fg3)}
+.views{flex:1;min-height:0;position:relative}
+.view{position:absolute;inset:0}
+.scroll{overflow:auto;padding:24px 28px 40px}
+
+/* ---------- map view ---------- */
+#stage{position:absolute;inset:0;outline:none;touch-action:none;cursor:grab;background:var(--bg)}
+#stage.drag{cursor:grabbing}
+#stage.hover{cursor:pointer}
+#stage canvas{display:block}
+#tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.tag{position:absolute;left:0;top:0;pointer-events:auto;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;border-radius:999px;background:var(--card);color:var(--fg);font-size:12px;font-weight:600;box-shadow:var(--shadow);white-space:nowrap;will-change:transform;transition:background .2s,color .2s}
+.tag i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
+.tag.s-warn i{background:var(--warn)} .tag.s-bad i{background:var(--bad)}
+.tag small{font-weight:500;color:var(--fg3)}
+.tag.sel{background:var(--accent);color:var(--on-accent);z-index:2}
+.tag.sel small{color:var(--on-accent);opacity:.85}
+.tag.sel i{background:var(--on-accent)}
+.tag.mini{padding:4px 8px;font-size:11px}
+.panel{position:absolute;background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);z-index:5}
+.kpis{position:absolute;left:16px;top:16px;display:grid;grid-template-columns:repeat(4,minmax(0,212px));gap:12px;width:calc(100% - 470px);z-index:5}
+.views.nodetail .kpis{width:calc(100% - 100px)}
+.kpi{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 14px;display:flex;gap:12px;align-items:center;min-width:0}
+.kpi > div{min-width:0}
+.kpi .kic{width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.kpi .kl{font-size:12px;color:var(--fg2);display:flex;align-items:center;gap:4px}
+.kpi .kval{font-size:22px;font-weight:800;letter-spacing:-.4px;line-height:1.25;display:flex;align-items:baseline;gap:6px}
+.kpi .kval small{font-size:12px;font-weight:600;color:var(--fg3)}
+.kpi .ks{font-size:11.5px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.kpi .kl{white-space:nowrap}
+.delta{font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 5px}
+.delta.up{color:var(--ok);background:var(--ok-soft)} .delta.dn{color:var(--bad);background:var(--bad-soft)} .delta.nt{color:var(--fg3);background:var(--idle-soft)}
+.ctrls{position:absolute;top:16px;right:372px;display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:4px;z-index:5;transition:right .3s var(--ease)}
+.ctrls button{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--fg2)}
+.ctrls button:hover{background:var(--preview);color:var(--accent)}
+.ctrls hr{border:0;height:1px;background:var(--line);margin:3px 6px}
+.views.nodetail .ctrls{right:16px}
+.vchip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:3px 9px;white-space:nowrap}
+
+.detail{top:16px;right:16px;width:344px;max-height:calc(100% - 340px);min-height:220px;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform .32s var(--ease),opacity .32s var(--ease)}
+.dp-head{display:flex;gap:12px;align-items:flex-start}
+.dp-ico{width:44px;height:44px;border-radius:14px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.dp-ico .ic{width:22px;height:22px}
+.eyebrow{font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.6px}
+.dp-name{font-size:18px;font-weight:800;letter-spacing:-.3px;margin-top:1px}
+.dp-sub{font-size:12px;color:var(--fg3);margin-top:2px}
+.dp-act{margin-left:auto;display:flex;gap:4px}
+.dp-act button{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:var(--fg3);border:1px solid var(--line)}
+.dp-act button:hover{color:var(--accent);border-color:var(--accent)}
+.dp-act .ic{width:16px;height:16px}
+.dp-st{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--fg2);flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;border-radius:8px;padding:4px 9px;white-space:nowrap}
+.badge.s-ok{color:var(--ok);background:var(--ok-soft)}
+.badge.s-warn{color:var(--warn);background:var(--warn-soft)}
+.badge.s-bad{color:var(--bad);background:var(--bad-soft)}
+.badge.s-act{color:var(--accent);background:var(--accent-soft)}
+.badge.s-idle{color:var(--fg2);background:var(--idle-soft)}
+.bar{height:6px;border-radius:3px;background:var(--idle-soft);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--ok);transition:width .6s var(--ease)}
+.bar i.s-warn{background:var(--warn)} .bar i.s-bad{background:var(--bad)} .bar i.s-act{background:var(--accent)}
+.barrow{display:flex;flex-direction:column;gap:6px}
+.barrow .bl{display:flex;justify-content:space-between;font-size:12px;color:var(--fg3)}
+.barrow .bl b{color:var(--fg);font-weight:700}
+.spark{background:var(--preview);border-radius:14px;padding:10px 12px 6px}
+.spark .sh{display:flex;justify-content:space-between;font-size:12px;color:var(--fg3);margin-bottom:2px}
+.spark .sh b{color:var(--fg)}
+.spark svg{width:100%;height:64px;display:block}
+.kv{margin:0;display:flex;flex-direction:column}
+.kv div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.kv div:last-child{border-bottom:0}
+.kv dt{color:var(--fg2);display:flex;align-items:center;gap:6px;min-width:0}
+.kv dd{margin:0;font-weight:700;text-align:right;white-space:nowrap}
+.kv dd small{font-weight:500;color:var(--fg3);margin-left:3px}
+.kv dd .lim{display:block;font-size:11px;font-weight:500;color:var(--fg3)}
+.kv dt i{width:6px;height:6px;border-radius:50%;background:transparent;flex:none}
+.kv dt i.s-warn{background:var(--warn)} .kv dt i.s-bad{background:var(--bad)}
+.sect{font-size:12px;font-weight:700;color:var(--fg2);display:flex;justify-content:space-between;align-items:center}
+.sect small{font-weight:500;color:var(--fg3)}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chip{background:var(--preview);border-radius:12px;padding:8px 8px 7px;text-align:center}
+.chip small{display:block;font-size:11px;color:var(--fg3)}
+.chip b{font-size:14px}
+.chip.s-warn b{color:var(--warn)} .chip.s-bad b{color:var(--bad)}
+.note{font-size:11.5px;color:var(--fg3);line-height:1.5}
+
+.lot{left:16px;bottom:16px;right:448px;max-width:820px;padding:16px 18px;display:flex;gap:16px;align-items:stretch}
+.lot-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
+.lot-h{display:flex;align-items:center;gap:10px;font-weight:700}
+.lot-h .ic{color:var(--accent)}
+.lot-h small{margin-left:auto;font-weight:500;color:var(--fg3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.steps{display:grid;grid-template-columns:repeat(6,1fr);position:relative}
+.step{display:flex;flex-direction:column;align-items:center;gap:6px;position:relative;text-align:center;min-width:0}
+.step::before{content:"";position:absolute;top:17px;left:calc(-50% + 20px);right:calc(50% + 20px);height:2px;background:var(--line)}
+.step:first-child::before{display:none}
+.step.done::before,.step.cur::before{background:var(--accent)}
+.step .sb{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--idle-soft);color:var(--fg3);position:relative;z-index:1}
+.step .sb .ic{width:17px;height:17px}
+.step.done .sb{background:var(--accent);color:var(--on-accent)}
+.step.cur .sb{background:var(--accent);color:var(--on-accent);box-shadow:0 0 0 5px var(--accent-soft)}
+.step b{font-size:12px;font-weight:700;white-space:nowrap}
+.step small{font-size:11px;color:var(--fg3);white-space:nowrap}
+.step.cur small{color:var(--accent);font-weight:600}
+.lot-side{width:236px;flex:none;background:var(--preview);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--fg2)}
+.lot-side b.id{font-size:14px;color:var(--fg)}
+.lot-side .row{display:flex;justify-content:space-between;gap:8px}
+.lot-side .row span:last-child{color:var(--fg);font-weight:600;text-align:right}
+
+.list{right:16px;bottom:16px;width:416px;padding:14px 14px 8px;display:flex;flex-direction:column;gap:8px}
+.list-h{display:flex;align-items:center;gap:10px}
+.seg{display:inline-flex;background:var(--preview);border-radius:12px;padding:3px;gap:2px}
+.seg button{padding:6px 12px;border-radius:9px;font-size:13px;font-weight:600;color:var(--fg2);white-space:nowrap;transition:background .2s var(--ease),color .2s}
+.seg button em{font-style:normal;color:var(--fg3);font-weight:600;margin-left:4px}
+.seg button.on{background:var(--card);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.seg button.on em{color:var(--accent)}
+.list-h small{margin-left:auto;color:var(--fg3);font-size:12px;white-space:nowrap}
+.rows{max-height:212px;overflow:auto;margin:0 -6px}
+.rw{display:grid;grid-template-columns:94px 1fr auto 52px 14px;gap:10px;align-items:center;padding:9px 6px;border-radius:12px;width:100%;text-align:left}
+.rw:hover{background:var(--preview)}
+.rw.on{background:var(--accent-soft)}
+.rw .a b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rw .a small{display:block;font-size:11px;color:var(--fg3);white-space:nowrap}
+.rw .d{font-size:12px;color:var(--fg2);display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rw .d i{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+.rw .p{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--fg3);text-align:right}
+.rw .ic{width:14px;height:14px;color:var(--fg3)}
+.fab{display:none}
+.sheet-handle{display:none}
+
+/* ---------- report & alarm ---------- */
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.banner{display:flex;align-items:center;gap:10px;background:var(--accent-soft);color:var(--accent);border-radius:16px;padding:12px 16px;font-size:13px;font-weight:600}
+.banner span{color:var(--fg2);font-weight:500}
+.headline{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.headline .eb{font-size:13px;color:var(--fg3);font-weight:600;margin-bottom:8px}
+.headline h1{font-size:30px;line-height:1.32;letter-spacing:-.6px;margin:0;font-weight:800;text-wrap:balance}
+.headline h1 em{font-style:normal;color:var(--accent)}
+.headline p{margin:8px 0 0;color:var(--fg3);font-size:13px}
+.krow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.krow .kpi{width:auto;box-shadow:none}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.card{background:var(--card);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card.w2{grid-column:span 2}
+.pv{background:var(--preview);border-radius:14px;padding:16px;min-height:200px;display:flex;flex-direction:column;justify-content:center;gap:12px;min-width:0}
+.meta{padding:0 4px 4px;display:flex;gap:12px;align-items:flex-start}
+.meta .n{font-weight:800;color:var(--accent);font-size:14px}
+.meta b{display:block;font-size:15px}
+.meta small{display:block;color:var(--fg3);font-size:12.5px;margin-top:2px;line-height:1.45}
+.chart{width:100%;height:auto;display:block}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart .tk{fill:var(--fg3);font-size:11px;font-family:var(--font)}
+.chart .b{fill:var(--accent);opacity:.42}
+.chart .b.now{opacity:1}
+.chart .b.warn{fill:var(--warn);opacity:1}
+.chart .tg{stroke:var(--fg2);stroke-dasharray:4 4;stroke-width:1.2}
+.chart .tgl{fill:var(--fg2);font-size:11px;font-weight:600;font-family:var(--font)}
+.chart .band{fill:var(--accent);opacity:.1}
+.chart .lim{stroke:var(--accent);stroke-width:1;stroke-dasharray:3 4;opacity:.7}
+.chart .ln{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round}
+.chart .pt{fill:var(--accent)}
+.chart .pt.bad{fill:var(--bad)}
+.chart .area{fill:var(--accent);opacity:.08}
+table.ks{width:100%;border-collapse:collapse;font-size:13px}
+table.ks th{font-size:11.5px;color:var(--fg3);font-weight:600;text-align:left;padding:0 8px 8px;white-space:nowrap}
+table.ks td{padding:9px 8px;border-top:1px solid var(--line);white-space:nowrap}
+table.ks td.r,table.ks th.r{text-align:right}
+.tbl{overflow-x:auto}
+.blt{display:flex;flex-direction:column;gap:6px}
+.blt-h{display:flex;align-items:center;gap:8px;font-size:13px}
+.blt-h b{margin-left:auto;font-size:15px}
+.blt-t{position:relative;height:10px;border-radius:5px;background:var(--idle-soft)}
+.blt-t .bd{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.22;border-radius:5px}
+.blt-t .mk{position:absolute;top:-4px;width:4px;height:18px;margin-left:-2px;border-radius:2px;background:var(--accent)}
+.blt-s{display:flex;justify-content:space-between;font-size:11px;color:var(--fg3)}
+.hb{display:flex;flex-direction:column;gap:5px}
+.hb .hl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--fg2)}
+.hb .hl b{color:var(--fg)}
+.issues{display:flex;flex-direction:column;gap:8px}
+.iss{display:flex;gap:10px;align-items:flex-start;background:var(--card);border-radius:12px;padding:10px 12px;font-size:12.5px}
+.iss b{display:block;font-size:13px}
+.iss small{color:var(--fg3)}
+.alarm-list{display:flex;flex-direction:column;gap:10px}
+.al{background:var(--card);border-radius:16px;padding:14px 16px;display:grid;grid-template-columns:70px 1fr auto;gap:14px;align-items:center}
+.al .t{font-size:13px;color:var(--fg3);font-weight:600}
+.al .t b{display:block;color:var(--fg);font-size:15px}
+.al .m b{font-size:14px}
+.al .m p{margin:3px 0 0;font-size:12.5px;color:var(--fg2)}
+.al .m .tags{display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap}
+.al .x{display:flex;gap:8px;align-items:center}
+.btn{height:36px;padding:0 14px;border-radius:10px;font-weight:700;font-size:13px;background:var(--accent);color:var(--on-accent);white-space:nowrap}
+.btn.ghost{background:var(--preview);color:var(--fg2)}
+.btn:disabled{opacity:.5;cursor:default}
+.filter{display:flex;gap:8px;flex-wrap:wrap}
+.fchip{height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-weight:600;color:var(--fg2);font-size:13px}
+.fchip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.empty-st{background:var(--card);border-radius:16px;padding:28px;text-align:center;color:var(--fg3)}
+.foot{font-size:12px;color:var(--fg3);line-height:1.6}
+
+[data-tip]{position:relative}
+[data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);background:var(--fg);color:var(--bg);font-size:11.5px;font-weight:500;line-height:1.45;padding:7px 10px;border-radius:10px;width:max-content;max-width:240px;white-space:normal;z-index:50;pointer-events:none;text-align:left}
+.tipi{width:14px;height:14px;color:var(--fg3);display:inline-grid;place-items:center}
+.tipi .ic{width:14px;height:14px}
+
+.toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;z-index:100;pointer-events:none;width:max-content;max-width:calc(100% - 32px)}
+.toast{background:var(--fg);color:var(--bg);border-radius:14px;padding:11px 16px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow);animation:tin .35s var(--ease) both;pointer-events:auto}
+.toast i{width:8px;height:8px;border-radius:50%;flex:none}
+.toast.out{animation:tout .3s var(--ease) both}
+@keyframes tin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes tout{to{opacity:0;transform:translateY(8px)}}
+.tabbar{display:none}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;color:var(--fg3);text-align:center;padding:24px}
+
+@media (max-width:1380px){.lot-side{display:none}}
+@media (max-width:1180px){.lot{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,212px))}}
+@media (max-width:1100px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.krow{grid-template-columns:repeat(2,minmax(0,1fr))}.plant,.user{display:none}}
+@media (max-width:760px){
+  .side{display:none}
+  .top{padding:0 16px;gap:8px;height:58px}
+  .top .mbrand{display:flex}
+  .top .mbrand span{display:none}
+  .search{max-width:none}
+  .search kbd{display:none}
+  .live b{display:none}
+  .live{padding:6px 10px}
+  .views{padding-bottom:0}
+  .main{padding-bottom:calc(62px + env(safe-area-inset-bottom,0px))}
+  .kpis{display:flex;width:auto;left:0;right:0;top:12px;max-width:none;flex-wrap:nowrap;overflow-x:auto;padding:0 16px 8px;scrollbar-width:none}
+  .kpis::-webkit-scrollbar{display:none}
+  .kpi{width:178px;flex:none;padding:12px 14px;gap:10px}
+  .kpi .kic{width:34px;height:34px;border-radius:10px}
+  .kpi .kval{font-size:19px}
+  .ctrls,.views.nodetail .ctrls{right:16px;top:118px}
+  .ctrls button{width:36px;height:36px}
+  .detail,.list{position:fixed;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));top:auto;width:auto;max-height:56%;border-radius:20px 20px 0 0;padding:10px 16px 16px;z-index:40;box-shadow:0 -8px 30px rgba(0,0,0,.14)}
+  .detail.closed,.list.closed{transform:translateY(110%);opacity:0;pointer-events:none}
+  .list{transition:transform .32s var(--ease),opacity .32s var(--ease)}
+  .sheet-handle{display:block;width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 4px;flex:none}
+  .rows{max-height:none}
+  .rw{grid-template-columns:84px 1fr auto 14px}
+  .rw .p{display:none}
+  .fab{display:inline-flex;position:absolute;left:16px;bottom:16px;z-index:6;align-items:center;gap:8px;background:var(--card);box-shadow:var(--shadow);border-radius:999px;height:44px;padding:0 16px;font-weight:700}
+  .fab .ic{color:var(--accent)}
+  .scroll{padding:18px 16px 32px}
+  .headline h1{font-size:24px}
+  .grid,.krow{grid-template-columns:minmax(0,1fr)}
+  .card.w2{grid-column:auto}
+  .al{grid-template-columns:1fr;gap:8px}
+  .al .t{display:flex;gap:8px;align-items:baseline}
+  .al .t b{display:inline}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;height:calc(62px + env(safe-area-inset-bottom,0px));padding:0 max(16px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(16px,env(safe-area-inset-left,0px));background:var(--card);border-top:1px solid var(--line);z-index:50}
+  .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:var(--fg3);position:relative}
+  .tabbar a.on{color:var(--accent)}
+  .tabbar .nb{position:absolute;top:6px;left:calc(50% + 6px);min-width:16px;height:16px;font-size:10px;padding:0 4px}
+  .toasts{bottom:calc(132px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+
+<div class="app" id="app">
+  <aside class="side" aria-label="메뉴">
+    <div class="brand"><span class="logo" data-ic="cube"></span><div><b>Blue365</b><small>시멘트 공정 모니터링</small></div></div>
+    <div class="grp"><span>모니터링</span></div>
+    <a class="nav" href="#map" data-view="map"><span data-ic="map"></span><span>공정 지도</span></a>
+    <a class="nav" href="#alarms" data-view="alarms"><span data-ic="alert"></span><span>알람</span><em class="nb" data-alarm-badge>0</em></a>
+    <div class="grp"><span>보고</span></div>
+    <a class="nav" href="#report" data-view="report"><span data-ic="chart"></span><span>경영진 요약</span></a>
+    <div class="grp" id="areaGrp"><span>공정 구역</span><button type="button" id="areaToggle" aria-label="공정 구역 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
+    <div id="areaNav" style="max-height:300px"></div>
+    <div class="side-foot"><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <div class="mbrand"><span class="logo" data-ic="cube"></span><b>Blue365</b></div>
+      <div class="search">
+        <span data-ic="search"></span>
+        <input id="q" type="search" autocomplete="off" placeholder="설비, 시료, 차량, 로트 검색" aria-label="설비, 시료, 차량 검색">
+        <kbd>/</kbd>
+        <div class="results" id="results" hidden></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="plant"><span class="code">K1</span><div><b>1공장 · 킬른 1호</b><small>설계 5,000 t/d · 가상 데이터</small></div></div>
+      <span class="live" title="2초마다 갱신"><i></i>Live <b class="num" id="clock">--:--</b></span>
+      <button class="icon-btn" type="button" id="themeBtn" aria-label="화면 테마 바꾸기"><span data-ic="moon"></span></button>
+      <a class="icon-btn" href="#alarms" aria-label="알람 보기"><span data-ic="bell"></span><span class="dot" id="bellDot" hidden></span></a>
+      <div class="user"><span class="avatar">QC</span><div><b>품질관리팀</b><small>모니터링 담당</small></div></div>
+    </header>
+
+    <div class="views" id="views">
+      <!-- 01 공정 지도 -->
+      <section class="view" id="view-map" aria-label="공정 지도">
+        <div id="stage" tabindex="0" aria-label="공정 3D 지도. 끌어서 이동, 휠로 확대, 오른쪽 버튼으로 끌면 회전"></div>
+        <div id="tags"></div>
+        <div class="kpis" id="kpiMap"></div>
+        <div class="ctrls" role="toolbar" aria-label="지도 조작">
+          <button type="button" data-cam="in" aria-label="확대" data-ic="plus"></button>
+          <button type="button" data-cam="out" aria-label="축소" data-ic="minus"></button>
+          <hr>
+          <button type="button" data-cam="rl" aria-label="왼쪽으로 회전" data-ic="rotL"></button>
+          <button type="button" data-cam="rr" aria-label="오른쪽으로 회전" data-ic="rotR"></button>
+          <hr>
+          <button type="button" data-cam="home" aria-label="전체 보기" data-ic="home"></button>
+        </div>
+        <aside class="panel detail" id="detail" aria-live="polite"></aside>
+        <div class="panel lot" id="lot"></div>
+        <div class="panel list closed" id="list">
+          <div class="sheet-handle"></div>
+          <div class="list-h">
+            <div class="seg" role="tablist" id="listTabs">
+              <button type="button" role="tab" data-tab="eq" class="on">설비<em id="cEq">13</em></button>
+              <button type="button" role="tab" data-tab="smp">시료<em id="cSmp">5</em></button>
+              <button type="button" role="tab" data-tab="trk">출하<em id="cTrk">3</em></button>
+            </div>
+            <small id="listMeta">1공장</small>
+          </div>
+          <div class="rows" id="rows"></div>
+        </div>
+        <button type="button" class="fab" id="fab"><span data-ic="list"></span>목록</button>
+      </section>
+
+      <!-- 02 경영진 요약 -->
+      <section class="view scroll" id="view-report" hidden aria-label="경영진 요약">
+        <div class="wrap" id="report"></div>
+      </section>
+
+      <!-- 03 알람 -->
+      <section class="view scroll" id="view-alarms" hidden aria-label="알람">
+        <div class="wrap" id="alarms"></div>
+      </section>
+    </div>
+  </div>
+
+  <nav class="tabbar" aria-label="화면 이동">
+    <a href="#map" data-view="map"><span data-ic="map"></span>공정 지도</a>
+    <a href="#report" data-view="report"><span data-ic="chart"></span>경영진 요약</a>
+    <a href="#alarms" data-view="alarms"><span data-ic="alert"></span>알람<em class="nb" data-alarm-badge>0</em></a>
+  </nav>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+/* =========================================================
+   공통 유틸
+   ========================================================= */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const gauss=()=>{let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const nf=(v,dp=0)=>Number(v).toLocaleString('ko-KR',{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const pad=n=>String(n).padStart(2,'0');
+const hhmm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+const md=d=>(d.getMonth()+1)+'/'+d.getDate();
+const stamp=d=>{const n=new Date();return d.toDateString()===n.toDateString()?hhmm(d):md(d)+' '+hhmm(d);};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const isMobile=()=>matchMedia('(max-width:760px)').matches;
+
+const ICON={
+  cube:'<path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12L3.5 7.3M12 12v9.5"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  map:'<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>',
+  chart:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>',
+  alert:'<path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4M12 17.5v.5"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>',
+  rotL:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  rotR:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+  home:'<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+  chevR:'<path d="M9 6l6 6-6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
+  truck:'<path d="M2 6h12v10H2zM14 9h4l3 3v4h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  flask:'<path d="M9 3h6M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/>',
+  flame:'<path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-3 3-5 5-5 8 0 4 3 7 7 7z"/>',
+  layers:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  gauge:'<path d="M12 14l4-4"/><path d="M3.3 17a10 10 0 1 1 17.4 0"/>',
+  mountain:'<path d="M3 20l6-10 4 6 3-4 5 8z"/>',
+  box:'<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
+  silo:'<path d="M6 21V8a6 4 0 0 1 12 0v13"/><path d="M6 12h12M6 16h12M4 21h16"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  check:'<path d="M5 12l5 5L20 7"/>',
+  factory:'<path d="M3 21V10l6 4V10l6 4V6h6v15z"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+};
+const ic=(n,c='')=>`<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]||''}</svg>`;
+function paintIcons(root=document){$$('[data-ic]',root).forEach(el=>{if(el.dataset.done)return;el.insertAdjacentHTML('afterbegin',ic(el.dataset.ic));el.dataset.done=1;});}
+
+/* =========================================================
+   가상 공정 데이터 (모든 수치는 시연용 가상값)
+   ========================================================= */
+const ST={ok:'정상',warn:'주의',bad:'이탈'};
+const RANK={ok:0,warn:1,bad:2};
+function P(label,unit,v,lo,hi,dp,noise,o={}){return Object.assign({label,unit,v,base:v,target:v,lo,hi,dp,noise,hist:[]},o);}
+function pStatus(p){
+  if(p.lo==null&&p.hi==null)return 'ok';
+  if((p.hi!=null&&p.v>p.hi)||(p.lo!=null&&p.v<p.lo))return 'bad';
+  const m=(p.lo!=null&&p.hi!=null)?(p.hi-p.lo)*0.1:Math.abs(p.hi??p.lo)*0.04;
+  if((p.hi!=null&&p.v>p.hi-m)||(p.lo!=null&&p.v<p.lo+m))return 'warn';
+  return 'ok';
+}
+const limTxt=p=>p.lo!=null&&p.hi!=null?`관리 ${nf(p.lo,p.dp)}~${nf(p.hi,p.dp)}`:p.hi!=null?`관리 ${nf(p.hi,p.dp)} 이하`:p.lo!=null?`관리 ${nf(p.lo,p.dp)} 이상`:'';
+
+const AREAS=[
+  {id:'raw',name:'원료',icon:'mountain',eqs:['QRY','CRS','PBL','RM','CF'],c:[-28,0,-14],d:125},
+  {id:'burn',name:'소성',icon:'flame',eqs:['PH','KL','CL','CKS'],c:[50,0,-2],d:115},
+  {id:'grind',name:'분쇄',icon:'gauge',eqs:['CM'],c:[52,0,26],d:72},
+  {id:'ship',name:'출하',icon:'truck',eqs:['SIL','DSP'],c:[26,0,32],d:88},
+  {id:'qc',name:'품질',icon:'flask',eqs:['LAB'],c:[-14,0,32],d:62}
+];
+const AREA=Object.fromEntries(AREAS.map(a=>[a.id,a]));
+
+const EQ=[
+ {id:'QRY',code:'QRY-1',name:'석회석 광산',area:'raw',icon:'mountain',spec:'벤치 높이 12 m · 덤프트럭 2대 운행',bar:'rate',barLabel:'가동률',primary:'cao',
+  params:{rate:P('가동률','%',86,null,null,0,.6,{min:0,max:100}),out:P('채광량','t/h',820,600,null,0,12),cao:P('석회석 CaO 품위','%',50.2,47.5,null,1,.08),mgo:P('석회석 MgO','%',1.6,null,3.0,2,.03)}},
+ {id:'CRS',code:'CR-1',name:'크러셔',area:'raw',icon:'box',spec:'임팩트 크러셔 · 설계 1,400 t/h',bar:'load',barLabel:'부하',primary:'load',
+  params:{load:P('부하','%',78,null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',1150,800,null,0,15),size:P('출구 입도 (P90)','mm',62,null,80,0,1),cur:P('모터 전류','A',312,null,380,0,4)}},
+ {id:'PBL',code:'PB-1',name:'프리블렌딩 야드',area:'raw',icon:'layers',spec:'셰브론 적재 · 파일 2기 × 40,000 t',bar:'fill',barLabel:'저장률',primary:'sd',
+  params:{fill:P('저장률','%',64,25,95,0,.4,{min:0,max:100}),stock:P('파일 재고','t',38400,null,null,0,120),sd:P('공급 CaO 표준편차','%',.32,null,.5,2,.012),lsf:P('파일 LSF','',97.1,95.0,99.5,1,.08)}},
+ {id:'RM',code:'RM-1',name:'원료밀 (VRM)',area:'raw',icon:'gauge',spec:'수직형 롤러밀 · 설계 450 t/h',bar:'load',barLabel:'부하',primary:'lsf',
+  params:{load:P('부하','%',88,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',410,360,null,0,4),lsf:P('생료 LSF','',97.6,96.0,99.0,1,.12,{ev:1}),sm:P('생료 SM','',2.52,2.35,2.70,2,.012),im:P('생료 IM','',1.58,1.40,1.75,2,.01),r90:P('90 µm 잔분','%',13.2,null,16,1,.15)}},
+ {id:'CF',code:'CF-1',name:'CF 사일로',area:'raw',icon:'silo',spec:'혼합 생료 저장 · 용량 18,000 t',bar:'level',barLabel:'레벨',primary:'level',
+  params:{level:P('레벨','%',71,30,92,0,.5,{min:0,max:100}),stock:P('저장량','t',12800,null,null,0,60),lsf:P('공급 생료 LSF','',97.4,96.0,99.0,1,.06)}},
+ {id:'PH',code:'PH-1',name:'프리히터·하소로',area:'burn',icon:'flame',spec:'5단 사이클론 · 인라인 하소로',bar:'calc',barLabel:'킬른 입구 하소율',primary:'calc',
+  params:{calc:P('킬른 입구 하소율','%',93.5,90,97,1,.25,{min:0,max:100}),c1:P('C1 출구 가스 온도','℃',318,null,345,0,2),pc:P('하소로 출구 온도','℃',878,860,900,0,2.5),press:P('C1 출구 정압','mmAq',-520,null,null,0,6)}},
+ {id:'KL',code:'KL-1',name:'로터리 킬른',area:'burn',icon:'flame',spec:'Ø4.8 × 72 m · 설계 5,000 t/d',bar:'mload',barLabel:'주모터 부하',primary:'bzt',
+  params:{bzt:P('소성대 온도 (고온계)','℃',1452,1400,1500,0,4,{ev:1}),cur:P('주모터 전류','A',612,520,720,0,6),o2:P('킬른 입구 O₂','%',2.6,1.5,4.0,1,.06),co:P('킬른 입구 CO','ppm',180,null,800,0,25,{ev:1,min:0}),nox:P('킬른 입구 NOx','ppm',820,null,1200,0,15),rpm:P('회전수','rpm',4.1,null,null,1,.02),feed:P('생료 투입량','t/h',335,300,360,0,1.5),mload:P('주모터 부하','%',74,null,95,0,.8,{min:0,max:100})}},
+ {id:'CL',code:'CL-1',name:'클링커 쿨러',area:'burn',icon:'gauge',spec:'그레이트 쿨러 · 4세대',bar:'eff',barLabel:'냉각 효율',primary:'tout',
+  params:{eff:P('냉각 효율','%',72,65,null,0,.4,{min:0,max:100}),tout:P('클링커 출구 온도','℃',108,null,130,0,2,{ev:1}),sec:P('2차 공기 온도','℃',1080,1000,null,0,6),grate:P('그레이트 속도','spm',11.2,null,null,1,.1)}},
+ {id:'CKS',code:'CS-1',name:'클링커 사일로',area:'burn',icon:'silo',spec:'돔형 · 용량 60,000 t',bar:'level',barLabel:'레벨',primary:'fcao',
+  params:{level:P('레벨','%',58,20,95,0,.3,{min:0,max:100}),stock:P('재고','t',34800,null,null,0,80),fcao:P('f-CaO (최근 시료)','%',1.21,.8,1.8,2,.035,{ev:1}),
+   cao:P('CaO','%',65.8,null,null,2,.06,{chem:1}),sio2:P('SiO₂','%',21.6,null,null,2,.04,{chem:1}),al:P('Al₂O₃','%',5.2,null,null,2,.025,{chem:1}),fe:P('Fe₂O₃','%',3.3,null,null,2,.02,{chem:1}),mgo:P('MgO','%',3.1,null,null,2,.02,{chem:1}),so3:P('SO₃','%',.8,null,null,2,.02,{chem:1})}},
+ {id:'CM',code:'CM-1',name:'시멘트밀',area:'grind',icon:'gauge',spec:'볼밀 2기 · 고효율 분급기',bar:'load',barLabel:'부하',primary:'blaine',
+  params:{load:P('부하','%',84,null,97,0,.8,{min:0,max:100}),prod:P('생산량','t/h',182,160,null,0,2),blaine:P('분말도 (Blaine)','cm²/g',3350,3200,3500,0,12),so3:P('SO₃','%',2.30,1.9,2.6,2,.025,{ev:1}),r45:P('45 µm 잔분','%',8.4,null,12,1,.12),temp:P('밀 출구 온도','℃',104,null,120,0,1)}},
+ {id:'SIL',code:'SL-1~4',name:'제품 사일로',area:'ship',icon:'silo',spec:'4기 × 8,000 t · 1종 3기, 슬래그 1기',bar:'avg',barLabel:'평균 레벨',primary:'s4',
+  params:{avg:P('평균 레벨','%',48,null,null,0,0,{min:0,max:100,derived:1}),s1:P('S-1 · 1종 보통','%',72,15,95,0,.4,{min:0,max:100}),s2:P('S-2 · 1종 보통','%',61,15,95,0,.4,{min:0,max:100}),s3:P('S-3 · 슬래그 시멘트','%',44,15,95,0,.4,{min:0,max:100}),s4:P('S-4 · 1종 보통','%',16.6,15,95,1,.12,{min:0,max:100})}},
+ {id:'DSP',code:'DS-1',name:'출하장',area:'ship',icon:'truck',spec:'벌크 출하 레인 1 · 계량대 1',bar:'prog',barLabel:'금일 계획 대비',primary:'ship',anchor:[30,10,36],
+  params:{prog:P('금일 계획 대비','%',62,null,null,0,0,{derived:1,min:0,max:100}),ship:P('금일 출하량','t',3240,null,null,0,0,{counter:1}),plan:P('금일 출하 계획','t',5200,null,null,0,0,{counter:1}),wait:P('진입·계량 차량','대',2,null,8,0,0,{counter:1})}},
+ {id:'LAB',code:'QC-LAB',name:'품질관리실',area:'qc',icon:'flask',spec:'XRF · XRD · 자동 시료 이송',bar:'done',barLabel:'금일 분석 완료',primary:'tat',
+  params:{done:P('금일 분석 완료율','%',71,null,null,0,0,{min:0,max:100,counter:1}),queue:P('분석 대기 시료','건',4,null,10,0,0,{counter:1}),xrf:P('XRF 표준시료 편차','%',.12,null,.30,2,.01),tat:P('평균 분석 소요','분',18,null,30,0,.4)}}
+];
+const E=Object.fromEntries(EQ.map(e=>[e.id,e]));
+const allParams=()=>EQ.flatMap(e=>Object.entries(e.params).map(([k,p])=>({e,k,p})));
+// 초기 이력(가상): 최근 90포인트
+allParams().forEach(({p})=>{let v=p.v;const h=[];for(let i=0;i<90;i++){v+= (p.base-v)*.15+gauss()*(p.noise||0);h.unshift(v);}h[h.length-1]=p.v;p.hist=h;p.prev=pStatus(p);});
+function eqStatus(e){let s='ok';for(const p of Object.values(e.params)){const t=pStatus(p);if(RANK[t]>RANK[s])s=t;}return s;}
+
+function chem(){
+  const c=E.CKS.params, C=c.cao.v,S=c.sio2.v,A=c.al.v,F=c.fe.v,SO=c.so3.v,f=c.fcao.v;
+  const lsf=C/(2.8*S+1.18*A+.65*F)*100, sm=S/(A+F), im=A/F;
+  const c3s=4.071*(C-f)-7.600*S-6.718*A-1.430*F-2.852*SO, c2s=2.867*S-.7544*c3s, c3a=2.650*A-1.692*F, c4af=3.043*F;
+  return {lsf,sm,im,c3s,c2s,c3a,c4af};
+}
+function cement(){
+  const ch=chem(), cm=E.CM.params, fc=E.CKS.params.fcao.v;
+  const s28=52.0+.30*(ch.c3s-56.9)+.0045*(cm.blaine.v-3350)-2.0*Math.max(0,fc-1.5);
+  return {blaine:cm.blaine.v,so3:cm.so3.v,mgo:E.CKS.params.mgo.v*.95,loi:2.1,s7:s28*.71,s28};
+}
+const kilnTpd=()=>E.KL.params.feed.v*24/1.62;
+
+/* 시료 (가상) */
+const SAMPLES=[
+  {id:'S-1109-041',what:'클링커 XRF · f-CaO',eq:'CKS',st:'분석중',prog:60,t:-25},
+  {id:'S-1109-042',what:'시멘트 분말도 · SO₃',eq:'CM',st:'채취',prog:15,t:-8},
+  {id:'S-1109-040',what:'생료 XRF (LSF·SM·IM)',eq:'RM',st:'완료',prog:100,t:-52},
+  {id:'S-1109-043',what:'출하 시멘트 강도 공시체',eq:'SIL',st:'양생중',prog:4,t:-70},
+  {id:'S-1109-039',what:'석회석 CaO 품위',eq:'QRY',st:'완료',prog:100,t:-95}
+].map(s=>Object.assign(s,{time:new Date(Date.now()+s.t*60000)}));
+const SMP_BADGE={'완료':'s-ok','분석중':'s-act','채취':'s-idle','양생중':'s-idle'};
+
+/* 알람 (가상) */
+let ALARMS=[];
+let alarmSeq=1;
+function pushAlarm(e,k,p,sev,t=new Date(),ack=false){
+  ALARMS.unshift({id:alarmSeq++,t,eq:e.id,k,label:p.label,val:`${nf(p.v,p.dp)}${p.unit?' '+p.unit:''}`,lim:limTxt(p),sev,ack});
+}
+(function seedAlarms(){
+  const now=Date.now(), m=60000;
+  const add=(id,k,v,sev,mins,ack)=>{const p=E[id].params[k];const keep=p.v;p.v=v;pushAlarm(E[id],k,p,sev,new Date(now-mins*m),ack);p.v=keep;};
+  add('RM','lsf',98.75,'warn',192,true);
+  add('KL','co',920,'bad',125,true);
+  add('SIL','s4',16.9,'warn',58,false);
+  add('CM','so3',2.55,'warn',24,false);
+  ALARMS.sort((a,b)=>b.t-a.t);
+})();
+const alarmActive=a=>pStatus(E[a.eq].params[a.k])!=='ok';
+
+/* =========================================================
+   3D 공정 지도 (Three.js)
+   ========================================================= */
+const PAL={
+ light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#E3D7C3',rock:'#D9CFBF',rock2:'#CBBFAC',meal:'#D9CDB6',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#DED3C1',glass:'#A9CAF5'},
+ dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93'}
+};
+let dark=false;
+const M={};
+let THREEOK=!!window.THREE;
+let renderer,scene,camera,hemi,sun,raycaster,pointer;
+const EQOBJ={}, ANCHOR={}, TRUCKS=[], FLOWS=[], SMOKE=[];
+let KILN=null, bracket=null;
+
+function makeMats(){
+  const mk=(n,key,o={})=>{M[n]=new THREE.MeshStandardMaterial(Object.assign({color:PAL.light[key],roughness:.85,metalness:.02},o));M[n].userData.key=key;};
+  mk('ground','ground');mk('pad','pad');mk('road','road');mk('mark','mark');mk('grass','grass');mk('dirt','dirt');
+  mk('wall','wall');mk('wall2','wall2');mk('accent','accent',{roughness:.6});mk('steel','steel',{metalness:.25,roughness:.55});mk('steelD','steelDark',{metalness:.25,roughness:.6});
+  mk('conc','concrete');mk('lime','limestone');mk('rock','rock',{flatShading:true});mk('rock2','rock2',{flatShading:true});mk('meal','meal');mk('clk','clinker');mk('cem','cement');
+  mk('tree','tree',{flatShading:true});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');
+  mk('hot','glow',{emissive:new THREE.Color('#FF5A00'),emissiveIntensity:.8,transparent:true,opacity:.5,depthWrite:false});
+  mk('smoke','smoke',{transparent:true,opacity:.45,depthWrite:false});
+  M.line=new THREE.LineBasicMaterial({color:PAL.light.accent,depthTest:false,transparent:true});M.line.userData.key='accent';
+}
+function applyScenePalette(){
+  if(!THREEOK||!scene)return;
+  const pal=dark?PAL.dark:PAL.light;
+  Object.values(M).forEach(m=>{if(m.userData.key)m.color.set(pal[m.userData.key]);});
+  renderer.setClearColor(pal.bg,1);
+  scene.fog.color.set(pal.bg);
+  hemi.intensity=dark?.55:.78; sun.intensity=dark?.55:.72;
+  hemi.color.set(dark?'#B9C6DA':'#FFFFFF'); hemi.groundColor.set(dark?'#1A1F27':'#C9D3E0');
+}
+
+const add=(m,p=scene,sh=true)=>{m.castShadow=sh;m.receiveShadow=true;p.add(m);return m;};
+function box(p,w,h,d,mat,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y+h/2,z);return add(m,p);}
+function cyl(p,r,h,mat,x,y,z,seg=28,r2){const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r2??r,h,seg),mat);m.position.set(x,y+h/2,z);return add(m,p);}
+function flat(w,d,mat,x,z,y=.03,rot=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,.06,d),mat);m.position.set(x,y,z);m.rotation.y=rot;m.receiveShadow=true;scene.add(m);return m;}
+function seg(x1,z1,x2,z2,w,mat,y=.05){const dx=x2-x1,dz=z2-z1;return flat(Math.hypot(dx,dz)+w,w,mat,(x1+x2)/2,(z1+z2)/2,y,Math.atan2(-dz,dx));}
+function grp(id){const g=new THREE.Group();g.userData.eq=id;scene.add(g);EQOBJ[id]=g;return g;}
+function bld(p,w,h,d,x,z){
+  box(p,w,h,d,M.wall,x,0,z);
+  box(p,w+.5,.5,d+.5,M.accent,x,h,z);
+  const rows=Math.max(1,Math.floor(h/3.4));
+  for(let i=0;i<rows;i++){
+    const y=1.4+i*3.2; if(y+1>h)break;
+    box(p,w*.78,.9,.08,M.glass,x,y,z+d/2+.05);
+    box(p,.08,.9,d*.7,M.glass,x+w/2+.05,y,z);
+  }
+}
+function tree(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(s);cyl(g,.25,1.6,M.trunk,0,0,0,6);const t=new THREE.Mesh(new THREE.IcosahedronGeometry(1.7,0),M.tree);t.position.y=2.9;t.scale.y=1.15;add(t,g);scene.add(g);}
+
+function conveyor(pts,matKey,n){
+  const V=pts.map(p=>new THREE.Vector3(p[0],p[1],p[2])), X=new THREE.Vector3(1,0,0);
+  const segs=[];let tot=0;
+  for(let i=0;i<V.length-1;i++){
+    const a=V[i],b=V[i+1],dir=b.clone().sub(a),L=dir.length();dir.normalize();
+    const m=new THREE.Mesh(new THREE.BoxGeometry(L,.6,1.4),M.steel);
+    m.position.copy(a).add(b).multiplyScalar(.5);m.quaternion.setFromUnitVectors(X,dir);add(m);
+    const k=Math.floor(L/7);
+    for(let s=1;s<=k;s++){const q=a.clone().lerp(b,s/(k+1));if(q.y>1.2){const h=q.y-.3;box(scene,.35,h,.35,M.steelD,q.x,0,q.z);}}
+    segs.push(L);tot+=L;
+  }
+  const parts=[];
+  for(let i=0;i<n;i++){const m=new THREE.Mesh(new THREE.BoxGeometry(.8,.45,.9),M[matKey]);add(m,scene,false);parts.push({m,t:i/n});}
+  FLOWS.push({V,segs,tot,parts});
+}
+function along(f,d){let i=0;while(i<f.segs.length-1&&d>f.segs[i]){d-=f.segs[i];i++;}return f.V[i].clone().lerp(f.V[i+1],clamp(d/f.segs[i],0,1));}
+
+function buildPlant(){
+  // 바닥 · 도로
+  const g0=new THREE.Mesh(new THREE.PlaneGeometry(700,700),M.ground);g0.rotation.x=-Math.PI/2;g0.receiveShadow=true;scene.add(g0);
+  flat(176,97.5,M.pad,-4,-1.25,.01);
+  flat(280,9,M.road,0,52,.04);
+  for(let x=-136;x<140;x+=8)flat(3.6,.25,M.mark,x,52,.08);
+  flat(280,.25,M.mark,0,47.9,.08);flat(280,.25,M.mark,0,56.1,.08);
+  seg(-40,42,56,42,5,M.road);seg(8,42,8,48,5,M.road);seg(52,42,52,48,5,M.road);
+  seg(20,36,42,36,5,M.road);seg(22,36,22,42,5,M.road);seg(40,36,40,42,5,M.road);
+  seg(-49,-24,-49,-6,6,M.dirt,.045);seg(-52,-6,-43,-6,6,M.dirt,.045);
+  [[-62,18,30,12],[-30,20,20,10],[70,40,14,8],[-70,-2,16,10],[60,-34,30,10],[-20,-40,40,8]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
+  // 주차장
+  for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-40+i*3.2,37.5,.07);
+
+  // 01 석회석 광산
+  {const g=grp('QRY');const cx=-68,cz=-34;[[32,24],[25,18],[18,12],[11,7]].forEach(([w,d],i)=>box(g,w,3,d,i%2?M.rock2:M.rock,cx-i*1.2,i*3,cz-i));
+   box(g,2.6,1.4,3.2,M.ylw,-55,0,-26.5);box(g,2.2,1.6,2,M.ylw,-55,1.4,-27);const arm=box(g,.5,.5,4.4,M.ylw,-55,2.6,-24.4);arm.rotation.x=.35;}
+  // 02 크러셔
+  {const g=grp('CRS');bld(g,8,7,8,-40,-12);const h=new THREE.Mesh(new THREE.CylinderGeometry(3,1.1,3,4,1),M.steel);h.rotation.y=Math.PI/4;h.position.set(-45.6,5,-11);add(h,g);box(g,1.8,3.5,1.8,M.steelD,-45.6,0,-11);}
+  // 03 프리블렌딩
+  {const g=grp('PBL');[-18.6,-9.6].forEach((z,i)=>{const c=new THREE.Mesh(new THREE.ConeGeometry(4.2,5.5,24),i?M.meal:M.lime);c.scale.set(2.8,1,1);c.position.set(-18,2.75,z);add(c,g);});
+   box(g,28,.3,.3,M.steelD,-18,0,-14.7);box(g,28,.3,.3,M.steelD,-18,0,-13.5);
+   box(g,2.4,2.2,2.6,M.accent,-25,0,-14.1);
+   [-14.2,-5].forEach(z=>box(g,.6,6.5,.6,M.steelD,-8,0,z));box(g,.8,.8,10,M.accent,-8,6.5,-9.6);}
+  // 04 원료밀
+  {const g=grp('RM');bld(g,9,12,9,6,-14);cyl(g,2,5,M.steel,6,12.5,-14);box(g,6,8,4,M.wall2,14.5,0,-20.5);box(g,6.4,.4,4.4,M.accent,14.5,8,-20.5);cyl(g,.7,17,M.steel,18.5,0,-24);}
+  // 05 CF 사일로
+  {const g=grp('CF');cyl(g,3.2,18,M.wall,16,0,-1);cyl(g,3.26,.45,M.accent,16,6,-1);cyl(g,3.26,.45,M.accent,16,12,-1);cyl(g,.6,1.8,M.accent,16,18,-1,28,3.2);}
+  // 06 프리히터·하소로
+  {const g=grp('PH');const X=26,Z=-8,W=9,H=30;
+   [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>box(g,.7,H,.7,M.steelD,X+a*W/2,0,Z+b*W/2));
+   for(let i=1;i<=5;i++)box(g,W+.6,.35,W+.6,i===5?M.accent:M.steel,X,i*6-.35,Z);
+   for(let i=0;i<5;i++){const y=i*6+.6;(i===4?[-2.1,2.1]:[0]).forEach(dx=>{cyl(g,1.6,1.6,M.wall,X+dx,y,Z,20,.45);cyl(g,1.6,2.6,M.wall,X+dx,y+1.6,Z,20);});}
+   cyl(g,1.9,14,M.wall2,X+7,3,Z+1);cyl(g,1.96,.45,M.accent,X+7,17,Z+1);box(g,3,1.2,1.2,M.steel,X+5,15.5,Z+1);
+   cyl(g,1.1,44,M.wall,24,0,-22,24,1.45);cyl(g,1.16,1.6,M.accent,24,40,-22);}
+  // 07 로터리 킬른
+  {const g=grp('KL');const x1=31,x2=65,L=x2-x1,yA=4.8,yB=3.9,Z=-8,R=2.2;
+   const piv=new THREE.Group();piv.position.set((x1+x2)/2,(yA+yB)/2,Z);piv.rotation.z=-Math.atan2(yA-yB,L);g.add(piv);
+   const spin=new THREE.Group();piv.add(spin);
+   add(new THREE.Mesh(new THREE.CylinderGeometry(R,R,L,36).rotateZ(Math.PI/2),M.steel),spin);
+   for(let k=0;k<3;k++){const a=k*2*Math.PI/3;const s=new THREE.Mesh(new THREE.BoxGeometry(L*.96,.16,.4),M.steelD);s.position.set(0,Math.cos(a)*R,Math.sin(a)*R);s.rotation.x=a;add(s,spin,false);}
+   [-12,0,12].forEach(dx=>{const t=new THREE.Mesh(new THREE.CylinderGeometry(R+.35,R+.35,.9,36).rotateZ(Math.PI/2),M.steelD);t.position.x=dx;add(t,piv);});
+   const gear=new THREE.Mesh(new THREE.CylinderGeometry(R+.55,R+.55,.6,36).rotateZ(Math.PI/2),M.accent);gear.position.x=4;add(gear,piv);
+   const hz=new THREE.Mesh(new THREE.CylinderGeometry(R+.14,R+.14,9,36,1,true).rotateZ(Math.PI/2),M.hot);hz.position.x=L/2-6.5;piv.add(hz);
+   [-12,0,12].forEach(dx=>{const x=(x1+x2)/2+dx,yc=(yA+yB)/2-dx*(yA-yB)/L;box(g,2.2,yc-R-.3,5,M.conc,x,0,Z);});
+   box(g,3,8,7,M.wall2,x2+1.5,0,Z);box(g,3.4,.4,7.4,M.accent,x2+1.5,8,Z);
+   KILN={spin,hz};}
+  // 08 쿨러
+  {const g=grp('CL');bld(g,12,5,8,74,-8);cyl(g,1,6,M.steel,77,5,-8);box(g,3,3,3,M.wall2,79,0,-1.5);}
+  // 09 클링커 사일로
+  {const g=grp('CKS');cyl(g,7,9,M.wall,72,0,13,40);const d=new THREE.Mesh(new THREE.SphereGeometry(7,40,14,0,Math.PI*2,0,Math.PI/2),M.accent);d.position.set(72,9,13);d.scale.y=.6;add(d,g);cyl(g,1,1.5,M.steel,72,12.6,13);}
+  // 10 시멘트밀
+  {const g=grp('CM');bld(g,16,9,9,52,22);cyl(g,2.2,5,M.wall2,57,9.5,22);
+   [30.5,34.8].forEach(z=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(2.1,2.1,12,28).rotateZ(Math.PI/2),M.steel);m.position.set(51,3.2,z);add(m,g);
+    [45.5,56.5].forEach(x=>box(g,1.2,1.4,3,M.conc,x,0,z));box(g,2.2,2.2,2.2,M.accent,58.6,0,z);});}
+  {const d=new THREE.Mesh(new THREE.SphereGeometry(4.5,28,10,0,Math.PI*2,0,Math.PI/2),M.wall);d.position.set(66,0,31);d.scale.y=.7;add(d);}
+  // 11 제품 사일로
+  {const g=grp('SIL');[[27,21],[33,21],[27,27],[33,27]].forEach(([x,z])=>{cyl(g,2.8,20,M.wall,x,0,z);cyl(g,2.86,.45,M.accent,x,14,z);cyl(g,.5,1.3,M.accent,x,20,z,24,2.8);});
+   box(g,8.5,.6,8.5,M.steel,30,21.2,24);}
+  // 12 출하장
+  {const g=grp('DSP');[[23.5,33],[36.5,33],[23.5,39],[36.5,39]].forEach(([x,z])=>box(g,.5,6.5,.5,M.steelD,x,0,z));
+   box(g,15,.5,7.2,M.accent,30,6.5,36);cyl(g,.4,2.2,M.steel,30,4.3,36);box(g,1.2,3,7,M.steel,30,7,32);
+   box(g,4.6,.18,7,M.steelD,8,0,45);box(g,5,3.6,4,M.wall,0,0,37.5);box(g,5.4,.35,4.4,M.accent,0,3.6,37.5);}
+  // 13 품질관리실
+  {const g=grp('LAB');bld(g,14,6,9,-14,32);cyl(g,.15,3,M.steelD,-9,6.5,30);box(g,3,1.2,2,M.wall2,-18,6.5,31);}
+  // 사무동 (선택 불가)
+  bld(scene,10,8,8,-34,26);
+  // 컨베이어 + 물질 흐름
+  conveyor([[-36,4,-12],[-31,6.6,-14],[-7,6.6,-14]],'lime',12);
+  conveyor([[-5,1,-19.5],[-1,1.2,-21],[2,10,-17]],'lime',6);
+  conveyor([[10,12,-11],[16,18.6,-2.5]],'meal',4);
+  conveyor([[18,18,-1],[22,30,-6.5]],'meal',5);
+  conveyor([[76,2.5,-3.5],[72,13.6,8.5]],'clk',6);
+  conveyor([[66,2,16],[58.5,9.5,21]],'clk',5);
+  conveyor([[44,8.8,21],[35.5,21.4,24.5]],'cem',6);
+  conveyor([[63,1,29],[58.5,8.5,25]],'lime',4);
+  // 울타리
+  const fz=(x1,x2,z)=>{const L=x2-x1;box(scene,L,1.3,.14,M.fence,(x1+x2)/2,0,z);};
+  const fx=(z1,z2,x)=>{box(scene,.14,1.3,z2-z1,M.fence,x,0,(z1+z2)/2);};
+  fz(-92,84,-50);fz(-92,4.5,47.2);fz(11.5,48.5,47.2);fz(55.5,84,47.2);fx(-50,47.2,-92);fx(-50,47.2,84);
+  // 나무
+  for(let x=-120;x<=124;x+=9)tree(x+((x*7)%3),59.5+((x*13)%2),1+((x*3)%3)*.08);
+  for(let z=-46;z<=40;z+=9)tree(-98,z,1.05);
+  for(let x=-86;x<=80;x+=10)tree(x,-56,.95);
+  for(let z=-46;z<=40;z+=11)tree(90,z,1);
+  [[-26,40],[-6,42.5],[-56,16],[-64,22],[-70,-4],[-74,4],[72,40],[66,42],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
+  // 굴뚝 연기
+  if(!REDUCED)for(let i=0;i<9;i++){const s=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),M.smoke.clone());s.material.userData={};s.userData.t=i/9;scene.add(s);SMOKE.push(s);}
+  // 앵커
+  EQ.forEach(e=>{const b=new THREE.Box3().setFromObject(EQOBJ[e.id]);const c=b.getCenter(new THREE.Vector3());ANCHOR[e.id]=e.anchor?new THREE.Vector3(...e.anchor):new THREE.Vector3(c.x,b.max.y+1.5,c.z);EQOBJ[e.id].userData.box=b;});
+}
+
+/* 트럭 */
+const BCT_ROUTE=[[-140,50],[8,50],[8,45,{wait:2.5,state:'계량'}],[8,42,{state:'구내 이동'}],[22,42],[22,36],[30,36,{wait:10,state:'적재중',load:1}],[40,36,{state:'출하'}],[40,42],[52,42],[52,54],[140,54,{end:1}]];
+const DUMP_ROUTE=[[-49,-21,{wait:4,state:'상차',fill:1}],[-49,-9,{state:'운반'}],[-45.6,-6.6,{wait:3,state:'하차',dump:1}],[-51,-8,{state:'복귀'}]];
+const routeCum=r=>{const c=[0];for(let i=1;i<r.length;i++)c.push(c[i-1]+Math.hypot(r[i][0]-r[i-1][0],r[i][1]-r[i-1][1]));return c;};
+const BCT_CUM=routeCum(BCT_ROUTE);
+let shpSeq=23, lotSeq=8;
+const CUSTOMERS=['레미콘 A사 (가상)','레미콘 B사 (가상)','건설현장 C (가상)','레미콘 D사 (가상)'];
+function newLot(t){
+  const n=Date.now(),h=3600e3;
+  t.shp='#SHP-1109-'+pad(shpSeq++).padStart(3,'0');
+  t.lot='CM-261109-'+pad(lotSeq++);
+  t.clk='CL-261107-'+'ABC'[lotSeq%3];
+  t.silo=['S-1','S-2','S-4','S-3'][lotSeq%4];
+  t.product=t.silo==='S-3'?'슬래그 시멘트':'1종 보통 포틀랜드';
+  t.cust=CUSTOMERS[lotSeq%4];
+  t.steps=[n-53*h,n-51.5*h,n-49.7*h,n-2.3*h,n-1.1*h].map(x=>new Date(x));
+  t.load=0;t.doneAt=null;
+}
+function truckMesh(kind){
+  const g=new THREE.Group();
+  if(kind==='bct'){
+    box(g,2.3,2.4,2.4,M.accent,3.6,.7,0);box(g,.1,.9,1.9,M.glass,4.78,1.9,0);
+    box(g,8.6,.5,1.9,M.steelD,.2,.5,0);
+    const tk=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,5.6,20).rotateZ(Math.PI/2),M.tank);tk.position.set(-.6,2.3,0);add(tk,g);
+    [-3.3,-.6].forEach(x=>{const c=new THREE.Mesh(new THREE.ConeGeometry(.9,1.4,16),M.tank);c.position.set(x,.9,0);c.rotation.x=Math.PI;add(c,g);});
+    [3.8,-1.6,-3.2].forEach(x=>[-1.05,1.05].forEach(z=>{const w=new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,.4,14).rotateX(Math.PI/2),M.tire);w.position.set(x,.55,z);add(w,g);}));
+  }else{
+    box(g,1.8,1.9,2.2,M.ylw,2.6,.7,0);box(g,.1,.7,1.7,M.glass,3.52,1.7,0);
+    box(g,6.6,.5,2,M.steelD,.2,.45,0);
+    const bed=box(g,4.3,1.6,2.4,M.ylw,-.8,.95,0);
+    const pile=new THREE.Mesh(new THREE.ConeGeometry(1.05,.9,8),M.lime);pile.position.set(-.8,3,0);pile.scale.set(1.6,1,1);g.add(pile);g.userData.pile=pile;
+    [2.6,-.6,-2].forEach(x=>[-1.05,1.05].forEach(z=>{const w=new THREE.Mesh(new THREE.CylinderGeometry(.6,.6,.45,14).rotateX(Math.PI/2),M.tire);w.position.set(x,.6,z);add(w,g);}));
+  }
+  scene.add(g);return g;
+}
+function mkTruck(kind,id,route,startIdx,frac,state,opts={}){
+  const g=truckMesh(kind);
+  const t=Object.assign({kind,id,g,route,i:startIdx,wait:0,state,load:0,cap:kind==='bct'?28:45,speed:kind==='bct'?9:6,s:0,respawn:0,loop:kind!=='bct'},opts);
+  if(kind==='bct')newLot(t);
+  const a=route[startIdx-1]||route[0],b=route[startIdx]||a;
+  t.x=a[0]+(b[0]-a[0])*frac;t.z=a[1]+(b[1]-a[1])*frac;
+  if(kind==='bct')t.s=BCT_CUM[startIdx-1]+Math.hypot(t.x-a[0],t.z-a[1]);
+  g.position.set(t.x,0,t.z);g.rotation.y=Math.atan2(-(b[1]-a[1]),b[0]-a[0]);
+  g.userData.truck=t;
+  t.box=new THREE.Box3().setFromObject(g);t.box.translate(new THREE.Vector3(-t.x,0,-t.z));
+  {const q=g.rotation.y;g.rotation.y=0;t.box=new THREE.Box3().setFromObject(g);t.box.translate(new THREE.Vector3(-t.x,0,-t.z));g.rotation.y=q;}
+  TRUCKS.push(t);return t;
+}
+function buildTrucks(){
+  const a=mkTruck('bct','BCT-21',BCT_ROUTE,7,0,'적재중');a.x=30;a.z=36;a.g.position.set(30,0,36);a.s=BCT_CUM[6];a.wait=6;a.waitTot=10;a.loading=true;a.load=12;a.g.rotation.y=0;
+  const b=mkTruck('bct','BCT-23',BCT_ROUTE,3,0,'계량');b.x=8;b.z=45;b.g.position.set(8,0,45);b.s=BCT_CUM[2];b.wait=2;b.waitTot=2.5;b.g.rotation.y=Math.PI/2;
+  mkTruck('bct','BCT-27',BCT_ROUTE,1,.55,'진입');
+  const d1=mkTruck('dump','DT-01',DUMP_ROUTE,1,.4,'운반');d1.load=45;
+  const d2=mkTruck('dump','DT-02',DUMP_ROUTE,3,.3,'복귀');
+}
+function stepTruck(t,dt){
+  if(t.respawn>0){t.respawn-=dt;if(t.respawn<=0){newLot(t);t.i=1;t.x=t.route[0][0];t.z=t.route[0][1];t.s=0;t.state='진입';t.g.visible=true;}return;}
+  if(t.wait>0){
+    t.wait-=dt;
+    const f=1-Math.max(0,t.wait)/(t.waitTot||1);
+    if(t.loading)t.load=Math.min(t.cap,Math.max(t.load,t.cap*f));
+    if(t.filling)t.load=t.cap*f;
+    if(t.dumping)t.load=t.cap*(1-f);
+    if(t.wait<=0){t.loading=t.filling=t.dumping=false;}
+    return;
+  }
+  const w=t.route[t.i];const dx=w[0]-t.x,dz=w[1]-t.z,dist=Math.hypot(dx,dz);
+  if(t.kind==='bct'&&TRUCKS.some(o=>o!==t&&o.kind==='bct'&&o.respawn<=0&&o.s>t.s&&o.s-t.s<11))return;
+  const step=t.speed*dt;
+  const tg=Math.atan2(-dz,dx);let dr=tg-t.g.rotation.y;while(dr>Math.PI)dr-=2*Math.PI;while(dr<-Math.PI)dr+=2*Math.PI;t.g.rotation.y+=dr*Math.min(1,dt*8);
+  if(step>=dist){
+    t.x=w[0];t.z=w[1];t.s+=dist;
+    const o=w[2]||{};
+    if(o.state)t.state=o.state;
+    if(o.wait){t.wait=t.waitTot=o.wait;t.loading=!!o.load;t.filling=!!o.fill;t.dumping=!!o.dump;}
+    if(o.state==='출하')t.doneAt=new Date();
+    t.i++;
+    if(o.end){E.DSP.params.ship.v+=t.load;t.g.visible=false;t.respawn=4+Math.random()*6;if(sel&&sel.type==='truck'&&sel.id===t.id)select(null);}
+    if(t.i>=t.route.length)t.i=0;
+  }else{t.x+=dx/dist*step;t.z+=dz/dist*step;t.s+=step;}
+  t.g.position.set(t.x,0,t.z);
+  if(t.g.userData.pile)t.g.userData.pile.visible=t.load>5;
+}
+
+/* 카메라 조작 (끌기=이동, 오른쪽 끌기·Shift=회전, 휠=확대) */
+const cam={tx:0,tz:4,theta:.62,phi:.94,dist:190};
+const goal={...cam};
+let HOME={...cam};
+function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
+  const d=clamp((m?270:236)*Math.pow(Math.max(1,1.6/asp),.6),180,400);
+  const rt=m?0:38,bk=m?-4:10;const cx=-4,cz=-1;
+  return {tx:cx+Math.cos(th)*rt+Math.sin(th)*bk,tz:cz-Math.sin(th)*rt+Math.cos(th)*bk,theta:th,phi:.94,dist:d};}
+function applyCam(){const sp=Math.sin(cam.phi);camera.position.set(cam.tx+cam.dist*sp*Math.sin(cam.theta),cam.dist*Math.cos(cam.phi),cam.tz+cam.dist*sp*Math.cos(cam.theta));camera.lookAt(cam.tx,0,cam.tz);}
+function flyTo(x,z,d,theta){goal.tx=x;goal.tz=z;if(d)goal.dist=d;if(theta!=null)goal.theta=theta;if(REDUCED)Object.assign(cam,goal);}
+function panBy(dx,dy){const st=$('#stage');const scale=cam.dist*2*Math.tan(camera.fov*Math.PI/360)/st.clientHeight;const rx=Math.cos(cam.theta),rz=-Math.sin(cam.theta),fx=-Math.sin(cam.theta),fz=-Math.cos(cam.theta);const k=scale/Math.cos(cam.phi);
+  goal.tx=clamp(goal.tx-rx*dx*scale+fx*dy*k,-120,120);goal.tz=clamp(goal.tz-rz*dx*scale+fz*dy*k,-80,80);cam.tx=goal.tx;cam.tz=goal.tz;}
+function zoomBy(f){goal.dist=clamp(goal.dist*f,40,400);}
+
+function setupControls(){
+  const st=$('#stage');const pts=new Map();let mode=null,moved=0,last=null,pinch=null;
+  st.addEventListener('contextmenu',e=>e.preventDefault());
+  st.addEventListener('pointerdown',e=>{st.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;last={x:e.clientX,y:e.clientY};
+    if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),ang:Math.atan2(b.y-a.y,b.x-a.x),mx:(a.x+b.x)/2,my:(a.y+b.y)/2};mode='pinch';}
+    else mode=(e.button===2||e.shiftKey||e.ctrlKey)?'rot':'pan';
+    st.classList.add('drag');hideHint();});
+  st.addEventListener('pointermove',e=>{
+    if(!pts.has(e.pointerId)){hover(e);return;}
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(mode==='pinch'&&pts.size===2){const [a,b]=[...pts.values()];const d=Math.hypot(a.x-b.x,a.y-b.y),ang=Math.atan2(b.y-a.y,b.x-a.x),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+      goal.dist=clamp(goal.dist*pinch.d/d,40,400);cam.dist=goal.dist;goal.theta-=(ang-pinch.ang);cam.theta=goal.theta;panBy(mx-pinch.mx,my-pinch.my);pinch={d,ang,mx,my};moved+=10;return;}
+    const dx=e.clientX-last.x,dy=e.clientY-last.y;last={x:e.clientX,y:e.clientY};moved+=Math.abs(dx)+Math.abs(dy);
+    if(mode==='pan')panBy(dx,dy);
+    else if(mode==='rot'){goal.theta-=dx*.006;goal.phi=clamp(goal.phi-dy*.004,.45,1.25);cam.theta=goal.theta;cam.phi=goal.phi;}
+  });
+  const up=e=>{if(!pts.has(e.pointerId))return;pts.delete(e.pointerId);
+    if(pts.size===0){st.classList.remove('drag');if(moved<6&&mode!=='pinch')pick(e);mode=null;}
+    else if(pts.size===1){mode='pan';last=[...pts.values()][0];}};
+  st.addEventListener('pointerup',up);st.addEventListener('pointercancel',up);
+  st.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(e.deltaY*.0012));hideHint();},{passive:false});
+  st.addEventListener('keydown',e=>{const k=e.key;if(k==='ArrowLeft')panBy(40,0);else if(k==='ArrowRight')panBy(-40,0);else if(k==='ArrowUp')panBy(0,40);else if(k==='ArrowDown')panBy(0,-40);else if(k==='+'||k==='=')zoomBy(.8);else if(k==='-')zoomBy(1.25);else if(k==='Escape')select(null);else return;e.preventDefault();});
+  $$('[data-cam]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.cam;
+    if(a==='in')zoomBy(.75);if(a==='out')zoomBy(1.33);if(a==='rl')goal.theta+=Math.PI/4;if(a==='rr')goal.theta-=Math.PI/4;if(a==='home'){Object.assign(goal,homeView());}
+    if(REDUCED)Object.assign(cam,goal);}));
+}
+function hideHint(){}
+function hitAt(e){const st=$('#stage'),r=st.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);
+  const hits=raycaster.intersectObjects(scene.children,true);
+  for(const h of hits){let o=h.object;while(o){if(o.userData.eq)return {type:'eq',id:o.userData.eq};if(o.userData.truck)return o.userData.truck.g.visible?{type:'truck',id:o.userData.truck.id}:null;o=o.parent;}}
+  return null;}
+function pick(e){const h=hitAt(e);if(h)select(h,{fly:false});}
+let hovT=0,hovered=null;
+function hover(e){const n=performance.now();if(n-hovT<60)return;hovT=n;const h=hitAt(e);const key=h?h.type+h.id:null;$('#stage').classList.toggle('hover',!!h);if(key!==hovered){hovered=key;updateTagClasses();}}
+
+/* 선택 표시: 모서리 브래킷 */
+function makeBracket(b){
+  const s=b.getSize(new THREE.Vector3()),mn=b.min,mx=b.max;const L=Math.min(s.x,s.y,s.z)*.28+.6;const v=[];
+  for(const x of [mn.x,mx.x])for(const y of [mn.y,mx.y])for(const z of [mn.z,mx.z]){
+    const sx=x===mn.x?1:-1,sy=y===mn.y?1:-1,sz=z===mn.z?1:-1;
+    v.push(x,y,z,x+sx*Math.min(L,s.x/2),y,z, x,y,z,x,y+sy*Math.min(L,s.y/2),z, x,y,z,x,y,z+sz*Math.min(L,s.z/2));}
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));const l=new THREE.LineSegments(g,M.line);l.renderOrder=999;return l;}
+function setBracket(){
+  if(!THREEOK)return;
+  if(bracket){bracket.parent&&bracket.parent.remove(bracket);bracket.geometry.dispose();bracket=null;}
+  if(!sel)return;
+  if(sel.type==='eq'){const b=EQOBJ[sel.id].userData.box.clone().expandByScalar(.8);bracket=makeBracket(b);scene.add(bracket);}
+  else{const t=TRUCKS.find(x=>x.id===sel.id);if(!t)return;bracket=makeBracket(t.box.clone().expandByScalar(.5));t.g.add(bracket);}
+}
+
+/* HTML 라벨 */
+const TAG={};
+function buildTags(){
+  const wrap=$('#tags');
+  EQ.forEach(e=>{const b=document.createElement('button');b.type='button';b.className='tag';b.dataset.id=e.id;b.innerHTML=`<i></i><span>${e.name}</span><small></small>`;b.addEventListener('click',()=>select({type:'eq',id:e.id},{fly:true}));wrap.appendChild(b);TAG['eq'+e.id]=b;});
+  TRUCKS.forEach(t=>{const b=document.createElement('button');b.type='button';b.className='tag mini';b.innerHTML=`<span>${t.id}</span><small></small>`;b.addEventListener('click',()=>select({type:'truck',id:t.id}));wrap.appendChild(b);TAG['truck'+t.id]=b;});
+  updateTagClasses();
+}
+function updateTagClasses(){
+  const m=isMobile();
+  EQ.forEach(e=>{const b=TAG['eq'+e.id];if(!b)return;const s=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
+    b.className='tag s-'+s+(on?' sel':'');b.querySelector('small').textContent=on?(e.code+' · '+(s==='ok'?'정상 운전':ST[s])):(s!=='ok'?ST[s]:'');
+    b.dataset.hide=(m&&!on&&s==='ok')?'1':'';});
+  TRUCKS.forEach(t=>{const b=TAG['truck'+t.id];if(!b)return;const on=sel&&sel.type==='truck'&&sel.id===t.id;const hv=hovered==='truck'+t.id;
+    b.className='tag mini'+(on?' sel':'');b.querySelector('small').textContent=t.state;b.dataset.hide=(on||hv||(!m&&t.kind==='bct'&&t.state==='적재중'))?'':'1';});
+}
+const _v=typeof THREE!=='undefined'?new THREE.Vector3():null;
+function placeTags(){
+  const st=$('#stage');const w=st.clientWidth,h=st.clientHeight;
+  const put=(el,vec)=>{if(!el)return;if(el.dataset.hide==='1'){el.style.display='none';return;}_v.copy(vec).project(camera);
+    if(_v.z>1||_v.x<-1.1||_v.x>1.1||_v.y<-1.1||_v.y>1.1){el.style.display='none';return;}
+    el.style.display='';el.style.transform=`translate(${((_v.x+1)/2*w).toFixed(1)}px,${((1-_v.y)/2*h).toFixed(1)}px) translate(-50%,-100%)`;};
+  EQ.forEach(e=>put(TAG['eq'+e.id],ANCHOR[e.id]));
+  TRUCKS.forEach(t=>{if(!t.g.visible){TAG['truck'+t.id].style.display='none';return;}put(TAG['truck'+t.id],new THREE.Vector3(t.x,5.6,t.z));});
+}
+
+function initScene(){
+  const st=$('#stage');
+  try{renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});}catch(err){THREEOK=false;}
+  if(!THREEOK||!renderer){THREEOK=false;st.innerHTML='<div class="nogl">이 브라우저에서는 3D 지도를 표시할 수 없습니다.<br>목록과 상세 패널은 그대로 사용할 수 있습니다.</div>';return;}
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  st.appendChild(renderer.domElement);
+  scene=new THREE.Scene();scene.fog=new THREE.Fog('#F2F4F6',320,640);
+  camera=new THREE.PerspectiveCamera(32,1,1,1600);
+  hemi=new THREE.HemisphereLight('#FFFFFF','#C9D3E0',.78);scene.add(hemi);
+  sun=new THREE.DirectionalLight('#FFFFFF',.72);sun.position.set(-70,130,60);sun.castShadow=true;
+  sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-130,right:130,top:110,bottom:-110,near:10,far:400});sun.shadow.bias=-.0006;sun.shadow.normalBias=.05;scene.add(sun);
+  raycaster=new THREE.Raycaster();pointer=new THREE.Vector2();
+  makeMats();buildPlant();buildTrucks();applyScenePalette();
+  const rs=()=>{const w=st.clientWidth,h=st.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();};
+  new ResizeObserver(rs).observe(st);rs();
+  HOME=homeView();Object.assign(cam,HOME);Object.assign(goal,HOME);
+  setupControls();buildTags();
+}
+let lastT=performance.now(),flowT=0;
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt=Math.min(.05,(now-lastT)/1000);lastT=now;
+  if(!THREEOK)return;
+  TRUCKS.forEach(t=>stepTruck(t,dt));
+  if(view!=='map')return;
+  const k=REDUCED?1:1-Math.pow(.0015,dt);
+  cam.tx+=(goal.tx-cam.tx)*k;cam.tz+=(goal.tz-cam.tz)*k;cam.dist+=(goal.dist-cam.dist)*k;cam.theta+=(goal.theta-cam.theta)*k;cam.phi+=(goal.phi-cam.phi)*k;
+  applyCam();
+  FLOWS.forEach(f=>f.parts.forEach(p=>{p.t=(p.t+dt*5/f.tot)%1;const q=along(f,p.t*f.tot);p.m.position.set(q.x,q.y+.5,q.z);}));
+  if(KILN&&!REDUCED){KILN.spin.rotation.x+=dt*E.KL.params.rpm.v*.12;KILN.hz.material.opacity=.38+.14*Math.sin(now/600);}
+  SMOKE.forEach(s=>{s.userData.t=(s.userData.t+dt*.07)%1;const t=s.userData.t;s.position.set(24+t*7,45+t*16,-22-t*3);s.scale.setScalar(1.2+t*4);s.material.opacity=(dark?.35:.5)*(1-t);});
+  if(bracket&&!REDUCED)M.line.opacity=.65+.35*Math.sin(now/260);
+  renderer.render(scene,camera);
+  placeTags();
+}
+
+/* =========================================================
+   선택 · 상세 패널
+   ========================================================= */
+let sel=matchMedia('(max-width:760px)').matches?null:{type:'eq',id:'KL'};
+let tracked='BCT-21';
+function select(s,o={}){
+  sel=s;
+  if(s&&s.type==='truck')tracked=s.id;
+  setBracket();updateTagClasses();renderDetail();renderList();renderLot();
+  $('#views').classList.toggle('nodetail',!sel);
+  if(s&&o.fly&&THREEOK){
+    if(s.type==='eq'){const b=EQOBJ[s.id].userData.box;const c=b.getCenter(new THREE.Vector3());const sz=b.getSize(new THREE.Vector3());flyTo(c.x,c.z,clamp(Math.max(sz.x,sz.z,sz.y*1.4)*3,55,170));}
+    else{const t=TRUCKS.find(x=>x.id===s.id);if(t)flyTo(t.x,t.z,60);}
+  }
+  if(isMobile()){$('#detail').classList.toggle('closed',!sel);if(sel)$('#list').classList.add('closed');}
+}
+function sparkSVG(p){
+  const h=p.hist.slice(-60);const lo=Math.min(...h,p.lo??Infinity),hi=Math.max(...h,p.hi??-Infinity);
+  const rg=(hi-lo)||1;const mn=lo-rg*.12,mx=hi+rg*.12;const W=300,H=64;
+  const y=v=>(H-4)-(v-mn)/(mx-mn)*(H-8);const x=i=>i/(h.length-1)*W;
+  let s=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="chart" aria-hidden="true">`;
+  if(p.lo!=null&&p.hi!=null)s+=`<rect class="band" x="0" y="${y(p.hi)}" width="${W}" height="${y(p.lo)-y(p.hi)}"/>`;
+  [p.lo,p.hi].forEach(v=>{if(v!=null)s+=`<line class="lim" x1="0" x2="${W}" y1="${y(v)}" y2="${y(v)}" vector-effect="non-scaling-stroke"/>`;});
+  const d=h.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+  s+=`<path class="area" d="${d} L${W} ${H} L0 ${H} Z"/><path class="ln" d="${d}" vector-effect="non-scaling-stroke"/>`;
+  return s+'</svg>';
+}
+function kvRows(e){
+  return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);
+    return `<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${nf(p.v,p.dp)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null?`<span class="lim">${limTxt(p)}</span>`:''}</dd></div>`;}).join('');
+}
+function chemBlock(){
+  const c=chem();const st=(v,a,b)=>v<a||v>b?'bad':(v<a+(b-a)*.1||v>b-(b-a)*.1?'warn':'ok');
+  return `<div class="sect">클링커 화학 (최근 XRF) <small>Bogue 계산</small></div>
+  <div class="chips">
+   <div class="chip s-${st(c.lsf,94.5,97.5)}" data-tip="LSF = CaO / (2.8·SiO₂ + 1.18·Al₂O₃ + 0.65·Fe₂O₃) × 100 · 관리 94.5~97.5 (가상)"><small>LSF</small><b class="num">${nf(c.lsf,1)}</b></div>
+   <div class="chip s-${st(c.sm,2.35,2.75)}" data-tip="SM = SiO₂ / (Al₂O₃ + Fe₂O₃) · 관리 2.35~2.75 (가상)"><small>SM</small><b class="num">${nf(c.sm,2)}</b></div>
+   <div class="chip s-${st(c.im,1.4,1.8)}" data-tip="IM = Al₂O₃ / Fe₂O₃ · 관리 1.40~1.80 (가상)"><small>IM</small><b class="num">${nf(c.im,2)}</b></div>
+   <div class="chip" data-tip="C₃S = 4.071(CaO−f-CaO) − 7.600SiO₂ − 6.718Al₂O₃ − 1.430Fe₂O₃ − 2.852SO₃"><small>C₃S</small><b class="num">${nf(c.c3s,1)}</b></div>
+   <div class="chip"><small>C₂S</small><b class="num">${nf(c.c2s,1)}</b></div>
+   <div class="chip"><small>C₃A</small><b class="num">${nf(c.c3a,1)}</b></div>
+   <div class="chip"><small>C₄AF</small><b class="num">${nf(c.c4af,1)}</b></div>
+   <div class="chip s-${pStatus(E.CKS.params.fcao)}"><small>f-CaO</small><b class="num">${nf(E.CKS.params.fcao.v,2)}</b></div>
+  </div>`;
+}
+function renderDetail(){
+  const el=$('#detail');
+  if(!sel){el.hidden=!isMobile();el.innerHTML='<div class="sheet-handle"></div>';if(isMobile())el.classList.add('closed');return;}
+  el.hidden=false;
+  if(sel.type==='eq'){
+    const e=E[sel.id],s=eqStatus(e),bp=e.params[e.bar],pp=e.params[e.primary];
+    const worst=Object.values(e.params).filter(p=>pStatus(p)!=='ok').sort((a,b)=>RANK[pStatus(b)]-RANK[pStatus(a)])[0];
+    const head=worst?`${worst.label} ${nf(worst.v,worst.dp)}${worst.unit} · ${limTxt(worst)}`:`${pp.label} ${nf(pp.v,pp.dp)}${pp.unit}`;
+    const smp=SAMPLES.filter(x=>x.eq===e.id);
+    el.innerHTML=`<div class="sheet-handle"></div>
+    <div class="dp-head"><div class="dp-ico">${ic(e.icon)}</div><div style="min-width:0"><div class="eyebrow">${AREA[e.area].name} · ${e.code}</div><div class="dp-name">${e.name}</div><div class="dp-sub">${e.spec}</div></div>
+     <div class="dp-act"><button type="button" data-act="fly" aria-label="이 설비로 이동" data-tip="이 설비로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
+    <div class="dp-st"><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span><span>${head}</span></div>
+    <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${nf(bp.v,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${clamp(bp.v,0,100)}%"></i></div></div>
+    <div class="spark"><div class="sh"><span>${pp.label} · 최근 2분</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>
+    <dl class="kv">${kvRows(e)}</dl>
+    ${e.id==='KL'||e.id==='CKS'?chemBlock():''}
+    ${e.id==='LAB'?`<div class="sect">28일 강도 예측 <small>가상 모델</small></div><dl class="kv"><div><dt>28일 압축강도 (예측)</dt><dd class="num">${nf(cement().s28,1)}<small>MPa</small><span class="lim">KS L 5201 1종 42.5 이상</span></dd></div></dl>`:''}
+    ${smp.length?`<div class="sect">관련 시료</div><dl class="kv">${smp.map(x=>`<div><dt>${x.id} · ${x.what}</dt><dd><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span></dd></div>`).join('')}</dl>`:''}
+    <div class="note">수치는 시연용 가상 데이터입니다. 관리기준은 예시값이며 사내 기준으로 바꿔 쓰세요.</div>`;
+  }else{
+    const t=TRUCKS.find(x=>x.id===sel.id);if(!t){sel=null;return renderDetail();}
+    const bct=t.kind==='bct';const moving=t.wait<=0&&t.respawn<=0;
+    el.innerHTML=`<div class="sheet-handle"></div>
+    <div class="dp-head"><div class="dp-ico">${ic('truck')}</div><div style="min-width:0"><div class="eyebrow">${bct?'BCT 벌크 트레일러 · 출하':'덤프트럭 · 광산 운반'}</div><div class="dp-name">${t.id}</div><div class="dp-sub">${bct?'적재 한도 28 t · '+t.cust:'적재 한도 45 t · 광산 → 크러셔'}</div></div>
+     <div class="dp-act"><button type="button" data-act="fly" aria-label="이 차량으로 이동" data-tip="이 차량으로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
+    <div class="dp-st"><span class="badge ${t.state==='적재중'||t.state==='상차'?'s-act':t.state==='출하'?'s-ok':'s-idle'}">${t.state}</span><span>${bct?(t.state==='적재중'?`${t.silo} 사일로에서 적재 중`:t.state==='출하'?'출하 완료 · 출문 중':'출하장으로 이동 중'):(t.state==='상차'?'석회석 상차 중':'운반 경로 주행 중')}</span></div>
+    <div class="barrow"><div class="bl"><span>적재량</span><b class="num">${nf(t.load,1)} / ${t.cap} t</b></div><div class="bar"><i class="s-act" style="width:${t.load/t.cap*100}%"></i></div></div>
+    <dl class="kv">${bct?`
+      <div><dt>출하 번호</dt><dd>${t.shp}</dd></div>
+      <div><dt>품종</dt><dd>${t.product}</dd></div>
+      <div><dt>시멘트 로트</dt><dd>${t.lot}</dd></div>
+      <div><dt>클링커 로트</dt><dd>${t.clk}</dd></div>
+      <div><dt>사일로</dt><dd>${t.silo}</dd></div>
+      <div><dt>품질 판정</dt><dd><span class="badge s-ok">적합 (예측)</span></dd></div>
+      <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`:`
+      <div><dt>적재물</dt><dd>석회석 (CaO ${nf(E.QRY.params.cao.v,1)}%)</dd></div>
+      <div><dt>금일 운반</dt><dd class="num">${t.id==='DT-01'?31:29}<small>회</small></dd></div>
+      <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`}
+    </dl>
+    <div class="note">차량·고객 정보는 시연용 가상 데이터입니다.</div>`;
+  }
+  paintIcons(el);
+  el.querySelector('[data-act="close"]').onclick=()=>select(null);
+  el.querySelector('[data-act="fly"]').onclick=()=>select(sel,{fly:true});
+}
+
+/* 목록 (설비 · 시료 · 출하) */
+let listTab='eq';
+function renderList(){
+  const bctT=TRUCKS.filter(t=>t.kind==='bct'&&t.respawn<=0);
+  $('#cEq').textContent=EQ.length;$('#cSmp').textContent=SAMPLES.filter(s=>s.st!=='완료').length+'/'+SAMPLES.length;$('#cTrk').textContent=bctT.length;
+  const rows=$('#rows');let h='';
+  if(listTab==='eq'){
+    $('#listMeta').textContent='이상 '+EQ.filter(e=>eqStatus(e)!=='ok').length+'건';
+    const order=[...EQ].sort((a,b)=>RANK[eqStatus(b)]-RANK[eqStatus(a)]);
+    h=order.map(e=>{const s=eqStatus(e),bp=e.params[e.bar],on=sel&&sel.type==='eq'&&sel.id===e.id;
+      return `<button type="button" class="rw${on?' on':''}" data-eq="${e.id}"><span class="a"><b>${e.name}</b><small>${e.code}</small></span><span class="d">${AREA[e.area].name} · ${e.params[e.primary].label}</span><span class="badge s-${s}">${ST[s]}</span><span class="p"><span class="bar"><i class="s-${pStatus(bp)==='ok'?'ok':pStatus(bp)}" style="width:${clamp(bp.v,0,100)}%"></i></span><span class="num">${nf(bp.v,0)}%</span></span>${ic('chevR')}</button>`;}).join('');
+  }else if(listTab==='smp'){
+    $('#listMeta').textContent='품질관리실 대기 '+E.LAB.params.queue.v+'건';
+    h=SAMPLES.map(x=>`<button type="button" class="rw" data-eq="${x.eq}"><span class="a"><b>${x.id}</b><small>${hhmm(x.time)} 채취</small></span><span class="d"><i></i>${x.what}</span><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span><span class="p"><span class="bar"><i class="s-act" style="width:${x.prog}%"></i></span><span class="num">${x.prog}%</span></span>${ic('chevR')}</button>`).join('');
+  }else{
+    $('#listMeta').textContent='금일 '+nf(E.DSP.params.ship.v)+' t 출하';
+    h=bctT.map(t=>{const on=sel&&sel.type==='truck'&&sel.id===t.id;return `<button type="button" class="rw${on?' on':''}" data-trk="${t.id}"><span class="a"><b>${t.id}</b><small>${t.shp}</small></span><span class="d"><i></i>${t.silo} · ${t.product}</span><span class="badge ${t.state==='적재중'?'s-act':t.state==='출하'?'s-ok':'s-idle'}">${t.state}</span><span class="p"><span class="bar"><i class="s-act" style="width:${t.load/t.cap*100}%"></i></span><span class="num">${nf(t.load,0)} t</span></span>${ic('chevR')}</button>`;}).join('')||'<div class="empty-st">현재 구내 출하 차량이 없습니다.</div>';
+  }
+  rows.innerHTML=h;
+  $$('[data-eq]',rows).forEach(b=>b.onclick=()=>select({type:'eq',id:b.dataset.eq},{fly:true}));
+  $$('[data-trk]',rows).forEach(b=>b.onclick=()=>select({type:'truck',id:b.dataset.trk},{fly:true}));
+}
+
+/* 로트 추적 */
+const STEPS=[['원료 조합','flask'],['소성','flame'],['클링커 저장','layers'],['시멘트 분쇄','gauge'],['사일로 저장','silo'],['출하','truck']];
+function renderLot(){
+  const t=TRUCKS.find(x=>x.id===tracked)||TRUCKS[0];
+  if(!t){$('#lot').hidden=true;return;}
+  const done=t.state==='출하'||t.respawn>0;
+  const lastTxt=t.respawn>0||t.state==='출하'?'완료 '+(t.doneAt?hhmm(t.doneAt):''):t.state==='적재중'?`적재 ${nf(t.load,0)}/28 t`:t.state;
+  $('#lot').innerHTML=`<div class="lot-main"><div class="lot-h">${ic('box')}로트 추적<small>${t.lot} · ${t.product} · ${t.id}</small></div>
+   <div class="steps">${STEPS.map((s,i)=>{const cls=i<5||done?'done':'cur';return `<div class="step ${cls}"><span class="sb">${ic(i<5||done?(i===5?'check':s[1]):s[1])}</span><b>${s[0]}</b><small>${i<5?stamp(t.steps[i]):lastTxt}</small></div>`;}).join('')}</div></div>
+   <div class="lot-side"><b class="id">${t.shp}</b><div class="row"><span>도착지</span><span>${t.cust}</span></div><div class="row"><span>클링커</span><span>${t.clk}</span></div><div class="row"><span>사일로</span><span>${t.silo}</span></div><div class="row"><span>판정</span><span style="color:var(--ok)">적합 (예측)</span></div></div>`;
+}
+
+/* KPI */
+function kpiCards(rep){
+  const tpd=kilnTpd(),fc=E.CKS.params.fcao,cmt=cement(),sf=pStatus(fc);
+  const k=[
+   {ic:'factory',l:'클링커 생산',v:nf(tpd),u:'t/d',d:`${tpd>=5000?'▲':'▼'} ${nf(Math.abs(tpd/5000*100-100),1)}%`,dc:tpd>=5000?'up':'dn',s:'설계 5,000 t/d 대비',tip:'생료 투입량 × 24 ÷ 생료/클링커 환산계수 1.62 (가상)'},
+   {ic:'flame',l:'킬른 가동률',v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:'최근 30일 · 정지 4.2시간',tip:'(달력시간 − 정지시간) ÷ 달력시간'},
+   {ic:'flask',l:'클링커 f-CaO',v:nf(fc.v,2),u:'%',d:ST[sf],dc:sf==='ok'?'up':'dn',s:limTxt(fc)+' (가상)',tip:'최근 클링커 시료의 유리석회. 높으면 소성 부족, 너무 낮으면 과소성 의심'},
+   {ic:'chart',l:'28일 강도 예측',v:nf(cmt.s28,1),u:'MPa',d:cmt.s28>=42.5?'KS 적합':'KS 미달',dc:cmt.s28>=42.5?'up':'dn',s:'KS L 5201 1종 42.5 이상',tip:'C₃S·분말도·f-CaO 기반 가상 회귀식. 실제 공시체 결과로 보정 필요'}
+  ];
+  if(rep)k[1]={ic:'truck',l:'금일 출하',v:nf(E.DSP.params.ship.v),u:'t',d:nf(E.DSP.params.ship.v/E.DSP.params.plan.v*100,0)+'%',dc:'nt',s:'계획 5,200 t 대비',tip:'계량 완료된 벌크·포장 출하 합계'};
+  return k.map(x=>`<div class="kpi"><span class="kic">${ic(x.ic)}</span><div style="min-width:0"><div class="kl">${x.l}<span class="tipi" tabindex="0" data-tip="${esc(x.tip)}">${ic('info')}</span></div><div class="kval num">${x.v}<small>${x.u}</small></div><div class="ks"><span class="delta ${x.dc}">${x.d}</span> ${x.s}</div></div></div>`).join('');
+}
+
+/* 사이드 구역 메뉴 */
+function renderAreas(){
+  $('#areaNav').innerHTML=AREAS.map(a=>{const n=a.eqs.filter(id=>eqStatus(E[id])!=='ok').length;const bad=a.eqs.some(id=>eqStatus(E[id])==='bad');
+    return `<button type="button" class="nav" data-area="${a.id}">${ic(a.icon)}<span>${a.name}</span><em class="nb ${n?(bad?'':'w'):'z'}">${n||a.eqs.length}</em></button>`;}).join('');
+  $$('[data-area]').forEach(b=>b.onclick=()=>{const a=AREA[b.dataset.area];if(view!=='map')location.hash='#map';flyTo(a.c[0],a.c[2],a.d);select({type:'eq',id:a.eqs.find(id=>eqStatus(E[id])!=='ok')||a.eqs[0]});});
+}
+
+/* =========================================================
+   경영진 요약
+   ========================================================= */
+function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const RNG=mulberry(20261109);
+const DAYS=[...Array(30)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-29+i);let clk=4985+(RNG()-.5)*190;if(i===20)clk=4130;if(i===21)clk=4720;return {d,clk,fc:1.16+(RNG()-.5)*.36+(i===20?.5:0)};});
+DAYS[29].clk=null;
+const HOURS=[...Array(24)].map((_,h)=>({h,v:207+(RNG()-.5)*12}));
+const FC2H=[...Array(84)].map((_,i)=>{const d=new Date(Date.now()-(83-i)*2*3600e3);return {d,v:1.18+(RNG()-.5)*.42+(i===61?.68:0)};});
+let period='7';
+function niceMax(v){const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
+function barChart(vals,labels,o){
+  const w=560,h=220,L=48,R=10,T=14,B=26,iw=w-L-R,ih=h-T-B;
+  const max=o.max||niceMax(Math.max(...vals.filter(v=>v!=null),o.target||0)*1.08);
+  const y=v=>T+ih-v/max*ih;
+  let s=`<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria)}">`;
+  for(let k=0;k<=4;k++){const v=max*k/4,yy=y(v);s+=`<line class="gl" x1="${L}" x2="${w-R}" y1="${yy}" y2="${yy}"/><text class="tk" x="${L-8}" y="${yy+4}" text-anchor="end">${nf(v)}</text>`;}
+  const bw=iw/vals.length;let lastI=-1;vals.forEach((v,i)=>{if(v!=null)lastI=i;});
+  vals.forEach((v,i)=>{if(v==null)return;const x=L+i*bw+bw*.18,ww=Math.max(2,bw*.64),yy=y(v);const cls=o.low&&v<o.low?'b warn':(i===lastI?'b now':'b');
+    s+=`<rect class="${cls}" x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${ww.toFixed(1)}" height="${(T+ih-yy).toFixed(1)}" rx="${Math.min(4,ww/2).toFixed(1)}"><title>${labels[i]} · ${nf(v)} ${o.unit}</title></rect>`;});
+  if(o.target){const yy=y(o.target);s+=`<line class="tg" x1="${L}" x2="${w-R}" y1="${yy}" y2="${yy}"/><text class="tgl" x="${w-R}" y="${yy-6}" text-anchor="end">목표 ${nf(o.target)}</text>`;}
+  const every=Math.ceil(vals.length/7);labels.forEach((lb,i)=>{if(i%every===0)s+=`<text class="tk" x="${(L+i*bw+bw/2).toFixed(1)}" y="${h-7}" text-anchor="middle">${lb}</text>`;});
+  return s+'</svg>';
+}
+function ctrlChart(vals,labels,o){
+  const w=560,h=220,L=48,R=12,T=14,B=26,iw=w-L-R,ih=h-T-B;const mn=o.min,mx=o.max;
+  const y=v=>T+ih-(clamp(v,mn,mx)-mn)/(mx-mn)*ih;const x=i=>L+(vals.length===1?iw/2:i/(vals.length-1)*iw);
+  let s=`<svg viewBox="0 0 ${w} ${h}" class="chart" role="img" aria-label="${esc(o.aria)}">`;
+  s+=`<rect class="band" x="${L}" y="${y(o.hi)}" width="${iw}" height="${y(o.lo)-y(o.hi)}"/>`;
+  [mn,o.lo,(o.lo+o.hi)/2,o.hi,mx].forEach(v=>{s+=`<line class="gl" x1="${L}" x2="${w-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tk" x="${L-8}" y="${y(v)+4}" text-anchor="end">${nf(v,1)}</text>`;});
+  [o.lo,o.hi].forEach(v=>s+=`<line class="lim" x1="${L}" x2="${w-R}" y1="${y(v)}" y2="${y(v)}"/>`);
+  s+=`<text class="tgl" x="${w-R}" y="${y(o.hi)-6}" text-anchor="end">관리 상한 ${o.hi}</text><text class="tgl" x="${w-R}" y="${y(o.lo)+14}" text-anchor="end">관리 하한 ${o.lo}</text>`;
+  const d=vals.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+  s+=`<path class="ln" d="${d}"/>`;
+  vals.forEach((v,i)=>{const out=v>o.hi||v<o.lo;if(out||i===vals.length-1)s+=`<circle class="pt${out?' bad':''}" cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${out?4.5:4}"><title>${labels[i]} · ${nf(v,2)}%</title></circle>`;});
+  const every=Math.ceil(vals.length/6);labels.forEach((lb,i)=>{if(i%every===0)s+=`<text class="tk" x="${x(i).toFixed(1)}" y="${h-7}" text-anchor="middle">${lb}</text>`;});
+  return s+'</svg>';
+}
+function bullet(name,v,dom,band,dp,tip){
+  const pc=x=>clamp((x-dom[0])/(dom[1]-dom[0])*100,0,100);const m=(band[1]-band[0])*.1;
+  const st=v<band[0]||v>band[1]?'bad':(v<band[0]+m||v>band[1]-m?'warn':'ok');
+  return `<div class="blt"><div class="blt-h"><span>${name}</span><span class="tipi" tabindex="0" data-tip="${esc(tip)}">${ic('info')}</span><b class="num">${nf(v,dp)}</b><span class="badge s-${st}">${ST[st]}</span></div>
+  <div class="blt-t"><i class="bd" style="left:${pc(band[0])}%;width:${pc(band[1])-pc(band[0])}%"></i><i class="mk" style="left:${pc(v)}%"></i></div>
+  <div class="blt-s"><span>${dom[0]}</span><span>관리 ${band[0]}~${band[1]}</span><span>${dom[1]}</span></div></div>`;
+}
+function ksRows(){
+  const c=cement();
+  return [
+   ['분말도 (Blaine)','cm²/g',c.blaine,0,'2,800 이상',c.blaine>=2800,'3,200~3,500',c.blaine>=3200&&c.blaine<=3500],
+   ['삼산화황 (SO₃)','%',c.so3,2,'3.5 이하',c.so3<=3.5,'1.9~2.6',c.so3>=1.9&&c.so3<=2.6],
+   ['산화마그네슘 (MgO)','%',c.mgo,2,'5.0 이하',c.mgo<=5,'4.0 이하',c.mgo<=4],
+   ['강열감량 (LOI)','%',c.loi,1,'3.0 이하 *',c.loi<=3,'2.5 이하',c.loi<=2.5],
+   ['7일 압축강도 (예측)','MPa',c.s7,1,'22.5 이상',c.s7>=22.5,'33.0 이상',c.s7>=33],
+   ['28일 압축강도 (예측)','MPa',c.s28,1,'42.5 이상',c.s28>=42.5,'48.0 이상',c.s28>=48]
+  ];
+}
+function renderReport(){
+  const kl=eqStatus(E.KL),ks=ksRows(),ksOk=ks.every(r=>r[5]),inOk=ks.every(r=>r[7]);
+  const l1=kl==='ok'?'오늘 킬른은 <em>정상 운전</em> 중이고,':kl==='warn'?'오늘 킬른은 <em>주의 관찰</em>이 필요하고,':'킬른에 <em>관리기준 이탈</em>이 발생했고,';
+  const l2=ksOk?(inOk?'시멘트 품질은 <em>KS 기준을 충족</em>합니다.':'시멘트 품질은 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'시멘트 품질에 <em>KS 기준 미달</em> 항목이 있습니다.';
+  const now=new Date();const wd='일월화수목금토'[now.getDay()];
+  let prodVals,prodLabels,prodTarget,prodUnit,fcVals,fcLabels;
+  if(period==='1'){const ch=now.getHours();prodVals=HOURS.map(x=>x.h<=ch?x.v:null);prodLabels=HOURS.map(x=>x.h+'시');prodTarget=208;prodUnit='t/h';
+    fcVals=FC2H.slice(-12).map(x=>x.v);fcLabels=FC2H.slice(-12).map(x=>hhmm(x.d));}
+  else{const n=+period;const ds=DAYS.slice(-n);prodVals=ds.map((x,i)=>i===ds.length-1?kilnTpd():x.clk);prodLabels=ds.map(x=>md(x.d));prodTarget=5000;prodUnit='t/d';
+    if(n===7){fcVals=FC2H.map(x=>x.v);fcLabels=FC2H.map(x=>md(x.d));}else{fcVals=DAYS.map(x=>x.fc);fcLabels=DAYS.map(x=>md(x.d));}}
+  const ch=chem();const sil=E.SIL.params,dsp=E.DSP.params;
+  const open=ALARMS.filter(a=>!a.ack||alarmActive(a)).slice(0,3);
+  $('#report').innerHTML=`
+  <div class="banner">${ic('info')}시연용 가상 데이터입니다.<span>실제 DCS·LIMS와 연결하기 전 화면 시안이며, 모든 수치와 사내 관리기준은 예시값입니다.</span></div>
+  <div class="headline"><div><div class="eb">경영진 요약 · ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)} 기준</div><h1>${l1}<br>${l2}</h1><p>1공장 킬른 1호 · 설계 5,000 t/d · 2초마다 갱신</p></div>
+   <div class="seg" role="tablist" aria-label="기간">${[['1','오늘'],['7','7일'],['30','30일']].map(([k,t])=>`<button type="button" role="tab" data-period="${k}" class="${period===k?'on':''}">${t}</button>`).join('')}</div></div>
+  <div class="krow">${kpiCards(true)}</div>
+  <div class="grid">
+   <article class="card w2"><div class="pv">${barChart(prodVals,prodLabels,{target:prodTarget,unit:prodUnit,low:prodTarget*.9,aria:'클링커 생산 추이'})}</div>
+    <div class="meta"><span class="n">01</span><div><b>클링커 생산 실적</b><small>${period==='1'?'오늘 시간대별 생산량 (t/h)':'일별 생산량 (t/d)'}. 주황 막대는 목표의 90% 미만인 날로, ${period==='1'?'오늘은 해당 없음':'10/30 킬른 정지 4.2시간(가상)'} 영향입니다.</small></div></div></article>
+   <article class="card"><div class="pv">${bullet('LSF',ch.lsf,[92,100],[94.5,97.5],1,'석회포화도. 높으면 소성성 저하·f-CaO 상승, 낮으면 C₃S 감소')}${bullet('SM',ch.sm,[2.0,3.0],[2.35,2.75],2,'규산률. 높으면 액상량 감소로 소성 곤란')}${bullet('IM',ch.im,[1.0,2.2],[1.4,1.8],2,'철률. 액상 점도와 C₃A 양에 영향')}</div>
+    <div class="meta"><span class="n">02</span><div><b>클링커 모듈 관리</b><small>최근 XRF 결과. 파란 구간이 관리 범위(가상)이고 막대가 현재값입니다.</small></div></div></article>
+   <article class="card w2"><div class="pv">${ctrlChart(fcVals,fcLabels,{lo:.8,hi:1.8,min:.4,max:2.2,aria:'f-CaO 관리도'})}</div>
+    <div class="meta"><span class="n">03</span><div><b>f-CaO 관리도</b><small>${period==='30'?'일평균':'2시간 시료'} 기준. 빨간 점은 관리 범위를 벗어난 시료로, 원인과 조치를 알람 화면에 기록합니다.</small></div></div></article>
+   <article class="card"><div class="pv">
+     <div class="hb"><div class="hl"><span>금일 출하</span><b class="num">${nf(dsp.ship.v)} / ${nf(dsp.plan.v)} t</b></div><div class="bar"><i class="s-act" style="width:${clamp(dsp.ship.v/dsp.plan.v*100,0,100)}%"></i></div></div>
+     ${['s1','s2','s3','s4'].map(k=>{const p=sil[k],s=pStatus(p);return `<div class="hb"><div class="hl"><span>${p.label}</span><b class="num">${nf(p.v,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${p.v}%"></i></div></div>`;}).join('')}
+    </div><div class="meta"><span class="n">04</span><div><b>출하 · 사일로 재고</b><small>S-4 레벨이 하한(15%)에 가까워 시멘트밀 투입 사일로 전환을 검토합니다.</small></div></div></article>
+   <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">실적</th><th class="r">KS L 5201 1종</th><th>KS 판정</th><th class="r">사내 기준 (가상)</th><th>사내 판정</th></tr></thead><tbody>
+     ${ks.map(r=>`<tr><td>${r[0]}</td><td class="r num"><b>${nf(r[2],r[3])}</b> ${r[1]}</td><td class="r">${r[4]}</td><td><span class="badge ${r[5]?'s-ok':'s-bad'}">${r[5]?'적합':'부적합'}</span></td><td class="r">${r[6]}</td><td><span class="badge ${r[7]?'s-ok':'s-warn'}">${r[7]?'만족':'주의'}</span></td></tr>`).join('')}
+    </tbody></table></div></div>
+    <div class="meta"><span class="n">05</span><div><b>KS 규격 대비 평가</b><small>KS 기준값은 KS L 5201(포틀랜드 시멘트) 1종 기준으로 적었습니다. 최신 개정판 원문과 대조한 뒤 사용하세요. * 강열감량 한계는 개정 이력이 있어 특히 확인이 필요합니다. 강도는 가상 예측값입니다.</small></div></div></article>
+   <article class="card"><div class="pv" style="justify-content:flex-start"><div class="issues">${open.length?open.map(a=>`<div class="iss"><span class="badge s-${a.sev}">${ST[a.sev]}</span><div><b>${E[a.eq].name} · ${a.label}</b><small>${hhmm(a.t)} · ${a.val} · ${a.lim}${alarmActive(a)?'':' · 해제됨'}</small></div></div>`).join(''):'<div class="iss"><span class="badge s-ok">정상</span><div><b>확인할 알람이 없습니다</b></div></div>'}</div></div>
+    <div class="meta"><span class="n">06</span><div><b>확인이 필요한 알람</b><small>미확인이거나 아직 해제되지 않은 알람 상위 3건입니다.</small></div></div></article>
+  </div>
+  <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(ASTM C150 부록 방식). 28일 강도 예측은 C₃S·분말도·f-CaO를 쓴 가상 회귀식이며, 실제 적용 시 공장 공시체 데이터로 다시 맞춰야 합니다.</p>`;
+  $$('[data-period]').forEach(b=>b.onclick=()=>{period=b.dataset.period;renderReport();});
+}
+
+/* =========================================================
+   알람
+   ========================================================= */
+let afilter='all';
+function renderAlarms(){
+  const unack=ALARMS.filter(a=>!a.ack).length, active=ALARMS.filter(alarmActive).length;
+  const today=ALARMS.filter(a=>a.t.toDateString()===new Date().toDateString()).length;
+  let list=ALARMS;
+  if(afilter==='active')list=ALARMS.filter(alarmActive);
+  if(afilter==='unack')list=ALARMS.filter(a=>!a.ack);
+  if(afilter==='clear')list=ALARMS.filter(a=>!alarmActive(a));
+  $('#alarms').innerHTML=`
+  <div class="headline"><div><div class="eb">알람 · 관리기준 근접(주의)과 이탈 기록</div><h1>오늘 알람은 <em>${today}건</em>이고,<br>확인하지 않은 알람은 <em>${unack}건</em>입니다.</h1><p>현재 진행 중 ${active}건 · 가상 데이터</p></div>
+   <button type="button" class="btn" id="ackAll" ${unack?'':'disabled'}>모두 확인</button></div>
+  <div class="filter">${[['all','전체 '+ALARMS.length],['active','진행 중 '+active],['unack','미확인 '+unack],['clear','해제됨 '+(ALARMS.length-active)]].map(([k,t])=>`<button type="button" class="fchip${afilter===k?' on':''}" data-af="${k}">${t}</button>`).join('')}</div>
+  <div class="alarm-list">${list.length?list.map(a=>{const act=alarmActive(a);return `<div class="al"><div class="t"><b class="num">${hhmm(a.t)}</b>${a.t.toDateString()===new Date().toDateString()?'오늘':md(a.t)}</div>
+   <div class="m"><div class="tags"><span class="badge s-${a.sev}">${ST[a.sev]}</span><span class="badge ${act?'s-act':'s-idle'}">${act?'진행 중':'해제됨'}</span>${a.ack?'<span class="badge s-idle">확인함</span>':''}</div><b>${E[a.eq].name} · ${a.label} ${a.val}</b><p>${a.lim} · ${AREA[E[a.eq].area].name} 구역 ${E[a.eq].code}</p></div>
+   <div class="x"><button type="button" class="btn ghost" data-goto="${a.eq}">지도에서 보기</button>${a.ack?'':`<button type="button" class="btn" data-ack="${a.id}">확인</button>`}</div></div>`;}).join(''):'<div class="empty-st">이 조건에 맞는 알람이 없습니다.</div>'}</div>`;
+  $$('[data-af]').forEach(b=>b.onclick=()=>{afilter=b.dataset.af;renderAlarms();});
+  $$('[data-ack]').forEach(b=>b.onclick=()=>{const a=ALARMS.find(x=>x.id==b.dataset.ack);a.ack=true;toast('알람을 확인 처리했습니다','ok');renderAlarms();updateBadges();});
+  $$('[data-goto]').forEach(b=>b.onclick=()=>{location.hash='#map';setTimeout(()=>select({type:'eq',id:b.dataset.goto},{fly:true}),30);});
+  const aa=$('#ackAll');if(aa)aa.onclick=()=>{ALARMS.forEach(a=>a.ack=true);toast(unack+'건을 확인 처리했습니다','ok');renderAlarms();updateBadges();};
+}
+function updateBadges(){const n=ALARMS.filter(a=>!a.ack).length;$$('[data-alarm-badge]').forEach(b=>{b.textContent=n;b.hidden=!n;});$('#bellDot').hidden=!n;}
+
+/* 토스트 */
+function toast(msg,sev='ok'){const w=$('#toasts');const t=document.createElement('div');t.className='toast';t.innerHTML=`<i style="background:var(--${sev==='act'?'accent':sev})"></i>${esc(msg)}`;w.appendChild(t);while(w.children.length>3)w.firstChild.remove();setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),320);},3600);}
+
+/* =========================================================
+   시뮬레이션 틱 (2초)
+   ========================================================= */
+let evTimer=0;
+function tick(){
+  evTimer+=2;
+  if(evTimer>=32){evTimer=0;const cand=allParams().filter(x=>x.p.ev);const c=cand[Math.floor(Math.random()*cand.length)];const p=c.p;
+    const span=p.lo!=null&&p.hi!=null?p.hi-p.lo:Math.abs(p.hi)*.1;p.target=p.hi-span*.04+Math.random()*span*.12;setTimeout(()=>{p.target=p.base;},16000+Math.random()*8000);}
+  allParams().forEach(({e,k,p})=>{
+    if(p.counter||p.derived)return;
+    p.v+=(p.target-p.v)*.14+gauss()*p.noise;
+    if(p.min!=null)p.v=Math.max(p.min,p.v);if(p.max!=null)p.v=Math.min(p.max,p.v);
+  });
+  const s=E.SIL.params;s.avg.v=(s.s1.v+s.s2.v+s.s3.v+s.s4.v)/4;
+  const d=E.DSP.params;d.prog.v=d.ship.v/d.plan.v*100;d.wait.v=TRUCKS.filter(t=>t.kind==='bct'&&t.respawn<=0&&(t.state==='진입'||t.state==='계량')).length;
+  const lab=E.LAB.params;if(Math.random()<.15){lab.queue.v=clamp(lab.queue.v+(Math.random()<.5?-1:1),2,7);}lab.done.v=Math.min(100,lab.done.v+.05);
+  SAMPLES.forEach(x=>{if(x.st==='분석중'||x.st==='채취'||x.st==='양생중'){x.prog=Math.min(x.st==='양생중'?99:100,x.prog+(x.st==='양생중'?.02:.8));if(x.prog>=100){x.st='완료';toast(`${x.id} 분석 완료 · ${x.what}`,'ok');}if(x.st==='채취'&&x.prog>30)x.st='분석중';}});
+  allParams().forEach(({e,k,p})=>{p.hist.push(p.v);if(p.hist.length>90)p.hist.shift();
+    const st=pStatus(p);if(RANK[st]>RANK[p.prev]){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]}`,st);}p.prev=st;});
+  renderAll();
+}
+function renderAll(){
+  $('#kpiMap').innerHTML=kpiCards(false);
+  renderAreas();updateTagClasses();
+  if(sel)renderDetail();
+  renderList();renderLot();updateBadges();
+  if(view==='report')renderReport();
+  if(view==='alarms')renderAlarms();
+  $('#clock').textContent=hhmm(new Date());
+}
+
+/* =========================================================
+   검색 · 테마 · 화면 전환
+   ========================================================= */
+function setupSearch(){
+  const q=$('#q'),res=$('#results');let hi=0,items=[];
+  const run=()=>{const v=q.value.trim().toLowerCase();if(!v){res.hidden=true;return;}
+    items=[...EQ.map(e=>({k:'eq',id:e.id,t:e.name,s:e.code+' · '+AREA[e.area].name,ic:e.icon,txt:(e.name+e.code+AREA[e.area].name).toLowerCase()})),
+      ...TRUCKS.map(t=>({k:'truck',id:t.id,t:t.id,s:t.kind==='bct'?t.lot+' · '+t.state:'덤프 · '+t.state,ic:'truck',txt:(t.id+(t.lot||'')+(t.shp||'')).toLowerCase()})),
+      ...SAMPLES.map(x=>({k:'eq',id:x.eq,t:x.id,s:x.what,ic:'flask',txt:(x.id+x.what).toLowerCase()}))].filter(x=>x.txt.includes(v)).slice(0,7);
+    hi=0;res.hidden=false;
+    res.innerHTML=items.length?items.map((x,i)=>`<button type="button" class="${i===hi?'hi':''}" data-i="${i}">${ic(x.ic)}<span>${esc(x.t)}</span><small>${esc(x.s)}</small></button>`).join(''):'<div class="empty">찾는 항목이 없습니다. 설비명, 코드(KL-1), 차량(BCT-21)으로 검색해 보세요.</div>';
+    $$('button',res).forEach(b=>b.onmousedown=ev=>{ev.preventDefault();go(items[+b.dataset.i]);});};
+  const go=x=>{if(!x)return;res.hidden=true;q.value='';q.blur();if(view!=='map')location.hash='#map';setTimeout(()=>select({type:x.k,id:x.id},{fly:true}),20);};
+  q.addEventListener('input',run);q.addEventListener('focus',run);q.addEventListener('blur',()=>setTimeout(()=>res.hidden=true,120));
+  q.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();go(items[hi]);}else if(e.key==='Escape'){q.value='';res.hidden=true;q.blur();}
+    else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();hi=clamp(hi+(e.key==='ArrowDown'?1:-1),0,items.length-1);$$('button',res).forEach((b,i)=>b.classList.toggle('hi',i===hi));}});
+  addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.tagName!=='INPUT'){e.preventDefault();q.focus();}});
+}
+const THEME_KEY='b365-theme';
+function computeDark(){const a=document.documentElement.dataset.theme;return a?a==='dark':matchMedia('(prefers-color-scheme: dark)').matches;}
+function syncTheme(){dark=computeDark();const b=$('#themeBtn');b.innerHTML=ic(dark?'sun':'moon');b.setAttribute('aria-label',dark?'밝은 화면으로 바꾸기':'어두운 화면으로 바꾸기');applyScenePalette();}
+function setupTheme(){
+  try{const t=localStorage.getItem(THEME_KEY);if(t)document.documentElement.dataset.theme=t;}catch(e){}
+  $('#themeBtn').onclick=()=>{const t=computeDark()?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem(THEME_KEY,t);}catch(e){}syncTheme();};
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change',syncTheme);
+  new MutationObserver(syncTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  syncTheme();
+}
+let view='map';
+function setView(v){
+  if(!['map','report','alarms'].includes(v))v='map';view=v;
+  $$('.view').forEach(s=>s.hidden=s.id!=='view-'+v);
+  $$('[data-view]').forEach(a=>a.classList.toggle('on',a.dataset.view===v));
+  if(v==='report')renderReport();if(v==='alarms')renderAlarms();
+  if(v==='map'){lastT=performance.now();}
+}
+function setupShell(){
+  const app=$('#app');try{if(localStorage.getItem('b365-side')==='1')app.classList.add('collapsed');}catch(e){}
+  $('#collapseBtn').onclick=()=>{app.classList.toggle('collapsed');try{localStorage.setItem('b365-side',app.classList.contains('collapsed')?'1':'0');}catch(e){}};
+  $('#areaToggle').onclick=()=>{const g=$('#areaGrp');g.classList.toggle('closed');$('#areaToggle').setAttribute('aria-expanded',!g.classList.contains('closed'));};
+  $$('#listTabs button').forEach(b=>b.onclick=()=>{listTab=b.dataset.tab;$$('#listTabs button').forEach(x=>x.classList.toggle('on',x===b));renderList();});
+  $('#fab').onclick=()=>{const l=$('#list');const open=l.classList.contains('closed');l.classList.toggle('closed',!open);if(open)$('#detail').classList.add('closed');};
+  const syncSheets=()=>{if(!isMobile()){$('#list').classList.remove('closed');$('#detail').classList.remove('closed');}else{$('#list').classList.add('closed');$('#detail').classList.toggle('closed',!sel);}updateTagClasses();};
+  matchMedia('(max-width:760px)').addEventListener('change',syncSheets);syncSheets();
+  // 바텀시트 손잡이: 아래로 끌어 닫기
+  $$('.panel').forEach(p=>{let y0=null;p.addEventListener('touchstart',e=>{if(e.target.classList.contains('sheet-handle')||p.scrollTop<=0)y0=e.touches[0].clientY;},{passive:true});
+    p.addEventListener('touchend',e=>{if(y0!=null&&e.changedTouches[0].clientY-y0>70&&isMobile()){p.classList.add('closed');if(p.id==='detail'){sel=null;setBracket();updateTagClasses();}}y0=null;},{passive:true});});
+  addEventListener('hashchange',()=>setView(location.hash.slice(1)));
+}
+
+/* 시작 */
+paintIcons();
+setupTheme();
+setupShell();
+setupSearch();
+if(THREEOK)initScene();else{$('#stage').innerHTML='<div class="nogl">3D 라이브러리를 불러오지 못했습니다.<br>사내망이라면 오프라인 빌드 파일(cement_plant_3d.html)을 사용하세요.</div>';}
+setView(location.hash.slice(1)||'map');
+select(sel);
+renderAll();
+setTimeout(()=>toast(isMobile()?'한 손가락으로 끌어 이동 · 두 손가락으로 확대·회전':'끌어서 이동 · 휠로 확대 · 오른쪽 버튼으로 끌면 회전','act'),900);
+setInterval(tick,2000);
+requestAnimationFrame(frame);
+})();
+</script>
