@@ -1,118 +1,284 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" translate="no">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="google" content="notranslate">
 <title>Blue365 QMS 현황판</title>
 <style>
-/* 보는용 현황판: 남색 머리 띠 → 처리 흐름 → 앱 창(탭 6개). 숫자는 아래 D(JSON)에서. 인터넷 없이 열림(글꼴은 PC 기본 글꼴) */
+/* 보는용 현황판 — Blue365 UI 스타일(docs/UI_디자인_가이드.md): 회색 바탕 + 흰 카드(둥근 20px) + 파란 강조 한 색.
+   카드 = 위 회색 미리보기(well) + 아래 '01 제목 / 보조 설명'. 숫자는 아래 D(JSON)에서. 인터넷 없이 열림(글꼴은 PC 기본 글꼴). */
 :root {
-  --bg: #f5f6f8; --surface: #ffffff; --sunken: #eef1f5; --ink: #18212d; --muted: #5d6878; --faint: #8a94a3;
-  --line: #dde2e9; --brand: #1f3a5f; --brand-ink: #ffffff; --brand-soft: #e6edf6; --accent: #d9731a;
+  --bg: #f2f4f6; --surface: #ffffff; --well: #f7f8fa; --ink: #191f28; --ink2: #333d4b; --muted: #6b7684; --faint: #8b95a1;
+  --line: #e5e8eb; --primary: #3182f6; --primary-soft: #e8f3ff; --primary-ink: #1b64da; --on-primary: #ffffff;
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
   --ok: #0ca30c; --warn: #fab219; --serious: #ec835a; --bad: #d03b3b;
-  --ok-bg: #e5f5e5; --warn-bg: #fff3d6; --bad-bg: #fbe3e3; --band: rgba(42,120,214,.10);
-  --f-body: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
-  --f-mono: "Consolas", "D2Coding", ui-monospace, monospace;
+  --ok-bg: #e8f7ec; --warn-bg: #fff4d9; --bad-bg: #fdecec; --band: rgba(49,130,246,.10);
+  --shadow: 0 1px 2px rgba(0,0,0,.03), 0 6px 20px rgba(0,0,0,.045); --glow: 0 0 0 4px rgba(49,130,246,.14);
+  --scrim: rgba(0,0,0,.42); --toast: #191f28; --toast-ink: #ffffff;
+  --r-card: 20px; --r-well: 14px; --ease-out: cubic-bezier(.2,.8,.2,1); --spring: cubic-bezier(.34,1.56,.64,1);
+  --f-body: "Pretendard", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) { :root {
-  --bg: #121417; --surface: #1b1f24; --sunken: #23282f; --ink: #eef1f5; --muted: #a8b1bd; --faint: #7c8694;
-  --line: #2e353e; --brand: #13253d; --brand-ink: #f2f5f9; --brand-soft: #1f3048; --accent: #f08a33;
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #101114; --surface: #1c1e23; --well: #25282e; --ink: #f2f4f6; --ink2: #d1d6db; --muted: #a0a9b3; --faint: #7d8792;
+  --line: #30343b; --primary: #4593fc; --primary-soft: #1b2a42; --primary-ink: #8bbcff; --on-primary: #ffffff;
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
-  --ok-bg: #16301a; --warn-bg: #3a2e10; --bad-bg: #3a1818; --band: rgba(57,135,229,.16); color-scheme: dark } }
+  --ok-bg: #15301d; --warn-bg: #3a2f12; --bad-bg: #3b1a1a; --band: rgba(69,147,252,.16);
+  --shadow: 0 1px 2px rgba(0,0,0,.4); --glow: 0 0 0 4px rgba(69,147,252,.22); --toast: #f2f4f6; --toast-ink: #191f28; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #101114; --surface: #1c1e23; --well: #25282e; --ink: #f2f4f6; --ink2: #d1d6db; --muted: #a0a9b3; --faint: #7d8792;
+  --line: #30343b; --primary: #4593fc; --primary-soft: #1b2a42; --primary-ink: #8bbcff; --on-primary: #ffffff;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --ok-bg: #15301d; --warn-bg: #3a2f12; --bad-bg: #3b1a1a; --band: rgba(69,147,252,.16);
+  --shadow: 0 1px 2px rgba(0,0,0,.4); --glow: 0 0 0 4px rgba(69,147,252,.22); --toast: #f2f4f6; --toast-ink: #191f28; color-scheme: dark }
 * { box-sizing: border-box }
 html, body { margin: 0 }
-body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6 }
-.wrap { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
-h1, h2, h3 { line-height: 1.25; margin: 0 }
-.num, td.n, .kpi b { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
-a { color: inherit }
-:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; border-radius: 4px }
-.hero { background: var(--brand); color: var(--brand-ink) }
-.hero .wrap { padding-block: 26px 24px; display: grid; gap: 10px }
-.eyebrow { font-size: 12px; letter-spacing: .1em; opacity: .8; display: flex; gap: 8px; align-items: center; flex-wrap: wrap }
-.tag { border-radius: 999px; padding: 1px 10px; font-weight: 600; letter-spacing: .02em; background: rgba(255,255,255,.16) }
-.tag.demo { background: var(--accent); color: #fff }
-.hero h1 { font-size: clamp(24px, 3.6vw, 34px); font-weight: 700 }
-.hero p { margin: 0; opacity: .88; font-size: 14px }
-.app { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-block: 20px; overflow: hidden }
-.tabs { display: flex; gap: 2px; background: var(--sunken); border-bottom: 1px solid var(--line); padding: 6px 6px 0; overflow-x: auto }
-.tabs button { font: inherit; font-size: 14px; border: 0; background: transparent; color: var(--muted); padding: 10px 14px; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap }
-.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 -2px 0 var(--brand) inset }
-.panel { padding: 20px; display: grid; gap: 16px }
-.panel > header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap }
-.panel h2 { font-size: 20px }
-.sub { color: var(--muted); font-size: 13.5px; margin: 4px 0 0 }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; word-break: keep-all; overflow-wrap: break-word;
+       font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+h1, h2, h3 { line-height: 1.3; margin: 0 }
+button { font: inherit; color: inherit }
+a { color: var(--primary-ink) }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px }
+.n, td.n, th.n { text-align: right; font-variant-numeric: tabular-nums }
+
+/* ── 고정 헤더 + 상단 탭(밑줄) ── */
+.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px);
+       border-bottom: 1px solid transparent; transition: border-color .2s }
+.top.scrolled { border-bottom-color: var(--line) }
+.bar { display: flex; align-items: center; gap: 10px; min-height: 56px }
+.brand { font-weight: 800; font-size: 17px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; white-space: nowrap }
+.brand i { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft) }
+.tag { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-ink); font-size: 12.5px; font-weight: 700; white-space: nowrap }
+.tag.demo { background: var(--warn-bg); color: var(--ink2) }
+.grow { flex: 1 }
+.iconbtn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--ink2) }
+.iconbtn:hover { background: var(--well) }
+.iconbtn svg { width: 18px; height: 18px }
+.toptabs { display: flex; gap: 22px; overflow-x: auto; scrollbar-width: none }
+.toptabs button { position: relative; border: 0; background: none; padding: 8px 0 12px; cursor: pointer; color: var(--faint); font-size: 15px; font-weight: 700; white-space: nowrap }
+.toptabs button[aria-selected="true"] { color: var(--ink) }
+.toptabs button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2.5px; border-radius: 2px; background: var(--ink) }
+.badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 800; line-height: 1; margin-left: 4px; vertical-align: 2px }
+
+/* ── 배너(맨 위 안내, 닫기 ×) ── */
+.banner { display: flex; gap: 10px; align-items: flex-start; background: var(--primary-soft); color: var(--ink2); border-radius: 14px; padding: 11px 14px; margin-top: 14px; font-size: 14px }
+.banner.warn { background: var(--warn-bg) }
+.banner .ic { flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 800; margin-top: 1px }
+.banner.warn .ic { background: var(--warn); color: #1d1d1d }
+.banner p { margin: 0; flex: 1 }
+.banner button { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 2px }
+
+/* ── 화면 머리: 알약 꼬리표 + 큰 두 줄 제목(핵심 단어만 파랑) ── */
+.page { padding-block: 22px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; animation: fadeThrough .26s var(--ease-out) both }
+.page > *, .ctrl > div { min-width: 0; max-width: 100% }
+.crumb { display: flex; gap: 8px; align-items: center; font-size: 13.5px; color: var(--muted) }
+.crumb a { color: var(--muted); text-decoration: none } .crumb a:hover { color: var(--ink) }
+.crumb .back { display: inline-flex; align-items: center; gap: 4px; color: var(--primary-ink); font-weight: 700; cursor: pointer; border: 0; background: none; padding: 0 }
+.hl { font-size: clamp(27px, 4.4vw, 40px); font-weight: 800; letter-spacing: -.025em; line-height: 1.25; margin-top: 10px }
+.hl em { font-style: normal; color: var(--primary) }
+.lead { color: var(--muted); font-size: 14.5px; margin: 8px 0 0 }
+.sec { font-size: 17px; font-weight: 800; letter-spacing: -.01em; margin: 10px 0 -4px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap }
+.sec small { font-size: 13px; font-weight: 500; color: var(--muted) }
+
+/* ── 카드(흰 카드 + 회색 미리보기 + 번호 제목) ── */
 .grid { display: grid; gap: 14px }
-.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)) }
+.g-auto { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)) }
+.g-stage { grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)) }
 .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)) }
-.box { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0 }
-.box h3 { font-size: 15px; margin-bottom: 8px }
-.kpi { display: grid; gap: 2px; align-content: start }
-.kpi small { color: var(--muted); font-size: 12.5px }
-.kpi b { font-size: 26px; font-weight: 600 }
-.kpi b span { font-size: 14px }
-.kpi em { font-style: normal; font-size: 12.5px; color: var(--muted) }
-.kpi.t-warn { box-shadow: inset 3px 0 0 var(--warn) } .kpi.t-bad { box-shadow: inset 3px 0 0 var(--bad) } .kpi.t-ok { box-shadow: inset 3px 0 0 var(--ok) }
-.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; color: var(--ink) }
+.g12 { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) }
+.card { background: var(--surface); border-radius: var(--r-card); padding: 12px; box-shadow: var(--shadow); border: 2px solid transparent; min-width: 0;
+        animation: rise .34s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 35ms); transition: border-color .2s, box-shadow .2s, transform .25s var(--spring) }
+.card.pad { padding: 18px 20px }
+.card.click { cursor: pointer } .card.click:hover { transform: translateY(-2px) }
+.card.sel { border-color: var(--primary); box-shadow: var(--shadow), var(--glow) }
+.well { background: var(--well); border-radius: var(--r-well); padding: 16px; min-height: 112px; display: grid; align-content: center; gap: 4px; position: relative }
+.cap { padding: 12px 6px 4px }
+.cap .t { font-size: 16px; font-weight: 800; letter-spacing: -.01em; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap }
+.no { color: var(--primary); font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums }
+.cap small { display: block; color: var(--faint); font-size: 13px; margin-top: 2px }
+.big { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15 }
+.big span { font-size: 15px; font-weight: 700; color: var(--muted); margin-left: 3px }
+.corner { position: absolute; top: 12px; right: 12px }
+.card h3 { font-size: 16px; font-weight: 800; margin-bottom: 10px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+
+/* ── 상태 칩(색 + 글자, 색만으로 구분하지 않음) ── */
+.pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; color: var(--ink2) }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50% }
 .ok { background: var(--ok-bg) } .ok::before { background: var(--ok) }
 .warn { background: var(--warn-bg) } .warn::before { background: var(--warn) }
 .bad { background: var(--bad-bg) } .bad::before { background: var(--bad) }
-.mute { background: var(--sunken) } .mute::before { background: var(--faint) }
-.chips { display: flex; gap: 6px; flex-wrap: wrap }
-.chips button { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 4px 12px; border-radius: 999px; cursor: pointer }
-.chips button[aria-pressed="true"] { background: var(--brand); color: var(--brand-ink); border-color: var(--brand) }
-.ctrl { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start }
-.ctrl .lab { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 4px }
-table { border-collapse: collapse; width: 100%; font-size: 13.5px }
-th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; border-bottom: 1px solid var(--line); padding: 7px 8px; white-space: nowrap }
-td { border-bottom: 1px solid var(--line); padding: 7px 8px; vertical-align: top }
-td.n, th.n { text-align: right }
-tr.sel td { background: var(--brand-soft) }
-tr.click { cursor: pointer } tr.click:hover td { background: var(--sunken) }
-.scroll { overflow-x: auto } .tall { max-height: 360px; overflow: auto }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-bottom: 4px }
+.mute { background: var(--well) } .mute::before { background: var(--faint) }
+.card .mute { background: var(--bg) }
+
+/* ── 세그먼트(하나만 고르는 짧은 선택지) · 칩(거르기) ── */
+.ctrl { display: flex; gap: 14px 22px; flex-wrap: wrap; align-items: flex-end; min-width: 0 }
+.ctrl .lab { font-size: 13px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 6px }
+.seg { display: inline-flex; background: var(--line); padding: 3px; border-radius: 12px; gap: 2px; max-width: 100%; overflow-x: auto }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 9px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted); white-space: nowrap; transition: background .2s, color .2s }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12) }
+.chips { display: flex; gap: 8px; flex-wrap: wrap }
+.chips button { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); border-radius: 999px; cursor: pointer; font-size: 14px; font-weight: 600; white-space: nowrap; transition: background .2s, border-color .2s }
+.chips button[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink) }
+.chips button[aria-pressed="true"]::before { content: "✓"; font-weight: 800 }
+.chips .cnt { color: var(--faint); font-weight: 600; font-size: 13px }
+.chips button[aria-pressed="true"] .cnt { color: var(--primary-ink) }
+@media (max-width: 720px) { .chips.scrollx { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px } }
+
+/* ── 목록·표 ── */
+.list { display: grid }
+.li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 12px; transition: background .15s }
+.li:last-child { border-bottom: 0 }
+.li:hover { background: var(--well) }
+.li.sel { background: var(--primary-soft) }
+.li .main b { font-weight: 700 } .li .main small { display: block; color: var(--muted); font-size: 13px }
+.chev { color: var(--faint); font-size: 18px }
+table { border-collapse: collapse; width: 100%; font-size: 14px }
+th { text-align: left; font-weight: 600; color: var(--faint); font-size: 12.5px; border-bottom: 1px solid var(--line); padding: 8px; white-space: nowrap }
+td { border-bottom: 1px solid var(--line); padding: 9px 8px; vertical-align: middle }
+tr:last-child td { border-bottom: 0 }
+tr.selrow td { background: var(--primary-soft) }
+.scroll { overflow-x: auto } .tall { max-height: 380px; overflow: auto }
+.note { font-size: 13px; color: var(--muted); margin: 0 }
+
+/* ── 그래프 ── */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 6px }
 .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px }
-.chart { position: relative } .chart svg { display: block; width: 100%; height: auto }
-.axis text { fill: var(--muted); font-size: 11px; font-family: var(--f-mono) }
-.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap; z-index: 2 }
-.note { font-size: 12.5px; color: var(--muted); margin: 0 }
-.frame5 { display: grid; gap: 12px }
-.frame5 .row { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start }
-.frame5 .no { font-family: var(--f-mono); font-weight: 600; background: var(--brand); color: var(--brand-ink); border-radius: 8px; text-align: center; padding: 3px 0; font-size: 13px }
-.frame5 ul { margin: 4px 0 0; padding-left: 18px }
-.hyp { display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(80px, 24%) 120px; gap: 6px 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13.5px }
-.hyp .ax { font-weight: 600; color: var(--muted) }
-.bar { height: 8px; border-radius: 4px; background: var(--sunken); overflow: hidden } .bar > i { display: block; height: 100%; background: var(--s1); border-radius: 4px }
-.calc { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end }
-.calc label { font-size: 12.5px; color: var(--muted); display: block; margin-bottom: 4px }
-.calc input { font: inherit; font-family: var(--f-mono); width: 120px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink) }
-.result { font-family: var(--f-mono); font-size: 22px; font-weight: 600 }
-@media (max-width: 600px) { .hide-sm { display: none } }
-.empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; padding: 16px; font-size: 14px }
-footer { color: var(--muted); font-size: 13px; padding-block: 4px 36px; display: grid; gap: 6px }
-@media (max-width: 860px) { .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)) } .g2 { grid-template-columns: 1fr } }
-@media (max-width: 600px) { .hyp { grid-template-columns: 56px minmax(0, 1fr) } .hyp .bar, .hyp .vd { grid-column: 2 } .panel { padding: 14px } .kpi b { font-size: 22px } }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+.chart { position: relative } .chart svg { display: block; width: 100%; height: auto; touch-action: pan-y }
+.axis text { fill: var(--faint); font-size: 11px }
+.ctip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; font-size: 12.5px; box-shadow: 0 6px 20px rgba(0,0,0,.12); white-space: nowrap; z-index: 2 }
+
+/* ── 진행 링 · 진행 바 · 범위 바 · 평점 요약형 막대 ── */
+.ring { display: grid; place-items: center; position: relative; width: 92px; height: 92px; margin: 0 auto }
+.ring svg { position: absolute; inset: 0; transform: rotate(-90deg) }
+.ring b { font-size: 21px; font-weight: 800 }
+.ring circle { transition: stroke-dashoffset .9s var(--ease-out) }
+.pbar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden } .pbar > i { display: block; height: 100%; border-radius: 999px; background: var(--primary); transition: width .7s var(--ease-out) }
+.sum { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; align-items: center }
+.sum .tot { text-align: center } .sum .tot .big { font-size: 40px } .sum .tot small { color: var(--muted); font-size: 12.5px; display: block }
+.sum .rows { display: grid; gap: 7px }
+.sum .r { display: grid; grid-template-columns: 34px minmax(0, 1fr) 30px; gap: 8px; align-items: center; font-size: 13px; color: var(--muted) }
+.sum .r .n { color: var(--ink2); font-weight: 700 }
+.range { position: relative; height: 34px; margin: 14px 0 18px }
+.range .trk { position: absolute; left: 0; right: 0; top: 15px; height: 4px; border-radius: 4px; background: var(--line) }
+.range .bd { position: absolute; top: 12px; height: 10px; border-radius: 6px; background: color-mix(in srgb, var(--primary) 28%, transparent) }
+.range .pt { position: absolute; top: 9px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--primary); border: 3px solid var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.25); transition: left .35s var(--spring) }
+.range .mk { position: absolute; top: 4px; width: 2px; height: 26px; margin-left: -1px; background: var(--bad) }
+.range .mk.l { background: var(--serious) }
+.range .ml { position: absolute; top: -12px; font-size: 11px; color: var(--muted); transform: translateX(-50%); white-space: nowrap }
+
+/* ── 단계 표시(세로 스테퍼) ── */
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: st }
+.steps > li { position: relative; padding: 0 0 18px 46px; counter-increment: st }
+.steps > li::before { content: counter(st); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; font-weight: 800; font-size: 14px }
+.steps > li::after { content: ""; position: absolute; left: 14px; top: 34px; bottom: 4px; width: 2px; background: var(--primary-soft) }
+.steps > li:last-child::after { display: none } .steps > li:last-child { padding-bottom: 0 }
+.steps h4 { margin: 3px 0 4px; font-size: 15px; font-weight: 800 }
+.steps ul { margin: 2px 0 0; padding-left: 18px }
+.hstep { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; counter-reset: hs }
+.hstep > div { position: relative; padding: 42px 10px 0 0; counter-increment: hs; font-size: 14px }
+.hstep > div::before { content: counter(hs); position: absolute; top: 0; left: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; font-weight: 800 }
+.hstep > div::after { content: ""; position: absolute; top: 14px; left: 36px; right: 6px; height: 2px; background: var(--primary-soft) }
+.hstep > div:last-child::after { display: none }
+.hstep b { display: block; font-size: 15px }
+.hyp { display: grid; grid-template-columns: 60px minmax(0, 1fr) minmax(70px, 22%) 104px; gap: 6px 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px }
+.hyp:last-child { border-bottom: 0 }
+.hyp .ax { font-weight: 700; color: var(--muted); font-size: 13px }
+
+/* ── 직접 입력(라벨은 칸 위에 — 자리표시자로 대신하지 않음) ── */
+.calc { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px }
+.calc label { font-size: 13px; font-weight: 600; color: var(--muted); display: block; margin-bottom: 5px }
+.calc input { font: inherit; width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; transition: border-color .15s, box-shadow .15s }
+.calc input:focus { outline: none; border-color: var(--primary); box-shadow: var(--glow) }
+.calc input.err { border-color: var(--bad) }
+.ferr { color: var(--bad); font-size: 12.5px; margin-top: 4px }
+
+/* ── 빈 화면 ── */
+.empty { display: grid; place-items: center; text-align: center; gap: 6px; color: var(--muted); background: var(--well); border-radius: var(--r-well); padding: 28px 16px; font-size: 14px }
+.empty::before { content: ""; width: 40px; height: 40px; border-radius: 50%; background: var(--line) }
+
+/* ── 툴팁(ⓘ 누르면 설명) ── */
+.qi { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--faint); color: var(--faint); font-size: 11px; font-weight: 800; cursor: pointer; background: none; padding: 0; vertical-align: 1px; font-style: normal }
+.qi:hover { border-color: var(--primary); color: var(--primary) }
+.pop { position: fixed; z-index: 60; max-width: 280px; background: var(--toast); color: var(--toast-ink); font-size: 13px; line-height: 1.5; padding: 9px 12px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.2); animation: fadeIn .15s var(--ease-out) }
+
+/* ── 토스트 ── */
+.toast { position: fixed; left: 50%; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; z-index: 70; background: var(--toast); color: var(--toast-ink);
+         padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; pointer-events: none; transition: opacity .2s, transform .3s var(--spring); white-space: nowrap }
+.toast.on { opacity: 1; transform: translate(-50%, 0) }
+
+/* ── 모달(넓은 화면) / 바텀시트(휴대폰) ── */
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 50; display: grid; place-items: center; padding: 16px; animation: fadeIn .2s var(--ease-out) }
+.sheet { background: var(--surface); color: var(--ink); border-radius: 22px; width: min(460px, 100%); padding: 22px; box-shadow: 0 20px 50px rgba(0,0,0,.25); animation: pop .26s var(--spring); display: grid; gap: 12px }
+.sheet h3 { font-size: 19px; font-weight: 800 }
+.sheet .grab { display: none }
+.btns { display: flex; gap: 8px; margin-top: 4px }
+.btn { flex: 1; height: 48px; border-radius: 14px; border: 0; font-weight: 700; font-size: 15px; cursor: pointer; background: var(--well); color: var(--ink2) }
+.btn.primary { background: var(--primary); color: var(--on-primary) }
+.kv { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 6px 10px; font-size: 14px } .kv dt { color: var(--muted) } .kv dd { margin: 0 }
+
+/* ── 하단 탭바(휴대폰) · 맨 위로 버튼 · 코치마크 ── */
+.tabbar { display: none }
+.fab { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 30; width: 48px; height: 48px; border-radius: 50%; border: 0; cursor: pointer;
+       background: var(--surface); color: var(--ink2); box-shadow: 0 6px 18px rgba(0,0,0,.16); display: grid; place-items: center; opacity: 0; transform: scale(.7); pointer-events: none; transition: opacity .2s, transform .3s var(--spring) }
+.fab.on { opacity: 1; transform: none; pointer-events: auto }
+.coach { position: fixed; z-index: 65; max-width: 290px; background: var(--toast); color: var(--toast-ink); border-radius: 14px; padding: 12px 14px; font-size: 14px; box-shadow: 0 12px 30px rgba(0,0,0,.25); animation: pop .3s var(--spring) }
+.coach::before { content: ""; position: absolute; left: 26px; top: -6px; width: 12px; height: 12px; background: var(--toast); transform: rotate(45deg) }
+.coach.up::before { top: auto; bottom: -6px }
+.coach button { margin-top: 8px; border: 0; border-radius: 999px; background: var(--primary); color: #fff; font-weight: 700; padding: 5px 14px; cursor: pointer }
+footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: grid; gap: 6px }
+
+@media (max-width: 860px) { .g2, .g12 { grid-template-columns: 1fr } }
+@media (max-width: 720px) {
+  body { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)) }
+  .toptabs { display: none }
+  .tabbar { display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--surface); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)) }
+  .tabbar button { border: 0; background: none; display: grid; justify-items: center; gap: 2px; padding: 4px 0; cursor: pointer; color: var(--faint); font-size: 10.5px; font-weight: 700; position: relative }
+  .tabbar button svg { width: 22px; height: 22px }
+  .tabbar button[aria-selected="true"] { color: var(--primary) }
+  .tabbar .badge { position: absolute; top: 0; left: 52%; margin: 0; min-width: 16px; height: 16px; font-size: 10px }
+  .fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) }
+  .toast { bottom: calc(88px + env(safe-area-inset-bottom, 0px)) }
+  .scrim { place-items: end center; padding: 0 }
+  .sheet { width: 100%; border-radius: 22px 22px 0 0; padding: 10px 18px calc(18px + env(safe-area-inset-bottom, 0px)); animation: sheetUp .32s var(--ease-out) }
+  .sheet .grab { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 4px }
+  .hide-sm { display: none }
+  .hyp { grid-template-columns: 52px minmax(0, 1fr) } .hyp .pbar, .hyp .vd { grid-column: 2 }
+  .hstep { grid-template-columns: 1fr; gap: 14px } .hstep > div { padding: 2px 0 0 42px; min-height: 30px } .hstep > div::after { display: none }
+  .big { font-size: 26px } .brand .full { display: none }
+  .sum .tot .big { font-size: 34px }
+}
+@keyframes rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+@keyframes fadeThrough { from { opacity: 0; transform: scale(.992) } to { opacity: 1; transform: none } }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pop { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: none } }
+@keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }
+@media print { .top, .tabbar, .fab, .banner button { display: none !important } .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd } }
 </style>
 </head>
 <body>
-<div class="hero"><div class="wrap">
-  <div class="eyebrow">시멘트 품질관리 시스템 <span class="tag">보는용 · 조회 전용</span><span class="tag demo" id="demotag" hidden>데모 데이터</span></div>
-  <h1>Blue365 QMS 현황판</h1>
-  <p id="meta"></p>
-</div></div>
-<main class="wrap">
-  <section class="app" aria-label="현황판">
-    <div class="tabs" role="tablist" id="tabs"></div>
-    <div id="view"></div>
-  </section>
-  <footer>
-    <div>이 파일은 매일 06:00 자동반영 때 새로 만들어집니다. 자료 올리기·관리기준 입력·보고서 만들기는 <b>관리용 앱</b>(Blue365 QMS)에서 합니다.</div>
-    <div>KS 기준: KS L 5201(포틀랜드 시멘트) · 사내 관리기준은 관리용 앱 ⚙️ 설정의 값 · 예측값은 추정치이며 실측으로 확정해야 합니다.</div>
-  </footer>
-</main>
+<header class="top" id="top">
+  <div class="wrap">
+    <div class="bar">
+      <div class="brand"><i></i>Blue365 QMS<span class="full">&nbsp;현황판</span></div>
+      <span class="tag">보는용</span><span class="tag demo" id="demotag" hidden>데모</span>
+      <span class="grow"></span>
+      <button class="iconbtn" id="share" aria-label="공유"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg><span>공유</span></button>
+    </div>
+    <nav class="toptabs" role="tablist" id="tabs" aria-label="화면"></nav>
+  </div>
+</header>
+<div class="wrap" id="banners"></div>
+<main class="wrap" id="view"></main>
+<div class="wrap"><footer>
+  <div>이 파일은 매일 06:00 자동반영 때 새로 만들어집니다. 자료 올리기·관리기준 입력·보고서 만들기는 <b>관리용 앱</b>(Blue365 QMS)에서 합니다.</div>
+  <div>KS 기준: KS L 5201(포틀랜드 시멘트) · 사내 관리기준은 관리용 앱 ⚙️ 설정의 값 · 예측값은 추정치이며 실측으로 확정해야 합니다.</div>
+</footer></div>
+<nav class="tabbar" id="tabbar" aria-label="화면"></nav>
+<button class="fab" id="fab" aria-label="맨 위로"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg></button>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 const D = /*__DATA__*/null;
 (() => {
@@ -123,182 +289,340 @@ const md = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDa
 const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const SEVCLS = { "위험": "bad", "경고": "warn", "주의": "warn", "정상": "ok" };
+const RANK = { "위험": 3, "경고": 2, "주의": 1, "정상": 0 };
+const TONE = { ok: ["ok", "양호"], warn: ["warn", "확인 필요"], bad: ["bad", "기준 이탈"] };
 const pill = (cls, t) => `<span class="pill ${cls}">${esc(t)}</span>`;
 const COLORS = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7", "--s8"];
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const two = (i) => String(i + 1).padStart(2, "0");
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 저장 불가 환경 */ } } };
+const GLOSS = {
+  cpk: "Cpk(공정능력지수) = 평균이 관리기준 양쪽 끝에서 얼마나 떨어져 있는지(표준편차 3배 단위). 1.33 이상 충분, 1.0 미만 개선 필요.",
+  rmse: "RMSE = 한 로트씩 빼고 학습해 그 로트를 예측했을 때의 평균 오차(LOO). 작을수록 잘 맞습니다.",
+  r2: "R² = 예측이 실제 강도의 변동을 얼마나 설명하는지(0~1). 1에 가까울수록 좋습니다.",
+  pi: "95% 구간 = 예측값 ± 1.96 × RMSE. 실제 값이 이 구간 안에 들어올 가능성이 약 95%(추정).",
+  score: "근거 점수 = 공정 데이터로 자동 계산한 가설별 근거 강도(0~100). 확인 시험으로 확정해야 합니다.",
+  ks: "KS 판정 = 채취일 연도의 KS L 5201 기준(관리용 앱 설정값)과 비교한 결과입니다.",
+};
+const qi = (k) => `<button class="qi" data-tip="${esc(GLOSS[k])}" aria-label="설명">i</button>`;
+const ICON = {
+  overview: '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/>',
+  monitor: '<path d="M3 17l5-6 4 3 7-8"/><path d="M3 21h18"/>',
+  predict: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/>',
+  diagnosis: '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/>',
+  shipment: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>',
+  data: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>',
+};
+const svgI = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 
-if (!D) { $("view").innerHTML = '<div class="panel"><div class="empty">자료를 불러오지 못했습니다. 관리용 앱에서 현황판을 다시 만들어 주세요.</div></div>'; return; }
-$("meta").textContent = `생성 ${D.meta.generated} · 기준일 ${D.meta.ref}` + (D.meta.period ? ` · 자료 기간 ${D.meta.period[0]} ~ ${D.meta.period[1]}` : "");
+if (!D) { $("view").innerHTML = '<div class="page"><div class="empty">자료를 불러오지 못했어요. 관리용 앱에서 현황판을 다시 만들어 주세요.</div></div>'; return; }
 $("demotag").hidden = !D.meta.demo;
+
+// ── 공통 조각 ────────────────────────────────────────────────────────
+const head = (tag, h, lead, crumb = "") => `${crumb}<div><span class="tag">${esc(tag)}</span><h1 class="hl">${h}</h1>${lead ? `<p class="lead">${lead}</p>` : ""}</div>`;
+const card = ({ no, title, en, well, i = 0, cls = "", attrs = "" }) =>
+  `<div class="card ${cls}" style="--i:${i}" ${attrs}><div class="well">${well}</div><div class="cap"><div class="t">${no ? `<span class="no">${no}</span>` : ""}${title}</div>${en ? `<small>${en}</small>` : ""}</div></div>`;
+const box = (inner, i = 0, cls = "") => `<div class="card pad ${cls}" style="--i:${i}">${inner}</div>`;
+const seg = (id, opts, cur, fmt = (x) => x) => `<div class="seg" id="${id}" role="group">${opts.map((o) => `<button aria-pressed="${String(o) === String(cur)}" data-v="${esc(o)}">${esc(fmt(o))}</button>`).join("")}</div>`;
+const chips = (id, opts, cur, fmt = (x) => esc(x), scroll = false) => `<div class="chips${scroll ? " scrollx" : ""}" id="${id}" role="group">${opts.map((o) => `<button aria-pressed="${String(o) === String(cur)}" data-v="${esc(o)}">${fmt(o)}</button>`).join("")}</div>`;
+const pick = (id, opts, cur, fmt) => (opts.length <= 5 ? seg(id, opts, cur, fmt) : chips(id, opts, cur, (o) => esc(fmt ? fmt(o) : o), true));
+const onPick = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", (e) => { const b = e.target.closest("button[data-v]"); if (b) fn(b.dataset.v); }); };
+const legend = (items) => `<div class="legend">${items.map(([n, c, dash]) => `<span><i style="background:var(${c})${dash ? ";opacity:.6" : ""}"></i>${esc(n)}</span>`).join("")}</div>`;
+const empty = (t) => `<div class="empty">${t}</div>`;
+function ring(pct, color = "--primary") {
+  const r = 40, c = 2 * Math.PI * r, p = Math.max(0, Math.min(100, pct));
+  return `<div class="ring" role="img" aria-label="${p}%"><svg viewBox="0 0 92 92"><circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--line)" stroke-width="9"/>`
+    + `<circle cx="46" cy="46" r="${r}" fill="none" stroke="var(${color})" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - p / 100)).toFixed(1)}"/></svg><b>${p}%</b></div>`;
+}
+function statusIcon(s) {
+  const c = { "정상": "--ok", "주의": "--warn", "경고": "--warn", "위험": "--bad" }[s] || "--faint";
+  const p = s === "정상" ? '<path d="m7 12.5 3.2 3.2L17 9"/>' : s === "위험" ? '<path d="m8 8 8 8M16 8l-8 8"/>' : '<path d="M12 7v6"/><path d="M12 17h.01"/>';
+  return `<svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(${c})"/><g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${p}</g></svg>`;
+}
+
+// ── 토스트 · 툴팁 · 시트 · 배너 ────────────────────────────────────────
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 2000); }
+let popEl = null;
+function closePop() { if (popEl) { popEl.remove(); popEl = null; } }
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".qi");
+  if (!b) { closePop(); return; }
+  e.stopPropagation(); const same = popEl && popEl.dataset.for === b.dataset.tip; closePop(); if (same) return;
+  popEl = document.createElement("div"); popEl.className = "pop"; popEl.role = "tooltip"; popEl.dataset.for = b.dataset.tip; popEl.textContent = b.dataset.tip; document.body.appendChild(popEl);
+  const r = b.getBoundingClientRect(), w = popEl.offsetWidth, h = popEl.offsetHeight;
+  popEl.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px";
+  popEl.style.top = (r.top - h - 8 > 60 ? r.top - h - 8 : r.bottom + 8) + "px";
+});
+addEventListener("scroll", closePop, { passive: true });
+function sheet(html, onPrimary) {
+  const s = document.createElement("div"); s.className = "scrim";
+  s.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><div class="grab"></div>${html}</div>`;
+  const close = () => { s.remove(); document.removeEventListener("keydown", key); };
+  const key = (e) => { if (e.key === "Escape") close(); };
+  s.addEventListener("click", (e) => { if (e.target === s || e.target.closest("[data-close]")) close(); if (e.target.closest("[data-go]")) { close(); onPrimary && onPrimary(); } });
+  document.addEventListener("keydown", key); document.body.appendChild(s); const b = s.querySelector("[data-go]") || s.querySelector("button"); b && b.focus();
+}
+function banners() {
+  const out = [], gen = new Date(D.meta.generated.replace(" ", "T"));
+  if (D.meta.demo) out.push(["", "i", "데모 데이터로 만든 예시 화면이에요. 실제 공장 자료가 아닙니다."]);
+  const core = D.status.filter((r) => r.rows > 0 && r.last && /원료|킬른|소성|클링커|시멘트/.test(r.name));
+  const old = core.map((r) => ({ r, d: Math.floor((gen - new Date(r.last)) / 864e5) })).filter((x) => x.d >= 3).sort((a, b) => b.d - a.d);
+  if (old.length) out.push(["warn", "!", `${esc(old[0].r.name)} 자료가 ${old[0].d}일째 새로 들어오지 않았어요${old.length > 1 ? ` (외 ${old.length - 1}개)` : ""}. 데이터 현황 탭에서 확인하세요.`]);
+  $("banners").innerHTML = out.map(([c, ic, t], i) => `<div class="banner ${c}" data-b="${i}"><span class="ic">${ic}</span><p>${t}</p><button aria-label="닫기">×</button></div>`).join("");
+  $("banners").addEventListener("click", (e) => { if (e.target.closest("button")) e.target.closest(".banner").remove(); });
+}
 
 // ── 선 그래프(SVG, 눈금 하나, 호버 툴팁) ───────────────────────────────
 function lineChart(host, { series, band, lines = [], dec = 1, unit = "", h = 300 }) {
   const all = series.flatMap((s) => s.data.filter((p) => p[1] != null));
-  if (!all.length) { host.innerHTML = '<div class="empty">이 기간에 값이 없습니다.</div>'; return; }
+  if (!all.length) { host.innerHTML = empty("이 기간에 값이 없어요."); return; }
   let lo = Math.min(...all.map((p) => p[1])), hi = Math.max(...all.map((p) => p[1]));
   for (const v of [...lines.map((l) => l.v), ...(band || [])]) if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   const pad = (hi - lo) * 0.08 || 1, nonneg = lo >= 0; lo -= pad; hi += pad; if (nonneg) lo = Math.max(0, lo);   // 음수가 될 수 없는 값은 0 아래로 그리지 않음
-  const W = 900, H = h, L = 56, R = 14, T = 14, B = 30;
+  const W = Math.round(Math.max(320, Math.min(900, host.clientWidth || 900))), H = W < 600 ? Math.round(h * 0.8) : h, L = 46, R = 12, T = 14, B = 28;   // 화면 폭 그대로 그려 글자가 작아지지 않게
   const x0 = Math.min(...all.map((p) => p[0])), x1 = Math.max(...all.map((p) => p[0]));
   const X = (t) => L + (W - L - R) * (t - x0) / (x1 - x0 || 1), Y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
   const tk = []; for (let i = 0; i <= 5; i++) tk.push(lo + (hi - lo) * i / 5);
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map((q) => q.name).join(", "))} 추이"><g class="axis">`;
   s += tk.map((v) => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${css("--line")}"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${f(v, dec)}</text>`).join("");
-  for (let i = 0; i <= 5; i++) { const t = x0 + (x1 - x0) * i / 5; s += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${md(t)}</text>`; }
+  const nx = W < 600 ? 3 : 5; for (let i = 0; i <= nx; i++) { const t = x0 + (x1 - x0) * i / nx; s += `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${md(t)}</text>`; }
   s += "</g>";
-  if (band && band[0] != null && band[1] != null) s += `<rect x="${L}" width="${W - L - R}" y="${Y(band[1])}" height="${Y(band[0]) - Y(band[1])}" fill="${css("--band")}"/>`;
+  if (band && band[0] != null && band[1] != null) s += `<rect x="${L}" width="${W - L - R}" y="${Y(band[1])}" height="${Y(band[0]) - Y(band[1])}" rx="6" fill="${css("--band")}"/>`;
   for (const ln of lines) if (ln.v != null) s += `<line x1="${L}" x2="${W - R}" y1="${Y(ln.v)}" y2="${Y(ln.v)}" stroke="${css(ln.c)}" stroke-width="1.5" ${ln.dash ? 'stroke-dasharray="6 4"' : ""}/><text x="${W - R - 4}" y="${Y(ln.v) - 5}" text-anchor="end" font-size="11" fill="${css("--muted")}">${esc(ln.label)}</text>`;
   for (const q of series) {
     const pts = q.data.filter((p) => p[1] != null); if (!pts.length) continue;
-    s += `<polyline fill="none" stroke="${css(q.color)}" stroke-width="2" stroke-linejoin="round" ${q.dash ? 'stroke-dasharray="5 4"' : ""} points="${pts.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"/>`;
-    const e = pts[pts.length - 1]; s += `<circle cx="${X(e[0])}" cy="${Y(e[1])}" r="4" fill="${css(q.color)}" stroke="${css("--surface")}" stroke-width="2"/>`;
+    s += `<polyline fill="none" stroke="${css(q.color)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${q.dash ? 'stroke-dasharray="5 4"' : ""} points="${pts.map((p) => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ")}"/>`;
+    const e = pts[pts.length - 1]; s += `<circle cx="${X(e[0])}" cy="${Y(e[1])}" r="4.5" fill="${css(q.color)}" stroke="${css("--surface")}" stroke-width="2"/>`;
   }
   s += `<line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="${css("--faint")}" visibility="hidden"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg>`;
-  host.innerHTML = s + '<div class="tip" hidden></div>';
-  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), xh = host.querySelector(".xh");
+  host.innerHTML = s + '<div class="ctip" hidden></div>';
+  const svg = host.querySelector("svg"), tip = host.querySelector(".ctip"), xh = host.querySelector(".xh");
   svg.addEventListener("pointermove", (ev) => {
     const r = svg.getBoundingClientRect(), t = x0 + ((ev.clientX - r.left) * W / r.width - L) / (W - L - R) * (x1 - x0);
     const rows = series.map((q) => { let b = null; for (const p of q.data) if (p[1] != null && (!b || Math.abs(p[0] - t) < Math.abs(b[0] - t))) b = p; return b && { q, p: b }; }).filter(Boolean);
     if (!rows.length) return; const at = rows[0].p[0];
     xh.setAttribute("x1", X(at)); xh.setAttribute("x2", X(at)); xh.setAttribute("visibility", "visible");
-    tip.innerHTML = `<div style="color:var(--muted)">${ymd(at)}</div>` + rows.map(({ q, p }) => `<div><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(${q.color});margin-right:6px"></i>${esc(q.name)} <b class="num">${f(p[1], dec)}</b>${unit}</div>`).join("");
+    tip.innerHTML = `<div style="color:var(--muted)">${ymd(at)}</div>` + rows.map(({ q, p }) => `<div><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(${q.color});margin-right:6px"></i>${esc(q.name)} <b>${f(p[1], dec)}</b>${unit}</div>`).join("");
     tip.hidden = false; tip.style.left = Math.min(Math.max(ev.clientX - r.left + 12, 0), r.width - tip.offsetWidth) + "px"; tip.style.top = "8px";
   });
   svg.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("visibility", "hidden"); });
 }
-const legend = (items) => `<div class="legend">${items.map(([n, c, dash]) => `<span><i style="background:var(${c})${dash ? ";opacity:.6" : ""}"></i>${esc(n)}</span>`).join("")}</div>`;
-const chips = (id, opts, cur, fmt = (x) => x) => `<div class="chips" id="${id}">${opts.map((o) => `<button aria-pressed="${o === cur}" data-v="${esc(o)}">${esc(fmt(o))}</button>`).join("")}</div>`;
-const onChip = (id, fn) => $(id).addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) fn(b.dataset.v); });
 
-// ── 탭 ───────────────────────────────────────────────────────────────
+// ── 탭(넓은 화면: 상단 탭 / 휴대폰: 하단 탭바) ─────────────────────────
 const TABS = [["overview", "종합 현황"], ["monitor", "공정 모니터링"], ["predict", "강도 예측"], ["diagnosis", "원인 진단"], ["shipment", "출하시멘트"], ["data", "데이터 현황"]];
+const SHORT = { overview: "현황", monitor: "모니터링", predict: "예측", diagnosis: "진단", shipment: "출하", data: "데이터" };
 const st = { item: (D.monitor.items[0] || {}).key, line: "전체", prod: D.predict.products[0], age: 28, cat: (D.diagnosis.cats[0] || {}).name || "전체", ev: null,
-             sprod: Object.keys(D.shipment.products)[0] };
-$("tabs").innerHTML = TABS.map(([id, t]) => `<button role="tab" data-id="${id}">${t}</button>`).join("");
+             sprod: Object.keys(D.shipment.products)[0], from: null };
+const nAlert = (D.overview.sev["위험"] || 0) + (D.overview.sev["경고"] || 0);
+const bdg = (id) => (id === "diagnosis" && nAlert ? `<span class="badge" aria-label="최근 14일 위험·경고 ${nAlert}건">${nAlert > 99 ? "99+" : nAlert}</span>` : "");
+$("tabs").innerHTML = TABS.map(([id, t]) => `<button role="tab" data-id="${id}">${t}${bdg(id)}</button>`).join("");
+$("tabbar").innerHTML = TABS.map(([id]) => `<button role="tab" data-id="${id}">${svgI(id)}<span>${SHORT[id]}</span>${bdg(id)}</button>`).join("");
 const view = $("view");
 function render(id) {
   if (!TABS.some(([k]) => k === id)) id = "overview";
-  $("tabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.id === id ? "true" : "false"));
+  for (const nav of [$("tabs"), $("tabbar")]) nav.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.id === id ? "true" : "false"));
+  closePop();
   ({ overview, monitor, predict, diagnosis, shipment, data })[id]();
+  if (id !== "diagnosis") st.from = null;
 }
-$("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; if (location.hash !== "#" + b.dataset.id) location.hash = b.dataset.id; else render(b.dataset.id); });
-window.addEventListener("hashchange", () => render(location.hash.slice(1)));
+const go = (id) => { if (location.hash !== "#" + id) location.hash = id; else render(id); scrollTo({ top: 0 }); };
+for (const nav of [$("tabs"), $("tabbar")]) nav.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { st.from = null; go(b.dataset.id); } });
+addEventListener("hashchange", () => render(location.hash.slice(1)));
+let lastW = innerWidth, rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (Math.abs(innerWidth - lastW) > 40) { lastW = innerWidth; render(location.hash.slice(1)); } }, 250); });
+addEventListener("scroll", () => { $("top").classList.toggle("scrolled", scrollY > 4); $("fab").classList.toggle("on", scrollY > 600); }, { passive: true });
+$("fab").addEventListener("click", () => scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
+$("share").addEventListener("click", async () => {
+  const url = location.href.split("#")[0] + location.hash, isFile = location.protocol === "file:";
+  if (!isFile && navigator.share) { try { await navigator.share({ title: document.title, url }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+  const text = isFile ? decodeURI(location.pathname.replace(/^\/([A-Za-z]:)/, "$1")).replace(/\//g, "\\") : url;
+  try { await navigator.clipboard.writeText(text); toast(isFile ? "파일 위치를 복사했어요" : "링크를 복사했어요"); }
+  catch (e) { toast("복사가 막혀 있어요 — 주소창의 주소를 복사해 주세요"); }
+});
 
+// ── 01 종합 현황 ─────────────────────────────────────────────────────
 function overview() {
-  const O = D.overview;
-  const worst = O.stages.reduce((w, s) => (({ "위험": 3, "경고": 2, "주의": 1, "정상": 0 })[s.status] > ({ "위험": 3, "경고": 2, "주의": 1, "정상": 0 })[w] ? s.status : w), "정상");
-  view.innerHTML = `<div class="panel">
-    <header><div><h2>종합 현황</h2><p class="sub">기준일 ${esc(D.meta.ref)} · 공정별 핵심 항목의 최신 상태와 최근 14일 위험·경고</p></div>${pill(SEVCLS[worst], worst === "정상" ? "전 공정 정상" : `${worst} 있음`)}</header>
-    <div class="grid g4">${O.kpis.map((k) => `<div class="box kpi t-${k.tone}"><small>${esc(k.label)}</small><b>${esc(k.value)}${k.unit ? `<span> ${esc(k.unit)}</span>` : ""}</b><em>${esc(k.sub)}</em></div>`).join("") || '<div class="empty">표시할 지표가 없습니다.</div>'}</div>
-    <div class="grid g2">
-      <div class="box"><h3>공정별 상태</h3><table><tbody>${O.stages.map((s) => `<tr><td>${esc(s.stage)}</td><td>${esc(s.text)}</td><td class="n">${pill(SEVCLS[s.status], s.status)}</td></tr>`).join("") || '<tr><td>자료 없음</td></tr>'}</tbody></table></div>
-      <div class="box"><h3>조치가 필요한 알림 <span class="note">(최근 14일 위험·경고 ${O.n_recent}건 중 최근 8건)</span></h3>
-        ${O.alerts.length ? `<table><tbody>${O.alerts.map((a, i) => `<tr class="click" data-i="${i}"><td>${pill(SEVCLS[a.sev], a.sev)}</td><td>${esc(a.item)}<br><span class="note">${esc(a.desc)} · ${esc(a.period)}</span></td></tr>`).join("")}</tbody></table><p class="note" style="margin-top:8px">알림을 누르면 원인 진단 탭으로 이동합니다.</p>` : '<div class="empty">최근 14일 위험·경고 알림이 없습니다.</div>'}</div>
+  const O = D.overview, sev = O.sev;
+  const worst = O.stages.reduce((w, s) => (RANK[s.status] > RANK[w] ? s.status : w), "정상");
+  const h = O.n_recent ? `조치가 필요한 알림이<br><em>${O.n_recent}건</em> 있어요` : worst === "정상" ? `오늘은 전 공정이<br><em>정상</em>이에요` : `<em>${esc(worst)}</em> 단계 항목을<br>확인해 주세요`;
+  const tot = (sev["위험"] || 0) + (sev["경고"] || 0) + (sev["주의"] || 0), mx = Math.max(1, sev["위험"] || 0, sev["경고"] || 0, sev["주의"] || 0);
+  view.innerHTML = `<div class="page">
+    ${head(`종합 현황 · ${D.meta.ref} 기준`, h, `생성 ${esc(D.meta.generated)}${D.meta.period ? ` · 자료 기간 ${esc(D.meta.period[0])} ~ ${esc(D.meta.period[1])}` : ""}`)}
+    <div class="grid g-auto">${O.kpis.map((k, i) => card({ i, no: two(i), title: esc(k.label.replace(/\(.*\)$/, "")), en: `${esc(k.en || "")}${k.en ? " · " : ""}${esc(k.sub)}`,
+      well: (k.ring != null ? ring(k.ring, k.ring === 100 ? "--ok" : "--bad") : "") + `<div class="big"${k.ring != null ? ' style="text-align:center;font-size:20px"' : ""}>${esc(k.value)}${k.unit ? `<span>${esc(k.unit)}</span>` : ""}</div>`
+        + `<div class="note">${esc((k.label.match(/\((.*)\)$/) || [])[1] || "")}</div><span class="corner">${pill(...TONE[k.tone] || ["mute", "-"])}</span>` })).join("") || empty("표시할 지표가 없어요.")}</div>
+    <h2 class="sec">공정별 상태 <small>원료 → 소성 → 클링커 → 분쇄 → 제품</small></h2>
+    <div class="grid g-stage">${O.stages.map((s, i) => card({ i, no: two(i), title: esc(s.stage), en: esc(s.en),
+      well: `<div style="display:flex;gap:12px;align-items:center"><span style="flex:none;display:flex">${statusIcon(s.status)}</span><div><b>${esc(s.status)}</b><div class="note">${esc(s.text)}</div></div></div>` })).join("") || empty("자료가 없어요.")}</div>
+    <div class="grid g12">
+      ${box(`<h3>최근 14일 알림</h3><div class="sum"><div class="tot"><div class="big">${tot}</div><small>건</small></div><div class="rows">${["위험", "경고", "주의"].map((k) =>
+        `<div class="r"><span>${k}</span><div class="pbar"><i style="width:${(100 * (sev[k] || 0) / mx).toFixed(0)}%;background:var(--${SEVCLS[k] === "bad" ? "bad" : "warn"})"></i></div><span class="n">${sev[k] || 0}</span></div>`).join("")}</div></div>
+        <p class="note" style="margin-top:12px">같은 항목이 이어지면 한 건으로 묶어 셉니다.</p>`, 0)}
+      ${box(`<h3>조치가 필요한 알림 <span class="note">최근 위험·경고 ${O.alerts.length}건</span></h3>${O.alerts.length ? `<div class="list">${O.alerts.map((a, i) =>
+        `<div class="li" role="button" tabindex="0" data-i="${i}">${pill(SEVCLS[a.sev], a.sev)}<div class="main"><b>${esc(a.item)}</b><small>${esc(a.desc)} · ${esc(a.period)}</small></div><span class="chev">›</span></div>`).join("")}</div>`
+        : empty("최근 14일 위험·경고 알림이 없어요.")}`, 1)}
     </div></div>`;
-  view.querySelectorAll("tr[data-i]").forEach((r) => r.addEventListener("click", () => { const a = O.alerts[+r.dataset.i]; st.cat = a.cat; st.ev = a.id; location.hash = "diagnosis"; }));
+  const openAlert = (i) => { const a = O.alerts[i];
+    sheet(`<div>${pill(SEVCLS[a.sev], a.sev)}</div><h3>${esc(a.item)}</h3><dl class="kv"><dt>내용</dt><dd>${esc(a.desc)}</dd><dt>기간</dt><dd>${esc(a.period)}</dd><dt>분류</dt><dd>${esc(a.cat)}</dd></dl>
+      <div class="btns"><button class="btn" data-close>닫기</button><button class="btn primary" data-go>원인 진단 보기</button></div>`,
+      () => { st.cat = a.cat; st.ev = a.id; st.from = "overview"; go("diagnosis"); }); };
+  view.querySelectorAll(".li[data-i]").forEach((r) => { r.addEventListener("click", () => openAlert(+r.dataset.i)); r.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openAlert(+r.dataset.i); } }); });
 }
 
+// ── 02 공정 모니터링 ─────────────────────────────────────────────────
 function monitor() {
   const M = D.monitor, it = M.items.find((x) => x.key === st.item) || M.items[0];
-  if (!it) { view.innerHTML = '<div class="panel"><div class="empty">공정 자료가 없습니다.</div></div>'; return; }
-  const lines = it.lines.map((l) => l.line);
+  if (!it) { view.innerHTML = `<div class="page">${head("공정 모니터링", "공정 자료가<br><em>아직</em> 없어요", "")}${empty("관리용 앱에서 공정 자료를 올리면 여기에 나타나요.")}</div>`; return; }
+  const lines = it.lines.map((l) => l.line).filter((l) => l !== "전체");
   if (st.line !== "전체" && !lines.includes(st.line)) st.line = "전체";
   const shown = (st.line === "전체" ? it.lines : it.lines.filter((l) => l.line === st.line)).slice(0, 8);
   const lim = (v) => (v == null ? "-" : f(v, it.dec));
-  view.innerHTML = `<div class="panel">
-    <header><div><h2>공정 모니터링 · ${esc(it.name)}${it.prod ? ` [${esc(it.prod)}]` : ""}</h2><p class="sub">최근 ${M.days}일 · 8시간 평균 · 같은 시각이라도 호기·밀은 따로 저장·판정</p></div></header>
-    <div class="ctrl"><div><span class="lab">항목</span>${chips("mi", M.items.map((x) => x.key), it.key, (k) => M.items.find((x) => x.key === k).name)}</div>
-      <div><span class="lab">공정구분(호기·밀)</span>${chips("ml", ["전체", ...lines], st.line, (v) => (v === "전체" ? "전체(겹쳐 보기)" : v))}</div></div>
-    <div class="box">${legend(shown.map((l, i) => [l.label, COLORS[i % 8]]))}<div class="chart" id="mch"></div>
-      <p class="note">파란 띠 = 사내 관리기준 ${lim(it.lsl)} ~ ${lim(it.usl)} ${esc(it.unit)}${it.ks_min != null ? ` · KS ≥ ${it.ks_min}` : ""}${it.ks_max != null ? ` · KS ≤ ${it.ks_max}` : ""}${it.lines.length > 8 && st.line === "전체" ? " · 그래프는 8개까지 겹쳐 그림(호기를 골라 보세요)" : ""}</p></div>
-    <div class="box scroll"><h3>공정구분별 요약</h3><table><thead><tr><th>공정구분</th><th class="n">n</th><th class="n">최근값</th><th class="n">평균</th><th class="n">표준편차</th><th class="n">기준 이탈</th><th class="n">Cpk</th><th>상태</th></tr></thead><tbody>${it.lines.map((l) => {
+  view.innerHTML = `<div class="page">
+    ${head(`공정 모니터링 · 최근 ${M.days}일`, `${esc(it.name)}${it.prod ? ` <span style="font-size:.6em;color:var(--muted)">[${esc(it.prod)}]</span>` : ""}<br><em>${st.line === "전체" ? "호기별로" : esc(st.line)}</em> 봐요`, "8시간 평균 · 같은 시각이라도 호기·밀은 따로 저장·판정해요")}
+    <div class="ctrl"><div style="min-width:0;max-width:100%"><span class="lab">항목</span>${chips("mi", M.items.map((x) => x.key), it.key, (k) => esc(M.items.find((x) => x.key === k).name), true)}</div>
+      ${lines.length > 1 ? `<div><span class="lab">공정구분(호기·밀)</span>${pick("ml", ["전체", ...lines], st.line)}</div>` : ""}</div>
+    ${box(`${legend(shown.map((l, i) => [l.label, COLORS[i % 8]]))}<div class="chart" id="mch"></div>
+      <p class="note">파란 띠 = 사내 관리기준 ${lim(it.lsl)} ~ ${lim(it.usl)} ${esc(it.unit)}${it.ks_min != null ? ` · KS ≥ ${it.ks_min}` : ""}${it.ks_max != null ? ` · KS ≤ ${it.ks_max}` : ""}${it.lines.length > 8 && st.line === "전체" ? " · 8개까지 겹쳐 그려요(호기를 골라 보세요)" : ""}</p>`)}
+    ${box(`<h3>공정구분별 요약 ${qi("cpk")}</h3><div class="scroll"><table><thead><tr><th>공정구분</th><th class="n">n</th><th class="n">최근값</th><th class="n">평균</th><th class="n hide-sm">표준편차</th><th class="n hide-sm">기준 이탈</th><th class="n">Cpk</th><th>상태</th></tr></thead><tbody>${it.lines.map((l) => {
       const s = l.st, over = (it.usl != null && s.last > it.usl) || (it.lsl != null && s.last < it.lsl);
       const p = over ? pill("warn", "최근값 이탈") : s.cpk != null && s.cpk < 1 ? pill("warn", "능력 부족") : s.cpk == null ? pill("mute", "기준 없음") : pill("ok", "정상");
-      return `<tr${l.line === st.line ? ' class="sel"' : ""}><td>${esc(l.label)}</td><td class="n">${s.n}</td><td class="n">${f(s.last, it.dec)} <span class="note">${esc(s.last_t)}</span></td><td class="n">${f(s.mean, it.dec)}</td><td class="n">${f(s.sd, it.dec + 1)}</td><td class="n">${s.out}점</td><td class="n">${f(s.cpk, 2)}</td><td>${p}</td></tr>`; }).join("")}</tbody></table>
-      <p class="note" style="margin-top:6px">Cpk 1.33 이상 충분 · 1.0 미만 개선 필요(사내 관리기준 기준)</p></div></div>`;
+      return `<tr${l.line === st.line ? ' class="selrow"' : ""}><td><b>${esc(l.label)}</b></td><td class="n">${s.n}</td><td class="n">${f(s.last, it.dec)} <span class="note hide-sm">${esc(s.last_t)}</span></td><td class="n">${f(s.mean, it.dec)}</td><td class="n hide-sm">${f(s.sd, it.dec + 1)}</td><td class="n hide-sm">${s.out}점</td><td class="n">${f(s.cpk, 2)}</td><td>${p}</td></tr>`; }).join("")}</tbody></table></div>`, 1)}
+  </div>`;
   lineChart($("mch"), { series: shown.map((l, i) => ({ name: l.label, color: COLORS[i % 8], data: l.pts })), band: [it.lsl, it.usl], dec: it.dec, unit: ` ${it.unit}`,
     lines: [it.ks_min != null ? { v: it.ks_min, c: "--bad", label: `KS ${it.ks_min}` } : null, it.ks_max != null ? { v: it.ks_max, c: "--bad", label: `KS ${it.ks_max}` } : null].filter(Boolean) });
-  onChip("mi", (v) => { st.item = v; st.line = "전체"; monitor(); }); onChip("ml", (v) => { st.line = v; monitor(); });
+  onPick("mi", (v) => { st.item = v; st.line = "전체"; monitor(); }); onPick("ml", (v) => { st.line = v; monitor(); });
 }
 
+// ── 03 강도 예측 ─────────────────────────────────────────────────────
+function rangeBar(y, lo, hi, ks, lsl) {
+  const vals = [y, lo, hi, ks, lsl].filter((v) => v != null && isFinite(v)); const a = Math.min(...vals) - 2, b = Math.max(...vals) + 2;
+  const P = (v) => (100 * (v - a) / (b - a)).toFixed(1) + "%";
+  return `<div class="range" aria-hidden="true"><div class="trk"></div><div class="bd" style="left:${P(lo)};width:calc(${P(hi)} - ${P(lo)})"></div>`
+    + (ks != null ? `<div class="mk" style="left:${P(ks)}"></div><div class="ml" style="left:${P(ks)}">KS ${ks}</div>` : "")
+    + (lsl != null ? `<div class="mk l" style="left:${P(lsl)}"></div><div class="ml" style="left:${P(lsl)};top:30px">사내 ${lsl}</div>` : "")
+    + `<div class="pt" style="left:${P(y)}"></div></div>`;
+}
 function predict() {
   const P = D.predict;
-  if (!P.products.length) { view.innerHTML = '<div class="panel"><div class="empty">강도 실측 로트가 부족해 예측할 수 없습니다.</div></div>'; return; }
+  if (!P.products.length) { view.innerHTML = `<div class="page">${head("강도 예측", "예측할 자료가<br><em>부족</em>해요", "")}${empty("강도 실측 로트가 30개 이상 쌓이면 예측할 수 있어요.")}</div>`; return; }
   const ages = P.ages.filter((a) => P.data[`${st.prod}|${a}`]);
   if (!ages.includes(st.age)) st.age = ages.includes(28) ? 28 : ages[ages.length - 1];
   const E = P.data[`${st.prod}|${st.age}`];
-  if (!E) { view.innerHTML = '<div class="panel"><div class="empty">이 품종은 예측할 자료가 부족합니다.</div></div>'; return; }
+  if (!E) { view.innerHTML = `<div class="page">${head("강도 예측", "이 품종은 자료가<br><em>부족</em>해요", "")}${empty("다른 품종을 골라 보세요.")}</div>`; return; }
   const b = E.best, j = (v, lo) => (E.ks != null && v < E.ks ? pill("bad", "KS 미달 예측") : E.lsl != null && v < E.lsl ? pill("warn", "사내기준 미달 예측") : E.lsl != null && lo < E.lsl ? pill("warn", "하한 근접") : (E.ks == null && E.lsl == null ? pill("mute", "기준 미설정") : pill("ok", "양호")));
-  view.innerHTML = `<div class="panel">
-    <header><div><h2>압축강도 예측 · ${st.prod} ${st.age}일</h2><p class="sub">결과가 나오기 전에 앞 재령 강도·분말도·SO₃ 등으로 회귀 예측 · 로트마다 오차가 가장 작은 모델 사용 · 추정치</p></div></header>
-    <div class="ctrl"><div><span class="lab">품종</span>${chips("pp", P.products, st.prod)}</div><div><span class="lab">예측할 재령</span>${chips("pa", ages.map(String), String(st.age), (a) => `${a}일`)}</div></div>
-    ${b.n < 30 ? `<p class="note">${pill("warn", "신뢰도 낮음")} 학습 로트 ${b.n}개 — 30로트 이상 권장, 참고용으로만 보세요.</p>` : ""}
-    <div class="box">${legend([[`${st.age}일 실측`, "--s1"], ["예측(결과 미도래)", "--s2", true]])}<div class="chart" id="pch"></div>
-      <p class="note">${E.ks != null ? `빨간 선 = KS 하한 ${E.ks} MPa · ` : ""}${E.lsl != null ? `주황 점선 = 사내 하한 ${E.lsl} MPa` : "사내 하한 미설정"}</p></div>
+  view.innerHTML = `<div class="page">
+    ${head("강도 예측 · 추정치", `${esc(st.prod)} ${st.age}일 강도,<br><em>미리</em> 알아봐요`, "앞 재령 강도·분말도·SO₃ 등으로 회귀 예측 · 로트마다 오차가 가장 작은 모델을 써요")}
+    <div class="ctrl"><div><span class="lab">품종</span>${pick("pp", P.products, st.prod)}</div><div><span class="lab">예측할 재령</span>${seg("pa", ages.map(String), String(st.age), (a) => `${a}일`)}</div></div>
+    ${b.n < 30 ? `<div class="banner warn" style="margin:0"><span class="ic">!</span><p>학습 로트가 ${b.n}개뿐이에요. 30로트 이상이 권장이라 참고용으로만 보세요.</p></div>` : ""}
+    ${box(`${legend([[`${st.age}일 실측`, "--s1"], ["예측(결과 미도래)", "--s2", true]])}<div class="chart" id="pch"></div>
+      <p class="note">${E.ks != null ? `빨간 선 = KS 하한 ${E.ks} MPa · ` : ""}${E.lsl != null ? `주황 점선 = 사내 하한 ${E.lsl} MPa` : "사내 하한 미설정"}</p>`)}
     <div class="grid g2">
-      <div class="box scroll"><h3>${st.age}일 결과가 아직 없는 로트 (${E.due.length})</h3>${E.due.length ? `<div class="tall"><table><thead><tr><th>채취일</th><th class="n">예측</th><th class="n">95% 구간</th><th>판정</th><th class="hide-sm">사용 모델</th></tr></thead><tbody>${E.due.map((d) => `<tr><td>${esc(d.t)}</td><td class="n"><b>${f(d.p)}</b></td><td class="n">${f(d.lo)}~${f(d.hi)}</td><td>${j(d.p, d.lo)}</td><td class="note hide-sm">${esc(d.model)}</td></tr>`).join("")}</tbody></table></div>` : '<div class="empty">결과를 기다리는 로트가 없습니다.</div>'}</div>
-      <div class="box"><h3>값을 넣어 바로 예측 — ${esc(b.label)}</h3><div class="calc" id="calc">${b.feats.map((x, i) => `<div><label for="cf${i}">${esc(x.label)}</label><input id="cf${i}" type="number" step="any" value="${x.v == null ? "" : x.v}"></div>`).join("")}
-        <div><label>예측 ${st.age}일</label><div class="result" id="cout"></div><div class="note" id="cj"></div></div></div>
-        <p class="note" style="margin-top:8px">기본값은 가장 최근 로트의 실제 값 · 학습 범위를 크게 벗어나면 맞지 않습니다(외삽, 추정).</p></div></div>
-    <div class="box scroll"><h3>예측 모델 (오차 작은 순)</h3><table><thead><tr><th>모델</th><th class="n">학습 로트</th><th class="n">R²</th><th class="n">오차 RMSE(MPa)</th></tr></thead><tbody>${E.models.map((m) => `<tr><td>${esc(m.label)}</td><td class="n">${m.n}</td><td class="n">${f(m.r2, 2)}</td><td class="n">${f(m.rmse, 2)}</td></tr>`).join("")}</tbody></table>
-      <p class="note" style="margin-top:6px">RMSE = 한 로트씩 빼고 학습해 예측한 오차(LOO) · 예측구간 = 예측값 ± 1.96×RMSE(약 95%)</p></div></div>`;
+      ${box(`<h3>값을 넣어 바로 예측</h3><p class="note" style="margin:-6px 0 12px">${esc(b.label)}</p><div class="calc" id="calc">${b.feats.map((x, i) => `<div><label for="cf${i}">${esc(x.label)}</label><input id="cf${i}" type="number" step="any" inputmode="decimal" value="${x.v == null ? "" : x.v}"></div>`).join("")}</div>
+        <div class="well" style="margin-top:14px;min-height:0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div><span class="note">예측 ${st.age}일 강도</span><div class="big" id="cout">-</div></div><div id="cj"></div></div><div id="crange"></div><div class="note" id="cpi"></div></div>
+        <p class="note" style="margin-top:10px">기본값은 가장 최근 로트의 실제 값이에요 · 학습 범위를 크게 벗어나면 맞지 않아요(외삽, 추정).</p>`, 1)}
+      ${box(`<h3>${st.age}일 결과를 기다리는 로트 <span class="note">${E.due.length}로트</span></h3>${E.due.length ? `<div class="scroll tall"><table><thead><tr><th>채취일</th><th class="n">예측</th><th class="n">95% 구간 ${qi("pi")}</th><th>판정</th></tr></thead><tbody>${E.due.map((d) => `<tr title="${esc(d.model)}"><td>${esc(d.t)}</td><td class="n"><b>${f(d.p)}</b></td><td class="n">${f(d.lo)}~${f(d.hi)}</td><td>${j(d.p, d.lo)}</td></tr>`).join("")}</tbody></table></div>` : empty("결과를 기다리는 로트가 없어요.")}`, 2)}
+    </div>
+    ${box(`<h3>예측 모델 <span class="note">오차 작은 순</span></h3><div class="scroll"><table><thead><tr><th>모델</th><th class="n">학습 로트</th><th class="n">R² ${qi("r2")}</th><th class="n">RMSE(MPa) ${qi("rmse")}</th></tr></thead><tbody>${E.models.map((m, i) => `<tr${i === 0 ? ' class="selrow"' : ""}><td>${i === 0 ? pill("ok", "사용") + " " : ""}${esc(m.label)}</td><td class="n">${m.n}</td><td class="n">${f(m.r2, 2)}</td><td class="n">${f(m.rmse, 2)}</td></tr>`).join("")}</tbody></table></div>`, 3)}
+  </div>`;
   lineChart($("pch"), { series: [{ name: `${st.age}일 실측`, color: "--s1", data: E.series.map((r) => [r.t, r.a]) }, { name: "예측", color: "--s2", dash: true, data: E.series.filter((r) => r.p != null).map((r) => [r.t, r.p]) }],
     lines: [E.ks != null ? { v: E.ks, c: "--bad", label: `KS ${E.ks}` } : null, E.lsl != null ? { v: E.lsl, c: "--serious", dash: true, label: `사내 ${E.lsl}` } : null].filter(Boolean), unit: " MPa" });
-  const calc = () => { let y = b.coef[0], ok = true; b.feats.forEach((x, i) => { const v = parseFloat($(`cf${i}`).value); if (!isFinite(v)) ok = false; y += b.coef[i + 1] * v; });
-    $("cout").textContent = ok ? `${f(y)} MPa` : "-"; $("cj").innerHTML = ok ? `95% 구간 ${f(y - 1.96 * b.rmse)} ~ ${f(y + 1.96 * b.rmse)} · ${j(y, y - 1.96 * b.rmse)}` : "숫자를 모두 넣어 주세요"; };
+  const calc = () => {
+    let y = b.coef[0], ok = true;
+    b.feats.forEach((x, i) => { const el = $(`cf${i}`), v = parseFloat(el.value), bad = !isFinite(v); el.classList.toggle("err", bad); if (bad) ok = false; else y += b.coef[i + 1] * v; });
+    if (!ok) { $("cout").textContent = "-"; $("cj").innerHTML = ""; $("crange").innerHTML = ""; $("cpi").innerHTML = '<span class="ferr">빨간 칸에 숫자를 넣어 주세요</span>'; return; }
+    const lo = y - 1.96 * b.rmse, hi = y + 1.96 * b.rmse;
+    $("cout").innerHTML = `${f(y)}<span>MPa</span>`; $("cj").innerHTML = j(y, lo); $("crange").innerHTML = rangeBar(y, lo, hi, E.ks, E.lsl);
+    $("cpi").innerHTML = `95% 구간 ${f(lo)} ~ ${f(hi)} MPa ${qi("pi")}`;
+  };
   $("calc").addEventListener("input", calc); calc();
-  onChip("pp", (v) => { st.prod = v; predict(); }); onChip("pa", (v) => { st.age = +v; predict(); });
+  onPick("pp", (v) => { st.prod = v; predict(); }); onPick("pa", (v) => { st.age = +v; predict(); });
 }
 
+// ── 04 원인 진단 ─────────────────────────────────────────────────────
 function diagnosis() {
   const X = D.diagnosis, cats = X.cats.map((c) => c.name);
-  if (!X.events.length) { view.innerHTML = '<div class="panel"><div class="empty">최근 이상 이벤트가 없습니다.</div></div>'; return; }
+  const crumb = st.from === "overview" ? `<div class="crumb"><button class="back" id="back">‹ 종합 현황</button><span>›</span><span>원인 진단</span></div>` : "";
+  if (!X.events.length) { view.innerHTML = `<div class="page">${head("원인 진단", "최근 이상 이벤트가<br><em>없어요</em>", "", crumb)}${empty("최근 90일 동안 관리기준을 벗어난 항목이 없어요.")}</div>`; return; }
   if (st.cat !== "전체" && !cats.includes(st.cat)) st.cat = cats[0];
   const list = X.events.filter((e) => st.cat === "전체" || e.cat === st.cat);
   const withDx = list.filter((e) => e.dx), known = withDx.filter((e) => e.dx.registered);   // 원인 지식이 있는 진단을 먼저 보여 줌
-  let e = list.find((x) => x.id === st.ev) || known[0] || withDx[0] || list[0];
-  view.innerHTML = `<div class="panel">
-    <header><div><h2>원인 진단 · 솔루션</h2><p class="sub">최근 ${X.days}일 · ① 현상 정의 → ② 원인 가설 5축 → ③ 확인 방법 → ④ 단기 조치 vs 근본 대책 → ⑤ KS·관리기준 평가</p></div></header>
-    <div class="ctrl"><div><span class="lab">분류</span>${chips("dc", [...cats, "전체"], st.cat, (c) => `${c} (${c === "전체" ? X.events.length : X.cats.find((x) => x.name === c).n})`)}</div></div>
-    <div class="box scroll tall"><table><thead><tr><th>상태</th><th>종료</th><th>품종</th><th>항목</th><th>내용</th><th class="n">최악값</th><th>진단</th></tr></thead><tbody id="dtb">${list.map((x) => `<tr class="click${x === e ? " sel" : ""}" data-id="${esc(x.id)}"><td>${pill(SEVCLS[x.sev], x.sev)}</td><td>${esc(x.end)}</td><td>${esc(x.prod || "-")}</td><td>${esc(x.item)}</td><td>${esc(x.desc)}</td><td class="n">${f(x.worst, 2)} ${esc(x.unit)}</td><td>${x.dx ? "보기" : '<span class="note">관리용 앱</span>'}</td></tr>`).join("")}</tbody></table></div>
-    ${e && e.dx ? `<div class="box frame5"><h3>${esc(e.dx.title)}${e.prod ? ` [${esc(e.prod)}]` : ""}</h3><p class="note">${esc(e.dx.impact)}</p>
-      <div class="row"><div class="no">①</div><div><b>현상 정의·정량화</b><div>${esc(e.dx.quant)}</div><div class="note" style="margin-top:4px">종합 판단 — ${esc(e.dx.summary)}</div></div></div>
-      <div class="row"><div class="no">②</div><div><b>원인 가설 우선순위(5축)</b>${e.dx.hyp.map(([ax, h, sc, v]) => `<div class="hyp"><span class="ax">${esc(ax)}</span><span>${esc(h)}</span><div class="bar" title="근거 점수 ${sc == null ? "-" : sc}"><i style="width:${sc == null ? 0 : sc}%"></i></div><span class="vd">${esc(v)}</span></div>`).join("")}</div></div>
-      <div class="row"><div class="no">③</div><div><b>확인 방법(데이터·시험)</b><ul>${e.dx.verify.map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div></div>
-      <div class="row"><div class="no">④</div><div><b>단기 조치</b><ul>${e.dx.short.map((v) => `<li>${esc(v)}</li>`).join("") || "<li>-</li>"}</ul><b>근본 대책</b><ul>${e.dx.root.map((v) => `<li>${esc(v)}</li>`).join("") || "<li>-</li>"}</ul></div></div>
-      <div class="row"><div class="no">⑤</div><div><b>KS·관리기준 평가</b><ul>${e.dx.ks.map((k) => `<li>${esc(k.item)}${k.prod && k.prod !== "-" ? ` [${esc(k.prod)}]` : ""}: KS ${esc(k.ks)} · 사내 ${esc(k.plant)}</li>`).join("") || "<li>-</li>"}</ul></div></div>
-      <p class="note">근거 점수·판정은 공정 데이터로 자동 계산한 결과입니다. 원인은 확인 시험으로 확정하세요(추정 포함).</p></div>`
-    : `<div class="empty">이 이벤트의 상세 진단은 관리용 앱 🧪 원인 진단에서 볼 수 있습니다(현황판에는 분류마다 최근 대표 이벤트만 상세 진단을 넣습니다).</div>`}</div>`;
-  onChip("dc", (v) => { st.cat = v; st.ev = null; diagnosis(); });
-  $("dtb").addEventListener("click", (ev) => { const r = ev.target.closest("tr[data-id]"); if (r) { st.ev = r.dataset.id; diagnosis(); } });
+  const e = list.find((x) => x.id === st.ev) || known[0] || withDx[0] || list[0];
+  const cnt = (c) => (c === "전체" ? X.events.length : X.cats.find((x) => x.name === c).n);
+  view.innerHTML = `<div class="page">
+    ${head(`원인 진단 · 최근 ${X.days}일`, `이상 원인을<br><em>5단계</em>로 찾아요`, "현상 정의 → 원인 가설 5축 → 확인 방법 → 단기 조치·근본 대책 → KS·관리기준 평가", crumb)}
+    <div><span class="lab note" style="display:block;margin-bottom:6px;font-weight:600">분류</span>${chips("dc", [...cats, "전체"], st.cat, (c) => `${esc(c)} <span class="cnt">${cnt(c)}</span>`, true)}</div>
+    <div class="grid g12">
+      ${box(`<h3>이벤트 <span class="note">${list.length}건 · 최근·심각한 순</span></h3><div class="list tall" id="dtb">${list.map((x) =>
+        `<div class="li${x === e ? " sel" : ""}" role="button" tabindex="0" data-id="${esc(x.id)}">${pill(SEVCLS[x.sev], x.sev)}<div class="main"><b>${esc(x.item)}${x.prod ? ` [${esc(x.prod)}]` : ""}</b><small>${esc(x.desc)} · ${esc(x.end)} · 최악 ${f(x.worst, 2)} ${esc(x.unit)}</small></div><span class="chev">${x.dx ? "›" : ""}</span></div>`).join("")}</div>`, 0)}
+      ${e && e.dx ? box(`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${pill(SEVCLS[e.sev], e.sev)}<span class="note">${esc(e.end)} 종료</span></div>
+        <h3 style="font-size:19px;margin:8px 0 2px">${esc(e.dx.title)}${e.prod ? ` [${esc(e.prod)}]` : ""}</h3><p class="note" style="margin-bottom:16px">${esc(e.dx.impact)}</p>
+        <ol class="steps">
+          <li><h4>현상 정의·정량화</h4><div>${esc(e.dx.quant)}</div><div class="note" style="margin-top:4px">종합 판단 — ${esc(e.dx.summary)}</div></li>
+          <li><h4>원인 가설 우선순위(5축) ${qi("score")}</h4>${e.dx.hyp.map(([ax, h, sc, v]) => `<div class="hyp"><span class="ax">${esc(ax)}</span><span>${esc(h)}</span><div class="pbar" title="근거 점수 ${sc == null ? "-" : sc}"><i style="width:${sc == null ? 0 : sc}%"></i></div><span class="vd">${esc(v)}</span></div>`).join("")}</li>
+          <li><h4>확인 방법(데이터·시험)</h4><ul>${e.dx.verify.map((v) => `<li>${esc(v)}</li>`).join("")}</ul></li>
+          <li><h4>단기 조치</h4><ul>${e.dx.short.map((v) => `<li>${esc(v)}</li>`).join("") || "<li>-</li>"}</ul><h4 style="margin-top:10px">근본 대책</h4><ul>${e.dx.root.map((v) => `<li>${esc(v)}</li>`).join("") || "<li>-</li>"}</ul></li>
+          <li><h4>KS·관리기준 평가</h4><ul>${e.dx.ks.map((k) => `<li>${esc(k.item)}${k.prod && k.prod !== "-" ? ` [${esc(k.prod)}]` : ""}: KS ${esc(k.ks)} · 사내 ${esc(k.plant)}</li>`).join("") || "<li>-</li>"}</ul></li>
+        </ol><p class="note" style="margin-top:14px">근거 점수·판정은 공정 데이터로 자동 계산한 결과예요. 원인은 확인 시험으로 확정하세요(추정 포함).</p>`, 1, "sel")
+        : box(empty("이 이벤트의 상세 진단은 관리용 앱 🧪 원인 진단에서 볼 수 있어요.<br>현황판에는 분류마다 최근 대표 이벤트만 상세 진단을 넣어요."), 1)}
+    </div></div>`;
+  onPick("dc", (v) => { st.cat = v; st.ev = null; diagnosis(); });
+  const sel = (r) => { st.ev = r.dataset.id; diagnosis(); if (innerWidth <= 860) view.querySelector(".card.sel")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  $("dtb").addEventListener("click", (ev) => { const r = ev.target.closest("[data-id]"); if (r) sel(r); });
+  $("dtb").addEventListener("keydown", (ev) => { const r = ev.target.closest("[data-id]"); if (r && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); sel(r); } });
+  const bk = $("back"); if (bk) bk.addEventListener("click", () => { st.from = null; go("overview"); });
 }
 
+// ── 05 출하시멘트 ────────────────────────────────────────────────────
 function shipment() {
   const S = D.shipment.products, prods = Object.keys(S);
-  if (!prods.length) { view.innerHTML = '<div class="panel"><div class="empty">출하시멘트 자료가 없습니다.</div></div>'; return; }
+  if (!prods.length) { view.innerHTML = `<div class="page">${head("출하시멘트", "출하시멘트 자료가<br><em>아직</em> 없어요", "")}${empty("관리용 앱 🚢 출하시멘트에서 LIMS 파일을 올리면 여기에 나타나요.")}</div>`; return; }
   if (!prods.includes(st.sprod)) st.sprod = prods[0];
-  const p = S[st.sprod];
-  view.innerHTML = `<div class="panel">
-    <header><div><h2>출하시멘트 · ${esc(st.sprod)}</h2><p class="sub">최근 ${p.n}로트(${esc(p.first)} ~ ${esc(p.last)}) · KS L 5201 · 채취일 연도의 기준 적용</p></div>${p.ks_set ? pill(p.pass === p.n ? "ok" : "bad", `KS 적합 ${p.pass}/${p.n} 로트`) : pill("mute", "KS 기준 미입력")}</header>
-    <div class="ctrl"><div><span class="lab">품종</span>${chips("sp", prods, st.sprod)}</div></div>
-    <div class="box scroll"><h3>항목별 KS 판정</h3><table><thead><tr><th>항목</th><th class="n">n</th><th class="n">평균</th><th class="n">최소</th><th class="n">최대</th><th class="n">KS 기준</th><th>판정</th></tr></thead><tbody>${p.rows.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${r.n}</td><td class="n">${f(r.mean, r.dec)}</td><td class="n">${f(r.min, r.dec)}</td><td class="n">${f(r.max, r.dec)}</td><td class="n">${esc(r.ks)} ${esc(r.unit)}</td><td>${r.judge === "적합" ? pill("ok", "적합") : r.judge === "부적합" ? pill("bad", `부적합 ${r.n_bad}로트`) : pill("mute", r.judge)}</td></tr>`).join("")}</tbody></table></div>
-    <div class="box scroll"><h3>최근 로트</h3><table><thead><tr><th>채취일</th><th class="n">3일</th><th class="n">7일</th><th class="n">28일</th><th>KS</th></tr></thead><tbody>${p.recent.map((r) => `<tr><td>${esc(r.d)}</td><td class="n">${f(r.s3)}</td><td class="n">${f(r.s7)}</td><td class="n">${r.s28 == null ? '<span class="note">미도래</span>' : f(r.s28)}</td><td>${p.ks_set ? (r.ok ? pill("ok", "적합") : pill("bad", "부적합")) : pill("mute", "-")}</td></tr>`).join("")}</tbody></table>
-      <p class="note" style="margin-top:6px">선박·양하지, 첨가재·석회석 비율 영향 분석은 관리용 앱 🚢 출하시멘트에서 볼 수 있습니다.</p></div></div>`;
-  onChip("sp", (v) => { st.sprod = v; shipment(); });
+  const p = S[st.sprod], pct = p.n ? Math.round(100 * p.pass / p.n) : 0;
+  view.innerHTML = `<div class="page">
+    ${head(`출하시멘트 · ${p.first} ~ ${p.last}`, p.ks_set ? `${esc(st.sprod)} 최근 ${p.n}로트 중<br><em>${p.pass}로트</em> KS 적합` : `${esc(st.sprod)}는 KS 기준이<br><em>아직</em> 입력되지 않았어요`, "KS L 5201 · 채취일 연도의 기준을 적용해요")}
+    <div class="ctrl"><div><span class="lab">품종</span>${pick("sp", prods, st.sprod)}</div></div>
+    <div class="grid g12">
+      ${card({ i: 0, no: "01", title: `KS 적합률 ${qi("ks")}`, en: `최근 ${p.n}로트 · 강도·화학·분말도`, well: p.ks_set ? ring(pct, pct === 100 ? "--ok" : "--bad") + `<div class="note" style="text-align:center">${p.pass}/${p.n} 로트</div>` : empty("KS 기준 미입력") })}
+      ${box(`<h3>항목별 KS 판정</h3><div class="scroll"><table><thead><tr><th>항목</th><th class="n hide-sm">n</th><th class="n">평균</th><th class="n hide-sm">최소</th><th class="n hide-sm">최대</th><th class="n">KS 기준</th><th>판정</th></tr></thead><tbody>${p.rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td class="n hide-sm">${r.n}</td><td class="n">${f(r.mean, r.dec)}</td><td class="n hide-sm">${f(r.min, r.dec)}</td><td class="n hide-sm">${f(r.max, r.dec)}</td><td class="n">${esc(r.ks)} ${esc(r.unit)}</td><td>${r.judge === "적합" ? pill("ok", "적합") : r.judge === "부적합" ? pill("bad", `부적합 ${r.n_bad}`) : pill("mute", r.judge)}</td></tr>`).join("")}</tbody></table></div>`, 1)}
+    </div>
+    ${box(`<h3>최근 로트</h3><div class="scroll"><table><thead><tr><th>채취일</th><th class="n">3일</th><th class="n">7일</th><th class="n">28일</th><th>KS</th></tr></thead><tbody>${p.recent.map((r) => `<tr><td>${esc(r.d)}</td><td class="n">${f(r.s3)}</td><td class="n">${f(r.s7)}</td><td class="n">${r.s28 == null ? '<span class="note">미도래</span>' : f(r.s28)}</td><td>${p.ks_set ? (r.ok ? pill("ok", "적합") : pill("bad", "부적합")) : pill("mute", "-")}</td></tr>`).join("")}</tbody></table></div>
+      <p class="note" style="margin-top:8px">선박·양하지, 첨가재·석회석 비율 영향 분석은 관리용 앱 🚢 출하시멘트에서 볼 수 있어요.</p>`, 2)}
+  </div>`;
+  onPick("sp", (v) => { st.sprod = v; shipment(); });
 }
 
+// ── 06 데이터 현황 ───────────────────────────────────────────────────
 function data() {
-  view.innerHTML = `<div class="panel">
-    <header><div><h2>데이터 현황</h2><p class="sub">현황판에 반영된 자료의 양과 기간 · 생성 ${esc(D.meta.generated)}</p></div></header>
-    <div class="box scroll"><table><thead><tr><th>자료</th><th class="n">행 수</th><th>공정구분·종류</th><th>시작</th><th>최근</th></tr></thead><tbody>${D.status.map((r) => `<tr><td>${esc(r.name)}</td><td class="n">${r.rows.toLocaleString()}</td><td class="note">${esc(r.lines)}</td><td>${esc(r.first)}</td><td>${esc(r.last)}</td></tr>`).join("")}</tbody></table></div>
-    <div class="box"><h3>자료는 이렇게 들어옵니다</h3><table><tbody>
-      <tr><td>매일 06:00</td><td>공유 드라이브의 통합 업로드 파일(Blue365_QMS.xlsx)을 자동으로 읽고, 이 현황판을 새로 만듭니다.</td></tr>
-      <tr><td>바로 반영</td><td>관리용 앱 📥 데이터 관리에서 파일을 올리고 ‘적용’을 누릅니다.</td></tr>
-      <tr><td>지난 현황</td><td>같은 폴더의 ‘기록’ 폴더에 날짜별 현황판이 30일치 보관됩니다.</td></tr>
-    </tbody></table></div></div>`;
+  const gen = new Date(D.meta.generated.replace(" ", "T"));
+  const age = (r) => (r.last ? Math.max(0, Math.floor((gen - new Date(r.last)) / 864e5)) : null);
+  view.innerHTML = `<div class="page">
+    ${head(`데이터 현황 · 생성 ${D.meta.generated}`, `자료가 <em>언제까지</em><br>들어왔는지 봐요`, "현황판에 반영된 자료의 양과 기간")}
+    <div class="grid g-auto">${D.status.map((r, i) => { const d = age(r);
+      const tag = !r.rows ? pill("mute", "자료 없음") : d <= 2 ? pill("ok", "최신") : d <= 7 ? pill("warn", `${d}일 지남`) : pill("bad", `${d}일 지남`);
+      return card({ i, no: two(i), title: esc(r.name), en: r.rows ? `${esc(r.first)} ~ ${esc(r.last)}` : "아직 올라온 자료가 없어요",
+        well: `<div class="big">${r.rows.toLocaleString()}<span>행</span></div><div class="note" style="min-height:1.5em">${esc(r.lines) || "&nbsp;"}</div><div class="pbar" title="최신성"><i style="width:${r.rows ? Math.max(4, 100 - Math.min(100, (d || 0) * 100 / 14)) : 0}%"></i></div><span class="corner">${tag}</span>` }); }).join("")}</div>
+    ${box(`<h3>자료는 이렇게 들어와요</h3><div class="hstep" style="margin-top:6px">
+      <div><b>매일 06:00 자동</b><span class="note">공유 드라이브의 통합 업로드 파일(Blue365_QMS.xlsx)을 읽고 이 현황판을 새로 만들어요.</span></div>
+      <div><b>바로 반영</b><span class="note">관리용 앱 📥 데이터 관리에서 파일을 올리고 ‘적용’을 눌러요.</span></div>
+      <div><b>지난 현황</b><span class="note">같은 폴더의 ‘기록’ 폴더에 날짜별 현황판이 30일치 남아요.</span></div></div>`, 1)}
+  </div>`;
 }
 
+// ── 처음 열었을 때 한 번만: 코치마크 ───────────────────────────────────
+function coach() {
+  if (store.get("b365_coach_v1")) return;
+  const mobile = innerWidth <= 720, anchor = mobile ? $("tabbar") : $("tabs"); const r = anchor.getBoundingClientRect();
+  const c = document.createElement("div"); c.className = "coach"; c.role = "dialog";
+  c.innerHTML = `<b>여기서 화면을 바꿔요</b><div>알림을 누르면 원인 진단으로 바로 넘어가요.</div><button>알겠어요</button>`;
+  document.body.appendChild(c);
+  if (mobile) { c.classList.add("up"); c.style.left = "16px"; c.style.bottom = `${innerHeight - r.top + 12}px`; }
+  else { c.style.left = `${Math.max(16, r.left)}px`; c.style.top = `${r.bottom + 10}px`; }
+  c.querySelector("button").addEventListener("click", () => { c.remove(); store.set("b365_coach_v1", "1"); });
+}
+
+banners();
 render(location.hash.slice(1));
+setTimeout(coach, 600);
 })();
 </script>
 </body>

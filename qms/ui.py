@@ -572,7 +572,7 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
     period = ctx.store.period()
     recent = [e for e in ctx.events if period and e.end >= period[1] - pd.Timedelta(days=7)]
     counts = {k: sum(e.severity == k for e in recent) for k in ("위험", "경고", "주의")}
-    parts = ["🛠 관리용(자료·기준·분석) — 조회·공유는 보고서 → 👀 보는용 현황판"]
+    parts = []
     if period:
         parts.append(f"데이터 기간 {period[0]:%Y-%m-%d} ~ {period[1]:%Y-%m-%d}")
     if ctx.demo:
@@ -583,7 +583,9 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
     with st.container(key="qms_hero"):
         left, right = st.columns([5, 1.7], vertical_alignment="top")
         with left:
-            st.html(f'<div class="qms-today">TODAY &nbsp;{now:%Y-%m-%d} {WEEKDAYS[now.weekday()]}요일</div>')
+            st.html(f'<div class="qms-today"><span class="qms-tag">🛠 관리용 · 자료·기준·분석</span>'
+                    f'<span class="qms-tag gray">{now:%Y-%m-%d} {WEEKDAYS[now.weekday()]}요일</span>'
+                    '<span>조회·공유는 보고서 → 👀 보는용 현황판</span></div>')
             st.title(title)
             st.caption(" · ".join(([subtitle] if subtitle else []) + parts))
         with right:

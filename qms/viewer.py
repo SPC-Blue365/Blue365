@@ -24,6 +24,7 @@ TEMPLATE = Path(__file__).with_name("viewer_template.html")
 MONITOR_ITEMS = (("clk_fcao", None), ("clk_lsf", None), ("rm_lsf", None), ("cem_blaine", "1종"), ("cem_so3", "1종"),
                  ("cem_r45", "1종"))
 SHIP_KEYS = ("s1", "s3", "s7", "s28", "blaine", "so3", "mgo", "loi")
+STAGE_EN = {"원료": "Raw meal", "소성(킬른)": "Kiln", "클링커": "Clinker", "시멘트(분쇄)": "Cement mill", "제품 물성": "Product"}
 DX_PER_CATEGORY = 12          # 분류마다 원인 진단(5단계)까지 미리 계산해 넣는 이벤트 수(최근·심각한 순)
 LIST_PER_CATEGORY = 60        # 분류마다 목록에 넣는 이벤트 수
 
@@ -56,13 +57,13 @@ def _overview(ctx, end, pred28, ship) -> dict:
     s28 = phy[(phy.get("product") == "1종") & phy["phy_s28"].notna()].sort_values("timestamp").tail(30) if len(phy) and "phy_s28" in phy else pd.DataFrame()
     lim28 = reg["phy_s28"].limits_for("1종")
     if len(s28):
-        kpis.append({"label": "28일 강도 평균(1종, 최근 30로트)", "value": _num(s28["phy_s28"].mean(), 1), "unit": "MPa",
+        kpis.append({"label": "28일 강도 평균(1종, 최근 30로트)", "value": _num(s28["phy_s28"].mean(), 1), "unit": "MPa", "en": "28-day strength",
                      "sub": f"KS ≥ {lim28.ks_min:g}" + (f" · 사내 하한 {lim28.lsl:g}" if lim28.lsl is not None else ""),
                      "tone": "bad" if lim28.ks_min is not None and s28["phy_s28"].min() < lim28.ks_min else "ok"})
     p = pred28.get("1종")
     if p and p["due"]:
         mn = min(d["p"] for d in p["due"])
-        kpis.append({"label": f"28일 강도 예측 최저(결과 미도래 {len(p['due'])}로트)", "value": _num(mn, 1), "unit": "MPa",
+        kpis.append({"label": f"28일 강도 예측 최저(결과 미도래 {len(p['due'])}로트)", "value": _num(mn, 1), "unit": "MPa", "en": "Predicted 28-day",
                      "sub": "앞 재령 강도로 회귀 예측(추정)", "tone": "warn" if lim28.lsl is not None and mn < lim28.lsl else "ok"})
     item = reg.get("clk_fcao")
     lines = store.item_lines("clk_fcao", reg) or [None]
@@ -73,12 +74,13 @@ def _overview(ctx, end, pred28, ship) -> dict:
             worst = (ln, float(s.iloc[-1]), s.index[-1])
     if worst and item:
         lim = item.limits_for(None)
-        kpis.append({"label": f"클링커 f-CaO 최신 최고({worst[0] or '전체'})", "value": _num(worst[1], 2), "unit": "%",
+        kpis.append({"label": f"클링커 f-CaO 최신 최고({worst[0] or '전체'})", "value": _num(worst[1], 2), "unit": "%", "en": "Free lime",
                      "sub": f"{worst[2]:%m/%d %H:%M} · 사내 상한 {lim.usl:g}" if lim.usl is not None else f"{worst[2]:%m/%d %H:%M}",
                      "tone": "warn" if lim.usl is not None and worst[1] > lim.usl else "ok"})
     sp = ship.get("products", {}).get("1종")
     if sp and sp["n"]:
-        kpis.append({"label": "출하 KS 판정(1종, 최근 30로트)", "value": f"{sp['pass']}/{sp['n']}", "unit": "",
+        kpis.append({"label": "출하 KS 판정(1종, 최근 30로트)", "value": f"{sp['pass']}/{sp['n']}", "unit": "", "en": "KS conformity",
+                     "ring": round(100 * sp["pass"] / sp["n"]),
                      "sub": "강도·화학·분말도 KS 적합 로트", "tone": "ok" if sp["pass"] == sp["n"] else "bad"})
 
     stat = latest_status(store, reg, ctx.settings, ctx.events)
@@ -91,13 +93,14 @@ def _overview(ctx, end, pred28, ship) -> dict:
         w = sub.iloc[0]
         bad = sub[sub["status"] != "정상"]
         text = ", ".join(bad["item_name"].head(3)) + (f" 외 {len(bad) - 3}" if len(bad) > 3 else "") if len(bad) else "핵심 항목 관리 범위"
-        stages.append({"stage": stage, "status": w["status"], "text": text, "n": int(len(sub))})
+        stages.append({"stage": stage, "en": STAGE_EN.get(stage, ""), "status": w["status"], "text": text, "n": int(len(sub))})
 
     rec = [e for e in ctx.events if e.severity in ("위험", "경고") and e.end >= end - pd.Timedelta(days=14)]
     rec.sort(key=lambda e: (SEVERITY_ORDER[e.severity], e.end), reverse=True)
     alerts = [{"id": e.event_id, "sev": e.severity, "item": e.item_name + (f" [{e.product}]" if e.product else ""),
                "desc": e.rule_desc, "period": f"{e.start:%m/%d} ~ {e.end:%m/%d}", "cat": event_category(e)} for e in rec[:8]]
-    return {"kpis": kpis, "stages": stages, "alerts": alerts, "n_recent": len(rec)}
+    sev = {k: sum(e.severity == k for e in ctx.events if e.end >= end - pd.Timedelta(days=14)) for k in ("위험", "경고", "주의")}
+    return {"kpis": kpis, "stages": stages, "alerts": alerts, "n_recent": len(rec), "sev": sev}
 
 
 # ── 공정 모니터링 ───────────────────────────────────────────────────────

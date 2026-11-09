@@ -8,9 +8,11 @@ maxUploadSize = 50
 gatherUsageStats = false
 
 [theme]
-# 사내 포털 느낌: 밝은 배경 + 진한 파랑 강조(빨강은 '위험' 상태색으로만 사용)
+# Blue365 UI 스타일(docs/UI_디자인_가이드.md): 회색 바탕 + 흰 카드 + 파랑 한 색 강조(빨강은 '위험' 상태색으로만 사용)
 base = "light"
-primaryColor = "#0b4a8f"
-backgroundColor = "#edf2fa"
+primaryColor = "#3182f6"
+backgroundColor = "#f2f4f6"
 secondaryBackgroundColor = "#ffffff"
-textColor = "#2b2f3a"
+textColor = "#191f28"
+baseRadius = "0.75rem"
+borderColor = "#e5e8eb"
