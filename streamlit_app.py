@@ -10,7 +10,7 @@ import streamlit as st
 from qms import labels as L
 from qms.access import check_access
 from qms.theme import apply_theme
-from qms.ui import apply_responsive_css, enable_tilde_escape, enable_touch_charts
+from qms.ui import apply_responsive_css, enable_card_containers, enable_tilde_escape, enable_touch_charts
 
 APP_DIR = Path(__file__).resolve().parent
 
@@ -24,8 +24,9 @@ except Exception:  # noqa: BLE001
     pass
 enable_tilde_escape()   # '8~20%' 같은 범위 표기가 마크다운 취소선으로 바뀌지 않게 처리
 enable_touch_charts()   # 태블릿 보기: 그래프 위에서도 손가락 스크롤
+enable_card_containers()  # 테두리 칸 = 흰 카드(보는용 현황판과 같은 모양)
 apply_responsive_css()  # 태블릿·좁은 창: 숫자 카드 잘림·그래프 비좁음 방지
-apply_theme()           # 사내 포털 느낌의 화면 테마(상단 메뉴·제목 띠·카드·탭 머리글)
+apply_theme()           # Blue365 UI 스타일(docs/UI_디자인_가이드.md): 밝은 바탕·흰 카드·파란 강조·밑줄 탭
 if not check_access():  # 공유 실행용 접속 비밀번호(설정한 경우에만)
     st.stop()
 

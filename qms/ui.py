@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from . import share
 from .alerts import (
@@ -143,6 +144,10 @@ def enable_touch_charts() -> None:
     orig = DeltaGenerator.plotly_chart
 
     def wrapper(self, figure_or_data, *args, _orig=orig, **kwargs):
+        if isinstance(figure_or_data, go.Figure):                     # 모든 그래프: 흰 카드 위에 바로(회색 판 없음)
+            lay = figure_or_data.layout
+            if lay.paper_bgcolor is None and lay.plot_bgcolor is None:
+                figure_or_data.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         if isinstance(figure_or_data, go.Figure) and tablet_mode():
             figure_or_data.update_layout(dragmode=False)      # 그림은 실행마다 새로 만들므로(캐시 안 함) 직접 수정
             kwargs["config"] = {**(kwargs.get("config") or {}), "displayModeBar": False}
@@ -154,6 +159,60 @@ def enable_touch_charts() -> None:
     if main is not None:
         st.plotly_chart = main.plotly_chart
     DeltaGenerator._qms_touch_patched = True
+
+
+def enable_card_containers() -> None:
+    """테두리 컨테이너(st.container(border=True))에 qms_card_N 키를 자동으로 붙여 흰 카드 모양을 입힌다(앱 시작 시 1회).
+
+    Streamlit 1.67 은 테두리 있는 칸을 CSS 로 따로 구분할 표시가 없어서, 키(→ st-key-qms_card_N 클래스)로 구분한다.
+    번호는 실행마다 0부터 다시 센다(reset_card_counter) — 같은 화면은 매번 같은 키가 된다.
+    """
+    from streamlit.delta_generator import DeltaGenerator
+
+    if getattr(DeltaGenerator, "_qms_card_patched", False):
+        return
+    orig = DeltaGenerator.container
+
+    def wrapper(self, *args, _orig=orig, **kwargs):
+        if kwargs.get("border") and not kwargs.get("key"):
+            ctx = get_script_run_ctx()
+            if ctx is not None:
+                n = getattr(ctx, "_qms_card_n", 0) + 1
+                ctx._qms_card_n = n
+                kwargs["key"] = f"qms_card_{n}"
+        return _orig(self, *args, **kwargs)
+
+    functools.update_wrapper(wrapper, orig)
+    DeltaGenerator.container = wrapper
+    main = getattr(st, "_main", None)
+    if main is not None:
+        st.container = main.container
+    DeltaGenerator._qms_card_patched = True
+
+
+def reset_card_counter() -> None:
+    ctx = get_script_run_ctx()
+    if ctx is not None:
+        ctx._qms_card_n = 0
+
+
+# 화면별 결론형 제목(핵심 단어는 **굵게** = 파랑). 화면에서 headline= 으로 바꿀 수 있다.
+HEADLINES = {
+    "📈 공정 모니터링": ("공정 상태를\n**호기별로** 지켜봐요", "원료 → 소성 → 클링커 → 분쇄, 같은 시각이라도 호기·밀은 따로 판정해요"),
+    "🧪 원료 배합·클링커 설계": ("원료 배합을\n**목표 LSF**에 맞춰 설계해요", "조합원료 비율 → 클링커 화학조성·광물 예측"),
+    "🚢 출하시멘트 모니터링": ("출하시멘트 품질을\n**로트별로** 확인해요", "KS L 5201 판정 · 연도별 사내 관리기준"),
+    "⚙️ 기준·알림 설정": ("관리기준과 알림을\n**한곳에서** 정해요", "KS 값은 규격 그대로, 사내 기준은 직접 입력"),
+    "🔮 압축강도 예측 (재령별)": ("강도를 결과 전에\n**미리** 알아봐요", "앞 재령 강도·분말도·화학으로 회귀 예측 · 추정치"),
+    "🧪 원인 진단 · 솔루션": ("이상 원인을\n**5단계**로 찾아요", "현상 정의 → 원인 가설 5축 → 확인 방법 → 단기·근본 대책 → KS·관리기준 평가"),
+    "📥 데이터 관리": ("자료를 올리고\n**바로 반영**해요", "통합 업로드 양식 · 매일 06:00 자동 반영"),
+    "📦 원료 인수검사": ("원료 인수검사 결과를\n**합부 판정**해요", None),
+    "📑 보고서": ("보고서와 현황판을\n**한 번에** 만들어요", "PPT·엑셀 보고서, 👀 보는용 현황판"),
+    "📊 SPC 관리도 · 공정능력": ("관리도로 공정이\n**안정적인지** 봐요", "판정규칙(웨스턴 일렉트릭) · Cpk"),
+    "🧮 시멘트 화학 계산기": ("시멘트 화학값을\n**바로** 계산해요", "LSF·SM·IM·Bogue 광물"),
+    "☢️ 시멘트 6가크롬(Cr⁶⁺) 관리": ("6가크롬을\n**기준 이내로** 관리해요", "물질수지 · 환원제 투입량"),
+    "📉 그래프 보기": ("원하는 항목을\n**겹쳐서** 봐요", None),
+    "🚨 알림 센터": ("알림을\n**심각한 순**으로 확인해요", "위험(KS 이탈) · 경고(사내기준 이탈) · 주의(SPC 패턴)"),
+}
 
 
 def tablet_access_panel() -> None:
@@ -312,6 +371,7 @@ def _base_layout(fig: go.Figure, title: str | None, height: int, unit: str = "")
     fig.update_layout(
         title=dict(text=title, x=0, font=dict(size=15)) if title else None,
         height=height, margin=dict(l=10, r=10, t=42 if title else 12, b=10), hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",            # 흰 카드 위에 바로 그림(회색 판 없음)
         legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1.0),
         yaxis=dict(title=unit or None, showgrid=True, zeroline=False),
         xaxis=dict(showgrid=False),
@@ -565,8 +625,14 @@ def install_info() -> str:
     return f"버전 {ver or '개발용'} · 설치 위치 {app.parent if ver else app}"
 
 
-def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
-    """모든 화면 맨 위의 남색 제목 띠: 오늘 날짜·화면 제목·데이터 기간·최근 알림 + 도구(새로고침·태블릿 보기·접속 안내)."""
+def page_header(ctx: Ctx, title: str, subtitle: str | None = None, headline: str | None = None) -> None:
+    """모든 화면 맨 위: 알약 꼬리표(화면 이름·관리용·날짜) + 결론형 두 줄 제목(핵심 단어 파랑) + 회색 설명 + 도구 버튼.
+
+    보는용 현황판(qms/viewer_template.html)과 같은 머리 모양. 제목 글은 HEADLINES 또는 headline= ('**강조**', 줄바꿈 \\n).
+    """
+    from . import labels as _L
+    from .uikit import em, esc
+    reset_card_counter()
     tablet_mode()                                     # 스위치를 만들기 전에 자동 판별값을 정해 둔다
     now = pd.Timestamp.now()
     period = ctx.store.period()
@@ -574,20 +640,21 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
     counts = {k: sum(e.severity == k for e in recent) for k in ("위험", "경고", "주의")}
     parts = []
     if period:
-        parts.append(f"데이터 기간 {period[0]:%Y-%m-%d} ~ {period[1]:%Y-%m-%d}")
-    if ctx.demo:
-        parts.append("🧪 데모 데이터")
-    parts.append("최근 7일 알림 " + " ".join(f"{SEVERITY_ICON[k]}{v}" for k, v in counts.items()))
-    from . import labels as _L
-    title = _L.page(title)
+        parts.append(f"자료 기간 {period[0]:%Y-%m-%d} ~ {period[1]:%Y-%m-%d}")
+    parts.append("최근 7일 알림 " + " · ".join(f"{k} {v}" for k, v in counts.items()))
+    shown = _L.page(title)
+    hl, lead = HEADLINES.get(title, (None, None))
+    hl = headline or hl or shown
+    lead = subtitle or lead
     with st.container(key="qms_hero"):
         left, right = st.columns([5, 1.7], vertical_alignment="top")
         with left:
-            st.html(f'<div class="qms-today"><span class="qms-tag">🛠 관리용 · 자료·기준·분석</span>'
-                    f'<span class="qms-tag gray">{now:%Y-%m-%d} {WEEKDAYS[now.weekday()]}요일</span>'
-                    '<span>조회·공유는 보고서 → 👀 보는용 현황판</span></div>')
-            st.title(title)
-            st.caption(" · ".join(([subtitle] if subtitle else []) + parts))
+            demo = '<span class="qms-tag demo">데모</span>' if ctx.demo else ""
+            st.html(f'<div class="qk"><div class="qms-today"><span class="qms-tag">{esc(shown)}</span>'
+                    f'<span class="qms-tag gray">🛠 관리용</span>{demo}'
+                    f'<span>{now:%Y-%m-%d} {WEEKDAYS[now.weekday()]}요일 · 조회·공유는 📑 보고서 → 👀 보는용 현황판</span></div>'
+                    f'<h1 class="qk-hl">{em(hl)}</h1>'
+                    f'<p class="qk-lead">{esc(" · ".join(([lead] if lead else []) + parts))}</p></div>')
         with right:
             if st.button("🔄 새로고침", width="stretch", type="secondary", key="qms_refresh",
                          help="저장된 데이터(업로드·매일 자동 반영 결과)와 기준을 다시 불러와 이 화면을 새로 계산합니다."):
@@ -595,7 +662,7 @@ def page_header(ctx: Ctx, title: str, subtitle: str | None = None) -> None:
                 st.session_state["qms_refreshed"] = True
                 st.rerun()
             if st.session_state.pop("qms_refreshed", False):
-                st.toast("최신 데이터로 새로고침했습니다.", icon="🔄")
+                st.toast("최신 데이터로 새로고침했어요", icon="🔄")
             b1, b2 = st.columns(2)
             with b1.popover("🛠 도구", width="stretch"):
                 st.toggle("📱 태블릿 보기", key="qms_tablet",

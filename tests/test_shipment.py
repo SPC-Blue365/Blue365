@@ -166,7 +166,7 @@ def test_page_renders_empty_and_with_data():
     at.switch_page("app_pages/shipment.py")
     at.run()
     assert not at.exception, [e.value for e in at.exception]
-    assert at.title and "출하시멘트" in at.title[0].value
+    assert any("출하시멘트" in str(h.value) and "qk-hl" in str(h.value) for h in at.html)
     S.save_shipment(S.parse_upload(make_xlsx(), "a.xlsx").records)
     at.run()
     assert not at.exception, [e.value for e in at.exception]

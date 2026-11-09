@@ -2,7 +2,7 @@
 
 > 적용 범위: 이 사용자가 만드는 **모든 대시보드·웹앱·HTML 보고서**(Blue365 QMS뿐 아니라 이후 프로젝트 포함).
 > 참고한 것: 사용자가 공유한 UI 용어 카드 12장(헷갈리는 UI 짝, 움직임 이름, 화면 전환, 완료 표현, 공유 아이콘, 평점 UI, 메뉴 버튼, 화면 이동, 행동 심리, 알려주는 방법, 기다리는 화면).
-> 구현 예: `qms/viewer_template.html`(보는용 현황판, 전부 적용), `qms/theme.py`(관리용 Streamlit 앱 테마).
+> 구현 예: `qms/viewer_template.html`(보는용 현황판, HTML), 관리용 Streamlit 앱 = `qms/theme.py`(THEME_CSS + KIT_CSS) + `qms/uikit.py`(같은 카드·제목 HTML 조각).
 
 ---
 
@@ -121,3 +121,18 @@
 - [ ] 이즈 아웃·순차 등장, 움직임 줄이기 설정 존중
 - [ ] 390px 휴대폰에서 가로 스크롤 없음, 어두운 모드 확인
 - [ ] 인터넷 없는 사내망에서 열리는지(외부 글꼴·스크립트 없이)
+
+---
+
+## 9. Streamlit 앱에서 같은 모양 만들기(구현 메모)
+
+| 보는용 현황판 | Streamlit(관리용) |
+|---|---|
+| 화면 머리(꼬리표 + 결론형 제목) | `page_header(ctx, 제목, headline="…\n**강조**…")` — 기본 문구는 `qms/ui.py` HEADLINES |
+| 카드 바둑판 | `uikit.grid([uikit.kpi_card(...), uikit.card(...)])` |
+| 흰 카드 | `st.container(border=True)` → 자동으로 `qms_card_N` 키가 붙어 흰 카드(그림자·20px) |
+| 숫자 카드 | `st.metric` → CSS로 위 회색 미리보기(값) + 아래 `01 제목` |
+| 세그먼트 / 칩 | `st.segmented_control` / `st.pills` (가로 `st.radio`도 세그먼트 모양) |
+| 배너 / 빈 화면 / 섹션 제목 | `uikit.banner()`, `uikit.empty()`, `uikit.section()` |
+| 알림 목록 | `st.container(key="qms_li_N")` 안에 내용 + "진단 ›" 버튼 |
+| 그래프 | 배경 투명(흰 카드 위에 바로) — `plotly_chart` 래퍼가 자동 처리 |

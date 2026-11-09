@@ -10,6 +10,11 @@ PAGES = ["overview", "monitor", "spc", "shipment", "charts", "alerts", "diagnosi
          "data", "incoming", "settings"]
 
 
+def hero(at) -> str:
+    """화면 머리(알약 꼬리표 + 결론형 큰 제목) HTML — 없으면 ''."""
+    return next((h.value for h in at.html if "qk-hl" in str(h.value)), "")
+
+
 @pytest.fixture(scope="module")
 def app():
     at = AppTest.from_file(APP, default_timeout=240)
@@ -22,7 +27,7 @@ def test_page_renders_without_exception(app, page):
     app.switch_page(f"app_pages/{page}.py")
     app.run()
     assert not app.exception, [e.value for e in app.exception]
-    assert app.title, "페이지 제목이 없습니다"
+    assert hero(app), "화면 머리(결론형 제목)가 없습니다"
 
 
 def test_tilde_ranges_are_escaped_in_markdown(app):
@@ -50,4 +55,4 @@ def test_access_password_gate(monkeypatch):
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     assert at.session_state["_qms_access_ok"] and "접속 비밀번호" not in [t.label for t in at.text_input]
-    assert at.title and at.title[0].value != "🏭 Blue365 QMS"
+    assert hero(at)
