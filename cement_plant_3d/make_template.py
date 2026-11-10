@@ -49,11 +49,13 @@ PARAMS = [
     ("QC-LAB", "xrf", "XRF 표준시료 편차", "%", None, 0.30, 0.12, 0.02),
     ("QC-LAB", "tat", "평균 분석 소요", "분", None, 30, 18, 1.5),
 ]
-# 킬른 3~7호 (설계 용량은 가상값) — 화면 src.html 의 KILN_DEF 와 같아야 함
-KILNS = [(3, 3500), (4, 3500), (5, 5000), (6, 5000), (7, 7500)]
+# 킬른 3~7호 설계 용량(t/d) — 화면 src.html 의 KILN_DEF 와 같아야 함. 3호는 가동 중단
+KILNS = [(3, 2500), (4, 2549), (5, 2678), (6, 7100), (7, 7100)]
+STOPPED = {3}
+CLK_FACTOR = 1.55  # 원료/클링커 환산계수
 for n, cap in KILNS:
     sc = cap / 5000
-    feed = round(cap * 1.62 / 24 * 0.995)
+    feed = round(cap * CLK_FACTOR / 24 * 0.995)
     c = f"KL-{n}"
     PARAMS += [
         (c, "calc", "킬른 입구 하소율", "%", 90, 97, 93.5, 0.4),
@@ -135,13 +137,13 @@ def main():
         ("공정값       일시·설비코드·항목코드·값. 같은 항목을 여러 시각으로 넣으면 추이 그래프와 알람 이력이 만들어집니다.", None),
         ("클링커XRF    호기(3호~7호)별 클링커 산화물(%)과 f-CaO. LSF·SM·IM과 Bogue 광물(C₃S 등)을 호기별로 계산합니다.", None),
         ("시멘트품질   품종별 분말도·SO₃·MgO·강열감량·압축강도. KS L 5201 대비 판정에 씁니다. 강도는 비워도 됩니다.", None),
-        ("생산출하     일자별 클링커 생산(5기 합계)·시멘트 출하·출하계획, 킬른 가동률(선택), 제품 사일로 S-1~S-4 레벨(선택).", None),
+        ("생산출하     일자별 클링커 생산(공장 합계)·시멘트 출하·출하계획, 킬른 가동률(선택), 제품 사일로 S-1~S-4 레벨(선택).", None),
         ("관리기준     설비·항목별 하한·상한(사내 관리기준). 들어 있는 값은 예시이니 사내 기준으로 고치세요. 한쪽만 있는 기준은 다른 칸을 비워 둡니다.", None),
         ("", None),
         ("입력 규칙", "h"),
         ("· 일시: 2026-11-10 09:00 형식 또는 엑셀 날짜·시간 서식. 일자: 2026-11-10.", None),
         ("· 숫자 칸에는 숫자만 넣습니다(단위·기호 없이). 천 단위 쉼표는 괜찮습니다.", None),
-        ("· 설비코드·항목코드는 ‘관리기준’ 시트 목록을 참고하세요. 킬른은 KL-3 ~ KL-7 (3호~7호). 예) KL-5 / bzt = 5호 킬른 소성대 온도. ‘5호’, ‘5호기’로 적어도 됩니다.", None),
+        ("· 설비코드·항목코드는 ‘관리기준’ 시트 목록을 참고하세요. 킬른은 KL-3 ~ KL-7 (3호~7호). 가동 중단 호기는 원료 투입량(feed)을 0으로 넣으면 ‘가동 중단’으로 표시됩니다. 예) KL-5 / bzt = 5호 킬른 소성대 온도. ‘5호’, ‘5호기’로 적어도 됩니다.", None),
         ("· 저장 형식은 ‘Excel 통합 문서(.xlsx)’. CSV로 올릴 때는 시트마다 따로 저장하면 됩니다.", None),
         ("", None),
         ("참고", "h"),
@@ -160,6 +162,10 @@ def main():
     for h in range(6, 10):
         t = today.replace(hour=h)
         for code, key, name, unit, lo, hi, v, n in PARAMS:
+            if code in {f"KL-{k}" for k in STOPPED}:
+                if key == "feed":  # 가동 중단 호기: 원료 투입량 0 → 화면에서 '가동 중단'으로 표시
+                    rows.append((t, code, key, name, unit, 0))
+                continue
             val = v + random.uniform(-1, 1) * n
             rows.append((t, code, key, name, unit, round(val, 2 if abs(v) < 10 else 1 if abs(v) < 1000 else 0)))
     sheet(wb, "공정값", ["일시", "설비코드", "항목코드", "항목명", "단위", "값"], rows,
@@ -168,6 +174,8 @@ def main():
     # 클링커XRF: 호기별 2시간 간격 2일
     rows = []
     for n, _cap in KILNS:
+        if n in STOPPED:
+            continue
         for i in range(24):
             t = today.replace(hour=8) - dt.timedelta(hours=2 * (23 - i))
             fca = 1.2 + random.gauss(0, 0.15) + (0.6 if (n == 7 and i == 15) else 0)
@@ -196,7 +204,7 @@ def main():
     rows = []
     for d in range(29, -1, -1):
         t = today - dt.timedelta(days=d)
-        clk = 24150 + random.gauss(0, 250) - (900 if d == 9 else 0)
+        clk = 19150 + random.gauss(0, 200) - (900 if d == 9 else 0)
         run = 100.0 - (17.5 if d == 9 else 0) - abs(random.gauss(0, 0.6))
         ship = 5200 + random.gauss(0, 260)
         lv = [72 - d * 0.3, 61 + math.sin(d) * 8, 44 + math.cos(d) * 6, 16.6 + d * 0.5]
