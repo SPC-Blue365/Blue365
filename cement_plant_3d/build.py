@@ -5,6 +5,7 @@ src.html 에 three.js · qms.js · 내장 QMS 기본 데이터(qms_default.json)
   artifact.html         — 미리보기용 (three.js 는 CDN, 나머지 포함)
 을 만듭니다.  사용: python build.py
 """
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -19,6 +20,8 @@ def safe(js: str) -> str:
 
 
 src = (HERE / "src.html").read_text(encoding="utf-8")
+BUILD = (dt.datetime.utcnow() + dt.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")   # 한국 시각
+src = src.replace("__B365_BUILD__", BUILD).replace("<title>", f'<meta name="b365-build" content="{BUILD}">\n<title>', 1)
 for tag in (CDN, QMS_TAG, DEF_TAG):
     assert tag in src, f"src.html 에서 {tag[:40]}… 를 찾지 못했습니다"
 qms = (HERE / "qms.js").read_text(encoding="utf-8")
@@ -35,4 +38,4 @@ html = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
         "</head>\n<body>\n" + offline + "\n</body>\n</html>\n")
 out = HERE / "cement_plant_3d.html"
 out.write_text(html, encoding="utf-8")
-print(f"생성: {out.name} ({out.stat().st_size/1024:.0f} KB), artifact.html ({(HERE/'artifact.html').stat().st_size/1024:.0f} KB)")
+print(f"버전 {BUILD} · 생성: {out.name} ({out.stat().st_size/1024:.0f} KB), artifact.html ({(HERE/'artifact.html').stat().st_size/1024:.0f} KB)")

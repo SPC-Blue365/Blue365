@@ -765,6 +765,8 @@ def main() -> None:
         print(f"  (이름 주소)  : http://{host}:{a.port}   ← 사내 DNS에 등록된 경우에만 동작")
     else:
         print(f"  ※ 컴퓨터 이름({host})에 한글이 있어 이름 주소는 쓸 수 없습니다. 위 IP 주소를 쓰세요.")
+    pm = re.search(rb'name="b365-build" content="([^"]+)"', PAGE.read_bytes()[:4000]) if PAGE.exists() else None
+    print(f"  화면 파일   : {PAGE.name} · 버전 {pm.group(1).decode() if pm else '알 수 없음 (예전 파일입니다. 최신 cement_plant_3d.html로 바꾸세요)'}")
     print(f"  데이터 저장 : {STORE.dir}")
     n_users = sum(1 for u in USERS.data["users"].values() if u.get("status") == "active")
     n_pend = sum(1 for u in USERS.data["users"].values() if u.get("status") == "pending")
