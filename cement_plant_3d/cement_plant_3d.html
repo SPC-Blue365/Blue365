@@ -858,6 +858,8 @@ const ICON={
   upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>',
   file:'<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/>'
 };
+/* 내용이 바뀔 때만 다시 그림 — 2초 갱신 중 누른 클릭이 빠지지 않게 */
+const setHTML=(el,h)=>{if(!el||el.dataset.h===h)return false;el.dataset.h=h;el.innerHTML=h;return true;};
 const ic=(n,c='')=>`<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]||''}</svg>`;
 function paintIcons(root=document){$$('[data-ic]',root).forEach(el=>{if(el.dataset.done)return;el.insertAdjacentHTML('afterbegin',ic(el.dataset.ic));el.dataset.done=1;});}
 
@@ -884,6 +886,8 @@ const limTxt=p=>p.lo!=null&&p.hi!=null?`${p.limSrc==='spc'?'관리한계(±3σ)'
 
 /* 원료/클링커 환산계수 (원료 투입량 → 클링커 생산 추정) */
 const CLK_FACTOR=1.55;
+/* 클링커 f-CaO 사내 관리기준: 1.2% ± 0.5% */
+const FCAO_TARGET=1.2,FCAO_TOL=0.5,FCAO_LIM=[+(FCAO_TARGET-FCAO_TOL).toFixed(2),+(FCAO_TARGET+FCAO_TOL).toFixed(2)];
 /* 킬른 호기 · 설계 용량 (t/d) · 라인 (A=3–5호 탭, B=6–7호 탭) */
 const KILN_DEF=[{n:3,cap:2200,z:-44,line:'A',stop:true},{n:4,cap:3120,z:-35,line:'A'},{n:5,cap:3120,z:-26,line:'A'},{n:6,cap:7600,z:-8,line:'B'},{n:7,cap:7600,z:6,line:'B'}];
 const RUN_DESIGN0=KILN_DEF.filter(d=>!d.stop).reduce((a,d)=>a+d.cap,0);
@@ -943,7 +947,7 @@ function kilnEq(d,i){
     tout:P('클링커 출구 온도','℃',108+v*5,null,130,0,2,{ev:1,...g3}),
     sec:P('2차 공기 온도','℃',1080+v*10,1000,null,0,6,{src:dk,fld:'sec',...g3}),
     grate:P('그레이트 속도','spm',11.2+v*.3,null,null,1,.1,g3),
-    fcao:QA('f-CaO (클링커)','%',2,ck,'fcao',{spc:0,lo:.8,hi:1.8,...g4}),
+    fcao:QA('f-CaO (클링커)','%',2,ck,'fcao',{spc:0,lo:FCAO_LIM[0],hi:FCAO_LIM[1],...g4}),
     feedLsf:QA('요입 원료 LSF','',1,'feed:K'+d.n,'LSF',g4),
     k2o:QA('클링커 K₂O','%',2,ck,'K2O',g4),
     cl:QA('클링커 Cl','ppm',0,ck,'Cl',g4),
@@ -1620,9 +1624,11 @@ function renderList(){
     $('#listMeta').textContent='금일 '+nf(E.DSP.params.ship.v)+' t 출하 (가상)';
     h=bctT.map(t=>{const on=sel&&sel.type==='truck'&&sel.id===t.id;return `<button type="button" class="rw${on?' on':''}" data-trk="${t.id}"><span class="a"><b>${t.id}</b><small>${t.shp}</small></span><span class="d"><i></i>${E[t.silo].n}호 · ${t.product}</span><span class="badge ${t.state==='적재중'?'s-act':t.state==='출하'?'s-ok':'s-idle'}">${t.state}</span><span class="p"><span class="bar"><i class="s-act" style="width:${t.load/t.cap*100}%"></i></span><span class="num">${nf(t.load,0)} t</span></span>${ic('chevR')}</button>`;}).join('')||'<div class="empty-st">현재 구내 출하 차량이 없습니다.</div>';
   }
-  rows.innerHTML=h;
-  $$('[data-eq]',rows).forEach(b=>b.onclick=()=>select({type:'eq',id:b.dataset.eq},{fly:true}));
-  $$('[data-trk]',rows).forEach(b=>b.onclick=()=>select({type:'truck',id:b.dataset.trk},{fly:true}));
+  setHTML(rows,h);
+  if(!rows.dataset.bound){rows.dataset.bound=1;let lastAt=0;
+    const act=ev=>{const b=ev.target.closest('[data-eq],[data-trk]');if(!b||!rows.contains(b))return;if(ev.type==='pointerup'&&ev.button!==0)return;const n=performance.now();if(n-lastAt<400)return;lastAt=n;
+      if(b.dataset.eq)select({type:'eq',id:b.dataset.eq},{fly:true});else select({type:'truck',id:b.dataset.trk},{fly:true});};
+    rows.addEventListener('pointerup',act);rows.addEventListener('click',act);}
 }
 
 /* 로트 추적 */
@@ -1676,22 +1682,22 @@ function kpiCards(rep){
   if(rep){const sp=E.DSP.params;k.push({ic:'truck',l:'금일 출하',v:nf(sp.ship.v),u:'t',d:sp.plan.v>0?nf(sp.ship.v/sp.plan.v*100,0)+'%':'',dc:'nt',s:`계획 ${nf(sp.plan.v)} t 대비 · 가상`,tip:'계량 완료된 출하 합계 (설비값 가상)'});}
   else k.push({ic:'flame',l:`킬른 가동률 (가동 ${runKilns().length}기)`,v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:`최근 30일 · ${sn||'중단 없음'} 제외 · 가상`,tip:'(달력시간 − 정지시간) ÷ 달력시간 (설비값 가상)'});
   k.push(!pf?{ic:'flask',l:'f-CaO (가동 호기 평균)',v:'—',u:'%',s:'최근 14일 QMS 클링커 시료 없음',tip:'QMS 클링커 시트'}:
-    {ic:'flask',l:'f-CaO (가동 호기 평균)',v:nf(pf.v,2),u:'%',d:pf.st==='ok'?'정상':ST[pf.st],dc:pf.st==='ok'?'up':'dn',s:`최고 ${pf.max.kiln}호 ${nf(pf.max.params.fcao.v,2)}% · QMS`,tip:'QMS 클링커 시트의 호기별 최근 시료 f-CaO, 설계용량 가중평균(가동 중단·시료 없는 호기 제외). 관리 0.8~1.8% (예시)'});
+    {ic:'flask',l:'f-CaO (가동 호기 평균)',v:nf(pf.v,2),u:'%',d:pf.st==='ok'?'정상':ST[pf.st],dc:pf.st==='ok'?'up':'dn',s:`최고 ${pf.max.kiln}호 ${nf(pf.max.params.fcao.v,2)}% · QMS`,tip:'QMS 클링커 시트의 호기별 최근 시료 f-CaO, 설계용량 가중평균(가동 중단·시료 없는 호기 제외). 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)'});
   k.push(strengthKpi());
   return kpiHTML(k);
 }
 
 /* 킬른 호기 메뉴 */
 function renderKilnNav(){
-  $('#kilnNav').innerHTML=kilnEqs().map(e=>{const st=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
-    return `<button type="button" class="nav knav${on?' on':''}" data-knav="${e.id}" aria-label="${e.name}">${ic('flame')}<span>${e.kiln}호 킬른</span><small>${st==='ok'?'정상':st==='stop'?'정지':ST[st]}</small><i class="dotst s-${st}"></i></button>`;}).join('');
+  if(!setHTML($('#kilnNav'),kilnEqs().map(e=>{const st=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
+    return `<button type="button" class="nav knav${on?' on':''}" data-knav="${e.id}" aria-label="${e.name}">${ic('flame')}<span>${e.kiln}호 킬른</span><small>${st==='ok'?'정상':st==='stop'?'정지':ST[st]}</small><i class="dotst s-${st}"></i></button>`;}).join('')))return;
   $$('[data-knav]').forEach(b=>b.onclick=()=>{if(view!=='map')location.hash='#map';setTimeout(()=>select({type:'eq',id:b.dataset.knav},{fly:true}),view==='map'?0:40);});
 }
 
 /* 사이드: 공정 탭 */
 function renderAreas(){
-  $('#areaNav').innerHTML=TABS.map(t=>{const b=tabBadge(t.id),on=view==='map'&&curTab===t.id;
-    return `<button type="button" class="nav${on?' on':''}" data-tabnav="${t.id}">${ic(t.icon)}<span>${t.name}</span><em class="nb ${b.n?(b.bad?'':'w'):'z'}">${b.n||b.total}</em></button>`;}).join('');
+  if(!setHTML($('#areaNav'),TABS.map(t=>{const b=tabBadge(t.id),on=view==='map'&&curTab===t.id;
+    return `<button type="button" class="nav${on?' on':''}" data-tabnav="${t.id}">${ic(t.icon)}<span>${t.name}</span><em class="nb ${b.n?(b.bad?'':'w'):'z'}">${b.n||b.total}</em></button>`;}).join('')))return;
   $$('[data-tabnav]').forEach(b=>b.onclick=()=>{if(view!=='map')location.hash='#map';setTab(b.dataset.tabnav);});
 }
 
@@ -1832,8 +1838,8 @@ function renderReport(){
     <div class="meta"><span class="n">02</span><div><b>클링커 생산 실적 (가상)</b><small>QMS 파일에는 생산량이 없어 가상값으로 표시합니다. 점선은 가동 호기 설계 ${nf(runDesign())} t/d, 주황 막대는 그 90% 미만인 날입니다.</small></div></div></article>
    <article class="card"><div class="pv" style="justify-content:flex-start">${moduleTable()}</div>
     <div class="meta"><span class="n">03</span><div><b>클링커 모듈 (QMS · 기간 평균)</b><small>호기별 클링커 XRF의 ${winLabel()} 평균(일평균의 평균). 요입 LSF는 원료 시트의 킬른 요입 시료입니다.</small></div></div></article>
-   <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="호기">${[['all','가동 평균'],...KILN_DEF.map(d=>['K'+d.n,d.n+'호'+(isStopped(E['K'+d.n])?' (정지)':'')])].map(([k,t])=>`<button type="button" role="tab" data-fc="${k}" class="${fcSel===k?'on':''}">${t}</button>`).join('')}</div>${fc?ctrlChart(fc.vals,fc.labels,{lo:fp.lo??.8,hi:fp.hi??1.8,min:0,max:Math.max(2.4,Math.ceil(Math.max(...fc.vals)*2)/2),aria:'f-CaO 관리도'}):empty(fcSel!=='all'&&isStopped(E[fcSel])?`${E[fcSel].kiln}호는 가동 중단 중이라 시료가 없습니다.`:'이 기간에 QMS 클링커 f-CaO 시료가 없습니다.')}</div>
-    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'가동 호기 평균':E[fcSel].kiln+'호'} (QMS)</b><small>${winLabel()} · ${winDays()<=7&&fcSel!=='all'?'시료값':'일평균'} 기준(점이 많으면 묶어서 평균). 관리 0.8~1.8%는 예시이며, 빨간 점은 범위를 벗어난 값입니다.</small></div></div></article>
+   <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="호기">${[['all','가동 평균'],...KILN_DEF.map(d=>['K'+d.n,d.n+'호'+(isStopped(E['K'+d.n])?' (정지)':'')])].map(([k,t])=>`<button type="button" role="tab" data-fc="${k}" class="${fcSel===k?'on':''}">${t}</button>`).join('')}</div>${fc?ctrlChart(fc.vals,fc.labels,{lo:FCAO_LIM[0],hi:FCAO_LIM[1],center:FCAO_TARGET,min:0,max:Math.max(2.4,Math.ceil(Math.max(...fc.vals)*2)/2),aria:'f-CaO 관리도'}):empty(fcSel!=='all'&&isStopped(E[fcSel])?`${E[fcSel].kiln}호는 가동 중단 중이라 시료가 없습니다.`:'이 기간에 QMS 클링커 f-CaO 시료가 없습니다.')}</div>
+    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'가동 호기 평균':E[fcSel].kiln+'호'} (QMS)</b><small>${winLabel()} · ${winDays()<=7&&fcSel!=='all'?'시료값':'일평균'} 기준(점이 많으면 묶어서 평균). 사내 관리기준 1.2 ± 0.5%(0.7~1.7%)이며, 빨간 점은 범위를 벗어난 값입니다.</small></div></div></article>
    <article class="card"><div class="pv">
      <div class="hb"><div class="hl"><span>금일 출하 (가상)</span><b class="num">${fv(dsp.ship,0)} / ${fv(dsp.plan,0)} t</b></div><div class="bar"><i class="s-act" style="width:${dsp.plan.v>0?clamp(dsp.ship.v/dsp.plan.v*100,0,100):0}%"></i></div></div>
      ${SL_DEF.map(d=>{const e=E[d.id],p=e.params.level,s=pStatus(p),q=QD&&QD.ssilo[d.id];return `<div class="hb"><div class="hl"><span>${d.n}호 · ${d.fa?'F/A':(q?q.product:d.prod)}${q?` <small style="color:var(--fg3)">${q.mill.slice(2)}호 C/M ${md(tsDate(q.ts))}</small>`:''}</span><b class="num">${fv(p,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${bw(p)}%"></i></div></div>`;}).join('')}
