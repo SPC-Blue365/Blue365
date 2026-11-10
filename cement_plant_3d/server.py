@@ -3,7 +3,7 @@
 
 파이썬 표준 라이브러리만 사용합니다(추가 설치 없음, 인터넷 불필요).
 
-  python server.py                         → http://<이 PC 이름>:8365 로 팀원 접속
+  python server.py                         → 서버 창에 표시되는 http://<이 PC IP>:8365 로 팀원 접속
   python server.py --watch "\\\\서버\\품질\\업로드"   → 공유 폴더의 최신 .xlsx 자동 반영
   python server.py --key 비밀번호            → 업로드할 때 비밀번호 요구
 
@@ -244,7 +244,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/status":
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH)})
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS})
         if path == "/api/dataset":
             b = STORE.read()
             return self._send(200, b) if b else self._send(404, {"error": "아직 올라온 데이터가 없습니다"})
@@ -275,6 +275,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "meta": meta})
 
 
+TEAM_URLS: list[str] = []
+
+
+def lan_ips() -> list[str]:
+    """이 PC의 사내망 IPv4 주소 (팀원 접속용). 실제로 외부에 패킷을 보내지 않습니다."""
+    found: list[str] = []
+    for probe in ("10.255.255.255", "192.168.255.255", "172.31.255.255"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((probe, 1))      # UDP connect 는 경로만 정하고 전송하지 않음
+                ip = s.getsockname()[0]
+                if ip and not ip.startswith("127.") and ip not in found:
+                    found.append(ip)
+        except OSError:
+            pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if not ip.startswith("127.") and not ip.startswith("169.254.") and ip not in found:
+                found.append(ip)
+    except OSError:
+        pass
+    return found
+
+
 def main() -> None:
     global STORE, KEY, WATCH
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
@@ -298,11 +323,24 @@ def main() -> None:
         threading.Thread(target=watch_loop, args=(folder, max(10, a.interval)), daemon=True).start()
 
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
+    global TEAM_URLS
     host = socket.gethostname()
+    ips = lan_ips()
+    TEAM_URLS = [f"http://{ip}:{a.port}" for ip in ips]
     print("=" * 56)
     print(" Blue365 시멘트 공정 3D · 팀 공유 서버")
     print(f"  이 PC에서   : http://localhost:{a.port}")
-    print(f"  팀원 접속   : http://{host}:{a.port}")
+    if TEAM_URLS:
+        print(f"  팀원 접속   : {TEAM_URLS[0]}   ← 이 주소를 팀원에게 알려 주세요")
+        for u in TEAM_URLS[1:]:
+            print(f"                {u}   (다른 네트워크 카드)")
+    else:
+        print("  팀원 접속   : IP 주소를 찾지 못했습니다. 명령 프롬프트에서 ipconfig 로 IPv4 주소를 확인해")
+        print(f"                http://<IPv4 주소>:{a.port} 로 접속하세요.")
+    if host.isascii() and host:
+        print(f"  (이름 주소)  : http://{host}:{a.port}   ← 사내 DNS에 등록된 경우에만 동작")
+    else:
+        print(f"  ※ 컴퓨터 이름({host})에 한글이 있어 이름 주소는 쓸 수 없습니다. 위 IP 주소를 쓰세요.")
     print(f"  데이터 저장 : {STORE.dir}")
     print(f"  업로드 암호 : {'사용' if KEY else '사용 안 함'}")
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
