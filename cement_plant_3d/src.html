@@ -300,6 +300,13 @@ table.ks td.r,table.ks th.r{text-align:right}
 .btn.ghost{background:var(--preview);color:var(--fg2)}
 .btn:disabled{opacity:.5;cursor:default}
 .filter{display:flex;gap:8px;flex-wrap:wrap}
+.pctl{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.pctl small{color:var(--fg3);font-size:12px}
+.range{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end;font-size:13px;color:var(--fg2)}
+.range label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.range input{height:36px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;padding:0 10px}
+.range input:focus{border-color:var(--accent);outline:none}
+@media (max-width:760px){.pctl{align-items:flex-start}.range{justify-content:flex-start}}
 .fchip{height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-weight:600;color:var(--fg2);font-size:13px}
 .fchip.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .empty-st{background:var(--card);border-radius:16px;padding:28px;text-align:center;color:var(--fg3)}
@@ -605,7 +612,7 @@ const CS_DEF=[{id:'CS2',code:'CS-2',n:'2',tab:'A',x:97,z:-44,cap:15000},{id:'CS4
   {id:'CS64',code:'CS-6-4',n:'6-4',tab:'B',x:96,z:0,cap:30000,sep:1},{id:'CS65',code:'CS-6-5',n:'6-5',tab:'B',x:106,z:0,cap:30000},{id:'CS66',code:'CS-6-6',n:'6-6',tab:'B',x:116,z:0,cap:30000,sep:1}];
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
 const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
-const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종'},{id:'SL10',n:'10',prod:'S/C 2종'},{id:'SL11',n:'11',prod:'S/C 3종'}];
+const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C 2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C 3종',altNote:'6호 C/M S/C 3종 생산 시'}];
 SL_DEF.forEach((d,i)=>d.x=8+i*5.2);
 const SLD=Object.fromEntries(SL_DEF.map(d=>[d.id,d]));
 /* 시멘트 밀 투입·출하 경로 (현장 제공 정보). main=주력 품종 */
@@ -614,7 +621,7 @@ const ROUTE={
   CM3:{clk:'all',prods:[{p:'1종',silos:['SL5','SL6','SL7','SL8','SL9'],main:1},{p:'3종',silos:['SL9']}]},
   CM4:{clk:'all',prods:[{p:'1종',silos:['SL5','SL6','SL7','SL8','SL9'],main:1},{p:'3종',silos:['SL9']}]},
   CM5:{clk:'all',prods:[{p:'3종',silos:['SL1'],main:1},{p:'1종',silos:['SL2']}]},
-  CM6:{clk:'all',prods:[{p:'1종',silos:['SL8']},{p:'S/C 2종',silos:['SL10']},{p:'S/C 3종',silos:['SL11']}]},
+  CM6:{clk:'all',prods:[{p:'1종',silos:['SL8','SL11'],main:1},{p:'S/C 2종',silos:['SL10']},{p:'S/C 3종',silos:['SL11']}]},
   CM7:{clk:'B',prods:[{p:'1종',silos:['SL5','SL6','SL7'],main:1}]}
 };
 /* 현재 운전 상태 (가상 예시) */
@@ -682,7 +689,7 @@ function cmEq(d,i){
 function slEq(d,i){
   const lv=[55,38,58,72,61,44,66,16.6,49,33][i];
   return {id:d.id,code:'SL-'+d.n,n:d.n,name:d.fa?d.n+'호 사일로 (F/A)':d.n+'호 시멘트 사일로',tab:'C',area:'ship',icon:'silo',fa:d.fa,prod:d.prod,
-   spec:d.fa?'플라이애시(F/A) 저장 · 시멘트 밀 혼합재 투입':`${PROD_NAME[d.prod]||d.prod} 저장${d.alt?` (2~4호 C/M ${d.alt} 생산 시 ${d.alt})`:''} · 용량 6,000 t (가상)`,bar:'level',barLabel:'레벨',primary:'level',
+   spec:d.fa?'플라이애시(F/A) 저장 · 시멘트 밀 혼합재 투입':`${PROD_NAME[d.prod]||d.prod} 저장${d.alt?` (${d.altNote} ${d.alt})`:''} · 용량 6,000 t (가상)`,bar:'level',barLabel:'레벨',primary:'level',
    params:{level:P('레벨','%',lv,15,95,lv<20?1:0,lv<20?.12:.4,{min:0,max:100}),stock:P('저장량','t',Math.round(60*lv),null,null,0,10)}};
 }
 
@@ -1209,7 +1216,7 @@ function routeBlock(e){
       row('혼합재','4호 사일로 F/A (플라이애시)')}</dl>`;}
   if(SLD[e.id]){const d=SLD[e.id];
     return `<div class="sect">투입 경로</div><dl class="kv">${d.fa?row('용도','혼합재(F/A) 보관 → 시멘트 밀 투입')+row('투입 대상','2~7호 C/M (혼합재)'):
-      row('저장 품종',(PROD_NAME[d.prod]||d.prod)+(d.alt?` · ${d.alt} (2~4호 C/M ${d.alt} 생산 시)`:''))+row('투입 가능 C/M',millsForSilo(e.id).map(m=>E[m].n).join('·')+'호 C/M')+siloQms(e.id)}</dl>`;}
+      row('저장 품종',(PROD_NAME[d.prod]||d.prod)+(d.alt?` · ${d.alt} (${d.altNote})`:''))+row('투입 가능 C/M',millsForSilo(e.id).map(m=>E[m].n).join('·')+'호 C/M')+siloQms(e.id)}</dl>`;}
   if(e.id.startsWith('CS')){const a=CS_A.includes(e.id);
     const q=QD&&QD.csilo[e.id];
     return `<div class="sect">인출 경로</div><dl class="kv">${row('인출 가능 C/M',a?'2~6호 C/M':'2~7호 C/M (7호 C/M은 6·7호 킬른 클링커만 사용)')+(e.sep?row('관리 구분','3종 시멘트용 클링커 · 수출 클링커 겸용 (별도 관리)'):'')+(q?row(`최근 투입 (QMS ${stamp(tsDate(q.ts))})`,`${q.kiln.slice(1)}호 킬른 · ${q.grade}`)+row('최근 30일 품명',Object.entries(q.n30).map(([k,v])=>`${k} ${v}건`).join(' · ')||'—'):row('최근 투입 (QMS)','시료 기록 없음'))}</dl>`;}
@@ -1408,7 +1415,8 @@ const HOURS=[...Array(24)].map((_,h)=>({h,v:RUN_DESIGN0/24*(.99+(RNG()-.5)*.03)}
 const FC2H=[...Array(84)].map((_,i)=>{const d=new Date(Date.now()-(83-i)*2*3600e3);const k={};let s=0;
   let n=0;KILN_DEF.forEach((kd,j)=>{const id='K'+kd.n;if(kd.stop){k[id]=null;return;}k[id]=1.18+(RNG()-.5)*.42+(i===61&&id==='K7'?.68:0)+(j===4?.12:0);s+=k[id];n++;});return {d,v:s/n,k};});
 let fcSel='all';
-let period='30';
+let period='30',RANGE={from:null,to:null};try{const r=JSON.parse(localStorage.getItem('b365-range')||'null');if(r&&r.from&&r.to)RANGE=r;}catch(e){}
+const isoDay=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 function niceMax(v){const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
 function barChart(vals,labels,o){
   const w=560,h=220,L=48,R=10,T=14,B=26,iw=w-L-R,ih=h-T-B;
@@ -1460,13 +1468,24 @@ function dataNote(){
   return `분석값은 QMS 데이터(${esc(QMETA.fileName||'내장 기본 데이터')}${QD&&QD.to?`, ~${QD.to}`:''}), 운전값·레벨·생산량은 가상입니다. 값이 없는 분석 항목은 '—'로 표시하고 상태 판정에서 뺍니다.`;
 }
 /* QMS 일별·시료 시계열 */
-function qSeries(key,fld,period){
-  const s=QD&&QD.streams[key];if(!s)return [];
-  if(period==='7'){const fi=s.f.indexOf(fld);const to=QD.to?dayDate(QD.to).getTime()+864e5:0;return fi<0?[]:s.r.filter(r=>r[1+fi]!=null&&tsDate(r[0]).getTime()>=to-7*864e5).map(r=>[tsDate(r[0]),r[1+fi],1]);}
-  const di=s.df.indexOf(fld);if(di<0)return [];
-  const n=period==='all'?Infinity:+period,to=QD.to?dayDate(QD.to).getTime():0;
-  return s.d.filter(x=>x[2+di]!=null&&(n===Infinity||dayDate(x[0]).getTime()>to-n*864e5)).map(x=>[dayDate(x[0]),x[2+di],0]);
+/* 분석 기간: 7·30·90일·전체는 QMS 마지막 날짜 기준, '기간 지정'은 직접 고른 날짜 */
+function qWindow(){
+  if(!QD||!QD.to)return [null,null];
+  if(period==='custom'&&RANGE.from&&RANGE.to)return [RANGE.from,RANGE.to];
+  if(period==='all')return [QD.from,QD.to];
+  const d=dayDate(QD.to);d.setDate(d.getDate()-(+period||30)+1);return [isoDay(d),QD.to];
 }
+const winDays=()=>{const [a,b]=qWindow();return a?Math.round((dayDate(b)-dayDate(a))/864e5)+1:0;};
+const winLabel=()=>{const [a,b]=qWindow();return a?`${a} ~ ${b} (${winDays()}일)`:'-';};
+function qSeries(key,fld){
+  const s=QD&&QD.streams[key];if(!s)return [];
+  const [a,b]=qWindow();if(!a)return [];
+  if(winDays()<=7){const fi=s.f.indexOf(fld);const lo=dayDate(a).getTime(),hi=dayDate(b).getTime()+864e5;
+    const raw=fi<0?[]:s.r.filter(r=>r[1+fi]!=null).map(r=>[tsDate(r[0]),r[1+fi],1]).filter(x=>x[0].getTime()>=lo&&x[0].getTime()<hi);if(raw.length)return raw;}
+  const di=s.df.indexOf(fld);if(di<0)return [];
+  return s.d.filter(x=>x[2+di]!=null&&x[0]>=a&&x[0]<=b).map(x=>[dayDate(x[0]),x[2+di],0]);
+}
+const winAvg=(key,fld)=>{const v=qSeries(key,fld).map(x=>x[1]);return v.length?v.reduce((p,c)=>p+c,0)/v.length:null;};
 function avgSeries(list){const m=new Map();list.flat().forEach(([d,v])=>{const k=d.toDateString();const a=m.get(k)||{d,s:0,n:0};a.s+=v;a.n++;m.set(k,a);});return [...m.values()].sort((a,b)=>a.d-b.d).map(a=>[a.d,a.s/a.n,0]);}
 function thin(pts,max=150){if(pts.length<=max)return pts;const w=Math.ceil(pts.length/max),o=[];for(let i=0;i<pts.length;i+=w){const g=pts.slice(i,i+w);o.push([g[0][0],g.reduce((a,x)=>a+x[1],0)/g.length,0]);}return o;}
 let shipSel='1종';
@@ -1488,14 +1507,15 @@ function renderReport(){
   const kstop=kls.filter(x=>x[1]==='stop'),khas=kls.filter(x=>x[1]!=='none'&&x[1]!=='stop'),kbad=kls.filter(x=>x[1]==='bad'),kwarn=kls.filter(x=>x[1]==='warn'),kn=a=>a.map(x=>x[0].kiln+'호').join('·');
   const l1=!khas.length?'킬른 운전 데이터는 <em>아직 없고</em>,':kbad.length?`킬른 ${kn(kbad)}에 <em>관리기준 이탈</em>이 있고,`:kwarn.length?`킬른 ${kn(kwarn)}은 <em>주의 관찰</em>이 필요하고,`:`가동 중인 킬른 ${khas.length}기 모두 <em>정상</em>이며,`;
   const l2=!have.length?'출하 시멘트 시험 결과는 <em>아직 없습니다</em>.':ksOk?(inOk?'1종 출하 시멘트는 <em>KS 기준을 충족</em>합니다.':'1종 출하 시멘트는 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'1종 출하 시멘트에 <em>KS 기준 미달</em> 항목이 있습니다.';
-  if(!['7','30','90','all'].includes(period))period='30';
-  const segs=[['7','7일'],['30','30일'],['90','90일'],['all','전체']];
+  if(!['7','30','90','all','custom'].includes(period))period='30';
+  if(period==='custom'&&!(RANGE.from&&RANGE.to)&&QD&&QD.to){const d=dayDate(QD.to);d.setDate(d.getDate()-29);RANGE={from:isoDay(d),to:QD.to};}
+  const segs=[['7','7일'],['30','30일'],['90','90일'],['all','전체'],['custom','기간 지정']];
   // 생산 (가상)
   const n=Math.min(30,period==='7'?7:30),ds=DAYS.slice(-n);const prod={vals:ds.map((x,i)=>i===ds.length-1?plantTpd():x.clk),labels:ds.map(x=>md(x.d)),target:runDesign()||DESIGN_TOTAL,unit:'t/d'};
   // f-CaO (QMS)
   let fpts;const toMs=QD&&QD.to?dayDate(QD.to).getTime():0;
-  if(fcSel==='all'){fpts=avgSeries(runKilns().map(e=>qSeries('clk:'+e.id,'fcao',period==='7'?'30':period)));if(period==='7')fpts=fpts.filter(p=>p[0].getTime()>toMs-7*864e5);}
-  else fpts=qSeries('clk:'+fcSel,'fcao',period);
+  if(fcSel==='all')fpts=avgSeries(runKilns().map(e=>qSeries('clk:'+e.id,'fcao')));
+  else fpts=qSeries('clk:'+fcSel,'fcao');
   fpts=thin(fpts);
   const fc=fpts.length?{vals:fpts.map(x=>x[1]),labels:fpts.map(x=>x[2]?`${md(x[0])} ${hhmm(x[0])}`:md(x[0]))}:null;
   const empty=m=>`<div class="note" style="text-align:center;padding:40px 8px">${m}</div>`;
@@ -1503,13 +1523,14 @@ function renderReport(){
   const low=SL_DEF.filter(d=>!d.fa).map(d=>E[d.id]).filter(e=>!off(e.params.level)&&RANK[pStatus(e.params.level)]>0);
   const open=ALARMS.filter(a=>!a.ack||alarmActive(a)).slice(0,3);
   const now=new Date(),wd='일월화수목금토'[now.getDay()];
-  const prods=['1종','3종','S/C 2종'],toD=QD&&QD.to?dayDate(QD.to).getTime():Date.now(),lots=shipLots(shipSel).filter(x=>period==='all'||dayDate(x.day).getTime()>toD-Math.max(120,+period)*864e5);
+  const prods=['1종','3종','S/C 2종'],toD=QD&&QD.to?dayDate(QD.to).getTime():Date.now(),lots=(()=>{const [a,b]=qWindow();if(period==='all'||period==='custom')return shipLots(shipSel).filter(x=>!a||(x.day>=a&&x.day<=b));return shipLots(shipSel).filter(x=>dayDate(x.day).getTime()>toD-Math.max(120,+period)*864e5);})();
   const lastBy=prods.map(p=>{const l=shipLots(p);return [p,l[l.length-1],[...l].reverse().find(x=>x.s28!=null)];});
   const c=cement();
   $('#report').innerHTML=`
   <div class="banner">${ic('info')}분석값은 QMS 데이터입니다.<span>${esc(QMETA.fileName||'내장 기본 데이터')} · 기간 ${QD&&QD.from?QD.from:'-'} ~ ${QD&&QD.to?QD.to:'-'}${QMETA.uploadedBy?` · ${esc(QMETA.uploadedBy)} ${QMETA.uploadedAt?stamp(new Date(QMETA.uploadedAt)):''} 올림`:''}. 생산량·운전값·레벨·차량은 가상이고, 사내 관리기준은 예시값입니다.</span></div>
   <div class="headline"><div><div class="eb">경영진 요약 · 분석 데이터 기준 ${QD&&QD.to?QD.to:'-'} · 화면 ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)}</div><h1>${l1}<br>${l2}</h1><p>킬른 5기 (3~7호) · 가동 ${kls.length-kstop.length}기${kstop.length?` · ${kn(kstop)} 가동 중단`:''} · ${SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'QMS 파일 기준'}</p></div>
-   <div class="seg" role="tablist" aria-label="기간">${segs.map(([k,t])=>`<button type="button" role="tab" data-period="${k}" class="${period===k?'on':''}">${t}</button>`).join('')}</div></div>
+   <div class="pctl"><div class="seg" role="tablist" aria-label="기간">${segs.map(([k,t])=>`<button type="button" role="tab" data-period="${k}" class="${period===k?'on':''}">${t}</button>`).join('')}</div>
+   ${period==='custom'?`<form class="range" id="rangeForm"><label for="rgFrom">시작일</label><input type="date" id="rgFrom" value="${RANGE.from}" min="${QD&&QD.from||''}" max="${QD&&QD.to||''}" required><span>~</span><label for="rgTo">끝날</label><input type="date" id="rgTo" value="${RANGE.to}" min="${QD&&QD.from||''}" max="${QD&&QD.to||''}" required><button class="btn" type="submit">적용</button></form>`:''}<small>분석 기간 ${winLabel()}</small></div></div>
   <div class="krow">${kpiCards(true)}</div>
   <div class="grid">
    <article class="card full"><div class="pv" style="justify-content:flex-start">${kilnTable()}</div>
@@ -1517,9 +1538,9 @@ function renderReport(){
    <article class="card w2"><div class="pv">${barChart(prod.vals,prod.labels,{target:prod.target,unit:prod.unit,low:prod.target*.9,aria:'클링커 생산 추이'})}</div>
     <div class="meta"><span class="n">02</span><div><b>클링커 생산 실적 (가상)</b><small>QMS 파일에는 생산량이 없어 가상값으로 표시합니다. 점선은 가동 호기 설계 ${nf(runDesign())} t/d, 주황 막대는 그 90% 미만인 날입니다.</small></div></div></article>
    <article class="card"><div class="pv" style="justify-content:flex-start">${moduleTable()}</div>
-    <div class="meta"><span class="n">03</span><div><b>클링커 모듈 (QMS)</b><small>호기별 최근 14일 클링커 XRF 평균. 요입 LSF는 원료 시트의 킬른 요입 시료입니다.</small></div></div></article>
+    <div class="meta"><span class="n">03</span><div><b>클링커 모듈 (QMS · 기간 평균)</b><small>호기별 클링커 XRF의 ${winLabel()} 평균(일평균의 평균). 요입 LSF는 원료 시트의 킬른 요입 시료입니다.</small></div></div></article>
    <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="호기">${[['all','가동 평균'],...KILN_DEF.map(d=>['K'+d.n,d.n+'호'+(isStopped(E['K'+d.n])?' (정지)':'')])].map(([k,t])=>`<button type="button" role="tab" data-fc="${k}" class="${fcSel===k?'on':''}">${t}</button>`).join('')}</div>${fc?ctrlChart(fc.vals,fc.labels,{lo:fp.lo??.8,hi:fp.hi??1.8,min:0,max:Math.max(2.4,Math.ceil(Math.max(...fc.vals)*2)/2),aria:'f-CaO 관리도'}):empty(fcSel!=='all'&&isStopped(E[fcSel])?`${E[fcSel].kiln}호는 가동 중단 중이라 시료가 없습니다.`:'이 기간에 QMS 클링커 f-CaO 시료가 없습니다.')}</div>
-    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'가동 호기 평균':E[fcSel].kiln+'호'} (QMS)</b><small>${period==='7'&&fcSel!=='all'?'최근 7일 시료값':'일평균'} 기준(점이 많으면 묶어서 평균). 관리 0.8~1.8%는 예시이며, 빨간 점은 범위를 벗어난 값입니다.</small></div></div></article>
+    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'가동 호기 평균':E[fcSel].kiln+'호'} (QMS)</b><small>${winLabel()} · ${winDays()<=7&&fcSel!=='all'?'시료값':'일평균'} 기준(점이 많으면 묶어서 평균). 관리 0.8~1.8%는 예시이며, 빨간 점은 범위를 벗어난 값입니다.</small></div></div></article>
    <article class="card"><div class="pv">
      <div class="hb"><div class="hl"><span>금일 출하 (가상)</span><b class="num">${fv(dsp.ship,0)} / ${fv(dsp.plan,0)} t</b></div><div class="bar"><i class="s-act" style="width:${dsp.plan.v>0?clamp(dsp.ship.v/dsp.plan.v*100,0,100):0}%"></i></div></div>
      ${SL_DEF.map(d=>{const e=E[d.id],p=e.params.level,s=pStatus(p),q=QD&&QD.ssilo[d.id];return `<div class="hb"><div class="hl"><span>${d.n}호 · ${d.fa?'F/A':(q?q.product:d.prod)}${q?` <small style="color:var(--fg3)">${q.mill.slice(2)}호 C/M ${md(tsDate(q.ts))}</small>`:''}</span><b class="num">${fv(p,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${bw(p)}%"></i></div></div>`;}).join('')}
@@ -1528,7 +1549,7 @@ function renderReport(){
     <div class="meta"><span class="n">06</span><div><b>시멘트 밀 투입·출하 경로</b><small>‘현재 생산’은 QMS 시멘트 시트의 C/M별 마지막 시료(품명·투입사일로)입니다. 경로표(현장 정보)와 다르면 ‘경로표와 다름’으로 표시합니다. 4호 사일로 F/A는 혼합재로 투입합니다.</small></div></div></article>
    <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="품종">${prods.map(p=>`<button type="button" role="tab" data-ship="${p}" class="${shipSel===p?'on':''}">${p}</button>`).join('')}</div>${lotChart(lots,shipSel==='1종'?42.5:null)}
      <div class="tbl"><table class="ks"><thead><tr><th>품종</th><th>최근 로트</th><th class="r">Blaine</th><th class="r">SO₃</th><th class="r">3일</th><th class="r">7일</th><th class="r">28일 (최근)</th><th>선박</th></tr></thead><tbody>${lastBy.map(([p,L,L28])=>L?`<tr><td><b>${p}</b></td><td>${L.lot}<br><small style="color:var(--fg3)">${L.day}</small></td><td class="r num">${L.blaine==null?'—':nf(L.blaine)}</td><td class="r num">${L.SO3==null?'—':nf(L.SO3,2)}</td><td class="r num">${L.s3==null?'시험 중':nf(L.s3,1)}</td><td class="r num">${L.s7==null?'시험 중':nf(L.s7,1)}</td><td class="r num">${L28?`${nf(L28.s28,1)} <small style="color:var(--fg3)">${L28.day.slice(5)}</small>`:'—'}</td><td style="white-space:normal">${esc(L.ships||'—')}</td></tr>`:`<tr><td><b>${p}</b></td><td colspan="7">로트 없음</td></tr>`).join('')}</tbody></table></div></div>
-    <div class="meta"><span class="n">07</span><div><b>출하 시멘트 강도 (QMS)</b><small>출하시멘트 시트의 로트별 28일 압축강도 추이(7·30일 선택 시 최근 120일)입니다. 최근 로트는 재령이 지나지 않아 강도가 ‘시험 중’일 수 있습니다. 3종·S/C 2종의 KS 기준선은 확인 후 추가하겠습니다.</small></div></div></article>
+    <div class="meta"><span class="n">07</span><div><b>출하 시멘트 강도 (QMS)</b><small>출하시멘트 시트의 로트별 28일 압축강도 추이(7·30·90일 선택 시 최근 120일 이상, 기간 지정·전체는 그 기간)입니다. 최근 로트는 재령이 지나지 않아 강도가 ‘시험 중’일 수 있습니다. 3종·S/C 2종의 KS 기준선은 확인 후 추가하겠습니다.</small></div></div></article>
    <article class="card"><div class="pv" style="justify-content:flex-start"><div class="issues">${open.length?open.map(a=>`<div class="iss"><span class="badge s-${a.sev}">${ST[a.sev]}</span><div><b>${E[a.eq].name} · ${a.label}</b><small>${stamp(a.t)} · ${a.val} · ${a.lim}${alarmActive(a)?'':' · 해제됨'}</small></div></div>`).join(''):'<div class="iss"><span class="badge s-ok">정상</span><div><b>확인할 알람이 없습니다</b></div></div>'}</div></div>
     <div class="meta"><span class="n">08</span><div><b>확인이 필요한 알람</b><small>분석값 알람은 QMS 시료가 관리한계(최근 90일 평균±3σ)에 다가가거나 벗어난 시점입니다.</small></div></div></article>
    <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">실적</th><th class="r">KS L 5201 1종</th><th>KS 판정</th><th class="r">사내 기준 (예시)</th><th>사내 판정</th></tr></thead><tbody>
@@ -1541,14 +1562,14 @@ function renderReport(){
   </div>
   <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(ASTM C150 부록 방식, f-CaO 차감). 분석 항목의 관리한계는 최근 90일 QMS 데이터의 평균±3σ로 자동 계산합니다(시멘트는 C/M·품종별). 시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 행은 자동으로 바로잡습니다.</p>`;
   $$('[data-period]').forEach(b=>b.onclick=()=>{period=b.dataset.period;renderReport();});
+  const rf=$('#rangeForm');if(rf)rf.onsubmit=ev=>{ev.preventDefault();let a=$('#rgFrom').value,b=$('#rgTo').value;if(!a||!b){toast('시작일과 끝날을 모두 골라 주세요','warn');return;}if(a>b)[a,b]=[b,a];RANGE={from:a,to:b};try{localStorage.setItem('b365-range',JSON.stringify(RANGE));}catch(e){}renderReport();toast(`분석 기간 ${a} ~ ${b} 적용`,'act');};
   $$('[data-fc]').forEach(b=>b.onclick=()=>{fcSel=b.dataset.fc;renderReport();});
   $$('[data-ship]').forEach(b=>b.onclick=()=>{shipSel=b.dataset.ship;renderReport();});
   $$('.krw').forEach(r=>{const go=()=>{location.hash='#map';setTimeout(()=>select({type:'eq',id:r.dataset.kiln||r.dataset.goto},{fly:true}),40);};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go();}};});
 }
 function moduleTable(){
   return `<div class="tbl"><table class="ks"><thead><tr><th>호기</th><th class="r">LSF</th><th class="r">SM</th><th class="r">IM</th><th class="r">C₃S</th><th class="r">요입 LSF</th></tr></thead><tbody>${kilnEqs().map(e=>{
-    const s=QD&&QD.streams['clk:'+e.id],avg=f=>{if(!s)return null;const i=s.f.indexOf(f),v=s.r.map(r=>r[1+i]).filter(x=>x!=null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;};
-    const fs=QD&&QD.streams['feed:'+e.id],fl=fs?(()=>{const i=fs.f.indexOf('LSF'),v=fs.r.map(r=>r[1+i]).filter(x=>x!=null);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;})():null;
+    const avg=f=>winAvg('clk:'+e.id,f),fl=winAvg('feed:'+e.id,'LSF');
     const L=avg('LSF'),q=x=>x==null?'—':x;
     return `<tr><td><b>${e.kiln}호</b>${isStopped(e)?' <small style="color:var(--fg3)">정지</small>':''}</td><td class="r num">${q(L==null?null:nf(L,1))}</td><td class="r num">${q(avg('SM')==null?null:nf(avg('SM'),2))}</td><td class="r num">${q(avg('IM')==null?null:nf(avg('IM'),2))}</td><td class="r num">${q(avg('C3S')==null?null:nf(avg('C3S'),1))}</td><td class="r num">${q(fl==null?null:nf(fl,1))}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
