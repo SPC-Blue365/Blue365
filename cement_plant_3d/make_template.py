@@ -19,6 +19,7 @@ random.seed(20261110)
 # 킬른 3~7호 설계 용량(t/d) — 화면 src.html 의 KILN_DEF 와 같아야 함. 3호는 가동 중단
 KILNS = [(3, 2500), (4, 2549), (5, 2678), (6, 7100), (7, 7100)]
 STOPPED = {3}
+STOPPED_EQ = {"RM-3"}  # 가동 중지 설비 (킬른 외)
 CLK_FACTOR = 1.55  # 원료/클링커 환산계수
 
 # (설비코드, 항목코드, 항목명, 단위, 하한, 상한, 예시값, 흔들림)  — 설비코드는 화면의 코드와 같음
@@ -72,7 +73,7 @@ for n, cap in KILNS:
         (c, "sec", "2차 공기 온도", "℃", 1000, None, 1080, 10),
         (c, "grate", "그레이트 속도", "spm", None, None, 11.2, 0.2),
     ]
-# 클링커 사일로: 2·4·5호 / 6-1~6-6호 (6-4·6-6호 수출·3종 클링커 별도 관리)
+# 클링커 사일로: 2·4·5호 / 6-1~6-6호 (6-4·6-6호는 3종 시멘트용·수출 클링커 겸용)
 for code, cap in [("CS-2", 15000), ("CS-4", 15000), ("CS-5", 15000)] + [(f"CS-6-{k}", 30000) for k in range(1, 7)]:
     PARAMS += [(code, "level", "레벨", "%", 20, 95, 58, 1), (code, "stock", "재고", "t", None, None, round(cap * 0.58), cap * 0.005)]
 # 시멘트 밀 (C/M) 2~7호
@@ -174,8 +175,8 @@ def main():
     for h in range(6, 10):
         t = today.replace(hour=h)
         for code, key, name, unit, lo, hi, v, n in PARAMS:
-            if code in {f"KL-{k}" for k in STOPPED} | {f"PH-{k}" for k in STOPPED}:
-                if key == "feed":  # 가동 중단 호기: 원료 투입량 0 → 화면에서 '가동 중단'으로 표시
+            if code in {f"KL-{k}" for k in STOPPED} | {f"PH-{k}" for k in STOPPED} | STOPPED_EQ:
+                if key in ("feed", "load"):  # 가동 중단: 킬른 원료 투입량 0 / R/M 부하 0 → 화면에서 '가동 중단'으로 표시
                     rows.append((t, code, key, name, unit, 0))
                 continue
             val = v + random.uniform(-1, 1) * n
