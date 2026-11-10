@@ -17,7 +17,7 @@ OUT = Path(__file__).resolve().parent / "업로드양식.xlsx"
 random.seed(20261110)
 
 # 킬른 3~7호 설계 용량(t/d) — 화면 src.html 의 KILN_DEF 와 같아야 함. 3호는 가동 중단
-KILNS = [(3, 2500), (4, 2549), (5, 2678), (6, 7100), (7, 7100)]
+KILNS = [(3, 2200), (4, 3120), (5, 3120), (6, 7600), (7, 7600)]
 STOPPED = {3}
 STOPPED_EQ = {"RM-3"}  # 가동 중지 설비 (킬른 외)
 CLK_FACTOR = 1.55  # 원료/클링커 환산계수
@@ -217,7 +217,7 @@ def main():
     rows = []
     for d in range(29, -1, -1):
         t = today - dt.timedelta(days=d)
-        clk = 19150 + random.gauss(0, 200) - (900 if d == 9 else 0)
+        clk = 21160 + random.gauss(0, 200) - (900 if d == 9 else 0)
         run = 100.0 - (17.5 if d == 9 else 0) - abs(random.gauss(0, 0.6))
         ship = 5200 + random.gauss(0, 260)
         rows.append((t, round(clk), round(ship), 5200, round(run, 1)))

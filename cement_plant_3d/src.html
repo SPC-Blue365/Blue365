@@ -581,7 +581,7 @@ const limTxt=p=>p.lo!=null&&p.hi!=null?`관리 ${nf(p.lo,p.dp)}~${nf(p.hi,p.dp)}
 /* 원료/클링커 환산계수 (원료 투입량 → 클링커 생산 추정) */
 const CLK_FACTOR=1.55;
 /* 킬른 호기 · 설계 용량 (t/d) · 라인 (A=3–5호 탭, B=6–7호 탭) */
-const KILN_DEF=[{n:3,cap:2500,z:-44,line:'A',stop:true},{n:4,cap:2549,z:-35,line:'A'},{n:5,cap:2678,z:-26,line:'A'},{n:6,cap:7100,z:-8,line:'B'},{n:7,cap:7100,z:6,line:'B'}];
+const KILN_DEF=[{n:3,cap:2200,z:-44,line:'A',stop:true},{n:4,cap:3120,z:-35,line:'A'},{n:5,cap:3120,z:-26,line:'A'},{n:6,cap:7600,z:-8,line:'B'},{n:7,cap:7600,z:6,line:'B'}];
 const RUN_DESIGN0=KILN_DEF.filter(d=>!d.stop).reduce((a,d)=>a+d.cap,0);
 const KILN_IDS=KILN_DEF.map(d=>'K'+d.n);
 const DESIGN_TOTAL=KILN_DEF.reduce((a,d)=>a+d.cap,0);
