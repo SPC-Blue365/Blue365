@@ -1722,7 +1722,10 @@ function setupShell(){
    ① 내장 기본 데이터 → ② 이 PC에 올린 파일(localStorage) → ③ 팀 공유 서버(server.py)
    ========================================================= */
 const MAX_FILE=40*1024*1024;
+/* 올린 파일·서버에서 온 글자(품명·비고·사일로 이름 등)에서 HTML 특수문자를 지움 — 화면에 코드가 끼어들지 못하게 */
+const cleanQ=v=>typeof v==='string'?v.replace(/[<>&"'`]/g,''):Array.isArray(v)?v.map(cleanQ):(v&&typeof v==='object')?Object.fromEntries(Object.entries(v).map(([k,x])=>[cleanQ(k),cleanQ(x)])):v;
 function applyQms(Q,meta,o={}){
+  Q=cleanQ(Q);meta=cleanQ(meta||{});
   QD=Q;QMETA=meta||{};
   allParams().forEach(({e,k,p})=>{
     if(!p.src)return;
