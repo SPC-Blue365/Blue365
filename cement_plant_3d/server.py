@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import hmac
 import io
+import ipaddress
 import json
 import os
 import socket
@@ -164,6 +165,35 @@ class Store:
 
 STORE: Store
 KEY = ""
+
+# ---------------------------------------------------------------- 접속 허용 대역
+# 기본: 사내망(사설 IP) 대역만 허용 → 인터넷(공인 IP)에서 온 접속은 거절
+PRIVATE_NETS = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1/128", "fc00::/7", "fe80::/10"]
+LOCAL_NETS = ["127.0.0.0/8", "::1/128"]           # 서버 PC 자신은 항상 허용
+ALLOW: list = []                                    # [] 이면 제한 없음(--allow-any)
+
+
+def parse_allow(text: str) -> list:
+    """'192.168.10.0/24,10.20.' → 네트워크 목록. '192.168.10.' 처럼 끝이 점이면 그 대역으로 봄."""
+    nets = []
+    for part in [x.strip() for x in text.split(",") if x.strip()]:
+        if part.endswith("."):
+            octs = part.rstrip(".").split(".")
+            part = ".".join(octs + ["0"] * (4 - len(octs))) + f"/{8 * len(octs)}"
+        nets.append(ipaddress.ip_network(part, strict=False))
+    return nets
+
+
+def allowed(ip: str) -> bool:
+    if not ALLOW:
+        return True
+    try:
+        a = ipaddress.ip_address(ip.split("%")[0])
+    except ValueError:
+        return False
+    if a.version == 6 and a.ipv4_mapped:
+        a = a.ipv4_mapped
+    return any(a.version == n.version and a in n for n in ALLOW)
 WATCH: str | None = None
 
 
@@ -231,7 +261,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _guard(self) -> bool:
+        if allowed(self.client_address[0]):
+            return True
+        log(f"접속 거절: {self.client_address[0]} (허용 대역 밖)")
+        self._send(403, "이 서버는 사내망에서만 접속할 수 있습니다.", "text/plain; charset=utf-8")
+        return False
+
     def do_GET(self):
+        if not self._guard():
+            return
         path = unquote(urlparse(self.path).path)
         if path in ("/", "/index.html", "/cement_plant_3d.html"):
             if not PAGE.exists():
@@ -253,6 +292,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "없는 주소입니다"})
 
     def do_POST(self):
+        if not self._guard():
+            return
         if unquote(urlparse(self.path).path) != "/api/dataset":
             return self._send(404, {"error": "없는 주소입니다"})
         if KEY and not hmac.compare_digest(self.headers.get("X-Upload-Key", "").encode(), KEY.encode()):
@@ -303,13 +344,15 @@ def lan_ips() -> list[str]:
 
 
 def main() -> None:
-    global STORE, KEY, WATCH
+    global STORE, KEY, WATCH, ALLOW
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
     ap.add_argument("--host", default="0.0.0.0", help="받을 주소 (기본: 모든 네트워크)")
     ap.add_argument("--port", type=int, default=8365, help="포트 (기본 8365)")
     ap.add_argument("--data", default=str(ROOT / "data"), help="데이터 저장 폴더")
     ap.add_argument("--watch", help="최신 .xlsx를 자동으로 읽을 공유 폴더")
     ap.add_argument("--interval", type=int, default=60, help="공유 폴더 확인 주기(초, 기본 60)")
+    ap.add_argument("--allow", default="", help="접속 허용 대역, 쉼표로 구분 (예: 192.168.10.0/24,10.20.). 비우면 사내망 사설 IP 전체")
+    ap.add_argument("--allow-any", action="store_true", help="접속 대역 제한 끄기 (권장하지 않음)")
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="업로드 비밀번호(영문·숫자)")
     a = ap.parse_args()
 
@@ -317,6 +360,10 @@ def main() -> None:
         sys.exit("cement_plant_3d.html이 없습니다. 같은 폴더에서 python build.py를 먼저 실행하세요.")
     STORE = Store(Path(a.data))
     KEY = a.key
+    try:
+        ALLOW = [] if a.allow_any else (parse_allow(a.allow) if a.allow else parse_allow(",".join(PRIVATE_NETS))) + parse_allow(",".join(LOCAL_NETS))
+    except ValueError as e:
+        sys.exit(f"--allow 값이 올바르지 않습니다: {e}")
     if a.watch:
         folder = Path(a.watch)
         if not folder.is_dir():
@@ -344,7 +391,13 @@ def main() -> None:
     else:
         print(f"  ※ 컴퓨터 이름({host})에 한글이 있어 이름 주소는 쓸 수 없습니다. 위 IP 주소를 쓰세요.")
     print(f"  데이터 저장 : {STORE.dir}")
-    print(f"  업로드 암호 : {'사용' if KEY else '사용 안 함'}")
+    print(f"  업로드 암호 : {'사용' if KEY else '사용 안 함  ← --key 로 켜기를 권장'}")
+    shown = [str(n) for n in ALLOW if str(n) not in LOCAL_NETS and n.version == 4]
+    print(f"  접속 허용   : {'제한 없음 (주의: 외부 접속 가능)' if not ALLOW else ('사내망 사설 IP 전체' if not a.allow else ', '.join(shown))}")
+    odd = [ip for ip in ips if ALLOW and not allowed(ip)]
+    if odd:
+        print(f"  ※ 이 PC 주소({', '.join(odd)})가 허용 대역 밖입니다. 회사가 공인 IP를 사내망에 쓰는 경우이니")
+        print(f"     --allow {odd[0].rsplit('.', 1)[0]}.  처럼 사내 대역을 지정하세요.")
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
     print("  끝내려면 Ctrl+C")
     print("=" * 56, flush=True)
