@@ -632,12 +632,13 @@ const CS_DEF=[{id:'CS2',code:'CS-2',n:'2',tab:'A',x:97,z:-44,cap:15000},{id:'CS4
    → 인출 P/W (기존 1·2호 / 신설 3·4호) → 프리블렌딩 야드 기존 Y1·Y2 / 신설 Y1·Y2 (한 야드 적재 Stacking, 다른 야드 사용 Reclaiming) → R/M
    광산→크러셔 운반 배정·용량·저장량은 가상값 */
 const QRY_DEF=[{id:'Q49',n:'49Q',z:-39,cao:50.6,mgo:1.4,cr:'CRG'},{id:'Q47',n:'47Q',z:-22,cao:49.8,mgo:1.8,cr:'CRH'},{id:'Q45',n:'45Q',z:-5,cao:48.9,mgo:2.2,cr:'CRH'}];
-const CR_DEF=[{id:'CRG',n:'G/C',z:-31,cap:1400,v:0},{id:'CRH',n:'H/C',z:-13,cap:1000,v:1}];
+const CR_DEF=[{id:'CRG',n:'G/C',full:'Gyratory Crusher',z:-31,cap:1400,v:0},{id:'CRH',n:'H/C',full:'Hammer Crusher',z:-13,cap:1000,v:1}];
 const OSP_DEF=[{id:'OSPA',tab:'A',z:-38,pw:['PW1','PW2'],cap:60000,fill:58},{id:'OSPB',tab:'B',z:-3,pw:['PW3','PW4'],cap:100000,fill:66}];
 const PW_DEF=[{id:'PW1',n:'1',osp:'OSPA',tab:'A',dz:-2.7,rate:380},{id:'PW2',n:'2',osp:'OSPA',tab:'A',dz:2.7,rate:360},{id:'PW3',n:'3',osp:'OSPB',tab:'B',dz:-2.7,rate:720},{id:'PW4',n:'4',osp:'OSPB',tab:'B',dz:2.7,rate:700}];
 const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,cap:40000},{id:'PBA2',y:'Y2',tab:'A',z:-33,mode:'reclaim',fill:47,cap:40000},
   {id:'PBB1',y:'Y1',tab:'B',z:-8,mode:'reclaim',fill:36,cap:80000},{id:'PBB2',y:'Y2',tab:'B',z:2,mode:'stack',fill:71,cap:80000}];
 const LINE_NM={A:'기존',B:'신설'},LINE_TXT={A:'3~5호 Line (기존)',B:'6~7호 Line (신설)'};
+const PW_FULL='Paddle Wheel';
 const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclaim:'Reclaiming'};
 const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
@@ -704,7 +705,7 @@ function qryEq(d,i){
    params:{rate:P('가동률','%',[86,81,74][i],null,null,0,.6,{min:0,max:100}),out:P('채광량','t/h',[520,430,380][i],250,null,0,8),cao:P('석회석 CaO 품위','%',d.cao,46.5,null,1,.08),mgo:P('석회석 MgO','%',d.mgo,null,3.0,2,.03)}};
 }
 function crEq(d,i){
-  return {id:d.id,code:'CR-'+d.n[0],n:d.n,name:d.n+' 크러셔',area:'raw',major:1,icon:'box',spec:`석회석 파쇄 · 설계 ${nf(d.cap)} t/h (가상) · OSP 기존·신설 공급`,bar:'load',barLabel:'부하',primary:'load',
+  return {id:d.id,code:'CR-'+d.n[0],n:d.n,name:d.n+' 크러셔',area:'raw',major:1,icon:'box',spec:`${d.full} · 석회석 파쇄 · 설계 ${nf(d.cap)} t/h (가상) · OSP 기존·신설 공급`,bar:'load',barLabel:'부하',primary:'load',
    params:{load:P('부하','%',[78,72][i],null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',Math.round(d.cap*.8),Math.round(d.cap*.55),null,0,d.cap*.01),size:P('출구 입도 (P90)','mm',[62,48][i],null,80,0,1),cur:P('모터 전류','A',[312,238][i],null,[380,300][i],0,4)}};
 }
 function ospEq(d,i){
@@ -712,7 +713,7 @@ function ospEq(d,i){
    params:{fill:P('저장률','%',d.fill,20,95,0,.25,{min:0,max:100}),stock:P('저장량','t',d.cap*d.fill/100,null,null,0,0,{derived:1}),inflow:P('입고량 (크러셔)','t/h',d.tab==='A'?760:1180,null,null,0,12),out:P('인출량 (P/W 합계)','t/h',0,null,null,0,0,{derived:1})}};
 }
 function pwEq(d,i){
-  return {id:d.id,code:'PW-'+d.n,n:d.n,name:`P/W ${d.n}호`,tab:d.tab,area:'raw',icon:'gauge',osp:d.osp,spec:`OSP (${LINE_NM[d.tab]}) 인출 → ${LINE_NM[d.tab]} 프리블렌딩 야드`,bar:'load',barLabel:'부하',primary:'rate',
+  return {id:d.id,code:'PW-'+d.n,n:d.n,name:`P/W ${d.n}호`,tab:d.tab,area:'raw',icon:'gauge',osp:d.osp,spec:`Paddle Wheel · OSP (${LINE_NM[d.tab]}) 인출 → ${LINE_NM[d.tab]} 프리블렌딩 야드`,bar:'load',barLabel:'부하',primary:'rate',
    params:{load:P('부하','%',[74,70,78,76][i],null,95,0,.8,{min:0,max:100}),rate:P('인출량','t/h',d.rate,Math.round(d.rate*.6),null,0,d.rate*.012)}};
 }
 function pbEq(d,i){
@@ -845,13 +846,24 @@ let renderer,scene,camera,hemi,sun,raycaster,pointer;
 const EQOBJ={}, ANCHOR={}, TRUCKS=[], FLOWS=[], SMOKE=[];
 const KILNS=[],DECO={};let bracket=null,rel=[];
 
+const BEACONS=[],PWW=[];
+function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);return t;}
+let HOTTEX=null,GLOWTEX=null,COLTEX=null;
+function makeTex(){
+  /* 킬른 쉘 발열 분포: 버너 쪽(출구) 가장 밝고 원료 투입 쪽으로 식어감 */
+  HOTTEX=canvasTex(4,256,(g,w,h)=>{const gr=g.createLinearGradient(0,h,0,0);gr.addColorStop(0,'#FFF1D6');gr.addColorStop(.1,'#FFC27A');gr.addColorStop(.3,'#FF5A1A');gr.addColorStop(.55,'#7A1500');gr.addColorStop(.78,'#1A0300');gr.addColorStop(1,'#000');g.fillStyle=gr;g.fillRect(0,0,w,h);});
+  /* 밝은 화면에서도 붉게 보이도록 바탕색도 버너 쪽을 적갈색으로 */
+  COLTEX=canvasTex(4,256,(g,w,h)=>{const gr=g.createLinearGradient(0,h,0,0);gr.addColorStop(0,'#B8341A');gr.addColorStop(.3,'#D2603C');gr.addColorStop(.6,'#F3D8CC');gr.addColorStop(.8,'#FFFFFF');gr.addColorStop(1,'#FFFFFF');g.fillStyle=gr;g.fillRect(0,0,w,h);});
+  GLOWTEX=canvasTex(64,64,(g,w,h)=>{const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.25,'rgba(255,255,255,.75)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,w,h);});
+}
 function makeMats(){
+  makeTex();
   const mk=(n,key,o={})=>{M[n]=new THREE.MeshStandardMaterial(Object.assign({color:PAL.light[key],roughness:.85,metalness:.02},o));M[n].userData.key=key;};
   mk('ground','ground');mk('pad','pad');mk('road','road');mk('mark','mark');mk('grass','grass');mk('dirt','dirt');
   mk('wall','wall');mk('wall2','wall2');mk('accent','accent',{roughness:.6});mk('steel','steel',{metalness:.25,roughness:.55});mk('steelD','steelDark',{metalness:.25,roughness:.6});
   mk('conc','concrete');mk('lime','limestone');mk('rock','rock',{flatShading:true});mk('rock2','rock2',{flatShading:true});mk('meal','meal');mk('clk','clinker');mk('cem','cement');
   mk('tree','tree',{flatShading:true});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');
-  mk('hot','glow',{emissive:new THREE.Color('#FF5A00'),emissiveIntensity:.8,transparent:true,opacity:.5,depthWrite:false});
+  mk('hot','glow',{emissive:new THREE.Color('#FF3A0A'),emissiveIntensity:1.1,transparent:true,opacity:.5,depthWrite:false});
   mk('smoke','smoke',{transparent:true,opacity:.45,depthWrite:false});
   M.line=new THREE.LineBasicMaterial({color:PAL.light.accent,depthTest:false,transparent:true});M.line.userData.key='accent';
   M.line2=new THREE.LineBasicMaterial({color:PAL.light.accent,depthTest:false,transparent:true,opacity:.45});M.line2.userData.key='accent';
@@ -926,7 +938,12 @@ function buildPlant(){
   box(DECO.shared,3,8,3,M.steel,-54,0,-22);box(DECO.shared,3.4,.5,3.4,M.accent,-54,8,-22);
   // 03 OSP 기존·신설 · 인출 P/W
   OSP_DEF.forEach(d=>{const g=grp(d.id);const c=new THREE.Mesh(new THREE.ConeGeometry(6.8,8.5,32),M.lime);c.position.set(-46,4.25,d.z);add(c,g);cyl(g,7.2,.5,M.conc,-46,0,d.z,32);});
-  PW_DEF.forEach(d=>{const o=OSP_DEF.find(x=>x.id===d.osp),g=grp(d.id);box(g,3,2.6,2.2,M.wall2,-37.8,0,o.z+d.dz);box(g,3.1,.3,2.3,M.accent,-37.8,2.6,o.z+d.dz);});
+  PW_DEF.forEach(d=>{const o=OSP_DEF.find(x=>x.id===d.osp),g=grp(d.id),z=o.z+d.dz;
+    box(g,3.4,1.1,2.4,M.steelD,-37.6,0,z);box(g,3.5,.25,2.5,M.accent,-37.6,1.1,z);          // 주행 대차
+    const wh=new THREE.Group();wh.position.set(-39.2,1.55,z);g.add(wh);                       // Paddle Wheel (수평 회전)
+    add(new THREE.Mesh(new THREE.CylinderGeometry(1.25,1.25,.22,24),M.steel),wh);add(new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.7,12),M.steelD),wh);
+    for(let k=0;k<8;k++){const a=k*Math.PI/4,pd=new THREE.Mesh(new THREE.BoxGeometry(.95,.55,.16),M.accent);pd.position.set(Math.cos(a)*1.25,0,Math.sin(a)*1.25);pd.rotation.y=-a;add(pd,wh);}
+    PWW.push({id:d.id,wheel:wh});});
   // 04 프리블렌딩 야드 (기존 Y1·Y2 / 신설 Y1·Y2): 적재 = 스태커, 사용 = 브리지 리클레이머
   PB_DEF.forEach(d=>{const g=grp(d.id),cz=OSP_DEF.find(o=>o.tab===d.tab).z,side=Math.sign(d.z-cz);
     flat(26,8.4,M.pad,-19,d.z,.06);
@@ -946,12 +963,18 @@ function buildPlant(){
      [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>box(g,.6,H,.6,M.steelD,X+a*W/2,0,Z+b*W/2));
      for(let i=1;i<=fl;i++)box(g,W+.6,.35,W+.6,i===fl?M.accent:M.steel,X,i*6-.35,Z);
      for(let i=0;i<fl;i++){const y=i*6+.6;(i===fl-1?[-dx2,dx2]:[0]).forEach(dx=>{cyl(g,cr,1.6,M.wall,X+dx,y,Z,20,.4);cyl(g,cr,2.6,M.wall,X+dx,y+1.6,Z,20);});}
-     cyl(g,big?1.5:1.1,H*.5,M.wall2,X+W/2-1.6,3,Z+W/2-1.6);box(g,1.4,1.2,3.4,M.accent,X,H+.2,Z);}
+     cyl(g,big?1.5:1.1,H*.5,M.wall2,X+W/2-1.6,3,Z+W/2-1.6);box(g,1.4,1.2,3.4,M.accent,X,H+.2,Z);
+     /* 알람등: 킬른 가동 = 켜짐, 정지 = 꺼짐 (현장 운영 방식) */
+     const lm=new THREE.MeshStandardMaterial({color:'#9AA3AE',emissive:new THREE.Color('#FF2A1F'),emissiveIntensity:0,roughness:.35});
+     cyl(g,.65,.4,M.steelD,X,H+1.4,Z);cyl(g,.55,1.15,lm,X,H+1.8,Z,24);cyl(g,.6,.15,M.steelD,X,H+2.95,Z,24);
+     const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:GLOWTEX,color:'#FF3B30',transparent:true,depthWrite:false,opacity:0}));sp.scale.set(8,8,1);sp.position.set(X,H+2.4,Z);sp.raycast=()=>{};g.add(sp);
+     BEACONS.push({kid:'K'+d.n,lm,sp});}
     {const g=grp('K'+d.n);
      const x1=35,x2=69,L=x2-x1,yA=4.8,yB=3.9,R=2.2*Math.sqrt(d.cap/5000);
      const piv=new THREE.Group();piv.position.set((x1+x2)/2,(yA+yB)/2,Z);piv.rotation.z=-Math.atan2(yA-yB,L);g.add(piv);
      const spin=new THREE.Group();piv.add(spin);
-     add(new THREE.Mesh(new THREE.CylinderGeometry(R,R,L,32).rotateZ(Math.PI/2),M.steel),spin);
+     const shm=M.steel.clone();shm.emissive=new THREE.Color('#FF4A12');shm.emissiveMap=HOTTEX;shm.emissiveIntensity=0;M['kshell'+d.n]=shm;   // 쉘: 가동 시 버너 쪽부터 달아오름
+     add(new THREE.Mesh(new THREE.CylinderGeometry(R,R,L,48).rotateZ(Math.PI/2),shm),spin);
      for(let k=0;k<3;k++){const a=k*2*Math.PI/3;const st=new THREE.Mesh(new THREE.BoxGeometry(L*.96,.16,.4),M.steelD);st.position.set(0,Math.cos(a)*R,Math.sin(a)*R);st.rotation.x=a;add(st,spin,false);}
      [-12,0,12].forEach(dx=>{const t=new THREE.Mesh(new THREE.CylinderGeometry(R+.35,R+.35,.9,32).rotateZ(Math.PI/2),M.steelD);t.position.x=dx;add(t,piv);});
      const gear=new THREE.Mesh(new THREE.CylinderGeometry(R+.55,R+.55,.6,32).rotateZ(Math.PI/2),M.accent);gear.position.x=4;add(gear,piv);
@@ -960,7 +983,8 @@ function buildPlant(){
      box(g,3,big?8:6,big?7:5.5,M.wall2,x2+1.5,0,Z);box(g,3.4,.4,big?7.4:5.9,M.accent,x2+1.5,big?8:6,Z);
      bld(g,12,5,big?8:6.5,78,Z);cyl(g,.9,5,M.steel,81,5,Z);
      const sz=Z-(big?7:4.5);cyl(g,.8,big?40:32,M.wall,37,0,sz,20,1.1);cyl(g,.85,1.4,M.accent,37,(big?40:32)-3.5,sz);
-     KILNS.push({id:'K'+d.n,spin,hz});
+     const kl=new THREE.PointLight('#FF5A1F',0,7,2);kl.position.set(x2-8,.9,Z);g.add(kl);   // 주변을 붉게 비추는 열기
+     KILNS.push({id:'K'+d.n,spin,hz,shm,kl});
      if(!REDUCED)for(let i=0;i<6;i++){const sm=new THREE.Mesh(new THREE.SphereGeometry(.8,10,8),M.smoke.clone());sm.material.userData={};sm.userData={t:i/6,x:37,z:sz,y:big?40:32,kid:'K'+d.n};scene.add(sm);SMOKE.push(sm);}}
   });
   // 08 클링커 사일로 (3–5호 라인: 2·4·5호 / 6–7호 라인: 6-1~6-6호)
@@ -1255,7 +1279,13 @@ function frame(now){
   FLOWS.forEach(f=>f.par.visible&&f.parts.forEach(p=>{p.t=(p.t+dt*5/f.tot)%1;const q=along(f,p.t*f.tot);p.m.position.set(q.x,q.y+.5,q.z);}));
   PB_DEF.forEach((d,i)=>{const o=PBOBJ[d.id];if(!o||!EQOBJ[d.id].visible)return;const e=E[d.id];
     if(e.mode==='stack'){o.st.position.x=-19+(REDUCED?0:9*Math.sin(now/7000+i));}else{o.rc.position.x=-8.5-(1-e.params.fill.v/100)*17;}});
-  KILNS.forEach((k,i)=>{const st=isStopped(E[k.id]);k.hz.visible=!st;if(!st&&!REDUCED){k.spin.rotation.x+=dt*E[k.id].params.rpm.v*.12;k.hz.material.opacity=.38+.14*Math.sin(now/600+i);}});
+  KILNS.forEach((k,i)=>{const st=isStopped(E[k.id]);k.hz.visible=!st;const pu=REDUCED?.5:.5+.5*Math.sin(now/900+i);
+    if(!st&&!REDUCED){k.spin.rotation.x+=dt*E[k.id].params.rpm.v*.12;k.hz.material.opacity=.4+.16*Math.sin(now/600+i);}
+    if(k.hot!==!st){k.hot=!st;k.shm.map=k.hot?COLTEX:null;k.shm.needsUpdate=true;}
+    k.shm.emissiveIntensity=st?0:(dark?1.35:1.15)+.25*pu;k.kl.intensity=st?0:(dark?1.8:1)+.4*pu;});
+  BEACONS.forEach((b,i)=>{const on=!isStopped(E[b.kid]);const pu=REDUCED?1:.75+.25*Math.sin(now/350+i*1.7);
+    b.lm.color.set(on?'#FF5A50':'#8B939E');b.lm.emissiveIntensity=on?1.6*pu:0;b.sp.visible=on;b.sp.material.opacity=(dark?.95:.75)*pu;});
+  PWW.forEach(w=>{if(!REDUCED&&EQOBJ[w.id].visible)w.wheel.rotation.y+=dt*1.4*E[w.id].params.load.v/80;});
   SMOKE.forEach(s=>{const u=s.userData;s.visible=EQOBJ[u.kid].visible&&!isStopped(E[u.kid]);u.t=(u.t+dt*.07)%1;const t=u.t;s.position.set(u.x+t*6,u.y+t*14,u.z-t*3);s.scale.setScalar(1+t*3.4);s.material.opacity=(dark?.32:.45)*(1-t);});
   if(bracket&&!REDUCED)M.line.opacity=.65+.35*Math.sin(now/260);
   renderer.render(scene,camera);
@@ -1287,8 +1317,8 @@ function supplyBlock(e){
   const yd=L=>PB_DEF.filter(d=>d.tab===L).map(d=>`${d.y} <span class="badge ${E[d.id].mode==='reclaim'?'s-ok':'s-act'}">${MODE_NM[E[d.id].mode]}</span>`).join(' ');
   let h=e.mode?row('현재 운용',`<span class="badge ${e.mode==='reclaim'?'s-ok':'s-act'}">${MODE_NM[e.mode]} (${MODE_EN[e.mode]})</span> ${e.mode==='reclaim'?'→ R/M 공급 중':'← P/W 인출분 적재 중'}`):'';
   if(kind==='p')h+=row('인출 대상',E[e.osp].name);
-  h+=row('석회석 광산',QRY_DEF.map(d=>d.n).join(' · '),kind==='q')+row('크러셔','G/C · H/C',kind==='c');
-  (e.tab?[e.tab]:['A','B']).forEach(L=>{h+=row(`OSP (${LINE_NM[L]})`,LINE_TXT[L],kind==='o'&&e.tab===L)+row('인출',OSP_DEF.find(o=>o.tab===L).pw.map(x=>x.slice(2)).join('·')+'호 P/W',kind==='p'&&e.tab===L)
+  h+=row('석회석 광산',QRY_DEF.map(d=>d.n).join(' · '),kind==='q')+row('크러셔','G/C (Gyratory) · H/C (Hammer)',kind==='c');
+  (e.tab?[e.tab]:['A','B']).forEach(L=>{h+=row(`OSP (${LINE_NM[L]})`,LINE_TXT[L],kind==='o'&&e.tab===L)+row('인출',OSP_DEF.find(o=>o.tab===L).pw.map(x=>x.slice(2)).join('·')+'호 P/W (Paddle Wheel)',kind==='p'&&e.tab===L)
     +row(`프리블렌딩 (${LINE_NM[L]})`,yd(L),kind==='y'&&e.tab===L)+row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M');});
   return `<div class="sect">원료 공급 흐름 <small>현장 제공 구성</small></div><dl class="kv">${h}</dl>`;
 }
@@ -1308,7 +1338,7 @@ function routeBlock(e){
     const q=QD&&QD.csilo[e.id];
     return `<div class="sect">인출 경로</div><dl class="kv">${row('인출 가능 C/M',a?'2~6호 C/M':'2~7호 C/M (7호 C/M은 6·7호 킬른 클링커만 사용)')+(e.sep?row('관리 구분','3종 시멘트용 클링커 · 수출 클링커 겸용 (별도 관리)'):'')+(q?row(`최근 투입 (QMS ${stamp(tsDate(q.ts))})`,`${q.kiln.slice(1)}호 킬른 · ${q.grade}`)+row('최근 30일 품명',Object.entries(q.n30).map(([k,v])=>`${k} ${v}건`).join(' · ')||'—'):row('최근 투입 (QMS)','시료 기록 없음'))}</dl>`;}
   if(e.kiln){const L=e.line;
-    return `<div class="sect">같은 라인 설비 (${TAB[L].name})</div><dl class="kv">${row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M')+row('원료 사일로',RS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호')+row('예열기','PH-'+e.kiln+' ('+e.kiln+'호 P/H)')+row('클링커 사일로',CS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호')}</dl>`;}
+    return `<div class="sect">같은 라인 설비 (${TAB[L].name})</div><dl class="kv">${row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M')+row('원료 사일로',RS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호')+row('예열기','PH-'+e.kiln+' ('+e.kiln+'호 P/H)')+row('P/H 알람등',isStopped(e)?'<span class="badge s-idle">꺼짐</span> 가동 중단':'<span class="badge s-ok">켜짐</span> 킬른 가동 중')+row('클링커 사일로',CS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호')}</dl>`;}
   return '';
 }
 function siloQms(id){const q=QD&&QD.ssilo[id];if(!q)return `<div><dt>최근 투입 (QMS)</dt><dd>시료 기록 없음</dd></div>`;
