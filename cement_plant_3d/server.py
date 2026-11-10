@@ -8,7 +8,9 @@
   python server.py --key 비밀번호            → 업로드할 때 비밀번호 요구
 
 하는 일
-  GET  /                 화면(cement_plant_3d.html)
+  GET  /login            로그인 · ID 등록 (승인 후 로그인)
+  GET  /account          내 계정 · (관리자) 사용자 승인·권한 관리
+  GET  /                 화면(cement_plant_3d.html) — 로그인 필요
   GET  /업로드양식.xlsx    업로드 양식
   GET  /api/status       서버 상태와 최신 데이터 버전
   GET  /api/dataset      최신 데이터(JSON)
@@ -19,17 +21,21 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import hmac
 import io
 import ipaddress
 import json
 import os
+import re
+import secrets
 import socket
 import sys
 import threading
 import time
 import zipfile
 import xml.etree.ElementTree as ET
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote, unquote, urlparse
@@ -237,11 +243,127 @@ def watch_loop(folder: Path, interval: int) -> None:
 
 
 # ---------------------------------------------------------------- HTTP
+# ---------------------------------------------------------------- 사용자 · 로그인
+ROLES = ("viewer", "editor", "admin")                    # 뷰어 < 편집 < 관리자
+ROLE_KO = {"viewer": "뷰어", "editor": "편집", "admin": "관리자"}
+SESSION_HOURS = 12
+ID_RE = re.compile(r"^[A-Za-z0-9_.-]{3,20}$")
+
+
+def pw_ok(pw: str) -> bool:
+    return isinstance(pw, str) and 8 <= len(pw) <= 64 and re.search(r"[A-Za-z]", pw) and re.search(r"\d", pw)
+
+
+class Users:
+    """data/users.json — 비밀번호는 PBKDF2-SHA256(20만 회)+솔트로만 저장. 기록은 data/audit.log"""
+
+    def __init__(self, folder: Path):
+        self.path = folder / "users.json"
+        self.audit = folder / "audit.log"
+        self.lock = threading.Lock()
+        self.data = {"users": {}, "ips": {}}
+        if self.path.exists():
+            try:
+                self.data = json.loads(self.path.read_text("utf-8"))
+                self.data.setdefault("ips", {})
+            except Exception:
+                sys.exit(f"{self.path} 파일을 읽을 수 없습니다. 파일을 확인하세요.")
+
+    def _save(self):
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), "utf-8")
+        os.replace(tmp, self.path)
+
+    @staticmethod
+    def _hash(pw: str, salt: str) -> str:
+        return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
+
+    def log(self, actor: str, action: str, detail: str = "", ip: str = ""):
+        line = f"{dt.datetime.now():%Y-%m-%d %H:%M:%S}\t{actor}\t{action}\t{detail}\t{ip}\n"
+        with self.lock, open(self.audit, "a", encoding="utf-8") as f:
+            f.write(line)
+        log(f"[기록] {actor} · {action} · {detail}")
+
+    def audit_tail(self, n=60):
+        if not self.audit.exists():
+            return []
+        lines = self.audit.read_text("utf-8").splitlines()[-n:]
+        return [dict(zip(("t", "who", "act", "detail", "ip"), (l.split("\t") + [""] * 5)[:5])) for l in reversed(lines)]
+
+    def has_admin(self) -> bool:
+        return any(u.get("role") == "admin" and u.get("status") == "active" for u in self.data["users"].values())
+
+    def get(self, uid: str):
+        return self.data["users"].get((uid or "").lower())
+
+    def add(self, uid, pw, name, dept, ip, admin=False):
+        salt = secrets.token_hex(16)
+        u = {"id": uid, "name": name, "dept": dept, "salt": salt, "hash": self._hash(pw, salt),
+             "role": "admin" if admin else None, "status": "active" if admin else "pending",
+             "created": dt.datetime.now().isoformat(timespec="seconds"), "ip": ip, "lastLogin": None, "lastIp": None}
+        with self.lock:
+            self.data["users"][uid.lower()] = u
+            self._save()
+        return u
+
+    def verify(self, uid, pw):
+        u = self.get(uid)
+        if not u or not isinstance(pw, str):
+            hashlib.pbkdf2_hmac("sha256", b"x", b"y" * 16, 200_000)      # 없는 아이디도 같은 시간 소요
+            return None
+        return u if hmac.compare_digest(self._hash(pw, u["salt"]), u["hash"]) else None
+
+    def update(self, uid, **kw):
+        with self.lock:
+            u = self.data["users"].get(uid.lower())
+            if not u:
+                return None
+            if "pw" in kw:
+                pw = kw.pop("pw")
+                u["salt"] = secrets.token_hex(16)
+                u["hash"] = self._hash(pw, u["salt"])
+            u.update(kw)
+            self._save()
+            return u
+
+    def delete(self, uid):
+        with self.lock:
+            self.data["users"].pop(uid.lower(), None)
+            self._save()
+
+    def mark_ip(self, ip, uid):
+        with self.lock:
+            self.data["ips"][ip] = uid
+            self._save()
+
+    def known_ip(self, ip) -> bool:
+        return ip in self.data["ips"]
+
+    def public(self, u):
+        return {k: u.get(k) for k in ("id", "name", "dept", "role", "status", "created", "ip", "lastLogin", "lastIp", "approvedBy", "approvedAt")}
+
+
+USERS: Users
+SESS: dict = {}            # 토큰 → {uid, exp}
+SESS_LOCK = threading.Lock()
+FAILS: dict = {}           # IP → [실패 시각...] (로그인 10회/10분 초과 시 잠시 차단)
+
+
+def is_local(ip: str) -> bool:
+    try:
+        a = ipaddress.ip_address(ip.split("%")[0])
+        if a.version == 6 and a.ipv4_mapped:
+            a = a.ipv4_mapped
+        return a.is_loopback
+    except ValueError:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Blue365/1.0"
 
     def log_message(self, fmt, *args):  # 접속 기록은 요약해서
-        if not self.path.startswith("/api/status"):
+        if not self.path.startswith("/api/status") and not self.path.startswith("/api/me"):
             log(f"{self.client_address[0]} {fmt % args}")
 
     def _send(self, code: int, body, ctype="application/json; charset=utf-8", extra: dict | None = None):
@@ -261,43 +383,287 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _redirect(self, to: str):
+        self.send_response(302)
+        self.send_header("Location", to)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    @property
+    def ip(self) -> str:
+        return self.client_address[0]
+
     def _guard(self) -> bool:
-        if allowed(self.client_address[0]):
+        if allowed(self.ip):
             return True
-        log(f"접속 거절: {self.client_address[0]} (허용 대역 밖)")
+        log(f"접속 거절: {self.ip} (허용 대역 밖)")
         self._send(403, "이 서버는 사내망에서만 접속할 수 있습니다.", "text/plain; charset=utf-8")
         return False
 
+    # ---- 세션
+    def _token(self):
+        c = SimpleCookie()
+        try:
+            c.load(self.headers.get("Cookie", ""))
+        except Exception:
+            return None
+        m = c.get("b365s")
+        return m.value if m else None
+
+    def _user(self):
+        t = self._token()
+        if not t:
+            return None
+        with SESS_LOCK:
+            s = SESS.get(t)
+            if not s or s["exp"] < time.time():
+                SESS.pop(t, None)
+                return None
+        u = USERS.get(s["uid"])
+        if not u or u.get("status") != "active" or u.get("role") not in ROLES:
+            return None
+        return u
+
+    def _need(self, role: str):
+        """권한 확인: 부족하면 401/403 응답 후 None"""
+        u = self._user()
+        if not u:
+            self._send(401, {"error": "로그인이 필요합니다", "login": "/login"})
+            return None
+        if ROLES.index(u["role"]) < ROLES.index(role):
+            self._send(403, {"error": f"{ROLE_KO[role]} 권한이 필요합니다"})
+            return None
+        return u
+
+    def _body(self, limit=64 * 1024):
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = 0
+        if n <= 0:
+            raise ValueError("보낸 내용이 없습니다")
+        if n > limit:
+            raise OverflowError
+        return json.loads(self.rfile.read(n).decode("utf-8"))
+
+    def _same_origin(self) -> bool:
+        o = self.headers.get("Origin")
+        if not o:
+            return True
+        return urlparse(o).netloc == self.headers.get("Host", "")
+
+    def _file(self, p: Path, ctype="text/html; charset=utf-8"):
+        if not p.exists():
+            return self._send(500, f"{p.name} 파일이 없습니다.", "text/plain; charset=utf-8")
+        self._send(200, p.read_bytes(), ctype)
+
+    # ---- GET
     def do_GET(self):
         if not self._guard():
             return
         path = unquote(urlparse(self.path).path)
         if path in ("/", "/index.html", "/cement_plant_3d.html"):
-            if not PAGE.exists():
-                return self._send(500, {"error": "cement_plant_3d.html이 없습니다. build.py를 먼저 실행하세요."})
-            return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
+            if not self._user():
+                return self._redirect("/login")
+            return self._file(PAGE)
+        if path == "/login":
+            return self._file(ROOT / "login.html")
+        if path == "/account":
+            if not self._user():
+                return self._redirect("/login")
+            return self._file(ROOT / "account.html")
+        if path == "/api/me":
+            u = self._user()
+            out = {"user": None, "setup": not USERS.has_admin(), "local": is_local(self.ip), "knownIp": USERS.known_ip(self.ip)}
+            if u:
+                out["user"] = {k: u.get(k) for k in ("id", "name", "dept", "role")}
+                if u["role"] == "admin":
+                    out["pending"] = sum(1 for x in USERS.data["users"].values() if x.get("status") == "pending")
+            return self._send(200, out)
         if path in ("/업로드양식.xlsx", "/template.xlsx"):
+            if not self._need("viewer"):
+                return
             if not TEMPLATE.exists():
                 return self._send(404, {"error": "업로드양식.xlsx가 없습니다"})
             return self._send(200, TEMPLATE.read_bytes(),
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": "attachment; filename*=UTF-8''" + quote("업로드양식.xlsx")})
         if path == "/api/status":
+            if not self._need("viewer"):
+                return
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS})
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True})
         if path == "/api/dataset":
+            if not self._need("viewer"):
+                return
             b = STORE.read()
             return self._send(200, b) if b else self._send(404, {"error": "아직 올라온 데이터가 없습니다"})
+        if path == "/api/admin/users":
+            if not self._need("admin"):
+                return
+            users = sorted(USERS.data["users"].values(), key=lambda x: (x.get("status") != "pending", x.get("created") or ""))
+            return self._send(200, {"users": [USERS.public(u) for u in users], "audit": USERS.audit_tail()})
         self._send(404, {"error": "없는 주소입니다"})
 
+    # ---- POST
     def do_POST(self):
         if not self._guard():
             return
-        if unquote(urlparse(self.path).path) != "/api/dataset":
-            return self._send(404, {"error": "없는 주소입니다"})
+        if not self._same_origin():
+            return self._send(403, {"error": "다른 사이트에서 온 요청은 받지 않습니다"})
+        path = unquote(urlparse(self.path).path)
+        try:
+            if path == "/api/dataset":
+                return self._upload()
+            body = self._body()
+        except OverflowError:
+            return self._send(413, {"error": "보낸 내용이 너무 큽니다"})
+        except (ValueError, UnicodeDecodeError) as e:
+            return self._send(400, {"error": f"형식 오류: {e}"})
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "형식 오류"})
+        if path == "/api/login":
+            return self._login(body)
+        if path == "/api/logout":
+            t = self._token()
+            with SESS_LOCK:
+                SESS.pop(t, None)
+            return self._send(200, {"ok": True}, extra={"Set-Cookie": "b365s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
+        if path == "/api/register":
+            return self._register(body)
+        if path == "/api/password":
+            return self._password(body)
+        if path == "/api/admin/user":
+            return self._admin(body)
+        self._send(404, {"error": "없는 주소입니다"})
+
+    def _login(self, b):
+        now = time.time()
+        fails = [t for t in FAILS.get(self.ip, []) if now - t < 600]
+        FAILS[self.ip] = fails
+        if len(fails) >= 10:
+            return self._send(429, {"error": "로그인 실패가 많아 10분간 잠겼습니다. 잠시 후 다시 시도하세요."})
+        u = USERS.verify(str(b.get("id", "")), b.get("pw"))
+        if not u:
+            fails.append(now)
+            USERS.log(str(b.get("id", ""))[:20] or "-", "로그인 실패", "", self.ip)
+            return self._send(401, {"error": "아이디 또는 비밀번호가 맞지 않습니다"})
+        st = u.get("status")
+        if st == "pending":
+            return self._send(403, {"error": "관리자 승인을 기다리는 중입니다. 승인되면 로그인할 수 있습니다."})
+        if st == "rejected":
+            return self._send(403, {"error": "등록 요청이 거절되었습니다. 관리자에게 문의하세요."})
+        if st != "active" or u.get("role") not in ROLES:
+            return self._send(403, {"error": "사용이 중지된 계정입니다. 관리자에게 문의하세요."})
+        FAILS.pop(self.ip, None)
+        t = secrets.token_urlsafe(32)
+        with SESS_LOCK:
+            for k in [k for k, s in SESS.items() if s["exp"] < now]:
+                SESS.pop(k, None)
+            SESS[t] = {"uid": u["id"].lower(), "exp": now + SESSION_HOURS * 3600}
+        USERS.update(u["id"], lastLogin=dt.datetime.now().isoformat(timespec="seconds"), lastIp=self.ip)
+        USERS.mark_ip(self.ip, u["id"])
+        USERS.log(u["id"], "로그인", ROLE_KO[u["role"]], self.ip)
+        return self._send(200, {"ok": True, "user": {k: u.get(k) for k in ("id", "name", "dept", "role")}},
+                          extra={"Set-Cookie": f"b365s={t}; Path=/; Max-Age={SESSION_HOURS * 3600}; HttpOnly; SameSite=Strict"})
+
+    def _register(self, b):
+        uid, pw = str(b.get("id", "")).strip(), b.get("pw")
+        name, dept = str(b.get("name", "")).strip()[:20], str(b.get("dept", "")).strip()[:30]
+        if not ID_RE.match(uid):
+            return self._send(400, {"error": "아이디는 영문·숫자·_ . - 로 3~20자입니다"})
+        if not pw_ok(pw):
+            return self._send(400, {"error": "비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요"})
+        if not name or not dept or re.search(r"[<>&\"'`]", name + dept):
+            return self._send(400, {"error": "부서와 이름을 바르게 적어 주세요"})
+        if USERS.get(uid):
+            return self._send(409, {"error": "이미 있는 아이디입니다"})
+        setup = bool(b.get("setup"))
+        if setup:
+            if USERS.has_admin():
+                return self._send(403, {"error": "관리자 계정이 이미 있습니다"})
+            if not is_local(self.ip):
+                return self._send(403, {"error": "관리자 계정은 서버 PC에서만 만들 수 있습니다"})
+            USERS.add(uid, pw, name, dept, self.ip, admin=True)
+            USERS.log(uid, "관리자 계정 생성", f"{dept} {name}", self.ip)
+            return self._send(200, {"ok": True, "admin": True})
+        pend = sum(1 for x in USERS.data["users"].values() if x.get("status") == "pending" and x.get("ip") == self.ip)
+        if pend >= 3:
+            return self._send(429, {"error": "이 PC에서 승인 대기 중인 요청이 이미 3건 있습니다"})
+        USERS.add(uid, pw, name, dept, self.ip)
+        USERS.log(uid, "ID 등록 요청", f"{dept} {name}", self.ip)
+        return self._send(200, {"ok": True})
+
+    def _password(self, b):
+        u = self._need("viewer")
+        if not u:
+            return
+        if not USERS.verify(u["id"], b.get("old")):
+            return self._send(401, {"error": "현재 비밀번호가 맞지 않습니다"})
+        if not pw_ok(b.get("new")):
+            return self._send(400, {"error": "새 비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요"})
+        USERS.update(u["id"], pw=b["new"], mustChange=False)
+        USERS.log(u["id"], "비밀번호 변경", "", self.ip)
+        return self._send(200, {"ok": True})
+
+    def _admin(self, b):
+        me = self._need("admin")
+        if not me:
+            return
+        uid, act = str(b.get("id", "")), b.get("action")
+        u = USERS.get(uid)
+        if not u:
+            return self._send(404, {"error": "없는 사용자입니다"})
+        if u["id"].lower() == me["id"].lower() and act in ("role", "disable", "delete", "reject"):
+            return self._send(400, {"error": "자기 계정의 권한·상태는 바꿀 수 없습니다 (관리자 잠김 방지)"})
+        now = dt.datetime.now().isoformat(timespec="seconds")
+        role = b.get("role")
+        if act in ("approve", "role"):
+            if role not in ROLES:
+                return self._send(400, {"error": "권한을 골라 주세요"})
+            USERS.update(uid, role=role, status="active", approvedBy=me["id"], approvedAt=now)
+            USERS.log(me["id"], "승인" if act == "approve" else "권한 변경", f"{u['id']} ({u['dept']} {u['name']}) → {ROLE_KO[role]}", self.ip)
+        elif act == "reject":
+            USERS.update(uid, status="rejected", role=None)
+            USERS.log(me["id"], "등록 거절", f"{u['id']} ({u['dept']} {u['name']})", self.ip)
+        elif act == "disable":
+            USERS.update(uid, status="disabled")
+            self._kill(uid)
+            USERS.log(me["id"], "사용 중지", u["id"], self.ip)
+        elif act == "enable":
+            if u.get("role") not in ROLES:
+                return self._send(400, {"error": "먼저 권한을 정해 승인해 주세요"})
+            USERS.update(uid, status="active")
+            USERS.log(me["id"], "사용 재개", u["id"], self.ip)
+        elif act == "reset":
+            temp = "B" + secrets.token_hex(4) + "7"
+            USERS.update(uid, pw=temp, mustChange=True)
+            self._kill(uid)
+            USERS.log(me["id"], "비밀번호 초기화", u["id"], self.ip)
+            return self._send(200, {"ok": True, "temp": temp})
+        elif act == "delete":
+            USERS.delete(uid)
+            self._kill(uid)
+            USERS.log(me["id"], "삭제", u["id"], self.ip)
+        else:
+            return self._send(400, {"error": "알 수 없는 작업입니다"})
+        if act in ("role",):
+            self._kill(uid)       # 권한이 바뀌면 다시 로그인
+        return self._send(200, {"ok": True})
+
+    @staticmethod
+    def _kill(uid):
+        with SESS_LOCK:
+            for k in [k for k, s in SESS.items() if s["uid"] == uid.lower()]:
+                SESS.pop(k, None)
+
+    def _upload(self):
+        u = self._need("editor")
+        if not u:
+            return
         if KEY and not hmac.compare_digest(self.headers.get("X-Upload-Key", "").encode(), KEY.encode()):
-            return self._send(401, {"error": "업로드 비밀번호가 맞지 않습니다"})
+            return self._send(401, {"error": "업로드 비밀번호(서버 --key)가 맞지 않습니다"})
         try:
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -308,13 +674,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(413, {"error": "파일이 너무 큽니다 (최대 25MB)"})
         try:
             body = json.loads(self.rfile.read(n).decode("utf-8"))
-            if body.get("qms") is not None:
-                meta = STORE.save(body.get("qms"), body.get("meta") or {}, "qms")
-            else:
-                meta = STORE.save(body.get("sheets"), body.get("meta") or {}, "sheets")
-        except (ValueError, UnicodeDecodeError, AttributeError) as e:
+        except (ValueError, UnicodeDecodeError) as e:
             return self._send(400, {"error": f"데이터 형식 오류: {e}"})
-        log(f"업로드 저장: {meta['fileName']} · {meta['uploadedBy']} (버전 {meta['version']})")
+        if not USERS.verify(u["id"], body.get("password")):          # 업로드할 때마다 본인 비밀번호 다시 확인
+            USERS.log(u["id"], "업로드 비밀번호 틀림", "", self.ip)
+            return self._send(401, {"error": "비밀번호가 맞지 않습니다 (업로드 확인)"})
+        meta_in = body.get("meta") or {}
+        meta_in["uploadedBy"] = f"{u['dept']} {u['name']}"
+        try:
+            if body.get("qms") is not None:
+                meta = STORE.save(body.get("qms"), meta_in, "qms")
+            else:
+                meta = STORE.save(body.get("sheets"), meta_in, "sheets")
+        except (ValueError, AttributeError) as e:
+            return self._send(400, {"error": f"데이터 형식 오류: {e}"})
+        USERS.log(u["id"], "데이터 업로드", f"{meta['fileName']} (버전 {meta['version']})", self.ip)
         self._send(200, {"ok": True, "meta": meta})
 
 
@@ -344,7 +718,7 @@ def lan_ips() -> list[str]:
 
 
 def main() -> None:
-    global STORE, KEY, WATCH, ALLOW
+    global STORE, KEY, WATCH, ALLOW, USERS
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
     ap.add_argument("--host", default="0.0.0.0", help="받을 주소 (기본: 모든 네트워크)")
     ap.add_argument("--port", type=int, default=8365, help="포트 (기본 8365)")
@@ -359,6 +733,7 @@ def main() -> None:
     if not PAGE.exists():
         sys.exit("cement_plant_3d.html이 없습니다. 같은 폴더에서 python build.py를 먼저 실행하세요.")
     STORE = Store(Path(a.data))
+    USERS = Users(STORE.dir)
     KEY = a.key
     try:
         ALLOW = [] if a.allow_any else (parse_allow(a.allow) if a.allow else parse_allow(",".join(PRIVATE_NETS))) + parse_allow(",".join(LOCAL_NETS))
@@ -391,7 +766,12 @@ def main() -> None:
     else:
         print(f"  ※ 컴퓨터 이름({host})에 한글이 있어 이름 주소는 쓸 수 없습니다. 위 IP 주소를 쓰세요.")
     print(f"  데이터 저장 : {STORE.dir}")
-    print(f"  업로드 암호 : {'사용' if KEY else '사용 안 함  ← --key 로 켜기를 권장'}")
+    n_users = sum(1 for u in USERS.data["users"].values() if u.get("status") == "active")
+    n_pend = sum(1 for u in USERS.data["users"].values() if u.get("status") == "pending")
+    print(f"  로그인      : 사용 (승인된 사용자 {n_users}명, 승인 대기 {n_pend}건)")
+    print("  업로드      : 편집 권한 + 업로드할 때 본인 비밀번호 확인" + (" + 서버 업로드 암호(--key)" if KEY else ""))
+    if not USERS.has_admin():
+        print(f"  ★ 관리자 계정이 없습니다. 이 PC의 브라우저에서 http://localhost:{a.port} 로 접속해 먼저 만드세요.")
     shown = [str(n) for n in ALLOW if str(n) not in LOCAL_NETS and n.version == 4]
     print(f"  접속 허용   : {'제한 없음 (주의: 외부 접속 가능)' if not ALLOW else ('사내망 사설 IP 전체' if not a.allow else ', '.join(shown))}")
     odd = [ip for ip in ips if ALLOW and not allowed(ip)]

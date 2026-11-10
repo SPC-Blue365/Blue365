@@ -98,6 +98,10 @@ a{color:inherit;text-decoration:none}
 .avatar{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:800;font-size:13px}
 .user b{display:block;font-size:13px}
 .user small{font-size:11.5px;color:var(--fg3)}
+.umenu{display:flex;gap:6px;margin-left:4px}
+.umenu .icon-btn{position:relative}
+@media (max-width:600px){#uOut{display:none}}
+.umenu .cnt{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--bad);color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center}
 .views{flex:1;min-height:0;position:relative}
 .view{position:absolute;inset:0}
 .scroll{overflow:auto;padding:24px 28px 40px}
@@ -449,7 +453,7 @@ table.ks td.r,table.ks th.r{text-align:right}
       <button class="dbtn" type="button" id="dataBtn" aria-label="데이터 불러오기"><span data-ic="upload"></span><span>데이터</span></button>
       <button class="icon-btn" type="button" id="themeBtn" aria-label="화면 테마 바꾸기"><span data-ic="moon"></span></button>
       <a class="icon-btn" href="#alarms" aria-label="알람 보기"><span data-ic="bell"></span><span class="dot" id="bellDot" hidden></span></a>
-      <div class="user"><span class="avatar">QC</span><div><b>품질관리팀</b><small>모니터링 담당</small></div></div>
+      <div class="user" id="userBox"><span class="avatar" id="uAv">QC</span><div><b id="uName">품질관리팀</b><small id="uRole">모니터링 담당</small></div></div><span class="umenu" id="uMenu" hidden><a class="icon-btn" href="account" id="uAcct" aria-label="내 계정 · 사용자 관리" title="내 계정 · 사용자 관리"><span data-ic="user"></span><span class="cnt" id="uPend" hidden></span></a><button class="icon-btn" type="button" id="uOut" aria-label="로그아웃" title="로그아웃"><span data-ic="logout"></span></button></span>
     </header>
 
     <div class="views" id="views">
@@ -565,6 +569,8 @@ const ICON={
   factory:'<path d="M3 21V10l6 4V10l6 4V6h6v15z"/>',
   clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  logout:'<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4"/><path d="M10 17l-5-5 5-5M5 12h11"/>',
   file:'<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/>'
 };
 /* 내용이 바뀔 때만 다시 그림 — 2초 갱신 중 누른 클릭이 빠지지 않게 */
@@ -1759,11 +1765,24 @@ function backToDefault(){const d=defaultQms();try{localStorage.removeItem('b365-
 /* ---------- 팀 공유 서버 (server.py) ---------- */
 async function serverInit(){
   if(location.protocol==='file:')return false;
-  try{const r=await fetch('api/status',{cache:'no-store'});if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;}catch(e){return false;}
-  await pullServer(true);setInterval(pollServer,20000);renderAll();return true;
+  try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return true;}if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;}catch(e){return false;}
+  await loadMe();await pullServer(true);setInterval(pollServer,20000);renderAll();return true;
 }
+const ROLE_KO={admin:'관리자',editor:'편집',viewer:'뷰어'};
+function toLogin(){location.replace('login');}
+async function loadMe(){
+  try{const r=await fetch('api/me',{cache:'no-store',credentials:'same-origin'});const m=await r.json();if(!m.user){toLogin();return;}
+    SERVER.me=m.user;const u=m.user;
+    $('#uAv').textContent=(u.name||u.id||'?').slice(-2);$('#uName').textContent=`${u.dept||''} ${u.name||''}`.trim()||u.id;
+    $('#uRole').textContent=`${u.id} · ${ROLE_KO[u.role]||u.role}`;$('#uMenu').hidden=false;
+    const pe=$('#uPend');pe.hidden=!(m.pending>0);pe.textContent=m.pending||'';
+    $('#uAcct').title=$('#uAcct').ariaLabel=u.role==='admin'?(m.pending?`사용자 관리 · 승인 대기 ${m.pending}건`:'내 계정 · 사용자 관리'):'내 계정';
+    if(m.pending>0&&!SERVER.pendNoted){SERVER.pendNoted=true;toast(`ID 등록 승인 대기 ${m.pending}건이 있습니다 · 오른쪽 위 사용자 아이콘`,'act');}
+  }catch(e){}
+}
+async function logout(){try{await fetch('api/logout',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});}catch(e){}toLogin();}
 async function pullServer(first){
-  try{const r=await fetch('api/dataset',{cache:'no-store'});if(r.status===404)return;if(!r.ok)throw new Error();
+  try{const r=await fetch('api/dataset',{cache:'no-store',credentials:'same-origin'});if(r.status===404)return;if(r.status===401){toLogin();return;}if(!r.ok)throw new Error();
     const ds=await r.json(),m=ds.meta||{};let Q=ds.qms;
     if(!Q&&ds.sheets)Q=QMS.build(ds.sheets);          // 공유 폴더 자동 읽기: 원본 시트를 이 화면에서 집계
     if(!Q||!Q.streams)throw new Error();
@@ -1772,7 +1791,8 @@ async function pullServer(first){
   catch(e){toast('팀 공유 데이터를 불러오지 못했습니다','warn');}
 }
 async function pollServer(){
-  try{const r=await fetch('api/status',{cache:'no-store'});if(!r.ok)throw new Error();const s=await r.json();SERVER.ok=true;SERVER.needKey=s.needKey;SERVER.watch=s.watch;
+  try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return;}if(!r.ok)throw new Error();const s=await r.json();SERVER.ok=true;SERVER.needKey=s.needKey;SERVER.watch=s.watch;
+    if(SERVER.me&&SERVER.me.role==='admin')loadMe();
     if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
@@ -1804,13 +1824,15 @@ function statHTML(){
   h+=`<div class="row"><span>공유 방식</span><b>${SERVER?(SERVER.ok===false?'팀 공유 서버 연결 끊김 · 재시도 중':'팀 공유 서버 연결됨 · 20초마다 확인')+(SERVER.watch?' · 공유 폴더 자동 읽기':''):'이 PC 브라우저에만 반영'}</b></div></div>`;
   return h;
 }
+function canUp(){return !SERVER||!SERVER.me||SERVER.me.role==='editor'||SERVER.me.role==='admin';}
 function renderDataModal(){
-  const b=$('#dmBody');let who='';try{who=localStorage.getItem('b365-who')||'';}catch(e){}
+  const b=$('#dmBody');
   let h=statHTML();
   if(!PENDING){
     h+=`<label class="drop" id="drop" tabindex="0">${ic('upload')}<b>QMS 통합 양식 엑셀(.xlsx)을 끌어다 놓으세요</b><small>또는 눌러서 파일 선택 · LIMS에서 받은 결과를 양식 시트에 붙여넣은 파일</small><input type="file" id="dmFile" accept=".xlsx" hidden></label>
     <div class="note">${ic('file','')} 양식: <a class="lnk" href="업로드양식.xlsx" download>업로드양식.xlsx</a> (화면 파일과 같은 폴더) · 원료·잔사·킬른(DCS)·클링커·클링커일일·시멘트·출하시멘트·인수검사 시트. 필요한 시트만 채워도 됩니다. 파일은 이 PC에서 읽고 ${SERVER?'팀 공유 서버에는 집계 결과만 저장합니다.':'외부로 보내지 않습니다.'}</div>`;
     if(!SERVER)h+=`<div class="note">팀이 같은 데이터를 보려면 사내 PC 한 대에서 <b>server.py</b>를 실행하고 그 주소(예: http://PC이름:8365)로 접속하세요.</div>`;
+    if(SERVER&&!canUp())h+=`<div class="note">${ic('info','')} <b>뷰어 권한</b>은 보기만 할 수 있습니다. 데이터를 올리려면 관리자에게 <b>편집</b> 권한을 요청하세요.</div>`;
     if(!SERVER&&QMETA.source!=='embedded')h+=`<div class="acts"><button class="btn ghost" type="button" id="dmSim">내장 기본 데이터로 돌아가기</button></div>`;
   }else if(PENDING.busy){
     h+=`<div class="sect">읽는 중 <small>${esc(PENDING.fileName)}</small></div><div class="note">큰 파일은 몇 초 걸립니다 (시트당 1만 행 이상).</div>`;
@@ -1821,8 +1843,9 @@ function renderDataModal(){
       (Q&&Q.from?`<div class="msg ok">${ic('clock')}<span>분석 기간 <b>${Q.from} ~ ${Q.to}</b></span></div>`:'')+
       err.map(x=>`<div class="msg err">${ic('alert')}<span>${esc(x)}</span></div>`).join('')+
       (Q?Q.warn.map(x=>`<div class="msg">${ic('info')}<span>${esc(x)}</span></div>`).join(''):'')+`</div>`;
-    const can=Q&&Q.total>0&&!err.length;
-    if(can&&SERVER)h+=`<div class="field"><label for="dmWho">올린 사람</label><input id="dmWho" value="${esc(who)}" placeholder="예: 품질관리팀 홍길동" maxlength="40"></div>`+(SERVER.needKey?`<div class="field"><label for="dmKey">업로드 비밀번호</label><input id="dmKey" type="password" autocomplete="off"></div>`:'');
+    const can=Q&&Q.total>0&&!err.length&&canUp();
+    if(Q&&Q.total>0&&!err.length&&!canUp())h+=`<div class="msg err">${ic('alert')}<span>뷰어 권한은 팀에 공유할 수 없습니다. 관리자에게 편집 권한을 요청하세요.</span></div>`;
+    if(can&&SERVER)h+=`<div class="field"><label for="dmPw">업로드 확인 · 본인 비밀번호 <small>${esc((SERVER.me?`${SERVER.me.dept||''} ${SERVER.me.name||''}`:'').trim())} 이름으로 올라갑니다</small></label><input id="dmPw" type="password" autocomplete="current-password" maxlength="64"></div>`+(SERVER.needKey?`<div class="field"><label for="dmKey">서버 업로드 암호</label><input id="dmKey" type="password" autocomplete="off"></div>`:'');
     h+=`<div class="acts"><button class="btn ghost" type="button" id="dmCancel">다른 파일 고르기</button>${can?`<button class="btn" type="button" id="dmApply">${SERVER?'팀에 공유하고 적용':'이 화면에 적용'}</button>`:''}</div>`;
   }
   b.innerHTML=h;
@@ -1838,10 +1861,10 @@ function renderDataModal(){
 async function applyPending(){
   const P=PENDING,btn=$('#dmApply');if(!P||!P.Q)return;btn.disabled=true;
   if(SERVER){
-    const who=($('#dmWho')?.value||'').trim()||'이름 없음';try{localStorage.setItem('b365-who',who);}catch(e){}
+    const pw=$('#dmPw')?.value||'';if(!pw){btn.disabled=false;toast('업로드하려면 본인 비밀번호를 입력하세요','warn');$('#dmPw')?.focus();return;}
     btn.textContent='올리는 중…';
-    try{const r=await fetch('api/dataset',{method:'POST',headers:{'Content-Type':'application/json','X-Upload-Key':$('#dmKey')?.value||''},body:JSON.stringify({qms:P.Q,meta:{fileName:P.fileName,uploadedBy:who}})});
-      const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));
+    try{const r=await fetch('api/dataset',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Upload-Key':$('#dmKey')?.value||''},body:JSON.stringify({qms:P.Q,password:pw,meta:{fileName:P.fileName}})});
+      const j=await r.json().catch(()=>({}));if(r.status===401&&j.login){toLogin();return;}if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));
       SERVER.loaded=j.meta.version;applyQms(P.Q,j.meta);closeModal();toast('팀에 공유했습니다. 다른 사람 화면에도 20초 안에 반영됩니다','ok');}
     catch(e){btn.disabled=false;btn.textContent='팀에 공유하고 적용';toast(e.message==='Failed to fetch'?'팀 공유 서버에 연결할 수 없습니다':(e.message||'업로드하지 못했습니다'),'bad');}
   }else{
@@ -1853,6 +1876,7 @@ async function applyPending(){
 }
 function setupData(){
   $('#dataBtn').onclick=openModal;
+  $('#uOut').onclick=logout;
   $('#dmClose').onclick=closeModal;
   $('#dataModal').addEventListener('click',e=>{if(e.target.id==='dataModal')closeModal();});
   addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#dataModal').hidden)closeModal();});

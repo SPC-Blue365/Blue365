@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blue365 로그인</title>
+<style>
+/* 레이아웃: 연회색 바탕 가운데 흰 카드 하나 · 위쪽 밑줄 탭(입력 화면) */
+:root{--bg:#F2F4F6;--card:#FFFFFF;--line:#E5E8EB;--fg:#191F28;--fg2:#4E5968;--fg3:#8B95A1;--accent:#3182F6;--accent-soft:#E8F3FF;--ok:#0E9F6E;--ok-soft:#E3F6EE;--bad:#E5484D;--bad-soft:#FDECEC;--warn:#D98200;--warn-soft:#FFF3DF;
+  --font:"Pretendard",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;--ease:cubic-bezier(.22,1,.36,1)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0F1115;--card:#1A1D23;--line:#2C3139;--fg:#F2F4F6;--fg2:#B0B8C1;--fg3:#7E8794;--accent:#4A90F7;--accent-soft:#1B2B45;--ok:#2FBF85;--ok-soft:#173129;--bad:#F2646A;--bad-soft:#3D1D20;--warn:#F5A623;--warn-soft:#3A2D14;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0F1115;--card:#1A1D23;--line:#2C3139;--fg:#F2F4F6;--fg2:#B0B8C1;--fg3:#7E8794;--accent:#4A90F7;--accent-soft:#1B2B45;--ok:#2FBF85;--ok-soft:#173129;--bad:#F2646A;--bad-soft:#3D1D20;--warn:#F5A623;--warn-soft:#3A2D14;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+[hidden]{display:none!important}
+.card{background:var(--card);border-radius:20px;width:min(420px,100%);padding:28px 24px 24px;box-shadow:0 8px 28px rgba(25,31,40,.08)}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--accent);display:grid;place-items:center}
+.logo svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linejoin:round}
+.brand b{font-size:17px;display:block}.brand small{color:var(--fg3);font-size:12px}
+h1{font-size:22px;line-height:1.35;margin:0 0 6px;letter-spacing:-.4px}
+h1 em{font-style:normal;color:var(--accent)}
+.sub{color:var(--fg3);margin:0 0 18px;font-size:13px;line-height:1.5}
+.tabs{display:flex;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tabs button{flex:1;height:44px;border:0;background:none;font:inherit;font-weight:700;color:var(--fg3);position:relative;cursor:pointer}
+.tabs button::after{content:"";position:absolute;left:12px;right:12px;bottom:-1px;height:3px;border-radius:3px 3px 0 0;background:var(--accent);transform:scaleX(0);transition:transform .25s var(--ease)}
+.tabs button[aria-selected="true"]{color:var(--fg)}
+.tabs button[aria-selected="true"]::after{transform:scaleX(1)}
+form{display:flex;flex-direction:column;gap:12px}
+label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--fg2);font-weight:600}
+input{height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:15px;padding:0 14px;outline:none}
+input:focus{border-color:var(--accent);background:var(--card)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hint{font-size:12px;color:var(--fg3);font-weight:400}
+.btn{height:48px;border:0;border-radius:12px;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}
+.btn:disabled{opacity:.55;cursor:default}
+.msg{border-radius:12px;padding:11px 14px;font-size:13px;line-height:1.5;margin-bottom:14px}
+.msg.err{background:var(--bad-soft);color:var(--bad)}.msg.ok{background:var(--ok-soft);color:var(--ok)}.msg.info{background:var(--accent-soft);color:var(--accent)}.msg.warn{background:var(--warn-soft);color:var(--warn)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.foot{margin-top:16px;color:var(--fg3);font-size:12px;line-height:1.5}
+@media (max-width:420px){.row{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12L3.5 7.3M12 12v9.5"/></svg></span><div><b>Blue365</b><small>시멘트 공정 3D · 사내 전용</small></div></div>
+  <h1 id="title">승인된 사용자만<br><em>로그인</em>할 수 있습니다</h1>
+  <p class="sub" id="sub">처음이라면 ‘ID 등록’에서 부서와 이름을 적어 요청하세요. 관리자가 승인하면 로그인할 수 있습니다.</p>
+  <div id="msg" class="msg" hidden role="status"></div>
+  <div class="tabs" role="tablist" id="tabs">
+    <button type="button" role="tab" id="tLogin" aria-selected="true" aria-controls="fLogin">로그인</button>
+    <button type="button" role="tab" id="tReg" aria-selected="false" aria-controls="fReg">ID 등록</button>
+  </div>
+  <form id="fLogin" autocomplete="on">
+    <label for="lId">아이디<input id="lId" name="username" autocomplete="username" required maxlength="20"></label>
+    <label for="lPw">비밀번호<input id="lPw" name="password" type="password" autocomplete="current-password" required maxlength="64"></label>
+    <button class="btn" type="submit">로그인</button>
+  </form>
+  <form id="fReg" hidden autocomplete="off">
+    <div class="row">
+      <label for="rDept">부서<input id="rDept" required maxlength="30" placeholder="예: 품질관리팀"></label>
+      <label for="rName">이름<input id="rName" required maxlength="20" placeholder="예: 홍길동"></label>
+    </div>
+    <label for="rId">아이디 <span class="hint">영문·숫자 3~20자</span><input id="rId" required maxlength="20" autocomplete="username" pattern="[A-Za-z0-9_.\-]{3,20}"></label>
+    <label for="rPw">비밀번호 <span class="hint">영문+숫자 8자 이상</span><input id="rPw" type="password" required minlength="8" maxlength="64" autocomplete="new-password"></label>
+    <label for="rPw2">비밀번호 확인<input id="rPw2" type="password" required minlength="8" maxlength="64" autocomplete="new-password"></label>
+    <button class="btn" type="submit" id="rBtn">등록 요청</button>
+  </form>
+  <p class="foot" id="foot">이 서버는 사내망에서만 접속할 수 있습니다. 비밀번호는 서버에 암호화(해시)되어 저장됩니다.</p>
+</main>
+<script>
+(function(){'use strict';
+const $=s=>document.querySelector(s);let setup=false;
+const msg=(t,k='err')=>{const m=$('#msg');m.textContent=t;m.className='msg '+k;m.hidden=!t;};
+function tab(which){const reg=which==='reg';$('#tLogin').setAttribute('aria-selected',!reg);$('#tReg').setAttribute('aria-selected',reg);$('#fLogin').hidden=reg;$('#fReg').hidden=!reg;msg('');(reg?$('#rDept'):$('#lId')).focus();}
+$('#tLogin').onclick=()=>tab('login');$('#tReg').onclick=()=>tab('reg');
+async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),credentials:'same-origin'});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j;}
+$('#fLogin').onsubmit=async e=>{e.preventDefault();const b=e.submitter||$('#fLogin .btn');b.disabled=true;
+  try{await post('api/login',{id:$('#lId').value.trim(),pw:$('#lPw').value});location.replace('/');}catch(err){msg(err.message);b.disabled=false;}};
+$('#fReg').onsubmit=async e=>{e.preventDefault();
+  if($('#rPw').value!==$('#rPw2').value){msg('비밀번호 확인이 일치하지 않습니다.');return;}
+  const b=$('#rBtn');b.disabled=true;
+  try{const j=await post('api/register',{dept:$('#rDept').value.trim(),name:$('#rName').value.trim(),id:$('#rId').value.trim(),pw:$('#rPw').value,setup});
+    if(setup){setup=false;const id=$('#rId').value;await init(true);$('#lId').value=id;$('#lPw').focus();msg('관리자 계정을 만들었습니다. 같은 아이디·비밀번호로 로그인하세요.','ok');}
+    else{$('#fReg').reset();msg('등록 요청을 보냈습니다. 관리자가 승인하면 로그인할 수 있습니다.','ok');}
+  }catch(err){msg(err.message);}b.disabled=false;};
+async function init(forceLogin){
+  try{const r=await fetch('api/me',{cache:'no-store',credentials:'same-origin'});const m=await r.json();
+    if(m.user){location.replace('/');return;}
+    if(m.setup){
+      if(m.local){setup=true;$('#title').innerHTML='먼저 <em>관리자 계정</em>을<br>만들어 주세요';$('#sub').textContent='관리자는 ID 등록 요청을 승인하고 편집·뷰어 권한을 정합니다. 이 화면은 서버 PC에서만 보입니다.';$('#tabs').hidden=true;$('#rBtn').textContent='관리자 계정 만들기';tab('reg');}
+      else{msg('아직 관리자 계정이 없습니다. 서버 PC에서 http://localhost:8365 로 접속해 관리자 계정을 먼저 만들어야 합니다.','warn');$('#tabs').hidden=true;$('#fLogin').hidden=true;$('#fReg').hidden=true;}
+      return;}
+    $('#tabs').hidden=false;$('#rBtn').textContent='등록 요청';
+    if(!m.knownIp&&!forceLogin)tab('reg');else tab('login');
+  }catch(e){msg('서버에 연결할 수 없습니다.');}
+}
+init();
+})();
+</script>
+</body>
+</html>
