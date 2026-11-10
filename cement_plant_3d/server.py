@@ -36,6 +36,7 @@ from urllib.parse import quote, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 PAGE = ROOT / "cement_plant_3d.html"
 TEMPLATE = ROOT / "업로드양식.xlsx"
+# 화면이 받는 데이터: 업로드는 집계된 QMS 데이터셋(qms), 공유 폴더 자동 읽기는 원본 시트(sheets) — 화면이 집계함
 MAX_BODY = 30 * 1024 * 1024  # 화면에서 25MB 파일을 JSON으로 바꾸면 조금 커짐
 KEEP_HISTORY = 200
 
@@ -62,44 +63,50 @@ def _put(lst: list, i: int, v) -> None:
 
 
 def read_xlsx(data: bytes) -> dict[str, list[list]]:
-    """.xlsx → {시트명: 2차원 값 목록}. 화면(JS)의 읽기 결과와 같은 모양."""
+    """.xlsx → {시트명: 2차원 값 목록}. 화면(qms.js)의 읽기 결과와 같은 모양. 큰 시트도 스트리밍으로 읽음."""
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = set(z.namelist())
-        xml = lambda n: ET.fromstring(z.read(n))  # noqa: E731
         sst: list[str] = []
         if "xl/sharedStrings.xml" in names:
-            for si in xml("xl/sharedStrings.xml").iter(NS + "si"):
-                sst.append("".join(t.text or "" for t in si.iter(NS + "t")))
-        rels = {r.get("Id"): r.get("Target", "") for r in xml("xl/_rels/workbook.xml.rels").iter(PNS + "Relationship")}
+            for si in ET.fromstring(z.read("xl/sharedStrings.xml")).iter(NS + "si"):
+                sst.append("".join(t.text or "" for t in si.iter(NS + "t") if t is not None))
+        rels = {r.get("Id"): r.get("Target", "") for r in ET.fromstring(z.read("xl/_rels/workbook.xml.rels")).iter(PNS + "Relationship")}
         out: dict[str, list[list]] = {}
-        for sh in xml("xl/workbook.xml").iter(NS + "sheet"):
+        for sh in ET.fromstring(z.read("xl/workbook.xml")).iter(NS + "sheet"):
             target = rels.get(sh.get(RNS + "id"), "").lstrip("/")
             if not target.startswith("xl/"):
                 target = "xl/" + target
             if target not in names:
                 continue
             rows: list[list] = []
-            for rn, row in enumerate(xml(target).iter(NS + "row")):
-                ri = int(row.get("r", rn + 1)) - 1
-                vals: list = []
-                for cn, c in enumerate(row.iter(NS + "c")):
-                    ci = _col(c.get("r")) if c.get("r") else cn
-                    t, v = c.get("t"), c.find(NS + "v")
-                    if t == "s":
-                        val = sst[int(v.text)] if v is not None and v.text else None
-                    elif t == "inlineStr":
-                        val = "".join(x.text or "" for x in c.iter(NS + "t"))
-                    elif t == "b":
-                        val = v is not None and v.text == "1"
-                    elif t in ("str", "e"):
-                        val = v.text if v is not None else None
-                    elif v is None or not v.text:
-                        val = None
-                    else:
-                        f = float(v.text)
-                        val = int(f) if f.is_integer() else f
-                    _put(vals, ci, val)
-                _put(rows, ri, vals)
+            with z.open(target) as f:
+                rn = 0
+                for ev, el in ET.iterparse(f, events=("end",)):
+                    if el.tag != NS + "row":
+                        continue
+                    ri = int(el.get("r", rn + 1)) - 1
+                    rn = ri + 1
+                    vals: list = []
+                    for cn, c in enumerate(el.iter(NS + "c")):
+                        ci = _col(c.get("r")) if c.get("r") else cn
+                        t, v = c.get("t"), c.find(NS + "v")
+                        if t == "s":
+                            val = sst[int(v.text)] if v is not None and v.text else None
+                        elif t == "inlineStr":
+                            val = "".join(x.text or "" for x in c.iter(NS + "t"))
+                        elif t == "b":
+                            val = v is not None and v.text == "1"
+                        elif t in ("str", "e"):
+                            val = v.text if v is not None else None
+                        elif v is None or not v.text:
+                            val = None
+                        else:
+                            fv = float(v.text)
+                            val = int(fv) if fv.is_integer() else fv
+                        _put(vals, ci, val)
+                    if vals:
+                        _put(rows, ri, vals)
+                    el.clear()
             out[sh.get("name")] = [r or [] for r in rows]
         return out
 
@@ -119,12 +126,17 @@ class Store:
             except Exception:  # 손상된 파일은 무시하고 새로 받음
                 self.meta = None
 
-    def save(self, sheets, meta: dict) -> dict:
-        if not isinstance(sheets, dict) or not sheets:
-            raise ValueError("시트가 없습니다")
-        for k, v in sheets.items():
-            if not isinstance(k, str) or not isinstance(v, list) or not all(isinstance(r, list) for r in v):
-                raise ValueError("시트 형식이 올바르지 않습니다")
+    def save(self, payload, meta: dict, kind: str = "sheets") -> dict:
+        """kind='qms': 화면이 집계한 QMS 데이터셋 / kind='sheets': 공유 폴더 원본 시트(화면이 집계)"""
+        if kind == "qms":
+            if not isinstance(payload, dict) or not isinstance(payload.get("streams"), dict):
+                raise ValueError("QMS 데이터 형식이 올바르지 않습니다")
+        else:
+            if not isinstance(payload, dict) or not payload:
+                raise ValueError("시트가 없습니다")
+            for k, v in payload.items():
+                if not isinstance(k, str) or not isinstance(v, list) or not all(isinstance(r, list) for r in v):
+                    raise ValueError("시트 형식이 올바르지 않습니다")
         now = dt.datetime.now()
         meta = {
             "fileName": str(meta.get("fileName", ""))[:200],
@@ -133,7 +145,7 @@ class Store:
             "source": str(meta.get("source", "upload"))[:20],
             "version": now.strftime("%Y%m%d%H%M%S%f"),
         }
-        doc = json.dumps({"meta": meta, "sheets": sheets}, ensure_ascii=False)
+        doc = json.dumps({"meta": meta, kind: payload}, ensure_ascii=False)
         with self.lock:
             tmp = self.latest.with_suffix(".tmp")
             tmp.write_text(doc, "utf-8")
@@ -253,7 +265,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(413, {"error": "파일이 너무 큽니다 (최대 25MB)"})
         try:
             body = json.loads(self.rfile.read(n).decode("utf-8"))
-            meta = STORE.save(body.get("sheets"), body.get("meta") or {})
+            if body.get("qms") is not None:
+                meta = STORE.save(body.get("qms"), body.get("meta") or {}, "qms")
+            else:
+                meta = STORE.save(body.get("sheets"), body.get("meta") or {}, "sheets")
         except (ValueError, UnicodeDecodeError, AttributeError) as e:
             return self._send(400, {"error": f"데이터 형식 오류: {e}"})
         log(f"업로드 저장: {meta['fileName']} · {meta['uploadedBy']} (버전 {meta['version']})")

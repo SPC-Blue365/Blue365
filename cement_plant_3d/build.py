@@ -1,24 +1,38 @@
-"""오프라인(사내망)용 단일 HTML 파일 생성.
+"""화면 파일 만들기.
 
-src.html 의 CDN <script> 를 vendor/three.min.js 내용으로 바꿔 넣고,
-문서 골격(doctype/head/body)을 씌워 cement_plant_3d.html 을 만든다.
-사용: python cement_plant_3d/build.py
+src.html 에 three.js · qms.js · 내장 QMS 기본 데이터(qms_default.json)를 넣어
+  cement_plant_3d.html  — 사내망(오프라인) 완성본 (모두 파일 안에 포함)
+  artifact.html         — 미리보기용 (three.js 는 CDN, 나머지 포함)
+을 만듭니다.  사용: python build.py
 """
+import json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CDN = '<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>'
+QMS_TAG = '<script src="qms.js"></script>'
+DEF_TAG = '<script id="qmsDefault" type="application/json">null</script>'
+
+
+def safe(js: str) -> str:
+    return js.replace("</script", "<\\/script")
+
 
 src = (HERE / "src.html").read_text(encoding="utf-8")
-lib = (HERE / "vendor" / "three.min.js").read_text(encoding="utf-8")
-assert CDN in src, "src.html 에서 three.js CDN 태그를 찾지 못했습니다"
-body = src.replace(CDN, "<script>\n" + lib.replace("</script", "<\\/script") + "\n</script>")
+for tag in (CDN, QMS_TAG, DEF_TAG):
+    assert tag in src, f"src.html 에서 {tag[:40]}… 를 찾지 못했습니다"
+qms = (HERE / "qms.js").read_text(encoding="utf-8")
+dflt = HERE / "qms_default.json"
+data = json.dumps(json.loads(dflt.read_text(encoding="utf-8")), ensure_ascii=False, separators=(",", ":")) if dflt.exists() else "null"
+body = (src.replace(QMS_TAG, "<script>\n" + safe(qms) + "\n</script>")
+           .replace(DEF_TAG, '<script id="qmsDefault" type="application/json">' + data.replace("</", "<\\/") + "</script>"))
 
-html = (
-    '<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
-    '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
-    "</head>\n<body>\n" + body + "\n</body>\n</html>\n"
-)
+(HERE / "artifact.html").write_text(body, encoding="utf-8")
+lib = (HERE / "vendor" / "three.min.js").read_text(encoding="utf-8")
+offline = body.replace(CDN, "<script>\n" + safe(lib) + "\n</script>")
+html = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
+        "</head>\n<body>\n" + offline + "\n</body>\n</html>\n")
 out = HERE / "cement_plant_3d.html"
 out.write_text(html, encoding="utf-8")
-print(f"생성: {out} ({out.stat().st_size/1024:.0f} KB)")
+print(f"생성: {out.name} ({out.stat().st_size/1024:.0f} KB), artifact.html ({(HERE/'artifact.html').stat().st_size/1024:.0f} KB)")
