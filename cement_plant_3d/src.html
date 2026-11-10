@@ -57,7 +57,7 @@ a{color:inherit;text-decoration:none}
 .nb.w{background:var(--warn-soft);color:var(--warn)}
 .nb.z{background:var(--idle-soft);color:var(--fg3)}
 #areaNav{display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)}
-.grp.closed + #areaNav{max-height:0!important}
+.grp.closed + #areaNav,.grp.closed + #kilnNav{max-height:0!important}
 .side-foot{margin-top:auto}
 .app.collapsed{--side:76px}
 .app.collapsed .side .brand div,.app.collapsed .side .nav span,.app.collapsed .side .grp span,.app.collapsed .side .grp button{display:none}
@@ -180,6 +180,17 @@ a{color:inherit;text-decoration:none}
 .chip small{display:block;font-size:11px;color:var(--fg3)}
 .chip b{font-size:14px}
 .chip.s-warn b{color:var(--warn)} .chip.s-bad b{color:var(--bad)}
+.kv .kvg{display:block;font-size:11.5px;font-weight:700;color:var(--fg3);padding:14px 0 2px;border-bottom:0;letter-spacing:.3px}
+.kv .kvg:first-child{padding-top:0}
+td.st-warn{color:var(--warn);font-weight:700} td.st-bad{color:var(--bad);font-weight:700}
+.krw{cursor:pointer} .krw:hover td,.krw:focus-visible td{background:var(--card)}
+.krw td:first-child{border-radius:10px 0 0 10px} .krw td:last-child{border-radius:0 10px 10px 0}
+.card.full{grid-column:1/-1}
+.pv .seg{align-self:flex-start}
+.knav .dotst{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+.knav .dotst.s-warn{background:var(--warn)} .knav .dotst.s-bad{background:var(--bad)} .knav .dotst.s-none{background:var(--fg3)}
+.knav small{font-size:11.5px;color:var(--fg3);font-weight:600}
+.app.collapsed .side .knav small{display:none}
 .note{font-size:11.5px;color:var(--fg3);line-height:1.5}
 
 .lot{left:16px;bottom:16px;right:448px;max-width:820px;padding:16px 18px;display:flex;gap:16px;align-items:stretch}
@@ -394,6 +405,8 @@ table.ks td.r,table.ks th.r{text-align:right}
     <a class="nav" href="#report" data-view="report"><span data-ic="chart"></span><span>경영진 요약</span></a>
     <div class="grp" id="areaGrp"><span>공정 구역</span><button type="button" id="areaToggle" aria-label="공정 구역 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="areaNav" style="max-height:300px"></div>
+    <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
+    <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
     <div class="side-foot"><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
@@ -407,7 +420,7 @@ table.ks td.r,table.ks th.r{text-align:right}
         <div class="results" id="results" hidden></div>
       </div>
       <div class="spacer"></div>
-      <div class="plant"><span class="code">K1</span><div><b>1공장 · 킬른 1호</b><small id="modeTxt">설계 5,000 t/d · 가상 데이터</small></div></div>
+      <div class="plant"><span class="code">5기</span><div><b>시멘트 공장 · 킬른 3~7호</b><small id="modeTxt">설계 24,500 t/d · 가상 데이터</small></div></div>
       <span class="live" id="liveChip" title="화면 갱신 상태"><i></i><span id="liveTxt">Live</span> <b class="num" id="clock">--:--</b></span>
       <button class="dbtn" type="button" id="dataBtn" aria-label="데이터 불러오기"><span data-ic="upload"></span><span>데이터</span></button>
       <button class="icon-btn" type="button" id="themeBtn" aria-label="화면 테마 바꾸기"><span data-ic="moon"></span></button>
@@ -440,7 +453,7 @@ table.ks td.r,table.ks th.r{text-align:right}
               <button type="button" role="tab" data-tab="smp">시료<em id="cSmp">5</em></button>
               <button type="button" role="tab" data-tab="trk">출하<em id="cTrk">3</em></button>
             </div>
-            <small id="listMeta">1공장</small>
+            <small id="listMeta">전체</small>
           </div>
           <div class="rows" id="rows"></div>
         </div>
@@ -546,9 +559,40 @@ function pStatus(p){
 }
 const limTxt=p=>p.lo!=null&&p.hi!=null?`관리 ${nf(p.lo,p.dp)}~${nf(p.hi,p.dp)}`:p.hi!=null?`관리 ${nf(p.hi,p.dp)} 이하`:p.lo!=null?`관리 ${nf(p.lo,p.dp)} 이상`:'';
 
+/* 킬른 호기 (설계 용량은 가상값 — 실제 값으로 바꿔 쓰세요) */
+const KILN_DEF=[{n:3,cap:3500,z:-42},{n:4,cap:3500,z:-30},{n:5,cap:5000,z:-18},{n:6,cap:5000,z:-6},{n:7,cap:7500,z:6}];
+const KILN_IDS=KILN_DEF.map(d=>'K'+d.n);
+const DESIGN_TOTAL=KILN_DEF.reduce((a,d)=>a+d.cap,0);
+function kilnEq(d,i){
+  const v=[.4,-.3,0,.2,-.5][i],sc=d.cap/5000,feed=Math.round(d.cap*1.62/24*.995);
+  const g1={grp:'프리히터·하소로'},g2={grp:'킬른'},g3={grp:'쿨러'},g4={grp:'클링커 품질'};
+  const ox=[[65.9,21.5,5.25,3.3],[65.6,21.7,5.15,3.35],[65.8,21.6,5.2,3.3],[66.0,21.4,5.3,3.25],[65.5,21.8,5.1,3.4]][i];
+  return {id:'K'+d.n,code:'KL-'+d.n,name:d.n+'호 킬른',kiln:d.n,cap:d.cap,z:d.z,area:'burn',icon:'flame',
+   spec:`설계 ${nf(d.cap)} t/d (가상) · 5단 프리히터 · 그레이트 쿨러`,bar:'mload',barLabel:'주모터 부하',primary:'bzt',anchor:[30,34,d.z],
+   params:{
+    calc:P('킬른 입구 하소율','%',93.5+v,90,97,1,.25,{min:0,max:100,...g1}),
+    c1:P('C1 출구 가스 온도','℃',318+v*8,null,345,0,2,g1),
+    pc:P('하소로 출구 온도','℃',878+v*4,860,900,0,2.5,g1),
+    press:P('C1 출구 정압','mmAq',-520+v*10,null,null,0,6,g1),
+    bzt:P('소성대 온도 (고온계)','℃',1452+v*10,1400,1500,0,4,{ev:1,...g2}),
+    cur:P('주모터 전류','A',Math.round(612*sc),Math.round(520*sc),Math.round(720*sc),0,6*sc,g2),
+    o2:P('킬른 입구 O₂','%',2.6+v*.2,1.5,4.0,1,.06,g2),
+    co:P('킬른 입구 CO','ppm',180+v*60,null,800,0,25,{ev:1,min:0,...g2}),
+    nox:P('킬른 입구 NOx','ppm',820+v*40,null,1200,0,15,g2),
+    rpm:P('회전수','rpm',[3.6,3.7,4.1,4.0,4.3][i],null,null,1,.02,g2),
+    feed:P('원료 투입량','t/h',feed,Math.round(feed*.9),Math.round(feed*1.07),0,1.5*sc,g2),
+    mload:P('주모터 부하','%',74+v*3,null,95,0,.8,{min:0,max:100,...g2}),
+    eff:P('냉각 효율','%',72+v,65,null,0,.4,{min:0,max:100,...g3}),
+    tout:P('클링커 출구 온도','℃',108+v*5,null,130,0,2,{ev:1,...g3}),
+    sec:P('2차 공기 온도','℃',1080+v*10,1000,null,0,6,g3),
+    grate:P('그레이트 속도','spm',11.2+v*.3,null,null,1,.1,g3),
+    fcao:P('f-CaO (최근 시료)','%',[1.15,1.32,1.21,1.08,1.42][i],.8,1.8,2,.035,{ev:1,...g4}),
+    cao:P('CaO','%',ox[0],null,null,2,.06,{chem:1}),sio2:P('SiO₂','%',ox[1],null,null,2,.04,{chem:1}),al:P('Al₂O₃','%',ox[2],null,null,2,.025,{chem:1}),fe:P('Fe₂O₃','%',ox[3],null,null,2,.02,{chem:1}),mgo:P('MgO','%',3.1,null,null,2,.02,{chem:1}),so3:P('SO₃','%',.8,null,null,2,.02,{chem:1})
+   }};
+}
 const AREAS=[
   {id:'raw',name:'원료',icon:'mountain',eqs:['QRY','CRS','PBL','RM','CF'],c:[-28,0,-14],d:125},
-  {id:'burn',name:'소성',icon:'flame',eqs:['PH','KL','CL','CKS'],c:[50,0,-2],d:115},
+  {id:'burn',name:'소성',icon:'flame',eqs:[...KILN_IDS,'CKS'],c:[56,0,-18],d:150},
   {id:'grind',name:'분쇄',icon:'gauge',eqs:['CM'],c:[52,0,26],d:72},
   {id:'ship',name:'출하',icon:'truck',eqs:['SIL','DSP'],c:[26,0,32],d:88},
   {id:'qc',name:'품질',icon:'flask',eqs:['LAB'],c:[-14,0,32],d:62}
@@ -563,18 +607,12 @@ const EQ=[
  {id:'PBL',code:'PB-1',name:'프리블렌딩 야드',area:'raw',icon:'layers',spec:'셰브론 적재 · 파일 2기 × 40,000 t',bar:'fill',barLabel:'저장률',primary:'sd',
   params:{fill:P('저장률','%',64,25,95,0,.4,{min:0,max:100}),stock:P('파일 재고','t',38400,null,null,0,120),sd:P('공급 CaO 표준편차','%',.32,null,.5,2,.012),lsf:P('파일 LSF','',97.1,95.0,99.5,1,.08)}},
  {id:'RM',code:'RM-1',name:'원료밀 (VRM)',area:'raw',icon:'gauge',spec:'수직형 롤러밀 · 설계 450 t/h',bar:'load',barLabel:'부하',primary:'lsf',
-  params:{load:P('부하','%',88,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',410,360,null,0,4),lsf:P('생료 LSF','',97.6,96.0,99.0,1,.12,{ev:1}),sm:P('생료 SM','',2.52,2.35,2.70,2,.012),im:P('생료 IM','',1.58,1.40,1.75,2,.01),r90:P('90 µm 잔분','%',13.2,null,16,1,.15)}},
- {id:'CF',code:'CF-1',name:'CF 사일로',area:'raw',icon:'silo',spec:'혼합 생료 저장 · 용량 18,000 t',bar:'level',barLabel:'레벨',primary:'level',
-  params:{level:P('레벨','%',71,30,92,0,.5,{min:0,max:100}),stock:P('저장량','t',12800,null,null,0,60),lsf:P('공급 생료 LSF','',97.4,96.0,99.0,1,.06)}},
- {id:'PH',code:'PH-1',name:'프리히터·하소로',area:'burn',icon:'flame',spec:'5단 사이클론 · 인라인 하소로',bar:'calc',barLabel:'킬른 입구 하소율',primary:'calc',
-  params:{calc:P('킬른 입구 하소율','%',93.5,90,97,1,.25,{min:0,max:100}),c1:P('C1 출구 가스 온도','℃',318,null,345,0,2),pc:P('하소로 출구 온도','℃',878,860,900,0,2.5),press:P('C1 출구 정압','mmAq',-520,null,null,0,6)}},
- {id:'KL',code:'KL-1',name:'로터리 킬른',area:'burn',icon:'flame',spec:'Ø4.8 × 72 m · 설계 5,000 t/d',bar:'mload',barLabel:'주모터 부하',primary:'bzt',
-  params:{bzt:P('소성대 온도 (고온계)','℃',1452,1400,1500,0,4,{ev:1}),cur:P('주모터 전류','A',612,520,720,0,6),o2:P('킬른 입구 O₂','%',2.6,1.5,4.0,1,.06),co:P('킬른 입구 CO','ppm',180,null,800,0,25,{ev:1,min:0}),nox:P('킬른 입구 NOx','ppm',820,null,1200,0,15),rpm:P('회전수','rpm',4.1,null,null,1,.02),feed:P('생료 투입량','t/h',335,300,360,0,1.5),mload:P('주모터 부하','%',74,null,95,0,.8,{min:0,max:100})}},
- {id:'CL',code:'CL-1',name:'클링커 쿨러',area:'burn',icon:'gauge',spec:'그레이트 쿨러 · 4세대',bar:'eff',barLabel:'냉각 효율',primary:'tout',
-  params:{eff:P('냉각 효율','%',72,65,null,0,.4,{min:0,max:100}),tout:P('클링커 출구 온도','℃',108,null,130,0,2,{ev:1}),sec:P('2차 공기 온도','℃',1080,1000,null,0,6),grate:P('그레이트 속도','spm',11.2,null,null,1,.1)}},
- {id:'CKS',code:'CS-1',name:'클링커 사일로',area:'burn',icon:'silo',spec:'돔형 · 용량 60,000 t',bar:'level',barLabel:'레벨',primary:'fcao',
-  params:{level:P('레벨','%',58,20,95,0,.3,{min:0,max:100}),stock:P('재고','t',34800,null,null,0,80),fcao:P('f-CaO (최근 시료)','%',1.21,.8,1.8,2,.035,{ev:1}),
-   cao:P('CaO','%',65.8,null,null,2,.06,{chem:1}),sio2:P('SiO₂','%',21.6,null,null,2,.04,{chem:1}),al:P('Al₂O₃','%',5.2,null,null,2,.025,{chem:1}),fe:P('Fe₂O₃','%',3.3,null,null,2,.02,{chem:1}),mgo:P('MgO','%',3.1,null,null,2,.02,{chem:1}),so3:P('SO₃','%',.8,null,null,2,.02,{chem:1})}},
+  params:{load:P('부하','%',88,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',410,360,null,0,4),lsf:P('원료 LSF','',97.6,96.0,99.0,1,.12,{ev:1}),sm:P('원료 SM','',2.52,2.35,2.70,2,.012),im:P('원료 IM','',1.58,1.40,1.75,2,.01),r90:P('90 µm 잔분','%',13.2,null,16,1,.15)}},
+ {id:'CF',code:'CF-1',name:'CF 사일로',area:'raw',icon:'silo',spec:'혼합 원료 저장 · 용량 18,000 t',bar:'level',barLabel:'레벨',primary:'level',
+  params:{level:P('레벨','%',71,30,92,0,.5,{min:0,max:100}),stock:P('저장량','t',12800,null,null,0,60),lsf:P('공급 원료 LSF','',97.4,96.0,99.0,1,.06)}},
+ ...KILN_DEF.map(kilnEq),
+ {id:'CKS',code:'CS-1',name:'클링커 사일로',area:'burn',icon:'silo',spec:'돔형 · 용량 60,000 t · 5기 공용',bar:'level',barLabel:'레벨',primary:'level',
+  params:{level:P('레벨','%',58,20,95,0,.3,{min:0,max:100}),stock:P('재고','t',34800,null,null,0,80)}},
  {id:'CM',code:'CM-1',name:'시멘트밀',area:'grind',icon:'gauge',spec:'볼밀 2기 · 고효율 분급기',bar:'load',barLabel:'부하',primary:'blaine',
   params:{load:P('부하','%',84,null,97,0,.8,{min:0,max:100}),prod:P('생산량','t/h',182,160,null,0,2),blaine:P('분말도 (Blaine)','cm²/g',3350,3200,3500,0,12),so3:P('SO₃','%',2.30,1.9,2.6,2,.025,{ev:1}),r45:P('45 µm 잔분','%',8.4,null,12,1,.12),temp:P('밀 출구 온도','℃',104,null,120,0,1)}},
  {id:'SIL',code:'SL-1~4',name:'제품 사일로',area:'ship',icon:'silo',spec:'4기 × 8,000 t · 1종 3기, 슬래그 1기',bar:'avg',barLabel:'평균 레벨',primary:'s4',
@@ -592,29 +630,44 @@ function eqStatus(e){if(MODE==='data'&&!Object.values(e.params).some(p=>p.has))r
 
 const fv=(p,dp=p.dp)=>(MODE==='data'&&!p.has)?'—':nf(p.v,dp);
 const bw=p=>(MODE==='data'&&!p.has)?0:clamp(p.v,0,100);
-function chem(){
-  const c=E.CKS.params, C=c.cao.v,S=c.sio2.v,A=c.al.v,F=c.fe.v,SO=c.so3.v,f=c.fcao.v;
-  const lsf=C/(2.8*S+1.18*A+.65*F)*100, sm=S/(A+F), im=A/F;
+const kilnEqs=()=>KILN_IDS.map(id=>E[id]);
+const oxides=e=>{const c=e.params;return {C:c.cao.v,S:c.sio2.v,A:c.al.v,F:c.fe.v,SO:c.so3.v,f:c.fcao.v,M:c.mgo.v};};
+function chemOf(o){
+  const {C,S,A,F,SO,f}=o;const lsf=C/(2.8*S+1.18*A+.65*F)*100, sm=S/(A+F), im=A/F;
   const c3s=4.071*(C-f)-7.600*S-6.718*A-1.430*F-2.852*SO, c2s=2.867*S-.7544*c3s, c3a=2.650*A-1.692*F, c4af=3.043*F;
-  return {lsf,sm,im,c3s,c2s,c3a,c4af};
+  return {lsf,sm,im,c3s,c2s,c3a,c4af,f,mgo:o.M};
+}
+/* id가 있으면 그 호기, 없으면 5기 설계용량 가중평균 (업로드 모드에서는 XRF가 있는 호기만) */
+function chem(id){
+  if(id)return chemOf(oxides(E[id]));
+  const ks=kilnEqs().filter(e=>MODE!=='data'||e.params.cao.has);if(!ks.length)return chemOf(oxides(E.K5));
+  const o={C:0,S:0,A:0,F:0,SO:0,f:0,M:0};let W=0;ks.forEach(e=>{const x=oxides(e);W+=e.cap;for(const k in o)o[k]+=x[k]*e.cap;});for(const k in o)o[k]/=W;
+  return chemOf(o);
+}
+function plantFcao(){
+  const ks=kilnEqs().filter(e=>MODE!=='data'||e.params.fcao.has);if(!ks.length)return null;
+  let W=0,v=0,worst='ok',max=ks[0];ks.forEach(e=>{const p=e.params.fcao;W+=e.cap;v+=p.v*e.cap;const st=pStatus(p);if(RANK[st]>RANK[worst])worst=st;if(p.v>max.params.fcao.v)max=e;});
+  return {v:v/W,st:worst,max};
 }
 function cement(){
-  const ch=chem(), cm=E.CM.params, fc=E.CKS.params.fcao.v;
+  const ch=chem(), cm=E.CM.params, fc=ch.f;
   const pred=52.0+.30*(ch.c3s-56.9)+.0045*(cm.blaine.v-3350)-2.0*Math.max(0,fc-1.5);
-  if(MODE!=='data')return {blaine:cm.blaine.v,so3:cm.so3.v,mgo:E.CKS.params.mgo.v*.95,loi:2.1,s7:pred*.71,s28:pred,m7:false,m28:false};
+  if(MODE!=='data')return {blaine:cm.blaine.v,so3:cm.so3.v,mgo:ch.mgo*.95,loi:2.1,s7:pred*.71,s28:pred,m7:false,m28:false};
   const C=DATA.cem, L=C[C.length-1]||{};
   const last=k=>{for(let i=C.length-1;i>=0;i--)if(C[i][k]!=null)return C[i];return null;};
   const r28=last('s28'),r7=last('s7'),canPred=DATA.xrf.length>0&&cm.blaine.has;
   return {blaine:cm.blaine.has?cm.blaine.v:null,so3:cm.so3.has?cm.so3.v:null,mgo:L.mgo??null,loi:L.loi??null,
     s7:r7?r7.s7:(canPred?pred*.71:null),s28:r28?r28.s28:(canPred?pred:null),m7:!!r7,m28:!!r28,t28:r28&&r28.t};
 }
-const kilnTpd=()=>{if(MODE==='data'){const L=DATA.prod[DATA.prod.length-1];return L?L.clk:null;}return E.KL.params.feed.v*24/1.62;};
+/* 호기별 클링커 생산 추정 = 원료 투입량 × 24 ÷ 원료/클링커 환산계수 1.62 (가상) */
+const kilnTpd=id=>{const p=E[id].params.feed;return MODE==='data'&&!p.has?null:p.v*24/1.62;};
+const plantTpd=()=>{if(MODE==='data'){const L=DATA.prod[DATA.prod.length-1];if(L)return L.clk;const ks=KILN_IDS.map(kilnTpd).filter(v=>v!=null);return ks.length?ks.reduce((a,b)=>a+b,0):null;}return KILN_IDS.reduce((a,id)=>a+kilnTpd(id),0);};
 
 /* 시료 (가상) */
 const SAMPLES=[
-  {id:'S-1109-041',what:'클링커 XRF · f-CaO',eq:'CKS',st:'분석중',prog:60,t:-25},
+  {id:'S-1109-041',what:'5호 클링커 XRF · f-CaO',eq:'K5',st:'분석중',prog:60,t:-25},
   {id:'S-1109-042',what:'시멘트 분말도 · SO₃',eq:'CM',st:'채취',prog:15,t:-8},
-  {id:'S-1109-040',what:'생료 XRF (LSF·SM·IM)',eq:'RM',st:'완료',prog:100,t:-52},
+  {id:'S-1109-040',what:'원료 XRF (LSF·SM·IM)',eq:'RM',st:'완료',prog:100,t:-52},
   {id:'S-1109-043',what:'출하 시멘트 강도 공시체',eq:'SIL',st:'양생중',prog:4,t:-70},
   {id:'S-1109-039',what:'석회석 CaO 품위',eq:'QRY',st:'완료',prog:100,t:-95}
 ].map(s=>Object.assign(s,{time:new Date(Date.now()+s.t*60000)}));
@@ -630,7 +683,8 @@ function pushAlarm(e,k,p,sev,t=new Date(),ack=false){
   const now=Date.now(), m=60000;
   const add=(id,k,v,sev,mins,ack)=>{const p=E[id].params[k];const keep=p.v;p.v=v;pushAlarm(E[id],k,p,sev,new Date(now-mins*m),ack);p.v=keep;};
   add('RM','lsf',98.75,'warn',192,true);
-  add('KL','co',920,'bad',125,true);
+  add('K5','co',920,'bad',125,true);
+  add('K7','fcao',1.74,'warn',41,false);
   add('SIL','s4',16.9,'warn',58,false);
   add('CM','so3',2.55,'warn',24,false);
   ALARMS.sort((a,b)=>b.t-a.t);
@@ -649,7 +703,7 @@ const M={};
 let THREEOK=!!window.THREE;
 let renderer,scene,camera,hemi,sun,raycaster,pointer;
 const EQOBJ={}, ANCHOR={}, TRUCKS=[], FLOWS=[], SMOKE=[];
-let KILN=null, bracket=null;
+const KILNS=[];let bracket=null;
 
 function makeMats(){
   const mk=(n,key,o={})=>{M[n]=new THREE.MeshStandardMaterial(Object.assign({color:PAL.light[key],roughness:.85,metalness:.02},o));M[n].userData.key=key;};
@@ -709,14 +763,14 @@ function along(f,d){let i=0;while(i<f.segs.length-1&&d>f.segs[i]){d-=f.segs[i];i
 function buildPlant(){
   // 바닥 · 도로
   const g0=new THREE.Mesh(new THREE.PlaneGeometry(700,700),M.ground);g0.rotation.x=-Math.PI/2;g0.receiveShadow=true;scene.add(g0);
-  flat(176,97.5,M.pad,-4,-1.25,.01);
+  flat(184,97.5,M.pad,0,-1.25,.01);
   flat(280,9,M.road,0,52,.04);
   for(let x=-136;x<140;x+=8)flat(3.6,.25,M.mark,x,52,.08);
   flat(280,.25,M.mark,0,47.9,.08);flat(280,.25,M.mark,0,56.1,.08);
   seg(-40,42,56,42,5,M.road);seg(8,42,8,48,5,M.road);seg(52,42,52,48,5,M.road);
   seg(20,36,42,36,5,M.road);seg(22,36,22,42,5,M.road);seg(40,36,40,42,5,M.road);
   seg(-49,-24,-49,-6,6,M.dirt,.045);seg(-52,-6,-43,-6,6,M.dirt,.045);
-  [[-62,18,30,12],[-30,20,20,10],[70,40,14,8],[-70,-2,16,10],[60,-34,30,10],[-20,-40,40,8]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
+  [[-62,18,30,12],[-30,20,20,10],[70,40,14,8],[-70,-2,16,10],[-20,-40,40,8]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
   // 주차장
   for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-40+i*3.2,37.5,.07);
 
@@ -734,29 +788,30 @@ function buildPlant(){
   {const g=grp('RM');bld(g,9,12,9,6,-14);cyl(g,2,5,M.steel,6,12.5,-14);box(g,6,8,4,M.wall2,14.5,0,-20.5);box(g,6.4,.4,4.4,M.accent,14.5,8,-20.5);cyl(g,.7,17,M.steel,18.5,0,-24);}
   // 05 CF 사일로
   {const g=grp('CF');cyl(g,3.2,18,M.wall,16,0,-1);cyl(g,3.26,.45,M.accent,16,6,-1);cyl(g,3.26,.45,M.accent,16,12,-1);cyl(g,.6,1.8,M.accent,16,18,-1,28,3.2);}
-  // 06 프리히터·하소로
-  {const g=grp('PH');const X=26,Z=-8,W=9,H=30;
-   [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>box(g,.7,H,.7,M.steelD,X+a*W/2,0,Z+b*W/2));
-   for(let i=1;i<=5;i++)box(g,W+.6,.35,W+.6,i===5?M.accent:M.steel,X,i*6-.35,Z);
-   for(let i=0;i<5;i++){const y=i*6+.6;(i===4?[-2.1,2.1]:[0]).forEach(dx=>{cyl(g,1.6,1.6,M.wall,X+dx,y,Z,20,.45);cyl(g,1.6,2.6,M.wall,X+dx,y+1.6,Z,20);});}
-   cyl(g,1.9,14,M.wall2,X+7,3,Z+1);cyl(g,1.96,.45,M.accent,X+7,17,Z+1);box(g,3,1.2,1.2,M.steel,X+5,15.5,Z+1);
-   cyl(g,1.1,44,M.wall,24,0,-22,24,1.45);cyl(g,1.16,1.6,M.accent,24,40,-22);}
-  // 07 로터리 킬른
-  {const g=grp('KL');const x1=31,x2=65,L=x2-x1,yA=4.8,yB=3.9,Z=-8,R=2.2;
-   const piv=new THREE.Group();piv.position.set((x1+x2)/2,(yA+yB)/2,Z);piv.rotation.z=-Math.atan2(yA-yB,L);g.add(piv);
-   const spin=new THREE.Group();piv.add(spin);
-   add(new THREE.Mesh(new THREE.CylinderGeometry(R,R,L,36).rotateZ(Math.PI/2),M.steel),spin);
-   for(let k=0;k<3;k++){const a=k*2*Math.PI/3;const s=new THREE.Mesh(new THREE.BoxGeometry(L*.96,.16,.4),M.steelD);s.position.set(0,Math.cos(a)*R,Math.sin(a)*R);s.rotation.x=a;add(s,spin,false);}
-   [-12,0,12].forEach(dx=>{const t=new THREE.Mesh(new THREE.CylinderGeometry(R+.35,R+.35,.9,36).rotateZ(Math.PI/2),M.steelD);t.position.x=dx;add(t,piv);});
-   const gear=new THREE.Mesh(new THREE.CylinderGeometry(R+.55,R+.55,.6,36).rotateZ(Math.PI/2),M.accent);gear.position.x=4;add(gear,piv);
-   const hz=new THREE.Mesh(new THREE.CylinderGeometry(R+.14,R+.14,9,36,1,true).rotateZ(Math.PI/2),M.hot);hz.position.x=L/2-6.5;piv.add(hz);
-   [-12,0,12].forEach(dx=>{const x=(x1+x2)/2+dx,yc=(yA+yB)/2-dx*(yA-yB)/L;box(g,2.2,yc-R-.3,5,M.conc,x,0,Z);});
-   box(g,3,8,7,M.wall2,x2+1.5,0,Z);box(g,3.4,.4,7.4,M.accent,x2+1.5,8,Z);
-   KILN={spin,hz};}
-  // 08 쿨러
-  {const g=grp('CL');bld(g,12,5,8,74,-8);cyl(g,1,6,M.steel,77,5,-8);box(g,3,3,3,M.wall2,79,0,-1.5);}
-  // 09 클링커 사일로
-  {const g=grp('CKS');cyl(g,7,9,M.wall,72,0,13,40);const d=new THREE.Mesh(new THREE.SphereGeometry(7,40,14,0,Math.PI*2,0,Math.PI/2),M.accent);d.position.set(72,9,13);d.scale.y=.6;add(d,g);cyl(g,1,1.5,M.steel,72,12.6,13);}
+  // 06 킬른 라인 (3~7호): 프리히터·하소로 + 로터리 킬른 + 쿨러 + 굴뚝
+  KILN_DEF.forEach(d=>{
+    const g=grp('K'+d.n),X=30,Z=d.z,W=9,H=30;
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>box(g,.7,H,.7,M.steelD,X+a*W/2,0,Z+b*W/2));
+    for(let i=1;i<=5;i++)box(g,W+.6,.35,W+.6,i===5?M.accent:M.steel,X,i*6-.35,Z);
+    for(let i=0;i<5;i++){const y=i*6+.6;(i===4?[-2.1,2.1]:[0]).forEach(dx=>{cyl(g,1.6,1.6,M.wall,X+dx,y,Z,20,.45);cyl(g,1.6,2.6,M.wall,X+dx,y+1.6,Z,20);});}
+    box(g,1.4,1.2,4,M.accent,X,30.5,Z);
+    const sc=Math.sqrt(d.cap/5000),x1=35,x2=69,L=x2-x1,yA=4.8,yB=3.9,R=2.2*sc;
+    const piv=new THREE.Group();piv.position.set((x1+x2)/2,(yA+yB)/2,Z);piv.rotation.z=-Math.atan2(yA-yB,L);g.add(piv);
+    const spin=new THREE.Group();piv.add(spin);
+    add(new THREE.Mesh(new THREE.CylinderGeometry(R,R,L,32).rotateZ(Math.PI/2),M.steel),spin);
+    for(let k=0;k<3;k++){const a=k*2*Math.PI/3;const st=new THREE.Mesh(new THREE.BoxGeometry(L*.96,.16,.4),M.steelD);st.position.set(0,Math.cos(a)*R,Math.sin(a)*R);st.rotation.x=a;add(st,spin,false);}
+    [-12,0,12].forEach(dx=>{const t=new THREE.Mesh(new THREE.CylinderGeometry(R+.35,R+.35,.9,32).rotateZ(Math.PI/2),M.steelD);t.position.x=dx;add(t,piv);});
+    const gear=new THREE.Mesh(new THREE.CylinderGeometry(R+.55,R+.55,.6,32).rotateZ(Math.PI/2),M.accent);gear.position.x=4;add(gear,piv);
+    const hz=new THREE.Mesh(new THREE.CylinderGeometry(R+.14,R+.14,9,32,1,true).rotateZ(Math.PI/2),M.hot.clone());hz.material.userData={};hz.position.x=L/2-6.5;piv.add(hz);
+    [-12,0,12].forEach(dx=>{const x=(x1+x2)/2+dx,yc=(yA+yB)/2-dx*(yA-yB)/L;box(g,2.2,yc-R-.3,5,M.conc,x,0,Z);});
+    box(g,3,8,7,M.wall2,x2+1.5,0,Z);box(g,3.4,.4,7.4,M.accent,x2+1.5,8,Z);
+    bld(g,12,5,8,78,Z);cyl(g,.9,5,M.steel,81,5,Z);
+    cyl(g,.85,40,M.wall,37,0,Z-6,20,1.15);cyl(g,.9,1.4,M.accent,37,36.5,Z-6);
+    KILNS.push({id:'K'+d.n,spin,hz});
+    if(!REDUCED)for(let i=0;i<6;i++){const sm=new THREE.Mesh(new THREE.SphereGeometry(.8,10,8),M.smoke.clone());sm.material.userData={};sm.userData={t:i/6,x:37,z:Z-6};scene.add(sm);SMOKE.push(sm);}
+  });
+  // 09 클링커 사일로 (5기 공용)
+  {const g=grp('CKS');cyl(g,7,9,M.wall,80,0,24,40);const d=new THREE.Mesh(new THREE.SphereGeometry(7,40,14,0,Math.PI*2,0,Math.PI/2),M.accent);d.position.set(80,9,24);d.scale.y=.6;add(d,g);cyl(g,1,1.5,M.steel,80,12.6,24);}
   // 10 시멘트밀
   {const g=grp('CM');bld(g,16,9,9,52,22);cyl(g,2.2,5,M.wall2,57,9.5,22);
    [30.5,34.8].forEach(z=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(2.1,2.1,12,28).rotateZ(Math.PI/2),M.steel);m.position.set(51,3.2,z);add(m,g);
@@ -777,23 +832,23 @@ function buildPlant(){
   conveyor([[-36,4,-12],[-31,6.6,-14],[-7,6.6,-14]],'lime',12);
   conveyor([[-5,1,-19.5],[-1,1.2,-21],[2,10,-17]],'lime',6);
   conveyor([[10,12,-11],[16,18.6,-2.5]],'meal',4);
-  conveyor([[18,18,-1],[22,30,-6.5]],'meal',5);
-  conveyor([[76,2.5,-3.5],[72,13.6,8.5]],'clk',6);
-  conveyor([[66,2,16],[58.5,9.5,21]],'clk',5);
+  conveyor([[18,18,-1],[21,30,-1],[21,30,-44]],'meal',14);
+  conveyor([[21,30,-1],[21,30,8]],'meal',3);
+  conveyor([[87,2,-44],[87,2,14],[81,13.6,19.5]],'clk',14);
+  conveyor([[73,2,24],[60.5,9.5,22]],'clk',5);
   conveyor([[44,8.8,21],[35.5,21.4,24.5]],'cem',6);
   conveyor([[63,1,29],[58.5,8.5,25]],'lime',4);
   // 울타리
   const fz=(x1,x2,z)=>{const L=x2-x1;box(scene,L,1.3,.14,M.fence,(x1+x2)/2,0,z);};
   const fx=(z1,z2,x)=>{box(scene,.14,1.3,z2-z1,M.fence,x,0,(z1+z2)/2);};
-  fz(-92,84,-50);fz(-92,4.5,47.2);fz(11.5,48.5,47.2);fz(55.5,84,47.2);fx(-50,47.2,-92);fx(-50,47.2,84);
+  fz(-92,92,-50);fz(-92,4.5,47.2);fz(11.5,48.5,47.2);fz(55.5,92,47.2);fx(-50,47.2,-92);fx(-50,47.2,92);
   // 나무
   for(let x=-120;x<=124;x+=9)tree(x+((x*7)%3),59.5+((x*13)%2),1+((x*3)%3)*.08);
   for(let z=-46;z<=40;z+=9)tree(-98,z,1.05);
-  for(let x=-86;x<=80;x+=10)tree(x,-56,.95);
-  for(let z=-46;z<=40;z+=11)tree(90,z,1);
+  for(let x=-86;x<=90;x+=10)tree(x,-56,.95);
+  for(let z=-46;z<=40;z+=11)tree(99,z,1);
   [[-26,40],[-6,42.5],[-56,16],[-64,22],[-70,-4],[-74,4],[72,40],[66,42],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
   // 굴뚝 연기
-  if(!REDUCED)for(let i=0;i<9;i++){const s=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),M.smoke.clone());s.material.userData={};s.userData.t=i/9;scene.add(s);SMOKE.push(s);}
   // 앵커
   EQ.forEach(e=>{const b=new THREE.Box3().setFromObject(EQOBJ[e.id]);const c=b.getCenter(new THREE.Vector3());ANCHOR[e.id]=e.anchor?new THREE.Vector3(...e.anchor):new THREE.Vector3(c.x,b.max.y+1.5,c.z);EQOBJ[e.id].userData.box=b;});
 }
@@ -813,6 +868,7 @@ function newLot(t){
   t.silo=['S-1','S-2','S-4','S-3'][lotSeq%4];
   t.product=t.silo==='S-3'?'슬래그 시멘트':'1종 보통 포틀랜드';
   t.cust=CUSTOMERS[lotSeq%4];
+  t.kiln=[5,3,7,4,6][lotSeq%5];
   t.steps=[n-53*h,n-51.5*h,n-49.7*h,n-2.3*h,n-1.1*h].map(x=>new Date(x));
   t.load=0;t.doneAt=null;
 }
@@ -887,8 +943,8 @@ const cam={tx:0,tz:4,theta:.62,phi:.94,dist:190};
 const goal={...cam};
 let HOME={...cam};
 function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
-  const d=clamp((m?270:236)*Math.pow(Math.max(1,1.6/asp),.6),180,400);
-  const rt=m?0:38,bk=m?-4:10;const cx=-4,cz=-1;
+  const d=clamp((m?285:250)*Math.pow(Math.max(1,1.6/asp),.6),180,400);
+  const rt=m?0:38,bk=m?-4:8;const cx=m?22:0,cz=m?-8:-4;
   return {tx:cx+Math.cos(th)*rt+Math.sin(th)*bk,tz:cz-Math.sin(th)*rt+Math.cos(th)*bk,theta:th,phi:.94,dist:d};}
 function applyCam(){const sp=Math.sin(cam.phi);camera.position.set(cam.tx+cam.dist*sp*Math.sin(cam.theta),cam.dist*Math.cos(cam.phi),cam.tz+cam.dist*sp*Math.cos(cam.theta));camera.lookAt(cam.tx,0,cam.tz);}
 function flyTo(x,z,d,theta){goal.tx=x;goal.tz=z;if(d)goal.dist=d;if(theta!=null)goal.theta=theta;if(REDUCED)Object.assign(cam,goal);}
@@ -958,7 +1014,7 @@ function updateTagClasses(){
   const m=isMobile();
   EQ.forEach(e=>{const b=TAG['eq'+e.id];if(!b)return;const s=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
     b.className='tag s-'+s+(on?' sel':'');b.querySelector('small').textContent=on?(e.code+' · '+(s==='ok'?'정상 운전':ST[s])):(RANK[s]>0?ST[s]:'');
-    b.dataset.hide=(m&&!on&&RANK[s]<=0)?'1':'';});
+    b.dataset.hide=(m&&!on&&RANK[s]<=0&&!e.kiln)?'1':'';});
   TRUCKS.forEach(t=>{const b=TAG['truck'+t.id];if(!b)return;const on=sel&&sel.type==='truck'&&sel.id===t.id;const hv=hovered==='truck'+t.id;
     b.className='tag mini'+(on?' sel':'');b.querySelector('small').textContent=t.state;b.dataset.hide=(on||hv||(!m&&t.kind==='bct'&&t.state==='적재중'))?'':'1';});
 }
@@ -1001,8 +1057,8 @@ function frame(now){
   cam.tx+=(goal.tx-cam.tx)*k;cam.tz+=(goal.tz-cam.tz)*k;cam.dist+=(goal.dist-cam.dist)*k;cam.theta+=(goal.theta-cam.theta)*k;cam.phi+=(goal.phi-cam.phi)*k;
   applyCam();
   FLOWS.forEach(f=>f.parts.forEach(p=>{p.t=(p.t+dt*5/f.tot)%1;const q=along(f,p.t*f.tot);p.m.position.set(q.x,q.y+.5,q.z);}));
-  if(KILN&&!REDUCED){KILN.spin.rotation.x+=dt*E.KL.params.rpm.v*.12;KILN.hz.material.opacity=.38+.14*Math.sin(now/600);}
-  SMOKE.forEach(s=>{s.userData.t=(s.userData.t+dt*.07)%1;const t=s.userData.t;s.position.set(24+t*7,45+t*16,-22-t*3);s.scale.setScalar(1.2+t*4);s.material.opacity=(dark?.35:.5)*(1-t);});
+  if(!REDUCED)KILNS.forEach((k,i)=>{k.spin.rotation.x+=dt*E[k.id].params.rpm.v*.12;k.hz.material.opacity=.38+.14*Math.sin(now/600+i);});
+  SMOKE.forEach(s=>{const u=s.userData;u.t=(u.t+dt*.07)%1;const t=u.t;s.position.set(u.x+t*6,40+t*14,u.z-t*3);s.scale.setScalar(1+t*3.4);s.material.opacity=(dark?.32:.45)*(1-t);});
   if(bracket&&!REDUCED)M.line.opacity=.65+.35*Math.sin(now/260);
   renderer.render(scene,camera);
   placeTags();
@@ -1011,12 +1067,12 @@ function frame(now){
 /* =========================================================
    선택 · 상세 패널
    ========================================================= */
-let sel=matchMedia('(max-width:760px)').matches?null:{type:'eq',id:'KL'};
+let sel=matchMedia('(max-width:760px)').matches?null:{type:'eq',id:'K5'};
 let tracked='BCT-21';
 function select(s,o={}){
   sel=s;
   if(s&&s.type==='truck')tracked=s.id;
-  setBracket();updateTagClasses();renderDetail();renderList();renderLot();
+  setBracket();updateTagClasses();renderDetail();renderList();renderLot();renderKilnNav();
   $('#views').classList.toggle('nodetail',!sel);
   if(s&&o.fly&&THREEOK){
     if(s.type==='eq'){const b=EQOBJ[s.id].userData.box;const c=b.getCenter(new THREE.Vector3());const sz=b.getSize(new THREE.Vector3());flyTo(c.x,c.z,clamp(Math.max(sz.x,sz.z,sz.y*1.4)*3,55,170));}
@@ -1036,13 +1092,14 @@ function sparkSVG(p){
   return s+'</svg>';
 }
 function kvRows(e){
-  return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);
-    return `<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${fv(p)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null?`<span class="lim">${limTxt(p)}</span>`:''}</dd></div>`;}).join('');
+  let g=null;
+  return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);let h='';if(p.grp&&p.grp!==g){g=p.grp;h=`<div class="kvg">${g}</div>`;}
+    return h+`<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${fv(p)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null?`<span class="lim">${limTxt(p)}</span>`:''}</dd></div>`;}).join('');
 }
-function chemBlock(){
-  if(MODE==='data'&&!DATA.xrf.length)return `<div class="sect">클링커 화학</div><div class="note">클링커XRF 시트를 올리면 LSF·SM·IM과 광물 조성(Bogue)을 계산해 보여 줍니다.</div>`;
-  const c=chem();const st=(v,a,b)=>v<a||v>b?'bad':(v<a+(b-a)*.1||v>b-(b-a)*.1?'warn':'ok');
-  return `<div class="sect">클링커 화학 (최근 XRF) <small>Bogue 계산</small></div>
+function chemBlock(id){
+  if(MODE==='data'&&!E[id].params.cao.has)return `<div class="sect">클링커 화학</div><div class="note">클링커XRF 시트를 올리면 LSF·SM·IM과 광물 조성(Bogue)을 계산해 보여 줍니다.</div>`;
+  const c=chem(id),fp=E[id].params.fcao;const st=(v,a,b)=>v<a||v>b?'bad':(v<a+(b-a)*.1||v>b-(b-a)*.1?'warn':'ok');
+  return `<div class="sect">클링커 화학 (${E[id].kiln}호 최근 XRF) <small>Bogue 계산</small></div>
   <div class="chips">
    <div class="chip s-${st(c.lsf,94.5,97.5)}" data-tip="LSF = CaO / (2.8·SiO₂ + 1.18·Al₂O₃ + 0.65·Fe₂O₃) × 100 · 관리 94.5~97.5 (가상)"><small>LSF</small><b class="num">${nf(c.lsf,1)}</b></div>
    <div class="chip s-${st(c.sm,2.35,2.75)}" data-tip="SM = SiO₂ / (Al₂O₃ + Fe₂O₃) · 관리 2.35~2.75 (가상)"><small>SM</small><b class="num">${nf(c.sm,2)}</b></div>
@@ -1051,7 +1108,7 @@ function chemBlock(){
    <div class="chip"><small>C₂S</small><b class="num">${nf(c.c2s,1)}</b></div>
    <div class="chip"><small>C₃A</small><b class="num">${nf(c.c3a,1)}</b></div>
    <div class="chip"><small>C₄AF</small><b class="num">${nf(c.c4af,1)}</b></div>
-   <div class="chip s-${pStatus(E.CKS.params.fcao)}"><small>f-CaO</small><b class="num">${nf(E.CKS.params.fcao.v,2)}</b></div>
+   <div class="chip s-${pStatus(fp)}"><small>f-CaO</small><b class="num">${fv(fp,2)}</b></div>
   </div>`;
 }
 function renderDetail(){
@@ -1070,7 +1127,7 @@ function renderDetail(){
     <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
     ${(MODE==='data'&&!pp.has)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>데이터 없음</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${MODE==='data'?`최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
-    ${e.id==='KL'||e.id==='CKS'?chemBlock():''}
+    ${e.kiln?chemBlock(e.id):''}
     ${e.id==='LAB'?`<div class="sect">28일 강도 예측 <small>가상 모델</small></div><dl class="kv"><div><dt>28일 압축강도 (${cement().m28?'실측':'예측'})</dt><dd class="num">${cement().s28==null?'—':nf(cement().s28,1)}<small>MPa</small><span class="lim">KS L 5201 1종 42.5 이상</span></dd></div></dl>`:''}
     ${smp.length?`<div class="sect">관련 시료</div><dl class="kv">${smp.map(x=>`<div><dt>${x.id} · ${x.what}</dt><dd><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span></dd></div>`).join('')}</dl>`:''}
     <div class="note">${dataNote()}</div>`;
@@ -1086,7 +1143,7 @@ function renderDetail(){
       <div><dt>출하 번호</dt><dd>${t.shp}</dd></div>
       <div><dt>품종</dt><dd>${t.product}</dd></div>
       <div><dt>시멘트 로트</dt><dd>${t.lot}</dd></div>
-      <div><dt>클링커 로트</dt><dd>${t.clk}</dd></div>
+      <div><dt>클링커 로트</dt><dd>${t.clk} · ${t.kiln}호 킬른</dd></div>
       <div><dt>사일로</dt><dd>${t.silo}</dd></div>
       <div><dt>품질 판정</dt><dd><span class="badge s-ok">적합 (예측)</span></dd></div>
       <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`:`
@@ -1132,28 +1189,35 @@ function renderLot(){
   const done=t.state==='출하'||t.respawn>0;
   const lastTxt=t.respawn>0||t.state==='출하'?'완료 '+(t.doneAt?hhmm(t.doneAt):''):t.state==='적재중'?`적재 ${nf(t.load,0)}/28 t`:t.state;
   $('#lot').innerHTML=`<div class="lot-main"><div class="lot-h">${ic('box')}로트 추적<small>${t.lot} · ${t.product} · ${t.id}${MODE==='data'?' · 가상 예시':''}</small></div>
-   <div class="steps">${STEPS.map((s,i)=>{const cls=i<5||done?'done':'cur';return `<div class="step ${cls}"><span class="sb">${ic(i<5||done?(i===5?'check':s[1]):s[1])}</span><b>${s[0]}</b><small>${i<5?stamp(t.steps[i]):lastTxt}</small></div>`;}).join('')}</div></div>
-   <div class="lot-side"><b class="id">${t.shp}</b><div class="row"><span>도착지</span><span>${t.cust}</span></div><div class="row"><span>클링커</span><span>${t.clk}</span></div><div class="row"><span>사일로</span><span>${t.silo}</span></div><div class="row"><span>판정</span><span style="color:var(--ok)">적합 (예측)</span></div></div>`;
+   <div class="steps">${STEPS.map((s,i)=>{const cls=i<5||done?'done':'cur';return `<div class="step ${cls}"><span class="sb">${ic(i<5||done?(i===5?'check':s[1]):s[1])}</span><b>${i===1?`소성 (${t.kiln}호)`:s[0]}</b><small>${i<5?stamp(t.steps[i]):lastTxt}</small></div>`;}).join('')}</div></div>
+   <div class="lot-side"><b class="id">${t.shp}</b><div class="row"><span>도착지</span><span>${t.cust}</span></div><div class="row"><span>클링커</span><span>${t.clk} · ${t.kiln}호</span></div><div class="row"><span>사일로</span><span>${t.silo}</span></div><div class="row"><span>판정</span><span style="color:var(--ok)">적합 (예측)</span></div></div>`;
 }
 
 /* KPI */
 function kpiCards(rep){
   const D=MODE==='data'?DATA:null;
-  const tpd=kilnTpd(),fc=E.CKS.params.fcao,cmt=cement(),sf=pStatus(fc);
+  const tpd=plantTpd(),pf=plantFcao(),cmt=cement();
   const LP=D&&D.prod.length?D.prod[D.prod.length-1]:null;
   const k=[];
-  k.push(tpd==null?{ic:'factory',l:'클링커 생산',v:'—',u:'t/d',s:'생산출하 시트를 올리면 표시',tip:'생산출하 시트의 클링커생산 열'}:
-    {ic:'factory',l:'클링커 생산',v:nf(tpd),u:'t/d',d:`${tpd>=5000?'▲':'▼'} ${nf(Math.abs(tpd/5000*100-100),1)}%`,dc:tpd>=5000?'up':'dn',s:D?`${md(LP.t)} 실적 · 설계 5,000 대비`:'설계 5,000 t/d 대비',tip:D?'생산출하 시트의 마지막 일자 클링커생산':'생료 투입량 × 24 ÷ 생료/클링커 환산계수 1.62 (가상)'});
+  k.push(tpd==null?{ic:'factory',l:'클링커 생산 (5기)',v:'—',u:'t/d',s:'생산출하 시트를 올리면 표시',tip:'생산출하 시트의 클링커생산 열 (공장 합계)'}:
+    {ic:'factory',l:'클링커 생산 (5기)',v:nf(tpd),u:'t/d',d:`${tpd>=DESIGN_TOTAL?'▲':'▼'} ${nf(Math.abs(tpd/DESIGN_TOTAL*100-100),1)}%`,dc:tpd>=DESIGN_TOTAL?'up':'dn',s:(D&&LP?`${md(LP.t)} 실적 · `:'')+`설계 ${nf(DESIGN_TOTAL)} t/d 대비`,tip:D&&LP?'생산출하 시트의 마지막 일자 클링커생산 (공장 합계)':'호기별 원료 투입량 × 24 ÷ 원료/클링커 환산계수 1.62의 합 (가상)'});
   if(rep){const sp=E.DSP.params;const has=!D||sp.ship.has;
     k.push(has?{ic:'truck',l:D?'최근 출하':'금일 출하',v:nf(sp.ship.v),u:'t',d:sp.plan.v>0?nf(sp.ship.v/sp.plan.v*100,0)+'%':'',dc:'nt',s:`계획 ${nf(sp.plan.v)} t 대비`+(D&&LP?` · ${md(LP.t)}`:''),tip:'계량 완료된 벌크·포장 출하 합계'}:
       {ic:'truck',l:'출하',v:'—',u:'t',s:'생산출하 시트를 올리면 표시',tip:'생산출하 시트의 시멘트출하·출하계획 열'});}
-  else if(D){k.push(LP&&LP.run!=null?{ic:'flame',l:'킬른 가동률',v:nf(LP.run,1),u:'%',s:`${md(LP.t)} 기준`,tip:'생산출하 시트의 킬른가동률 열'}:{ic:'flame',l:'킬른 가동률',v:'—',u:'%',s:'킬른가동률 열을 채우면 표시',tip:'생산출하 시트의 킬른가동률 열 (선택)'});}
-  else k.push({ic:'flame',l:'킬른 가동률',v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:'최근 30일 · 정지 4.2시간',tip:'(달력시간 − 정지시간) ÷ 달력시간'});
-  const fhas=!D||fc.has;
-  k.push({ic:'flask',l:'클링커 f-CaO',v:fv(fc,2),u:'%',d:fhas?ST[sf]:'',dc:sf==='ok'?'up':'dn',s:fhas?limTxt(fc)+(D?'':' (가상)'):'클링커XRF 시트를 올리면 표시',tip:'최근 클링커 시료의 유리석회. 높으면 소성 부족, 너무 낮으면 과소성 의심'});
+  else if(D){k.push(LP&&LP.run!=null?{ic:'flame',l:'킬른 가동률 (5기)',v:nf(LP.run,1),u:'%',s:`${md(LP.t)} 기준`,tip:'생산출하 시트의 킬른가동률 열'}:{ic:'flame',l:'킬른 가동률 (5기)',v:'—',u:'%',s:'킬른가동률 열을 채우면 표시',tip:'생산출하 시트의 킬른가동률 열 (선택)'});}
+  else k.push({ic:'flame',l:'킬른 가동률 (5기)',v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:'최근 30일 · 5호 정지 4.2시간',tip:'(달력시간 − 정지시간) ÷ 달력시간, 5기 설계용량 가중평균'});
+  k.push(!pf?{ic:'flask',l:'f-CaO (5기 평균)',v:'—',u:'%',s:'클링커XRF 시트를 올리면 표시',tip:'호기별 최근 클링커 시료의 유리석회, 설계용량 가중평균'}:
+    {ic:'flask',l:'f-CaO (5기 평균)',v:nf(pf.v,2),u:'%',d:pf.st==='ok'?'정상':ST[pf.st],dc:pf.st==='ok'?'up':'dn',s:`최고 ${pf.max.kiln}호 ${nf(pf.max.params.fcao.v,2)}%`,tip:'호기별 최근 클링커 시료의 유리석회(설계용량 가중평균). 상태는 가장 나쁜 호기 기준. 높으면 소성 부족, 너무 낮으면 과소성 의심'});
   k.push(cmt.s28==null?{ic:'chart',l:'28일 강도',v:'—',u:'MPa',s:'시멘트품질 시트를 올리면 표시',tip:'시멘트품질 시트의 28일강도(실측). 없으면 XRF·분말도로 예측'}:
-    {ic:'chart',l:cmt.m28?'28일 강도 실측':'28일 강도 예측',v:nf(cmt.s28,1),u:'MPa',d:cmt.s28>=42.5?'KS 적합':'KS 미달',dc:cmt.s28>=42.5?'up':'dn',s:cmt.m28?`시료 ${md(cmt.t28)} · KS 42.5 이상`:'KS L 5201 1종 42.5 이상',tip:cmt.m28?'시멘트품질 시트의 가장 최근 28일 압축강도 실측값':'C₃S·분말도·f-CaO 기반 가상 회귀식. 실제 공시체 결과로 보정 필요'});
+    {ic:'chart',l:cmt.m28?'28일 강도 실측':'28일 강도 예측',v:nf(cmt.s28,1),u:'MPa',d:cmt.s28>=42.5?'KS 적합':'KS 미달',dc:cmt.s28>=42.5?'up':'dn',s:cmt.m28?`시료 ${md(cmt.t28)} · KS 42.5 이상`:'KS L 5201 1종 42.5 이상',tip:cmt.m28?'시멘트품질 시트의 가장 최근 28일 압축강도 실측값':'5기 평균 C₃S·분말도·f-CaO 기반 가상 회귀식. 실제 공시체 결과로 보정 필요'});
   return k.map(x=>`<div class="kpi"><span class="kic">${ic(x.ic)}</span><div style="min-width:0"><div class="kl">${x.l}<span class="tipi" tabindex="0" data-tip="${esc(x.tip)}">${ic('info')}</span></div><div class="kval num">${x.v}<small>${x.u}</small></div><div class="ks">${x.d?`<span class="delta ${x.dc}">${x.d}</span> `:''}${x.s}</div></div></div>`).join('');
+}
+
+/* 킬른 호기 메뉴 */
+function renderKilnNav(){
+  $('#kilnNav').innerHTML=kilnEqs().map(e=>{const st=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
+    return `<button type="button" class="nav knav${on?' on':''}" data-knav="${e.id}" aria-label="${e.name}">${ic('flame')}<span>${e.kiln}호 킬른</span><small>${st==='ok'?'정상':ST[st]}</small><i class="dotst s-${st}"></i></button>`;}).join('');
+  $$('[data-knav]').forEach(b=>b.onclick=()=>{if(view!=='map')location.hash='#map';setTimeout(()=>select({type:'eq',id:b.dataset.knav},{fly:true}),view==='map'?0:40);});
 }
 
 /* 사이드 구역 메뉴 */
@@ -1167,11 +1231,15 @@ function renderAreas(){
    경영진 요약
    ========================================================= */
 function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-const RNG=mulberry(20261109);
-const DAYS=[...Array(30)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-29+i);let clk=4985+(RNG()-.5)*190;if(i===20)clk=4130;if(i===21)clk=4720;return {d,clk,fc:1.16+(RNG()-.5)*.36+(i===20?.5:0)};});
+const RNG=mulberry(20261110);
+const DAYS=[...Array(30)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-29+i);const k={},fk={};let clk=0,fs=0;
+  KILN_DEF.forEach(kd=>{const id='K'+kd.n;let v=kd.cap*(.985+(RNG()-.5)*.04);if(i===20&&kd.n===5)v=kd.cap*.82;k[id]=v;clk+=v;fk[id]=1.16+(RNG()-.5)*.36+(i===20&&kd.n===5?.5:0);fs+=fk[id];});
+  return {d,clk,k,fc:fs/KILN_DEF.length,fk};});
 DAYS[29].clk=null;
-const HOURS=[...Array(24)].map((_,h)=>({h,v:207+(RNG()-.5)*12}));
-const FC2H=[...Array(84)].map((_,i)=>{const d=new Date(Date.now()-(83-i)*2*3600e3);return {d,v:1.18+(RNG()-.5)*.42+(i===61?.68:0)};});
+const HOURS=[...Array(24)].map((_,h)=>({h,v:DESIGN_TOTAL/24*(.99+(RNG()-.5)*.03)}));
+const FC2H=[...Array(84)].map((_,i)=>{const d=new Date(Date.now()-(83-i)*2*3600e3);const k={};let s=0;
+  KILN_IDS.forEach((id,j)=>{k[id]=1.18+(RNG()-.5)*.42+(i===61&&id==='K7'?.68:0)+(j===4?.12:0);s+=k[id];});return {d,v:s/KILN_IDS.length,k};});
+let fcSel='all';
 let period='7';
 function niceMax(v){const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
 function barChart(vals,labels,o){
@@ -1226,8 +1294,9 @@ function dataNote(){
 }
 function renderReport(){
   const D=MODE==='data'?DATA:null;
-  const kl=eqStatus(E.KL),ks=ksRows(),have=ks.filter(r=>r[2]!=null),ksOk=have.every(r=>r[5]),inOk=have.every(r=>r[7]);
-  const l1=kl==='none'?'킬른 운전 데이터는 <em>아직 없고</em>,':kl==='ok'?'오늘 킬른은 <em>정상 운전</em> 중이고,':kl==='warn'?'오늘 킬른은 <em>주의 관찰</em>이 필요하고,':'킬른에 <em>관리기준 이탈</em>이 발생했고,';
+  const kls=kilnEqs().map(e=>[e,eqStatus(e)]),ks=ksRows(),have=ks.filter(r=>r[2]!=null),ksOk=have.every(r=>r[5]),inOk=have.every(r=>r[7]);
+  const khas=kls.filter(x=>x[1]!=='none'),kbad=kls.filter(x=>x[1]==='bad'),kwarn=kls.filter(x=>x[1]==='warn'),kn=a=>a.map(x=>x[0].kiln+'호').join('·');
+  const l1=!khas.length?'킬른 운전 데이터는 <em>아직 없고</em>,':kbad.length?`킬른 ${kn(kbad)}에 <em>관리기준 이탈</em>이 발생했고,`:kwarn.length?`킬른 ${kn(kwarn)}은 <em>주의 관찰</em>이 필요하고,`:`킬른 ${khas.length===KILN_IDS.length?'5기 모두':khas.length+'기'} <em>정상 운전</em> 중이고,`;
   const l2=!have.length?'시멘트 품질 데이터는 <em>아직 없습니다</em>.':ksOk?(inOk?'시멘트 품질은 <em>KS 기준을 충족</em>합니다.':'시멘트 품질은 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'시멘트 품질에 <em>KS 기준 미달</em> 항목이 있습니다.';
   const now=new Date();const wd='일월화수목금토'[now.getDay()];
   if(D&&period==='1')period='7';
@@ -1235,49 +1304,65 @@ function renderReport(){
   const segs=D?[['7','7일'],['30','30일'],['all','전체']]:[['1','오늘'],['7','7일'],['30','30일']];
   let prod=null,fc=null;
   if(!D){
-    if(period==='1'){const ch=now.getHours();prod={vals:HOURS.map(x=>x.h<=ch?x.v:null),labels:HOURS.map(x=>x.h+'시'),target:208,unit:'t/h'};
-      fc={vals:FC2H.slice(-12).map(x=>x.v),labels:FC2H.slice(-12).map(x=>hhmm(x.d))};}
-    else{const n=+period;const ds=DAYS.slice(-n);prod={vals:ds.map((x,i)=>i===ds.length-1?kilnTpd():x.clk),labels:ds.map(x=>md(x.d)),target:5000,unit:'t/d'};
-      fc=n===7?{vals:FC2H.map(x=>x.v),labels:FC2H.map(x=>md(x.d))}:{vals:DAYS.map(x=>x.fc),labels:DAYS.map(x=>md(x.d))};}
+    const fcv=x=>fcSel==='all'?x.v:x.k[fcSel];
+    if(period==='1'){const ch=now.getHours();prod={vals:HOURS.map(x=>x.h<=ch?x.v:null),labels:HOURS.map(x=>x.h+'시'),target:Math.round(DESIGN_TOTAL/24),unit:'t/h'};
+      fc={vals:FC2H.slice(-12).map(fcv),labels:FC2H.slice(-12).map(x=>hhmm(x.d))};}
+    else{const n=+period;const ds=DAYS.slice(-n);prod={vals:ds.map((x,i)=>i===ds.length-1?plantTpd():x.clk),labels:ds.map(x=>md(x.d)),target:DESIGN_TOTAL,unit:'t/d'};
+      fc=n===7?{vals:FC2H.map(fcv),labels:FC2H.map(x=>md(x.d))}:{vals:DAYS.map(x=>fcSel==='all'?x.fc:x.fk[fcSel]),labels:DAYS.map(x=>md(x.d))};}
   }else{
     const ref=D.latest||now;
-    if(D.prod.length){const ds=period==='all'?D.prod:D.prod.slice(-(+period));prod={vals:ds.map(x=>x.clk),labels:ds.map(x=>md(x.t)),target:5000,unit:'t/d'};}
-    if(D.xrf.length){const days=period==='all'?Infinity:+period;const from=ref.getTime()-days*864e5;let pts=D.xrf.filter(x=>x.t.getTime()>from);if(!pts.length)pts=D.xrf.slice(-12);
+    if(D.prod.length){const ds=period==='all'?D.prod:D.prod.slice(-(+period));prod={vals:ds.map(x=>x.clk),labels:ds.map(x=>md(x.t)),target:DESIGN_TOTAL,unit:'t/d'};}
+    const src=fcSel==='all'?D.xrf:D.xrf.filter(x=>x.k===fcSel);
+    if(src.length){const days=period==='all'?Infinity:+period;const from=ref.getTime()-days*864e5;let pts=src.filter(x=>x.t.getTime()>from);if(!pts.length)pts=src.slice(-12);
+      if(fcSel==='all'){const m=new Map();pts.forEach(x=>{const key=x.t.getTime();const a=m.get(key)||{t:x.t,s:0,n:0};a.s+=x.fcao;a.n++;m.set(key,a);});pts=[...m.values()].map(a=>({t:a.t,fcao:a.s/a.n}));}
       if(pts.length>100){const m=new Map();pts.forEach(x=>{const key=x.t.toDateString();const a=m.get(key)||{t:x.t,s:0,n:0};a.s+=x.fcao;a.n++;m.set(key,a);});pts=[...m.values()].map(a=>({t:a.t,fcao:a.s/a.n}));}
       fc={vals:pts.map(x=>x.fcao),labels:pts.map(x=>md(x.t)+(pts.length<=14?' '+hhmm(x.t):''))};}
   }
   const empty=m=>`<div class="note" style="text-align:center;padding:40px 8px">${m}</div>`;
-  const ch=chem();const sil=E.SIL.params,dsp=E.DSP.params,fp=E.CKS.params.fcao;
+  const ch=chem();const sil=E.SIL.params,dsp=E.DSP.params,fp=E[fcSel==='all'?'K5':fcSel].params.fcao;
   const low=['s1','s2','s3','s4'].map(k=>sil[k]).filter(p=>(!D||p.has)&&RANK[pStatus(p)]>0);
   const open=ALARMS.filter(a=>!a.ack||alarmActive(a)).slice(0,3);
   const nLim=D?(D.counts['관리기준']||0):0;
   $('#report').innerHTML=`
   ${D?`<div class="banner">${ic('info')}${SERVER?'팀 공유 데이터':'업로드 데이터'}를 표시 중입니다.<span>${esc(D.meta.fileName||'-')} · ${esc(D.meta.uploadedBy||'-')} · ${D.meta.uploadedAt?stamp(new Date(D.meta.uploadedAt)):'-'} 올림. 관리기준은 ${nLim?`업로드 기준 ${nLim}건 반영, 나머지는`:''} 예시값이고, 차량·로트·시료 정보는 가상입니다.</span></div>`
      :`<div class="banner">${ic('info')}시연용 가상 데이터입니다.<span>오른쪽 위 ‘데이터’ 버튼으로 엑셀을 올리면 실제 데이터로 바뀝니다. 사내 관리기준은 예시값입니다.</span></div>`}
-  <div class="headline"><div><div class="eb">경영진 요약 · ${D?`데이터 기준 ${D.latest?stamp(D.latest):'-'}`:`${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)} 기준`}</div><h1>${l1}<br>${l2}</h1><p>1공장 킬른 1호 · ${D?(SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'이 PC에 올린 파일 기준'):'설계 5,000 t/d · 2초마다 갱신'}</p></div>
+  <div class="headline"><div><div class="eb">경영진 요약 · ${D?`데이터 기준 ${D.latest?stamp(D.latest):'-'}`:`${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)} 기준`}</div><h1>${l1}<br>${l2}</h1><p>킬른 5기 (3~7호) · ${D?(SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'이 PC에 올린 파일 기준'):`설계 ${nf(DESIGN_TOTAL)} t/d (가상) · 2초마다 갱신`}</p></div>
    <div class="seg" role="tablist" aria-label="기간">${segs.map(([k,t])=>`<button type="button" role="tab" data-period="${k}" class="${period===k?'on':''}">${t}</button>`).join('')}</div></div>
   <div class="krow">${kpiCards(true)}</div>
   <div class="grid">
+   <article class="card full"><div class="pv" style="justify-content:flex-start">${kilnTable()}</div>
+    <div class="meta"><span class="n">01</span><div><b>호기별 현황</b><small>킬른 3~7호의 상태와 핵심 지표입니다. 줄을 누르면 공정 지도에서 그 호기를 보여 줍니다. 생산량은 원료 투입량으로 추정한 값입니다.</small></div></div></article>
    <article class="card w2"><div class="pv">${prod?barChart(prod.vals,prod.labels,{target:prod.target,unit:prod.unit,low:prod.target*.9,aria:'클링커 생산 추이'}):empty('생산출하 시트를 올리면 일별 클링커 생산 실적을 보여 줍니다.')}</div>
-    <div class="meta"><span class="n">01</span><div><b>클링커 생산 실적</b><small>${D?'일별 생산량 (t/d). 주황 막대는 설계 5,000 t/d의 90% 미만인 날입니다.':period==='1'?'오늘 시간대별 생산량 (t/h). 주황 막대는 목표의 90% 미만인 시간입니다.':`일별 생산량 (t/d). 주황 막대는 목표의 90% 미만인 날로, ${md(DAYS[20].d)} 킬른 정지 4.2시간(가상) 영향입니다.`}</small></div></div></article>
+    <div class="meta"><span class="n">02</span><div><b>클링커 생산 실적 (5기 합계)</b><small>${D?`일별 생산량 (t/d). 주황 막대는 설계 ${nf(DESIGN_TOTAL)} t/d의 90% 미만인 날입니다.`:period==='1'?'오늘 시간대별 생산량 (t/h). 주황 막대는 목표의 90% 미만인 시간입니다.':`일별 생산량 (t/d). 주황 막대는 목표의 90% 미만인 날로, ${md(DAYS[20].d)} 5호 킬른 정지 4.2시간(가상) 영향입니다.`}</small></div></div></article>
    <article class="card"><div class="pv">${D&&!D.xrf.length?empty('클링커XRF 시트를 올리면 표시합니다.'):bullet('LSF',ch.lsf,[92,100],[94.5,97.5],1,'석회포화도. 높으면 소성성 저하·f-CaO 상승, 낮으면 C₃S 감소')+bullet('SM',ch.sm,[2.0,3.0],[2.35,2.75],2,'규산률. 높으면 액상량 감소로 소성 곤란')+bullet('IM',ch.im,[1.0,2.2],[1.4,1.8],2,'철률. 액상 점도와 C₃A 양에 영향')}</div>
-    <div class="meta"><span class="n">02</span><div><b>클링커 모듈 관리</b><small>최근 XRF 결과. 파란 구간이 관리 범위(예시값)이고 막대가 현재값입니다.</small></div></div></article>
-   <article class="card w2"><div class="pv">${fc?ctrlChart(fc.vals,fc.labels,{lo:fp.lo??.8,hi:fp.hi??1.8,min:.4,max:2.2,aria:'f-CaO 관리도'}):empty('클링커XRF 시트의 f-CaO로 관리도를 그립니다.')}</div>
-    <div class="meta"><span class="n">03</span><div><b>f-CaO 관리도</b><small>${D?'올린 시료값 기준(100개가 넘으면 일평균)':period==='30'?'일평균 기준':'2시간 시료 기준'}. 빨간 점은 관리 범위를 벗어난 시료로, 원인과 조치를 알람 화면에 기록합니다.</small></div></div></article>
+    <div class="meta"><span class="n">03</span><div><b>클링커 모듈 관리 (5기 평균)</b><small>호기별 최근 XRF의 설계용량 가중평균. 파란 구간이 관리 범위(예시값)이고 막대가 현재값입니다.</small></div></div></article>
+   <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="호기">${[['all','5기 평균'],...KILN_DEF.map(d=>['K'+d.n,d.n+'호'])].map(([k,t])=>`<button type="button" role="tab" data-fc="${k}" class="${fcSel===k?'on':''}">${t}</button>`).join('')}</div>${fc?ctrlChart(fc.vals,fc.labels,{lo:fp.lo??.8,hi:fp.hi??1.8,min:.4,max:2.2,aria:'f-CaO 관리도'}):empty('클링커XRF 시트의 f-CaO로 관리도를 그립니다.')}</div>
+    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'5기 평균':E[fcSel].kiln+'호'}</b><small>${D?'올린 시료값 기준(100개가 넘으면 일평균)':period==='30'?'일평균 기준':'2시간 시료 기준'}. 빨간 점은 관리 범위를 벗어난 시료로, 원인과 조치를 알람 화면에 기록합니다.</small></div></div></article>
    <article class="card"><div class="pv">
      <div class="hb"><div class="hl"><span>${D?'최근 출하':'금일 출하'}</span><b class="num">${fv(dsp.ship,0)} / ${fv(dsp.plan,0)} t</b></div><div class="bar"><i class="s-act" style="width:${(!D||dsp.ship.has)&&dsp.plan.v>0?clamp(dsp.ship.v/dsp.plan.v*100,0,100):0}%"></i></div></div>
      ${['s1','s2','s3','s4'].map(k=>{const p=sil[k],s=pStatus(p);return `<div class="hb"><div class="hl"><span>${p.label}</span><b class="num">${fv(p,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${bw(p)}%"></i></div></div>`;}).join('')}
-    </div><div class="meta"><span class="n">04</span><div><b>출하 · 사일로 재고</b><small>${low.length?`${low.map(p=>p.label.split(' ·')[0]).join(', ')} 레벨이 관리 한계에 가까워 투입·출하 사일로 전환을 검토합니다.`:'사일로 레벨은 모두 관리 범위 안입니다.'}</small></div></div></article>
+    </div><div class="meta"><span class="n">05</span><div><b>출하 · 사일로 재고</b><small>${low.length?`${low.map(p=>p.label.split(' ·')[0]).join(', ')} 레벨이 관리 한계에 가까워 투입·출하 사일로 전환을 검토합니다.`:'사일로 레벨은 모두 관리 범위 안입니다.'}</small></div></div></article>
    <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">실적</th><th class="r">KS L 5201 1종</th><th>KS 판정</th><th class="r">사내 기준 (예시)</th><th>사내 판정</th></tr></thead><tbody>
      ${ks.map(r=>r[2]==null?`<tr><td>${r[0]}</td><td class="r">—</td><td class="r">${r[4]}</td><td><span class="badge s-none">데이터 없음</span></td><td class="r">${r[6]}</td><td><span class="badge s-none">데이터 없음</span></td></tr>`
        :`<tr><td>${r[0]}</td><td class="r num"><b>${nf(r[2],r[3])}</b> ${r[1]}</td><td class="r">${r[4]}</td><td><span class="badge ${r[5]?'s-ok':'s-bad'}">${r[5]?'적합':'부적합'}</span></td><td class="r">${r[6]}</td><td><span class="badge ${r[7]?'s-ok':'s-warn'}">${r[7]?'만족':'주의'}</span></td></tr>`).join('')}
     </tbody></table></div></div>
-    <div class="meta"><span class="n">05</span><div><b>KS 규격 대비 평가</b><small>KS 기준값은 KS L 5201(포틀랜드 시멘트) 1종 기준으로 적었습니다. 최신 개정판 원문과 대조한 뒤 사용하세요. * 강열감량 한계는 개정 이력이 있어 특히 확인이 필요합니다. 강도는 실측값이 있으면 실측, 없으면 예측값입니다.</small></div></div></article>
+    <div class="meta"><span class="n">06</span><div><b>KS 규격 대비 평가</b><small>KS 기준값은 KS L 5201(포틀랜드 시멘트) 1종 기준으로 적었습니다. 최신 개정판 원문과 대조한 뒤 사용하세요. * 강열감량 한계는 개정 이력이 있어 특히 확인이 필요합니다. 강도는 실측값이 있으면 실측, 없으면 예측값입니다.</small></div></div></article>
    <article class="card"><div class="pv" style="justify-content:flex-start"><div class="issues">${open.length?open.map(a=>`<div class="iss"><span class="badge s-${a.sev}">${ST[a.sev]}</span><div><b>${E[a.eq].name} · ${a.label}</b><small>${stamp(a.t)} · ${a.val} · ${a.lim}${alarmActive(a)?'':' · 해제됨'}</small></div></div>`).join(''):'<div class="iss"><span class="badge s-ok">정상</span><div><b>확인할 알람이 없습니다</b></div></div>'}</div></div>
-    <div class="meta"><span class="n">06</span><div><b>확인이 필요한 알람</b><small>미확인이거나 아직 해제되지 않은 알람 상위 3건입니다.</small></div></div></article>
+    <div class="meta"><span class="n">07</span><div><b>확인이 필요한 알람</b><small>미확인이거나 아직 해제되지 않은 알람 상위 3건입니다.</small></div></div></article>
   </div>
   <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(ASTM C150 부록 방식). 28일 강도 예측은 C₃S·분말도·f-CaO를 쓴 가상 회귀식이며, 실제 적용 시 공장 공시체 데이터로 다시 맞춰야 합니다.</p>`;
   $$('[data-period]').forEach(b=>b.onclick=()=>{period=b.dataset.period;renderReport();});
+  $$('[data-fc]').forEach(b=>b.onclick=()=>{fcSel=b.dataset.fc;renderReport();});
+  $$('.krw').forEach(r=>{const go=()=>{location.hash='#map';setTimeout(()=>select({type:'eq',id:r.dataset.kiln},{fly:true}),40);};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go();}};});
+}
+function kilnTable(){
+  const cls=p=>{const s=pStatus(p);return (MODE==='data'&&!p.has)||s==='ok'?'':'st-'+s;};
+  return `<div class="tbl"><table class="ks"><thead><tr><th>호기</th><th>상태</th><th>클링커 생산 (추정)</th><th class="r">소성대 온도</th><th class="r">입구 CO</th><th class="r">클링커 출구</th><th class="r">f-CaO</th><th class="r">LSF</th><th class="r">C₃S</th><th></th></tr></thead><tbody>${kilnEqs().map(e=>{
+    const s=eqStatus(e),p=e.params,t=kilnTpd(e.id),hasC=MODE!=='data'||p.cao.has,c=chem(e.id);
+    return `<tr class="krw" data-kiln="${e.id}" tabindex="0"><td><b>${e.kiln}호</b> <small style="color:var(--fg3)">${nf(e.cap)} t/d</small></td><td><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span></td>
+     <td style="min-width:160px"><div class="hb"><div class="hl"><span class="num">${t==null?'—':nf(t)+' t/d'}</span><span class="num">${t==null?'':nf(t/e.cap*100,0)+'%'}</span></div><div class="bar"><i class="s-act" style="width:${t==null?0:clamp(t/e.cap*100,0,100)}%"></i></div></div></td>
+     <td class="r num ${cls(p.bzt)}">${fv(p.bzt)} ℃</td><td class="r num ${cls(p.co)}">${fv(p.co)} ppm</td><td class="r num ${cls(p.tout)}">${fv(p.tout)} ℃</td><td class="r num ${cls(p.fcao)}">${fv(p.fcao,2)}%</td>
+     <td class="r num">${hasC?nf(c.lsf,1):'—'}</td><td class="r num">${hasC?nf(c.c3s,1):'—'}</td><td>${ic('chevR')}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 
 /* =========================================================
@@ -1334,13 +1419,13 @@ function tick(){
 }
 function renderAll(){
   $('#kpiMap').innerHTML=kpiCards(false);
-  renderAreas();updateTagClasses();
+  renderAreas();renderKilnNav();updateTagClasses();
   if(sel)renderDetail();
   renderList();renderLot();updateBadges();
   if(view==='report')renderReport();
   if(view==='alarms')renderAlarms();
   $('#clock').textContent=hhmm(new Date());
-  $('#modeTxt').textContent=MODE==='sim'?'설계 5,000 t/d · 가상 데이터':`${SERVER?'팀 공유':'업로드'} 데이터 · ${DATA.latest?stamp(DATA.latest):'-'} 기준`;
+  $('#modeTxt').textContent=MODE==='sim'?`설계 ${nf(DESIGN_TOTAL)} t/d · 가상 데이터`:`${SERVER?'팀 공유':'업로드'} 데이터 · ${DATA.latest?stamp(DATA.latest):'-'} 기준`;
   $('#liveChip').classList.toggle('data',MODE==='data');$('#liveTxt').textContent=MODE==='sim'?'Live':(SERVER?'팀 공유':'업로드');
   const dst=$('#dmBody .stat');if(dst&&!$('#dataModal').hidden)dst.outerHTML=statHTML();
 }
@@ -1384,6 +1469,7 @@ function setView(v){
 function setupShell(){
   const app=$('#app');try{if(localStorage.getItem('b365-side')==='1')app.classList.add('collapsed');}catch(e){}
   $('#collapseBtn').onclick=()=>{app.classList.toggle('collapsed');try{localStorage.setItem('b365-side',app.classList.contains('collapsed')?'1':'0');}catch(e){}};
+  $('#kilnToggle').onclick=()=>{const g=$('#kilnGrp');g.classList.toggle('closed');$('#kilnToggle').setAttribute('aria-expanded',!g.classList.contains('closed'));};
   $('#areaToggle').onclick=()=>{const g=$('#areaGrp');g.classList.toggle('closed');$('#areaToggle').setAttribute('aria-expanded',!g.classList.contains('closed'));};
   $$('#listTabs button').forEach(b=>b.onclick=()=>{listTab=b.dataset.tab;$$('#listTabs button').forEach(x=>x.classList.toggle('on',x===b));renderList();});
   $('#fab').onclick=()=>{const l=$('#list');const open=l.classList.contains('closed');l.classList.toggle('closed',!open);if(open)$('#detail').classList.add('closed');};
@@ -1402,7 +1488,7 @@ function setupShell(){
    ========================================================= */
 const SCHEMA={
   '공정값':{req:['일시','설비코드','항목코드','값'],opt:['항목명','단위']},
-  '클링커XRF':{req:['일시','CaO','SiO2','Al2O3','Fe2O3','MgO','SO3','f-CaO']},
+  '클링커XRF':{req:['일시','호기','CaO','SiO2','Al2O3','Fe2O3','MgO','SO3','f-CaO']},
   '시멘트품질':{req:['일시','품종','Blaine','SO3','MgO','강열감량'],opt:['3일강도','7일강도','28일강도']},
   '생산출하':{req:['일자','클링커생산','시멘트출하','출하계획'],opt:['킬른가동률','S-1','S-2','S-3','S-4']},
   '관리기준':{req:['설비코드','항목코드','하한','상한'],opt:['항목명','단위']}
@@ -1416,7 +1502,11 @@ function toDate(v){
   const m=String(v).trim().replace(/[./]/g,'-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})\.?(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if(!m)return null;const d=new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));return isNaN(d)?null:d;
 }
-function findEq(code){const c=String(code??'').trim().toUpperCase();if(!c)return null;return EQ.find(e=>e.id===c||e.code.toUpperCase()===c)||null;}
+function findEq(code){
+  const c=String(code??'').trim().toUpperCase().replace(/\s+/g,'');if(!c)return null;
+  const m=c.match(/^(?:KL-?|K|킬른)?([3-7])(?:호기?)?(?:킬른)?$/);if(m)return E['K'+m[1]]||null;
+  return EQ.find(e=>e.id===c||e.code.toUpperCase()===c)||null;
+}
 function findParam(e,key,name){
   const k=String(key??'').trim();if(k&&e.params[k])return [k,e.params[k]];
   const lk=k.toLowerCase();for(const [kk,p] of Object.entries(e.params))if(lk&&kk.toLowerCase()===lk)return [kk,p];
@@ -1528,7 +1618,8 @@ function buildData(raw){
     (D.params[e.id+'.'+k]||(D.params[e.id+'.'+k]=[])).push({t,v});n++;}D.counts['공정값']=n;}
   const XR=[['CaO','cao'],['SiO2','sio2'],['Al2O3','al'],['Fe2O3','fe'],['MgO','mgo'],['SO3','so3'],['f-CaO','fcao']];
   if(sheets['클링커XRF']){for(const r of sheets['클링커XRF'].rows){const t=toDate(r['일시']);if(!t){bad('클링커XRF',r._row,'일시를 읽을 수 없습니다');continue;}
-    const o={t};let ok=true;for(const [c,k] of XR){const v=toNum(r[c]);if(v==null||Number.isNaN(v)){bad('클링커XRF',r._row,`${c} 값이 비었거나 숫자가 아닙니다`);ok=false;break;}o[k]=v;}
+    const ke=findEq(r['호기']);if(!ke||!ke.kiln){bad('클링커XRF',r._row,`호기 ‘${r['호기']??''}’를 알 수 없습니다 (3호~7호)`);continue;}
+    const o={t,k:ke.id};let ok=true;for(const [c,k] of XR){const v=toNum(r[c]);if(v==null||Number.isNaN(v)){bad('클링커XRF',r._row,`${c} 값이 비었거나 숫자가 아닙니다`);ok=false;break;}o[k]=v;}
     if(ok&&(o.sio2<=0||o.fe<=0)){bad('클링커XRF',r._row,'SiO2·Fe2O3는 0보다 커야 합니다');ok=false;}if(ok)D.xrf.push(o);}D.counts['클링커XRF']=D.xrf.length;}
   const CQ=[['Blaine','blaine',1],['SO3','so3',1],['MgO','mgo',1],['강열감량','loi',1],['3일강도','s3',0],['7일강도','s7',0],['28일강도','s28',0]];
   if(sheets['시멘트품질']){for(const r of sheets['시멘트품질'].rows){const t=toDate(r['일시']);if(!t){bad('시멘트품질',r._row,'일시를 읽을 수 없습니다');continue;}
@@ -1556,7 +1647,7 @@ function commitData(D,meta){
   D.limits.forEach(l=>{const p=E[l.e].params[l.k];p.lo=l.lo;p.hi=l.hi;});
   const setS=(p,arr)=>{if(!arr.length)return;const a=arr.slice(-90);p.hist=a.map(x=>x.v);p.times=a.map(x=>x.t);p.v=p.base=p.target=a[a.length-1].v;p.time=a[a.length-1].t;p.has=true;};
   for(const [key,arr] of Object.entries(D.params)){const [id,k]=key.split('.');setS(E[id].params[k],arr);}
-  if(D.xrf.length)['cao','sio2','al','fe','mgo','so3','fcao'].forEach(k=>setS(E.CKS.params[k],D.xrf.map(x=>({t:x.t,v:x[k]}))));
+  KILN_IDS.forEach(id=>{const rows=D.xrf.filter(x=>x.k===id);if(rows.length)['cao','sio2','al','fe','mgo','so3','fcao'].forEach(k=>setS(E[id].params[k],rows.map(x=>({t:x.t,v:x[k]}))));});
   if(D.cem.length){setS(E.CM.params.blaine,D.cem.map(x=>({t:x.t,v:x.blaine})));setS(E.CM.params.so3,D.cem.map(x=>({t:x.t,v:x.so3})));}
   if(D.prod.length){const L=D.prod[D.prod.length-1],dp=E.DSP.params;
     setS(dp.ship,D.prod.map(x=>({t:x.t,v:x.ship})));setS(dp.plan,D.prod.map(x=>({t:x.t,v:x.plan})));
