@@ -1486,7 +1486,7 @@ async function readXlsx(buf){
   }
   return sheets;
 }
-function decodeText(buf){let s=new TextDecoder('utf-8').decode(buf);if(s.includes('�')){try{s=new TextDecoder('euc-kr').decode(buf);}catch(e){}}return s.replace(/^﻿/,'');}
+function decodeText(buf){let s=new TextDecoder('utf-8').decode(buf);if(s.includes('\uFFFD')){try{s=new TextDecoder('euc-kr').decode(buf);}catch(e){}}return s.replace(/^﻿/,'');}
 function parseCSV(s){
   const rows=[];let row=[],f='',q=false;
   for(let i=0;i<s.length;i++){const c=s[i];
