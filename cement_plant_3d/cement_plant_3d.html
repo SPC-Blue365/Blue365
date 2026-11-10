@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-10 17:15">
+<meta name="b365-build" content="2026-11-11 08:13">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -451,7 +451,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-10 17:15</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-11 08:13</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -920,6 +920,18 @@ const RS_DEF=[{id:'RS3',code:'RS-3',n:'3',tab:'A',x:18,z:-44,k:'K3',cap:3000},{i
 const CS_DEF=[{id:'CS2',code:'CS-2',n:'2',tab:'A',x:97,z:-44,cap:15000},{id:'CS4',code:'CS-4',n:'4',tab:'A',x:97,z:-35,cap:15000},{id:'CS5',code:'CS-5',n:'5',tab:'A',x:97,z:-26,cap:15000},
   {id:'CS61',code:'CS-6-1',n:'6-1',tab:'B',x:96,z:-10,cap:30000},{id:'CS62',code:'CS-6-2',n:'6-2',tab:'B',x:106,z:-10,cap:30000},{id:'CS63',code:'CS-6-3',n:'6-3',tab:'B',x:116,z:-10,cap:30000},
   {id:'CS64',code:'CS-6-4',n:'6-4',tab:'B',x:96,z:0,cap:30000,sep:1},{id:'CS65',code:'CS-6-5',n:'6-5',tab:'B',x:106,z:0,cap:30000},{id:'CS66',code:'CS-6-6',n:'6-6',tab:'B',x:116,z:0,cap:30000,sep:1}];
+/* 원료 공급 (현장 제공 구성): 석회석 광산 49Q·47Q·45Q → 크러셔 G/C·H/C → OSP 기존(3~5호 Line)·신설(6~7호 Line)
+   → 인출 P/W (기존 1·2호 / 신설 3·4호) → 프리블렌딩 야드 기존 Y1·Y2 / 신설 Y1·Y2 (한 야드 적재 Stacking, 다른 야드 사용 Reclaiming) → R/M
+   광산→크러셔 운반 배정·용량·저장량은 가상값 */
+const QRY_DEF=[{id:'Q49',n:'49Q',z:-39,cao:50.6,mgo:1.4,cr:'CRG'},{id:'Q47',n:'47Q',z:-22,cao:49.8,mgo:1.8,cr:'CRH'},{id:'Q45',n:'45Q',z:-5,cao:48.9,mgo:2.2,cr:'CRH'}];
+const CR_DEF=[{id:'CRG',n:'G/C',z:-31,cap:1400,v:0},{id:'CRH',n:'H/C',z:-13,cap:1000,v:1}];
+const OSP_DEF=[{id:'OSPA',tab:'A',z:-38,pw:['PW1','PW2'],cap:60000,fill:58},{id:'OSPB',tab:'B',z:-3,pw:['PW3','PW4'],cap:100000,fill:66}];
+const PW_DEF=[{id:'PW1',n:'1',osp:'OSPA',tab:'A',dz:-2.7,rate:380},{id:'PW2',n:'2',osp:'OSPA',tab:'A',dz:2.7,rate:360},{id:'PW3',n:'3',osp:'OSPB',tab:'B',dz:-2.7,rate:720},{id:'PW4',n:'4',osp:'OSPB',tab:'B',dz:2.7,rate:700}];
+const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,cap:40000},{id:'PBA2',y:'Y2',tab:'A',z:-33,mode:'reclaim',fill:47,cap:40000},
+  {id:'PBB1',y:'Y1',tab:'B',z:-8,mode:'reclaim',fill:36,cap:80000},{id:'PBB2',y:'Y2',tab:'B',z:2,mode:'stack',fill:71,cap:80000}];
+const LINE_NM={A:'기존',B:'신설'},LINE_TXT={A:'3~5호 Line (기존)',B:'6~7호 Line (신설)'};
+const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclaim:'Reclaiming'};
+const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
 const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
 const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C 2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C 3종',altNote:'6호 C/M S/C 3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
@@ -979,6 +991,32 @@ function rmEq(d,i){
   return {id:d.id,code:d.code,n:d.n,name:d.n+'호 R/M',stop:!!d.stop,tab:d.tab,area:'raw',icon:'gauge',spec:`원료밀 · 설계 ${d.cap} t/h (가상)`,bar:'load',barLabel:'부하',primary:'lsf',
    params:{load:P('부하','%',86+v*6,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',Math.round(d.cap*.9),Math.round(d.cap*.8),null,0,d.cap*.01),lsf:QA('원료 LSF','',1,'raw:'+d.id,'LSF'),sm:QA('원료 SM','',2,'raw:'+d.id,'SM'),im:QA('원료 IM','',2,'raw:'+d.id,'IM'),mgo:QA('원료 MgO','%',2,'raw:'+d.id,'MgO'),r90:QA('90 µm 잔사','%',1,'res:'+d.id,'r90'),r200:QA('200 µm 잔사','%',1,'res:'+d.id,'r200')}};
 }
+function qryEq(d,i){
+  return {id:d.id,code:'QRY-'+d.n.slice(0,2),n:d.n,name:d.n+' 광산',area:'raw',major:1,icon:'mountain',spec:`석회석 광산 · 벤치 채광 · ${d.cr==='CRG'?'G/C':'H/C'} 크러셔로 운반 (배정 가상)`,bar:'rate',barLabel:'가동률',primary:'cao',
+   params:{rate:P('가동률','%',[86,81,74][i],null,null,0,.6,{min:0,max:100}),out:P('채광량','t/h',[520,430,380][i],250,null,0,8),cao:P('석회석 CaO 품위','%',d.cao,46.5,null,1,.08),mgo:P('석회석 MgO','%',d.mgo,null,3.0,2,.03)}};
+}
+function crEq(d,i){
+  return {id:d.id,code:'CR-'+d.n[0],n:d.n,name:d.n+' 크러셔',area:'raw',major:1,icon:'box',spec:`석회석 파쇄 · 설계 ${nf(d.cap)} t/h (가상) · OSP 기존·신설 공급`,bar:'load',barLabel:'부하',primary:'load',
+   params:{load:P('부하','%',[78,72][i],null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',Math.round(d.cap*.8),Math.round(d.cap*.55),null,0,d.cap*.01),size:P('출구 입도 (P90)','mm',[62,48][i],null,80,0,1),cur:P('모터 전류','A',[312,238][i],null,[380,300][i],0,4)}};
+}
+function ospEq(d,i){
+  return {id:d.id,code:'OSP-'+d.tab,n:LINE_NM[d.tab],name:`OSP (${LINE_NM[d.tab]})`,tab:d.tab,area:'raw',major:1,icon:'layers',spec:`${LINE_TXT[d.tab]} · 파쇄 석회석 저장 · 인출 P/W ${d.pw.map(x=>x.slice(2)).join('·')}호 · 용량 ${nf(d.cap)} t (가상)`,bar:'fill',barLabel:'저장률',primary:'fill',cap:d.cap,
+   params:{fill:P('저장률','%',d.fill,20,95,0,.25,{min:0,max:100}),stock:P('저장량','t',d.cap*d.fill/100,null,null,0,0,{derived:1}),inflow:P('입고량 (크러셔)','t/h',d.tab==='A'?760:1180,null,null,0,12),out:P('인출량 (P/W 합계)','t/h',0,null,null,0,0,{derived:1})}};
+}
+function pwEq(d,i){
+  return {id:d.id,code:'PW-'+d.n,n:d.n,name:`P/W ${d.n}호`,tab:d.tab,area:'raw',icon:'gauge',osp:d.osp,spec:`OSP (${LINE_NM[d.tab]}) 인출 → ${LINE_NM[d.tab]} 프리블렌딩 야드`,bar:'load',barLabel:'부하',primary:'rate',
+   params:{load:P('부하','%',[74,70,78,76][i],null,95,0,.8,{min:0,max:100}),rate:P('인출량','t/h',d.rate,Math.round(d.rate*.6),null,0,d.rate*.012)}};
+}
+function pbEq(d,i){
+  const base=`${LINE_NM[d.tab]} 프리블렌딩 ${d.y}`;
+  const e={id:d.id,code:`PB-${d.tab}-${d.y}`,n:d.y,base,tab:d.tab,area:'raw',icon:'layers',mode:d.mode,cap:d.cap,bar:'fill',barLabel:'저장률',primary:'cao',
+   spec:`${LINE_TXT[d.tab]} · 셰브론 적재 · 용량 ${nf(d.cap)} t (가상)`,
+   params:{fill:P('저장률','%',d.fill,null,null,0,0,{counter:1,min:0,max:100}),stock:P('파일 재고','t',d.cap*d.fill/100,null,null,0,0,{counter:1}),rate:P('처리량 (적재·인출)','t/h',d.tab==='A'?720:1400,null,null,0,10),
+    cao:P('파일 CaO','%',[49.7,49.4,49.9,49.5][i],46.5,null,1,.05),sd:P('CaO 표준편차 (파일)','%',[.34,.28,.31,.36][i],null,.5,2,.012)}};
+  Object.defineProperty(e,'name',{get(){return `${this.base} · ${MODE_NM[this.mode]}`;},enumerable:true});
+  Object.defineProperty(e,'major',{get(){return this.mode==='reclaim';},enumerable:true});
+  return e;
+}
 function rsEq(d,i){
   const lv=[64,71,58,66,73,55,69][i];
   return {id:d.id,code:d.code,n:d.n,name:d.n+'호 원료 사일로',tab:d.tab,area:'raw',icon:'silo',spec:`킬른 투입 원료 저장 · 용량 ${nf(d.cap)} t (가상)`,bar:'level',barLabel:'레벨',primary:'level',
@@ -1004,12 +1042,7 @@ function slEq(d,i){
 }
 
 const EQ=[
- {id:'QRY',code:'QRY-1',name:'석회석 광산',area:'raw',major:1,icon:'mountain',spec:'벤치 높이 12 m · 덤프트럭 2대 운행',bar:'rate',barLabel:'가동률',primary:'cao',
-  params:{rate:P('가동률','%',86,null,null,0,.6,{min:0,max:100}),out:P('채광량','t/h',820,600,null,0,12),cao:P('석회석 CaO 품위','%',50.2,47.5,null,1,.08),mgo:P('석회석 MgO','%',1.6,null,3.0,2,.03)}},
- {id:'CRS',code:'CR-1',name:'크러셔',area:'raw',major:1,icon:'box',spec:'임팩트 크러셔 · 설계 1,400 t/h',bar:'load',barLabel:'부하',primary:'load',
-  params:{load:P('부하','%',78,null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',1150,800,null,0,15),size:P('출구 입도 (P90)','mm',62,null,80,0,1),cur:P('모터 전류','A',312,null,380,0,4)}},
- {id:'PBL',code:'PB-1',name:'프리블렌딩 야드',area:'raw',major:1,icon:'layers',spec:'셰브론 적재 · 파일 2기 × 40,000 t',bar:'fill',barLabel:'저장률',primary:'sd',
-  params:{fill:P('저장률','%',64,25,95,0,.4,{min:0,max:100}),stock:P('파일 재고','t',38400,null,null,0,120),sd:P('공급 CaO 표준편차','%',.32,null,.5,2,.012),lsf:P('파일 LSF','',97.1,95.0,99.5,1,.08)}},
+ ...QRY_DEF.map(qryEq),...CR_DEF.map(crEq),...OSP_DEF.map(ospEq),...PW_DEF.map(pwEq),...PB_DEF.map(pbEq),
  ...RM_DEF.map(rmEq),...RS_DEF.map(rsEq),...KILN_DEF.map(phEq),...KILN_DEF.map(kilnEq),...CS_DEF.map(csEq),...CM_DEF.map(cmEq),...SL_DEF.map(slEq),
  {id:'DSP',code:'DS-1',name:'출하장',area:'ship',tab:'C',major:1,icon:'truck',spec:'벌크 출하 레인 1 · 계량대 1',bar:'prog',barLabel:'금일 계획 대비',primary:'ship',anchor:[34,10,37],
   params:{prog:P('금일 계획 대비','%',62,null,null,0,0,{derived:1,min:0,max:100}),ship:P('금일 출하량','t',3240,null,null,0,0,{counter:1}),plan:P('금일 출하 계획','t',5200,null,null,0,0,{counter:1}),wait:P('진입·계량 차량','대',2,null,8,0,0,{counter:1})}},
@@ -1071,7 +1104,7 @@ const SAMPLES=[
   {id:'S-1109-042',what:'3호 C/M 시멘트 분말도 · SO₃',eq:'CM3',st:'채취',prog:15,t:-8},
   {id:'S-1109-040',what:'5호 R/M 원료 XRF (LSF·SM·IM)',eq:'RM5',st:'완료',prog:100,t:-52},
   {id:'S-1109-043',what:'6호 사일로 출하 시멘트 강도 공시체',eq:'SL6',st:'양생중',prog:4,t:-70},
-  {id:'S-1109-039',what:'석회석 CaO 품위',eq:'QRY',st:'완료',prog:100,t:-95}
+  {id:'S-1109-039',what:'47Q 석회석 CaO 품위',eq:'Q47',st:'완료',prog:100,t:-95}
 ].map(s=>Object.assign(s,{time:new Date(Date.now()+s.t*60000)}));
 const SMP_BADGE={'완료':'s-ok','분석중':'s-act','채취':'s-idle','양생중':'s-idle'};
 
@@ -1160,6 +1193,9 @@ function conveyor(pts,matKey,n,tab='shared'){
 }
 function along(f,d){let i=0;while(i<f.segs.length-1&&d>f.segs[i]){d-=f.segs[i];i++;}return f.V[i].clone().lerp(f.V[i+1],clamp(d/f.segs[i],0,1));}
 
+const PBOBJ={};
+function syncYards(){PB_DEF.forEach(d=>{const o=PBOBJ[d.id],e=E[d.id];if(!o)return;o.st.visible=e.mode==='stack';o.rc.visible=e.mode==='reclaim';
+  const k=.3+.7*e.params.fill.v/100;o.pile.scale.y=k;o.pile.position.y=2.5*k;});}
 function buildPlant(){
   ['shared','A','B','C'].forEach(k=>{const g=new THREE.Group();scene.add(g);DECO[k]=g;});
   // 바닥 · 도로
@@ -1169,21 +1205,28 @@ function buildPlant(){
   for(let x=-136;x<140;x+=8)flat(3.6,.25,M.mark,x,52,.08);
   flat(280,.25,M.mark,0,47.9,.08);flat(280,.25,M.mark,0,56.1,.08);
   seg(-40,42,128,42,5,M.road);seg(8,37,8,48,5,M.road);seg(60,37,60,48,5,M.road);seg(8,37,60,37,5,M.road);
-  seg(-49,-24,-49,-6,6,M.dirt,.045);seg(-52,-6,-43,-6,6,M.dirt,.045);
-  [[-62,18,30,12],[-30,20,20,10],[-70,-2,16,10],[-20,-40,40,8],[95,-48,40,3]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
+  seg(-72,-42,-72,-2,5,M.dirt,.045);QRY_DEF.forEach(d=>seg(-76,d.z,-72,d.z,4,M.dirt,.046));CR_DEF.forEach(d=>seg(-72,d.z,-68.5,d.z,4,M.dirt,.046));
+  [[-62,18,30,12],[-30,20,20,10],[-80,22,14,10],[95,-48,40,3]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
   // 주차장
   for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-40+i*3.2,37.5,.07);
 
-  // 01 석회석 광산
-  {const g=grp('QRY');const cx=-68,cz=-34;[[32,24],[25,18],[18,12],[11,7]].forEach(([w,d],i)=>box(g,w,3,d,i%2?M.rock2:M.rock,cx-i*1.2,i*3,cz-i));
-   box(g,2.6,1.4,3.2,M.ylw,-55,0,-26.5);box(g,2.2,1.6,2,M.ylw,-55,1.4,-27);const arm=box(g,.5,.5,4.4,M.ylw,-55,2.6,-24.4);arm.rotation.x=.35;}
-  // 02 크러셔
-  {const g=grp('CRS');bld(g,8,7,8,-40,-12);const h=new THREE.Mesh(new THREE.CylinderGeometry(3,1.1,3,4,1),M.steel);h.rotation.y=Math.PI/4;h.position.set(-45.6,5,-11);add(h,g);box(g,1.8,3.5,1.8,M.steelD,-45.6,0,-11);}
-  // 03 프리블렌딩
-  {const g=grp('PBL');[-18.6,-9.6].forEach((z,i)=>{const c=new THREE.Mesh(new THREE.ConeGeometry(4.2,5.5,24),i?M.meal:M.lime);c.scale.set(2.8,1,1);c.position.set(-18,2.75,z);add(c,g);});
-   box(g,28,.3,.3,M.steelD,-18,0,-14.7);box(g,28,.3,.3,M.steelD,-18,0,-13.5);
-   box(g,2.4,2.2,2.6,M.accent,-25,0,-14.1);
-   [-14.2,-5].forEach(z=>box(g,.6,6.5,.6,M.steelD,-8,0,z));box(g,.8,.8,10,M.accent,-8,6.5,-9.6);}
+  // 01 석회석 광산 49Q·47Q·45Q
+  QRY_DEF.forEach(d=>{const g=grp(d.id),cx=-83;[[14,12],[10,9],[6,6]].forEach(([w,dd],i)=>box(g,w,2.5,dd,i%2?M.rock2:M.rock,cx-i*1.1,i*2.5,d.z-i*.5));
+    box(g,2.4,1.3,3,M.ylw,-75.8,0,d.z);box(g,2,1.5,1.9,M.ylw,-75.8,1.3,d.z-.4);const arm=box(g,.45,.45,3.8,M.ylw,-75.8,2.4,d.z+1.9);arm.rotation.x=.35;});
+  // 02 크러셔 G/C · H/C
+  CR_DEF.forEach(d=>{const g=grp(d.id);bld(g,8,7,8,-63,d.z);const h=new THREE.Mesh(new THREE.CylinderGeometry(2.6,1,2.6,4,1),M.steel);h.rotation.y=Math.PI/4;h.position.set(-68.4,5,d.z);add(h,g);box(g,1.6,3.6,1.6,M.steelD,-68.4,0,d.z);});
+  box(DECO.shared,3,8,3,M.steel,-54,0,-22);box(DECO.shared,3.4,.5,3.4,M.accent,-54,8,-22);
+  // 03 OSP 기존·신설 · 인출 P/W
+  OSP_DEF.forEach(d=>{const g=grp(d.id);const c=new THREE.Mesh(new THREE.ConeGeometry(6.8,8.5,32),M.lime);c.position.set(-46,4.25,d.z);add(c,g);cyl(g,7.2,.5,M.conc,-46,0,d.z,32);});
+  PW_DEF.forEach(d=>{const o=OSP_DEF.find(x=>x.id===d.osp),g=grp(d.id);box(g,3,2.6,2.2,M.wall2,-37.8,0,o.z+d.dz);box(g,3.1,.3,2.3,M.accent,-37.8,2.6,o.z+d.dz);});
+  // 04 프리블렌딩 야드 (기존 Y1·Y2 / 신설 Y1·Y2): 적재 = 스태커, 사용 = 브리지 리클레이머
+  PB_DEF.forEach(d=>{const g=grp(d.id),cz=OSP_DEF.find(o=>o.tab===d.tab).z,side=Math.sign(d.z-cz);
+    flat(26,8.4,M.pad,-19,d.z,.06);
+    const pile=new THREE.Mesh(new THREE.ConeGeometry(3.8,5,24),M.lime);pile.scale.set(3,1,1);pile.position.set(-19,2.5,d.z);add(pile,g);
+    const st=new THREE.Group();g.add(st);box(st,.8,6.6,.8,M.steelD,0,0,cz+side*.9);const bm=box(st,.7,.7,Math.abs(d.z-cz)+1.4,M.accent,0,6.2,(cz+d.z)/2+side*.4);bm.rotation.x=-side*.18;
+    const rc=new THREE.Group();g.add(rc);[d.z-4.6,d.z+4.6].forEach(z=>box(rc,.8,6.2,1.2,M.steelD,0,0,z));box(rc,1.4,1.1,10.4,M.accent,0,6.2,d.z);const hr=box(rc,.25,4.6,8,M.steel,.9,1.4,d.z);hr.rotation.x=0;
+    st.position.x=-19;rc.position.x=-8.5-(1-d.fill/100)*17;PBOBJ[d.id]={pile,st,rc};});
+  syncYards();
   // 04 원료밀 (R/M)
   RM_DEF.forEach(d=>{const g=grp(d.id),big=d.tab==='B',w=big?9:7,h=big?12:10;bld(g,w,h,w,5,d.z);cyl(g,big?2:1.5,4,M.steel,5,h,d.z);});
   // 05 원료 사일로
@@ -1230,9 +1273,13 @@ function buildPlant(){
   // 사무동 (선택 불가)
   bld(scene,10,8,8,-34,26);
   // 컨베이어 + 물질 흐름
-  conveyor([[-36,4,-12],[-31,6.6,-14],[-7,6.6,-14]],'lime',12,'shared');
-  conveyor([[-5,1,-19.5],[-1,8,-19.5],[-1,8,-48]],'lime',8,'shared');
-  conveyor([[-1,8,-19.5],[-1,8,9]],'lime',6,'shared');
+  CR_DEF.forEach(d=>conveyor([[-59,3,d.z],[-55.5,7.6,-22]],'lime',4,'shared'));
+  OSP_DEF.forEach(o=>{const L=o.tab;
+    conveyor([[-54,8,-22],[-47.5,10.2,o.z+(L==='A'?2:-2)]],'lime',5,L);                       // 크러셔 → OSP
+    conveyor([[-36.3,1.2,o.z],[-33,6.6,o.z],[-8,6.6,o.z]],'lime',10,L);                       // P/W → 스태커 벨트
+    conveyor([[-6.5,.8,o.z],[-1,8,o.z]],'lime',3,L);});                                       // 리클레이머 → R/M 분배
+  conveyor([[-1,8,-48],[-1,8,-20]],'lime',6,'A');
+  conveyor([[-1,8,-12],[-1,8,8]],'lime',5,'B');
   RM_DEF.forEach(d=>{const r=RS_DEF.find(x=>x.id===d.to),big=d.tab==='B';conveyor([[big?9.5:8.5,big?11:9,d.z],[r.x,big?18.5:16.5,r.z]],'meal',3,d.tab);});
   RS_DEF.forEach(r=>{const k=KILN_DEF.find(d=>'K'+d.n===r.k),big=k.line==='B',W=big?9:7;conveyor([[r.x,big?18:16,r.z],[30-W/2,big?30:24,k.z]],'meal',3,r.tab);});
   conveyor([[85,1.5,-47.5],[91.5,12,-47.5],[91.5,12,-24]],'clk',8,'A');
@@ -1249,7 +1296,7 @@ function buildPlant(){
   for(let z=-46;z<=40;z+=9)tree(-98,z,1.05);
   for(let x=-86;x<=130;x+=10)tree(x,-56,.95);
   for(let z=-46;z<=40;z+=11)tree(139,z,1);
-  [[-26,40],[-6,45],[-56,16],[-64,22],[-70,-4],[-74,4],[72,45.5],[86,45.5],[104,45.5],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
+  [[-26,40],[-6,45],[-56,16],[-64,22],[-84,12],[-50,12],[72,45.5],[86,45.5],[104,45.5],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
   // 굴뚝 연기
   // 앵커
   EQ.forEach(e=>{const b=new THREE.Box3().setFromObject(EQOBJ[e.id]);const c=b.getCenter(new THREE.Vector3());ANCHOR[e.id]=e.anchor?new THREE.Vector3(...e.anchor):new THREE.Vector3(c.x,b.max.y+1.5,c.z);EQOBJ[e.id].userData.box=b;});
@@ -1257,7 +1304,7 @@ function buildPlant(){
 
 /* 트럭 */
 const bctRoute=lx=>[[-140,50],[8,50],[8,45,{wait:2.5,state:'계량'}],[8,42,{state:'구내 이동'}],[8,37],[lx,37,{wait:10,state:'적재중',load:1}],[60,37,{state:'출하'}],[60,42],[60,54],[140,54,{end:1}]];
-const DUMP_ROUTE=[[-49,-21,{wait:4,state:'상차',fill:1}],[-49,-9,{state:'운반'}],[-45.6,-6.6,{wait:3,state:'하차',dump:1}],[-51,-8,{state:'복귀'}]];
+const dumpRoute=(q,c)=>{const qz=E[q]?QRY_DEF.find(d=>d.id===q).z:0,cz=CR_DEF.find(d=>d.id===c).z;return [[-74.3,qz,{wait:4,state:'상차',fill:1}],[-72,qz,{state:'운반'}],[-72,cz],[-69.6,cz,{wait:3,state:'하차',dump:1}],[-72,cz,{state:'복귀'}],[-72,qz]];};
 const routeCum=r=>{const c=[0];for(let i=1;i<r.length;i++)c.push(c[i-1]+Math.hypot(r[i][0]-r[i-1][0],r[i][1]-r[i-1][1]));return c;};
 const SHIP_SILOS=['SL6','SL1','SL7','SL10','SL5','SL2','SL8','SL11'];
 let shpSeq=23, lotSeq=8;
@@ -1293,10 +1340,10 @@ function truckMesh(kind){
   }
   scene.add(g);return g;
 }
-function mkTruck(kind,id,startIdx,frac,state){
+function mkTruck(kind,id,startIdx,frac,state,dr){
   const g=truckMesh(kind);
   const t={kind,id,g,i:startIdx,wait:0,state,load:0,cap:kind==='bct'?28:45,speed:kind==='bct'?9:6,s:0,respawn:0,loop:kind!=='bct',gone:false};
-  if(kind==='bct')newLot(t);else t.route=DUMP_ROUTE;
+  if(kind==='bct')newLot(t);else{t.q=dr.q;t.cr=dr.cr;t.route=dumpRoute(dr.q,dr.cr);}
   const route=t.route,a=route[startIdx-1]||route[0],b=route[startIdx]||a;
   t.x=a[0]+(b[0]-a[0])*frac;t.z=a[1]+(b[1]-a[1])*frac;
   if(kind==='bct')t.s=t.cum[startIdx-1]+Math.hypot(t.x-a[0],t.z-a[1]);
@@ -1309,8 +1356,9 @@ function buildTrucks(){
   const a=mkTruck('bct','BCT-21',6,0,'적재중');const lx=a.route[5][0];a.x=lx;a.z=37;a.g.position.set(lx,0,37);a.s=a.cum[5];a.wait=6;a.waitTot=10;a.loading=true;a.load=12;a.g.rotation.y=0;
   const b=mkTruck('bct','BCT-23',3,0,'계량');b.x=8;b.z=45;b.g.position.set(8,0,45);b.s=b.cum[2];b.wait=2;b.waitTot=2.5;b.g.rotation.y=Math.PI/2;
   mkTruck('bct','BCT-27',1,.55,'진입');
-  const d1=mkTruck('dump','DT-01',1,.4,'운반');d1.load=45;
-  mkTruck('dump','DT-02',3,.3,'복귀');
+  const d1=mkTruck('dump','DT-01',2,.4,'운반',{q:'Q49',cr:'CRG'});d1.load=45;
+  mkTruck('dump','DT-02',5,.3,'복귀',{q:'Q47',cr:'CRH'});
+  const d3=mkTruck('dump','DT-03',2,.7,'운반',{q:'Q45',cr:'CRH'});d3.load=45;
 }
 function stepTruck(t,dt){
   if(t.respawn>0){t.respawn-=dt;if(t.respawn<=0){newLot(t);t.i=1;t.x=t.route[0][0];t.z=t.route[0][1];t.s=0;t.state='진입';t.gone=false;}return;}
@@ -1350,7 +1398,7 @@ const inTab=(e,tab=curTab)=>tab==='all'||e.tab===tab;
 const truckInTab=t=>curTab==='all'||(curTab==='C'&&t.kind==='bct');
 function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
   let cx=20,cz=-2,size=224;
-  if(THREEOK&&EQOBJ.QRY){const b=new THREE.Box3();EQ.filter(e=>inTab(e)).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
+  if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
   const f=curTab==='all'?(m?1.3:1.08):(m?1.9:1.7);const d=clamp(size*f*Math.pow(Math.max(1,1.6/asp),.6),90,420);
   const rt=m?0:d*.14,bk=m?-d*.02:d*.04;
   return {tx:cx+Math.cos(th)*rt+Math.sin(th)*bk,tz:cz-Math.sin(th)*rt+Math.cos(th)*bk,theta:th,phi:.94,dist:d};}
@@ -1424,7 +1472,12 @@ function relatedIds(id){
   if(e.kiln)return ['PH'+e.kiln,...RS_DEF.filter(r=>r.k===id).map(r=>r.id)];
   if(e.kref)return [e.kref];
   const rs=RS_DEF.find(r=>r.id===id);if(rs)return [rs.k,...RM_DEF.filter(m=>m.to===id).map(m=>m.id)];
-  const rm=RM_DEF.find(r=>r.id===id);if(rm)return [rm.to];
+  const rm=RM_DEF.find(r=>r.id===id);if(rm)return [rm.to,...PB_DEF.filter(d=>d.tab===rm.tab&&E[d.id].mode==='reclaim').map(d=>d.id)];
+  if(e.osp)return [e.osp];
+  if(OSP_DEF.some(o=>o.id===id)){const o=OSP_DEF.find(x=>x.id===id);return [...o.pw,...PB_DEF.filter(d=>d.tab===o.tab).map(d=>d.id)];}
+  if(e.mode)return e.mode==='reclaim'?RM_DEF.filter(d=>d.tab===e.tab&&!d.stop).map(d=>d.id):OSP_DEF.find(o=>o.tab===e.tab).pw;
+  if(id[0]==='Q'&&QRY_DEF.some(d=>d.id===id))return [QRY_DEF.find(d=>d.id===id).cr];
+  if(CR_DEF.some(d=>d.id===id))return [...QRY_DEF.filter(d=>d.cr===id).map(d=>d.id),'OSPA','OSPB'];
   return [];
 }
 function setBracket(){
@@ -1492,6 +1545,8 @@ function frame(now){
   cam.tx+=(goal.tx-cam.tx)*k;cam.tz+=(goal.tz-cam.tz)*k;cam.dist+=(goal.dist-cam.dist)*k;cam.theta+=(goal.theta-cam.theta)*k;cam.phi+=(goal.phi-cam.phi)*k;
   applyCam();
   FLOWS.forEach(f=>f.par.visible&&f.parts.forEach(p=>{p.t=(p.t+dt*5/f.tot)%1;const q=along(f,p.t*f.tot);p.m.position.set(q.x,q.y+.5,q.z);}));
+  PB_DEF.forEach((d,i)=>{const o=PBOBJ[d.id];if(!o||!EQOBJ[d.id].visible)return;const e=E[d.id];
+    if(e.mode==='stack'){o.st.position.x=-19+(REDUCED?0:9*Math.sin(now/7000+i));}else{o.rc.position.x=-8.5-(1-e.params.fill.v/100)*17;}});
   KILNS.forEach((k,i)=>{const st=isStopped(E[k.id]);k.hz.visible=!st;if(!st&&!REDUCED){k.spin.rotation.x+=dt*E[k.id].params.rpm.v*.12;k.hz.material.opacity=.38+.14*Math.sin(now/600+i);}});
   SMOKE.forEach(s=>{const u=s.userData;s.visible=EQOBJ[u.kid].visible&&!isStopped(E[u.kid]);u.t=(u.t+dt*.07)%1;const t=u.t;s.position.set(u.x+t*6,u.y+t*14,u.z-t*3);s.scale.setScalar(1+t*3.4);s.material.opacity=(dark?.32:.45)*(1-t);});
   if(bracket&&!REDUCED)M.line.opacity=.65+.35*Math.sin(now/260);
@@ -1508,7 +1563,7 @@ function select(s,o={}){
   if(s&&s.type==='eq'&&E[s.id]&&!inTab(E[s.id])){sel=s;setTab(E[s.id].tab||'all',{keepSel:true});}
   if(s&&s.type==='truck'){const t=TRUCKS.find(x=>x.id===s.id);if(t&&!truckInTab(t)){sel=s;setTab('C',{keepSel:true});}}
   sel=s;
-  if(s&&s.type==='truck')tracked=s.id;
+  if(s&&s.type==='truck'&&(TRUCKS.find(x=>x.id===s.id)||{}).kind==='bct')tracked=s.id;
   setBracket();updateTagClasses();renderDetail();renderList();renderLot();renderKilnNav();
   $('#views').classList.toggle('nodetail',!sel);
   if(s&&o.fly&&THREEOK){
@@ -1516,6 +1571,18 @@ function select(s,o={}){
     else{const t=TRUCKS.find(x=>x.id===s.id);if(t)flyTo(t.x,t.z,60);}
   }
   if(isMobile()){$('#detail').classList.toggle('closed',!sel);if(sel)$('#list').classList.add('closed');}
+}
+function supplyBlock(e){
+  if(!SUPPLY_IDS.has(e.id))return '';
+  const kind=e.id[0]==='Q'?'q':e.id.startsWith('CR')?'c':e.id.startsWith('OSP')?'o':e.id.startsWith('PW')?'p':'y';
+  const row=(k,v,on)=>`<div><dt>${on?`<b style="color:var(--accent)">${k}</b>`:k}</dt><dd style="white-space:normal;text-align:right;max-width:62%">${v}</dd></div>`;
+  const yd=L=>PB_DEF.filter(d=>d.tab===L).map(d=>`${d.y} <span class="badge ${E[d.id].mode==='reclaim'?'s-ok':'s-act'}">${MODE_NM[E[d.id].mode]}</span>`).join(' ');
+  let h=e.mode?row('현재 운용',`<span class="badge ${e.mode==='reclaim'?'s-ok':'s-act'}">${MODE_NM[e.mode]} (${MODE_EN[e.mode]})</span> ${e.mode==='reclaim'?'→ R/M 공급 중':'← P/W 인출분 적재 중'}`):'';
+  if(kind==='p')h+=row('인출 대상',E[e.osp].name);
+  h+=row('석회석 광산',QRY_DEF.map(d=>d.n).join(' · '),kind==='q')+row('크러셔','G/C · H/C',kind==='c');
+  (e.tab?[e.tab]:['A','B']).forEach(L=>{h+=row(`OSP (${LINE_NM[L]})`,LINE_TXT[L],kind==='o'&&e.tab===L)+row('인출',OSP_DEF.find(o=>o.tab===L).pw.map(x=>x.slice(2)).join('·')+'호 P/W',kind==='p'&&e.tab===L)
+    +row(`프리블렌딩 (${LINE_NM[L]})`,yd(L),kind==='y'&&e.tab===L)+row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M');});
+  return `<div class="sect">원료 공급 흐름 <small>현장 제공 구성</small></div><dl class="kv">${h}</dl>`;
 }
 function routeBlock(e){
   const nm=id=>E[id]?E[id].name:(id&&id.startsWith('PIER')?'부두 '+id.slice(4)+'호':id),row=(k,v)=>`<div><dt>${k}</dt><dd style="white-space:normal;text-align:right;max-width:60%">${v}</dd></div>`;
@@ -1588,7 +1655,7 @@ function renderDetail(){
     <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
     ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?`QMS 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
-    ${routeBlock(e)}
+    ${routeBlock(e)}${supplyBlock(e)}
     ${e.kiln?chemBlock(e.id):''}
     ${e.id==='LAB'?`<div class="sect">28일 강도 예측 <small>가상 모델</small></div><dl class="kv"><div><dt>28일 압축강도 (${cement().m28?'실측':'예측'})</dt><dd class="num">${cement().s28==null?'—':nf(cement().s28,1)}<small>MPa</small><span class="lim">KS L 5201 1종 42.5 이상</span></dd></div></dl>`:''}
     ${smp.length?`<div class="sect">관련 시료</div><dl class="kv">${smp.map(x=>`<div><dt>${x.id} · ${x.what}</dt><dd><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span></dd></div>`).join('')}</dl>`:''}
@@ -1597,7 +1664,7 @@ function renderDetail(){
     const t=TRUCKS.find(x=>x.id===sel.id);if(!t){sel=null;return renderDetail();}
     const bct=t.kind==='bct';const moving=t.wait<=0&&t.respawn<=0;
     el.innerHTML=`<div class="sheet-handle"></div>
-    <div class="dp-head"><div class="dp-ico">${ic('truck')}</div><div style="min-width:0"><div class="eyebrow">${bct?'BCT 벌크 트레일러 · 출하':'덤프트럭 · 광산 운반'}</div><div class="dp-name">${t.id}</div><div class="dp-sub">${bct?'적재 한도 28 t · '+t.cust:'적재 한도 45 t · 광산 → 크러셔'}</div></div>
+    <div class="dp-head"><div class="dp-ico">${ic('truck')}</div><div style="min-width:0"><div class="eyebrow">${bct?'BCT 벌크 트레일러 · 출하':'덤프트럭 · 광산 운반'}</div><div class="dp-name">${t.id}</div><div class="dp-sub">${bct?'적재 한도 28 t · '+t.cust:'적재 한도 45 t · '+E[t.q].name+' → '+E[t.cr].name}</div></div>
      <div class="dp-act"><button type="button" data-act="fly" aria-label="이 차량으로 이동" data-tip="이 차량으로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
     <div class="dp-st"><span class="badge ${t.state==='적재중'||t.state==='상차'?'s-act':t.state==='출하'?'s-ok':'s-idle'}">${t.state}</span><span>${bct?(t.state==='적재중'?`${E[t.silo].name}에서 적재 중`:t.state==='출하'?'출하 완료 · 출문 중':'출하장으로 이동 중'):(t.state==='상차'?'석회석 상차 중':'운반 경로 주행 중')}</span></div>
     <div class="barrow"><div class="bl"><span>적재량</span><b class="num">${nf(t.load,1)} / ${t.cap} t</b></div><div class="bar"><i class="s-act" style="width:${t.load/t.cap*100}%"></i></div></div>
@@ -1610,7 +1677,7 @@ function renderDetail(){
       <div><dt>시멘트 밀</dt><dd>${t.cm}호 C/M</dd></div>
       <div><dt>품질 판정</dt><dd><span class="badge s-ok">적합 (예측)</span></dd></div>
       <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`:`
-      <div><dt>적재물</dt><dd>석회석 (CaO ${fv(E.QRY.params.cao,1)}%)</dd></div>
+      <div><dt>적재물</dt><dd>석회석 · ${E[t.q].n} (CaO ${fv(E[t.q].params.cao,1)}%)</dd></div>
       <div><dt>금일 운반</dt><dd class="num">${t.id==='DT-01'?31:29}<small>회</small></dd></div>
       <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`}
     </dl>
@@ -1940,6 +2007,16 @@ function toast(msg,sev='ok'){const w=$('#toasts');const t=document.createElement
    시뮬레이션 틱 (2초)
    ========================================================= */
 let evTimer=0;
+function stepSupply(){
+  OSP_DEF.forEach(o=>{const e=E[o.id];e.params.out.v=o.pw.reduce((a,p)=>a+E[p].params.rate.v,0);e.params.stock.v=e.cap*e.params.fill.v/100;});
+  ['A','B'].forEach(L=>{const ys=PB_DEF.filter(d=>d.tab===L).map(d=>E[d.id]);
+    ys.forEach(e=>{const f=e.params.fill,r=e.mode==='stack'?(f.v<100?.11:0):-.15;f.v=clamp(f.v+r*(.8+Math.random()*.4),0,100);e.params.stock.v=e.cap*f.v/100;});
+    const rc=ys.find(e=>e.mode==='reclaim'),st=ys.find(e=>e.mode==='stack');
+    if(rc&&st&&rc.params.fill.v<=4){rc.mode='stack';st.mode='reclaim';syncYardTags();
+      toast(`${LINE_NM[L]} 프리블렌딩: ${st.n} 사용(Reclaiming) 시작 · ${rc.n} 적재(Stacking) 전환`,'act');}});
+  syncYards();
+}
+function syncYardTags(){PB_DEF.forEach(d=>{const b=TAG['eq'+d.id];if(b)b.querySelector('span').textContent=E[d.id].name;});}
 function tick(){
   if(MODE==='sim'){
     evTimer+=2;
@@ -1950,6 +2027,7 @@ function tick(){
       p.v+=(p.target-p.v)*.14+gauss()*p.noise;
       if(p.min!=null)p.v=Math.max(p.min,p.v);if(p.max!=null)p.v=Math.min(p.max,p.v);
     });
+    stepSupply();
     E.DSP.params.wait.v=TRUCKS.filter(t=>t.kind==='bct'&&t.respawn<=0&&(t.state==='진입'||t.state==='계량')).length;
     const lab=E.LAB.params;if(Math.random()<.15){lab.queue.v=clamp(lab.queue.v+(Math.random()<.5?-1:1),2,7);}lab.done.v=Math.min(100,lab.done.v+.05);
     SAMPLES.forEach(x=>{if(x.st==='분석중'||x.st==='채취'||x.st==='양생중'){x.prog=Math.min(x.st==='양생중'?99:100,x.prog+(x.st==='양생중'?.02:.8));if(x.prog>=100){x.st='완료';toast(`${x.id} 분석 완료 · ${x.what}`,'ok');}if(x.st==='채취'&&x.prog>30)x.st='분석중';}});
@@ -2118,7 +2196,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-10 17:15</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-11 08:13</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
