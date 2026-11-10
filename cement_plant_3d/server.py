@@ -466,6 +466,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self._user():
                 return self._redirect("/login")
             return self._file(PAGE)
+        if path == "/logo.png":
+            return self._file(ROOT / "logo.png", "image/png")
         if path == "/login":
             return self._file(ROOT / "login.html")
         if path == "/account":

@@ -5,6 +5,7 @@ src.html 에 three.js · qms.js · 내장 QMS 기본 데이터(qms_default.json)
   artifact.html         — 미리보기용 (three.js 는 CDN, 나머지 포함)
 을 만듭니다.  사용: python build.py
 """
+import base64
 import datetime as dt
 import json
 from pathlib import Path
@@ -20,7 +21,7 @@ def safe(js: str) -> str:
 
 
 src = (HERE / "src.html").read_text(encoding="utf-8")
-BUILD = (dt.datetime.utcnow() + dt.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")   # 한국 시각
+BUILD = (dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))).strftime("%Y-%m-%d %H:%M")   # 한국 시각
 src = src.replace("__B365_BUILD__", BUILD).replace("<title>", f'<meta name="b365-build" content="{BUILD}">\n<title>', 1)
 for tag in (CDN, QMS_TAG, DEF_TAG):
     assert tag in src, f"src.html 에서 {tag[:40]}… 를 찾지 못했습니다"
@@ -30,7 +31,11 @@ data = json.dumps(json.loads(dflt.read_text(encoding="utf-8")), ensure_ascii=Fal
 body = (src.replace(QMS_TAG, "<script>\n" + safe(qms) + "\n</script>")
            .replace(DEF_TAG, '<script id="qmsDefault" type="application/json">' + data.replace("</", "<\\/") + "</script>"))
 
-(HERE / "artifact.html").write_text(body, encoding="utf-8")
+LOGO_IMG = '<span class="logo co"><img src="logo.png" alt="삼표시멘트"></span>'
+(HERE / "artifact.html").write_text(body.replace(LOGO_IMG, '<span class="logo" data-ic="cube"></span>'), encoding="utf-8")   # 미리보기에는 회사 로고 대신 기본 아이콘
+logo = HERE / "logo.png"
+if logo.exists():   # 사내망 완성본: 회사 로고를 파일 안에 넣음 (인터넷 없이 표시)
+    body = body.replace('src="logo.png"', 'src="data:image/png;base64,' + base64.b64encode(logo.read_bytes()).decode() + '"')
 lib = (HERE / "vendor" / "three.min.js").read_text(encoding="utf-8")
 offline = body.replace(CDN, "<script>\n" + safe(lib) + "\n</script>")
 html = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'

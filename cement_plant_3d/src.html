@@ -41,6 +41,10 @@ a{color:inherit;text-decoration:none}
 .brand{display:flex;align-items:center;gap:10px;padding:2px 8px 14px;white-space:nowrap}
 .logo{width:34px;height:34px;border-radius:10px;background:var(--accent);color:var(--on-accent);display:grid;place-items:center;flex:none}
 .logo .ic{width:20px;height:20px}
+.logo.co{display:flex;align-items:center;width:auto;height:auto;padding:5px 7px;background:#fff;border:1px solid var(--line);border-radius:10px}
+.logo.co img{height:24px;width:auto;display:block}
+.app.collapsed .logo.co{padding:4px}
+.app.collapsed .logo.co img{height:auto;width:42px}
 .brand b{font-size:17px;letter-spacing:-.2px;display:block}
 .brand small{font-size:11.5px;color:var(--fg3)}
 .grp{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--fg3);font-weight:600;letter-spacing:.4px;padding:14px 10px 6px;white-space:nowrap}
@@ -73,6 +77,8 @@ a{color:inherit;text-decoration:none}
 .top .mbrand{display:none;align-items:center;gap:8px;font-weight:700}
 .top .mbrand .logo{width:28px;height:28px;border-radius:8px}
 .top .mbrand .logo .ic{width:16px;height:16px}
+.top .mbrand .logo.co{display:flex!important;width:auto;height:auto;padding:4px 6px;border-radius:8px}
+.top .mbrand .logo.co img{height:18px}
 .search{position:relative;flex:1;max-width:440px;min-width:0}
 .search .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--fg3);width:18px;height:18px}
 .search input{width:100%;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;padding:0 40px 0 38px;outline:none}
@@ -427,7 +433,7 @@ table.ks td.r,table.ks th.r{text-align:right}
 
 <div class="app" id="app">
   <aside class="side" aria-label="메뉴">
-    <div class="brand"><span class="logo" data-ic="cube"></span><div><b>Blue365</b><small>시멘트 공정 모니터링</small></div></div>
+    <div class="brand"><span class="logo co"><img src="logo.png" alt="삼표시멘트"></span><div><b>Blue365</b><small>시멘트 공정 모니터링</small></div></div>
     <div class="grp"><span>모니터링</span></div>
     <a class="nav" href="#map" data-view="map"><span data-ic="map"></span><span>공정 지도</span></a>
     <a class="nav" href="#alarms" data-view="alarms"><span data-ic="alert"></span><span>알람</span><em class="nb" data-alarm-badge>0</em></a>
@@ -442,7 +448,7 @@ table.ks td.r,table.ks th.r{text-align:right}
 
   <div class="main">
     <header class="top">
-      <div class="mbrand"><span class="logo" data-ic="cube"></span><b>Blue365</b></div>
+      <div class="mbrand"><span class="logo co"><img src="logo.png" alt="삼표시멘트"></span><b>Blue365</b></div>
       <div class="search">
         <span data-ic="search"></span>
         <input id="q" type="search" autocomplete="off" placeholder="설비, 시료, 차량, 로트 검색" aria-label="설비, 시료, 차량 검색">
