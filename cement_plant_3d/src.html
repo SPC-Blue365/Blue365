@@ -612,7 +612,7 @@ const CS_DEF=[{id:'CS2',code:'CS-2',n:'2',tab:'A',x:97,z:-44,cap:15000},{id:'CS4
   {id:'CS64',code:'CS-6-4',n:'6-4',tab:'B',x:96,z:0,cap:30000,sep:1},{id:'CS65',code:'CS-6-5',n:'6-5',tab:'B',x:106,z:0,cap:30000},{id:'CS66',code:'CS-6-6',n:'6-6',tab:'B',x:116,z:0,cap:30000,sep:1}];
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
 const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
-const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C 2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C 3종',altNote:'6호 C/M S/C 3종 생산 시'}];
+const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C 2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C 3종',altNote:'6호 C/M S/C 3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
 SL_DEF.forEach((d,i)=>d.x=8+i*5.2);
 const SLD=Object.fromEntries(SL_DEF.map(d=>[d.id,d]));
 /* 시멘트 밀 투입·출하 경로 (현장 제공 정보). main=주력 품종 */
@@ -621,7 +621,7 @@ const ROUTE={
   CM3:{clk:'all',prods:[{p:'1종',silos:['SL5','SL6','SL7','SL8','SL9'],main:1},{p:'3종',silos:['SL9']}]},
   CM4:{clk:'all',prods:[{p:'1종',silos:['SL5','SL6','SL7','SL8','SL9'],main:1},{p:'3종',silos:['SL9']}]},
   CM5:{clk:'all',prods:[{p:'3종',silos:['SL1'],main:1},{p:'1종',silos:['SL2']}]},
-  CM6:{clk:'all',prods:[{p:'1종',silos:['SL8','SL11'],main:1},{p:'S/C 2종',silos:['SL10']},{p:'S/C 3종',silos:['SL11']}]},
+  CM6:{clk:'all',prods:[{p:'1종',silos:['SL8','SL11'],main:1},{p:'S/C 2종',silos:['SL10']},{p:'S/C 3종',silos:['SL11'],idle:'현재 생산 계획 없음'}]},
   CM7:{clk:'B',prods:[{p:'1종',silos:['SL5','SL6','SL7'],main:1}]}
 };
 /* 현재 운전 상태 (가상 예시) */
@@ -1054,7 +1054,9 @@ function setTab(t,o={}){
 }
 function tabBadge(t){const es=EQ.filter(e=>inTab(e,t));const bad=es.some(e=>eqStatus(e)==='bad'),n=es.filter(e=>RANK[eqStatus(e)]>0).length;return {n,bad,total:es.length};}
 function renderTabs(){
-  $('#ptabs').innerHTML=TABS.map(t=>{const b=tabBadge(t.id);return `<button type="button" role="tab" aria-selected="${curTab===t.id}" class="${curTab===t.id?'on':''}" data-ptab="${t.id}">${t.name}${b.n?`<i class="tdot${b.bad?' b':''}" title="이상 ${b.n}건"></i>`:''}</button>`;}).join('');
+  const h=TABS.map(t=>{const b=tabBadge(t.id);return `<button type="button" role="tab" aria-selected="${curTab===t.id}" class="${curTab===t.id?'on':''}" data-ptab="${t.id}">${t.name}${b.n?`<i class="tdot${b.bad?' b':''}" title="이상 ${b.n}건"></i>`:''}</button>`;}).join('');
+  const el=$('#ptabs');if(el.dataset.h===h)return;   // 바뀔 때만 다시 그림 (누르는 중 클릭이 빠지지 않게)
+  el.dataset.h=h;el.innerHTML=h;
   $$('[data-ptab]').forEach(b=>b.onclick=()=>setTab(b.dataset.ptab));
 }
 function applyCam(){const sp=Math.sin(cam.phi);camera.position.set(cam.tx+cam.dist*sp*Math.sin(cam.theta),cam.dist*Math.cos(cam.phi),cam.tz+cam.dist*sp*Math.cos(cam.theta));camera.lookAt(cam.tx,0,cam.tz);}
@@ -1212,7 +1214,7 @@ function routeBlock(e){
       row(c&&c.qms?`현재 생산 (QMS ${stamp(tsDate(c.ts))})`:'현재 생산 (가상)',c&&c.prod?`${PROD_NAME[c.prod]||c.prod} → ${c.siloLabel||nm(c.silo)}${routeOk(e.id)?'':' <span class="badge s-warn">경로표와 다름</span>'}`:'<span style="color:var(--warn)">확인 필요</span>')+
       row('현재 사용 클링커 (가상)',c&&c.clk?nm(c.clk):'—')+
       row('사용 가능 클링커',r.clk==='all'?'모든 킬른(3~7호) 클링커 사일로':'6·7호 킬른 클링커만 (6-1~6-6호 사일로)')+
-      (r.prods.length?r.prods.map(x=>row(`${x.p}${x.guess?' (품종 추정)':''}${x.main?' · 주력':''}`,x.silos.map(s=>E[s].n).join('·')+'호 사일로')).join(''):row('생산 품종·투입 사일로','<span style="color:var(--warn)">확인 필요</span>'))+
+      (r.prods.length?r.prods.map(x=>row(`${x.p}${x.guess?' (품종 추정)':''}${x.main?' · 주력':''}`,x.silos.map(s=>E[s].n).join('·')+'호 사일로'+(x.idle?` <small style="color:var(--fg3)">(${x.idle})</small>`:''))).join(''):row('생산 품종·투입 사일로','<span style="color:var(--warn)">확인 필요</span>'))+
       row('혼합재','4호 사일로 F/A (플라이애시)')}</dl>`;}
   if(SLD[e.id]){const d=SLD[e.id];
     return `<div class="sect">투입 경로</div><dl class="kv">${d.fa?row('용도','혼합재(F/A) 보관 → 시멘트 밀 투입')+row('투입 대상','2~7호 C/M (혼합재)'):
@@ -1582,7 +1584,7 @@ function millTable(){
     const s=eqStatus(m),r=ROUTE[m.id],c=CUR[m.id],ok=routeOk(m.id);
     return `<tr class="krw" data-goto="${m.id}" tabindex="0"><td><b>${m.n}호</b></td><td><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span></td><td class="r num">${fv(m.params.load,0)}%</td><td class="r num">${fv(m.params.blaine)}</td><td class="r num">${fv(m.params.so3,2)}</td>
      <td>${c&&c.prod?`${c.prod} → ${esc(c.siloLabel||(E[c.silo]?E[c.silo].n+'호':'-'))}${c.qms?` <small style="color:var(--fg3)">${md(tsDate(c.ts))}</small>`:' (가상)'}${ok?'':' <span class="badge s-warn">경로표와 다름</span>'}`:'—'}</td><td>${r.clk==='all'?'전 킬른 (3~7호)':'6·7호 킬른만'}</td>
-     <td style="white-space:normal">${r.prods.map(x=>`${x.p}${x.main?'(주)':''} → ${x.silos.map(id=>E[id].n).join('·')}호`).join('<br>')}</td><td>${ic('chevR')}</td></tr>`;}).join('')}</tbody></table></div>`;
+     <td style="white-space:normal">${r.prods.map(x=>`${x.p}${x.main?'(주)':''} → ${x.silos.map(id=>E[id].n).join('·')}호${x.idle?` <small style="color:var(--fg3)">(${x.idle})</small>`:''}`).join('<br>')}</td><td>${ic('chevR')}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 function kilnTable(){
   const cls=p=>{const s=pStatus(p);return off(p)||s==='ok'?'':'st-'+s;};
