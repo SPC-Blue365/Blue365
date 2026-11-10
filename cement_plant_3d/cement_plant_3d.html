@@ -94,6 +94,8 @@ a{color:inherit;text-decoration:none}
 .plant b{display:block;font-size:13px}
 .plant small{font-size:11.5px;color:var(--fg3)}
 .live{display:inline-flex;align-items:center;gap:7px;background:var(--ok-soft);color:var(--ok);font-weight:600;font-size:13px;border-radius:999px;padding:6px 12px;white-space:nowrap}
+.live.data{background:var(--accent-soft);color:var(--accent)}
+.live.data i{background:var(--accent);animation:none}
 .live i{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:pulse 2s var(--ease) infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 50%,transparent)}100%{box-shadow:0 0 0 8px transparent}}
 .icon-btn{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--fg2);position:relative;flex:none}
@@ -115,7 +117,7 @@ a{color:inherit;text-decoration:none}
 #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .tag{position:absolute;left:0;top:0;pointer-events:auto;display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;border-radius:999px;background:var(--card);color:var(--fg);font-size:12px;font-weight:600;box-shadow:var(--shadow);white-space:nowrap;will-change:transform;transition:background .2s,color .2s}
 .tag i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
-.tag.s-warn i{background:var(--warn)} .tag.s-bad i{background:var(--bad)}
+.tag.s-warn i{background:var(--warn)} .tag.s-bad i{background:var(--bad)} .tag.s-none i{background:var(--fg3)}
 .tag small{font-weight:500;color:var(--fg3)}
 .tag.sel{background:var(--accent);color:var(--on-accent);z-index:2}
 .tag.sel small{color:var(--on-accent);opacity:.85}
@@ -158,7 +160,7 @@ a{color:inherit;text-decoration:none}
 .badge.s-warn{color:var(--warn);background:var(--warn-soft)}
 .badge.s-bad{color:var(--bad);background:var(--bad-soft)}
 .badge.s-act{color:var(--accent);background:var(--accent-soft)}
-.badge.s-idle{color:var(--fg2);background:var(--idle-soft)}
+.badge.s-idle,.badge.s-none{color:var(--fg2);background:var(--idle-soft)}
 .bar{height:6px;border-radius:3px;background:var(--idle-soft);overflow:hidden}
 .bar i{display:block;height:100%;border-radius:3px;background:var(--ok);transition:width .6s var(--ease)}
 .bar i.s-warn{background:var(--warn)} .bar i.s-bad{background:var(--bad)} .bar i.s-act{background:var(--accent)}
@@ -311,6 +313,32 @@ table.ks td.r,table.ks th.r{text-align:right}
 @keyframes tin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes tout{to{opacity:0;transform:translateY(8px)}}
 .tabbar{display:none}
+.dbtn{height:40px;padding:0 14px;border-radius:12px;background:var(--accent);color:var(--on-accent);font-weight:700;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:none}
+.dbtn .ic{width:18px;height:18px}
+.modal{position:fixed;inset:0;background:rgba(15,17,21,.45);z-index:80;display:grid;place-items:center;padding:16px;animation:fin .2s var(--ease)}
+@keyframes fin{from{opacity:0}to{opacity:1}}
+.mbox{background:var(--card);border-radius:var(--r);width:min(580px,100%);max-height:calc(100% - 32px);overflow:auto;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow);animation:tin .3s var(--ease)}
+.mh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.mh h2{margin:2px 0 0;font-size:20px;letter-spacing:-.3px}
+.drop{border:1.5px dashed var(--line);border-radius:16px;background:var(--preview);padding:24px 16px;text-align:center;display:flex;flex-direction:column;gap:6px;align-items:center;cursor:pointer;transition:border-color .2s var(--ease),background .2s var(--ease)}
+.drop.over,.drop:hover{border-color:var(--accent);background:var(--accent-soft)}
+.drop b{font-size:15px}
+.drop small{color:var(--fg3)}
+.drop .ic{width:30px;height:30px;color:var(--accent)}
+.stat{background:var(--preview);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:7px;font-size:13px}
+.stat .row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.stat .row > span:first-child{color:var(--fg3);white-space:nowrap}
+.stat .row b{text-align:right;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.msgs{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;font-size:12.5px}
+.msg{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--warn-soft);color:var(--fg);line-height:1.45}
+.msg .ic{width:16px;height:16px;margin-top:1px;color:var(--warn)}
+.msg.err{background:var(--bad-soft)} .msg.err .ic{color:var(--bad)}
+.msg.ok{background:var(--ok-soft)} .msg.ok .ic{color:var(--ok)}
+.field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--fg2)}
+.field input{height:40px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;padding:0 12px;outline:none}
+.field input:focus{border-color:var(--accent)}
+.acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.lnk{color:var(--accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 .nogl{position:absolute;inset:0;display:grid;place-items:center;color:var(--fg3);text-align:center;padding:24px}
 
 @media (max-width:1380px){.lot-side{display:none}}
@@ -350,6 +378,10 @@ table.ks td.r,table.ks th.r{text-align:right}
   .al{grid-template-columns:1fr;gap:8px}
   .al .t{display:flex;gap:8px;align-items:baseline}
   .al .t b{display:inline}
+  .dbtn{width:40px;padding:0;justify-content:center}
+  .dbtn span:not([data-ic]){display:none}
+  .modal{place-items:end center;padding:0}
+  .mbox{border-radius:20px 20px 0 0;max-height:88%;width:100%;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
   .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;height:calc(62px + env(safe-area-inset-bottom,0px));padding:0 max(16px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0px) max(16px,env(safe-area-inset-left,0px));background:var(--card);border-top:1px solid var(--line);z-index:50}
   .tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:var(--fg3);position:relative}
   .tabbar a.on{color:var(--accent)}
@@ -382,8 +414,9 @@ table.ks td.r,table.ks th.r{text-align:right}
         <div class="results" id="results" hidden></div>
       </div>
       <div class="spacer"></div>
-      <div class="plant"><span class="code">K1</span><div><b>1공장 · 킬른 1호</b><small>설계 5,000 t/d · 가상 데이터</small></div></div>
-      <span class="live" title="2초마다 갱신"><i></i>Live <b class="num" id="clock">--:--</b></span>
+      <div class="plant"><span class="code">K1</span><div><b>1공장 · 킬른 1호</b><small id="modeTxt">설계 5,000 t/d · 가상 데이터</small></div></div>
+      <span class="live" id="liveChip" title="화면 갱신 상태"><i></i><span id="liveTxt">Live</span> <b class="num" id="clock">--:--</b></span>
+      <button class="dbtn" type="button" id="dataBtn" aria-label="데이터 불러오기"><span data-ic="upload"></span><span>데이터</span></button>
       <button class="icon-btn" type="button" id="themeBtn" aria-label="화면 테마 바꾸기"><span data-ic="moon"></span></button>
       <a class="icon-btn" href="#alarms" aria-label="알람 보기"><span data-ic="bell"></span><span class="dot" id="bellDot" hidden></span></a>
       <div class="user"><span class="avatar">QC</span><div><b>품질관리팀</b><small>모니터링 담당</small></div></div>
@@ -439,6 +472,13 @@ table.ks td.r,table.ks th.r{text-align:right}
     <a href="#alarms" data-view="alarms"><span data-ic="alert"></span>알람<em class="nb" data-alarm-badge>0</em></a>
   </nav>
 </div>
+<div class="modal" id="dataModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="dmTitle">
+    <div class="sheet-handle"></div>
+    <div class="mh"><div><div class="eyebrow">데이터</div><h2 id="dmTitle">데이터 불러오기</h2></div><button class="icon-btn" type="button" id="dmClose" aria-label="닫기"><span data-ic="x"></span></button></div>
+    <div id="dmBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script>
@@ -467,6 +507,8 @@ const md=d=>(d.getMonth()+1)+'/'+d.getDate();
 const stamp=d=>{const n=new Date();return d.toDateString()===n.toDateString()?hhmm(d):md(d)+' '+hhmm(d);};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const isMobile=()=>matchMedia('(max-width:760px)').matches;
+/* 표시 모드: sim=가상 시뮬레이션, data=업로드/팀 공유 데이터 */
+let MODE='sim', DATA=null, SERVER=null, PENDING=null;
 
 const ICON={
   cube:'<path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M12 12l8.5-4.7M12 12L3.5 7.3M12 12v9.5"/>',
@@ -496,7 +538,9 @@ const ICON={
   info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   check:'<path d="M5 12l5 5L20 7"/>',
   factory:'<path d="M3 21V10l6 4V10l6 4V6h6v15z"/>',
-  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>',
+  file:'<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/>'
 };
 const ic=(n,c='')=>`<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]||''}</svg>`;
 function paintIcons(root=document){$$('[data-ic]',root).forEach(el=>{if(el.dataset.done)return;el.insertAdjacentHTML('afterbegin',ic(el.dataset.ic));el.dataset.done=1;});}
@@ -504,10 +548,11 @@ function paintIcons(root=document){$$('[data-ic]',root).forEach(el=>{if(el.datas
 /* =========================================================
    가상 공정 데이터 (모든 수치는 시연용 가상값)
    ========================================================= */
-const ST={ok:'정상',warn:'주의',bad:'이탈'};
-const RANK={ok:0,warn:1,bad:2};
+const ST={ok:'정상',warn:'주의',bad:'이탈',none:'데이터 없음'};
+const RANK={none:-1,ok:0,warn:1,bad:2};
 function P(label,unit,v,lo,hi,dp,noise,o={}){return Object.assign({label,unit,v,base:v,target:v,lo,hi,dp,noise,hist:[]},o);}
 function pStatus(p){
+  if(MODE==='data'&&!p.has)return 'ok';
   if(p.lo==null&&p.hi==null)return 'ok';
   if((p.hi!=null&&p.v>p.hi)||(p.lo!=null&&p.v<p.lo))return 'bad';
   const m=(p.lo!=null&&p.hi!=null)?(p.hi-p.lo)*0.1:Math.abs(p.hi??p.lo)*0.04;
@@ -558,8 +603,10 @@ const E=Object.fromEntries(EQ.map(e=>[e.id,e]));
 const allParams=()=>EQ.flatMap(e=>Object.entries(e.params).map(([k,p])=>({e,k,p})));
 // 초기 이력(가상): 최근 90포인트
 allParams().forEach(({p})=>{let v=p.v;const h=[];for(let i=0;i<90;i++){v+= (p.base-v)*.15+gauss()*(p.noise||0);h.unshift(v);}h[h.length-1]=p.v;p.hist=h;p.prev=pStatus(p);});
-function eqStatus(e){let s='ok';for(const p of Object.values(e.params)){const t=pStatus(p);if(RANK[t]>RANK[s])s=t;}return s;}
+function eqStatus(e){if(MODE==='data'&&!Object.values(e.params).some(p=>p.has))return 'none';let s='ok';for(const p of Object.values(e.params)){const t=pStatus(p);if(RANK[t]>RANK[s])s=t;}return s;}
 
+const fv=(p,dp=p.dp)=>(MODE==='data'&&!p.has)?'—':nf(p.v,dp);
+const bw=p=>(MODE==='data'&&!p.has)?0:clamp(p.v,0,100);
 function chem(){
   const c=E.CKS.params, C=c.cao.v,S=c.sio2.v,A=c.al.v,F=c.fe.v,SO=c.so3.v,f=c.fcao.v;
   const lsf=C/(2.8*S+1.18*A+.65*F)*100, sm=S/(A+F), im=A/F;
@@ -568,10 +615,15 @@ function chem(){
 }
 function cement(){
   const ch=chem(), cm=E.CM.params, fc=E.CKS.params.fcao.v;
-  const s28=52.0+.30*(ch.c3s-56.9)+.0045*(cm.blaine.v-3350)-2.0*Math.max(0,fc-1.5);
-  return {blaine:cm.blaine.v,so3:cm.so3.v,mgo:E.CKS.params.mgo.v*.95,loi:2.1,s7:s28*.71,s28};
+  const pred=52.0+.30*(ch.c3s-56.9)+.0045*(cm.blaine.v-3350)-2.0*Math.max(0,fc-1.5);
+  if(MODE!=='data')return {blaine:cm.blaine.v,so3:cm.so3.v,mgo:E.CKS.params.mgo.v*.95,loi:2.1,s7:pred*.71,s28:pred,m7:false,m28:false};
+  const C=DATA.cem, L=C[C.length-1]||{};
+  const last=k=>{for(let i=C.length-1;i>=0;i--)if(C[i][k]!=null)return C[i];return null;};
+  const r28=last('s28'),r7=last('s7'),canPred=DATA.xrf.length>0&&cm.blaine.has;
+  return {blaine:cm.blaine.has?cm.blaine.v:null,so3:cm.so3.has?cm.so3.v:null,mgo:L.mgo??null,loi:L.loi??null,
+    s7:r7?r7.s7:(canPred?pred*.71:null),s28:r28?r28.s28:(canPred?pred:null),m7:!!r7,m28:!!r28,t28:r28&&r28.t};
 }
-const kilnTpd=()=>E.KL.params.feed.v*24/1.62;
+const kilnTpd=()=>{if(MODE==='data'){const L=DATA.prod[DATA.prod.length-1];return L?L.clk:null;}return E.KL.params.feed.v*24/1.62;};
 
 /* 시료 (가상) */
 const SAMPLES=[
@@ -838,7 +890,7 @@ function stepTruck(t,dt){
     if(o.wait){t.wait=t.waitTot=o.wait;t.loading=!!o.load;t.filling=!!o.fill;t.dumping=!!o.dump;}
     if(o.state==='출하')t.doneAt=new Date();
     t.i++;
-    if(o.end){E.DSP.params.ship.v+=t.load;t.g.visible=false;t.respawn=4+Math.random()*6;if(sel&&sel.type==='truck'&&sel.id===t.id)select(null);}
+    if(o.end){if(MODE==='sim')E.DSP.params.ship.v+=t.load;t.g.visible=false;t.respawn=4+Math.random()*6;if(sel&&sel.type==='truck'&&sel.id===t.id)select(null);}
     if(t.i>=t.route.length)t.i=0;
   }else{t.x+=dx/dist*step;t.z+=dz/dist*step;t.s+=step;}
   t.g.position.set(t.x,0,t.z);
@@ -920,8 +972,8 @@ function buildTags(){
 function updateTagClasses(){
   const m=isMobile();
   EQ.forEach(e=>{const b=TAG['eq'+e.id];if(!b)return;const s=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
-    b.className='tag s-'+s+(on?' sel':'');b.querySelector('small').textContent=on?(e.code+' · '+(s==='ok'?'정상 운전':ST[s])):(s!=='ok'?ST[s]:'');
-    b.dataset.hide=(m&&!on&&s==='ok')?'1':'';});
+    b.className='tag s-'+s+(on?' sel':'');b.querySelector('small').textContent=on?(e.code+' · '+(s==='ok'?'정상 운전':ST[s])):(RANK[s]>0?ST[s]:'');
+    b.dataset.hide=(m&&!on&&RANK[s]<=0)?'1':'';});
   TRUCKS.forEach(t=>{const b=TAG['truck'+t.id];if(!b)return;const on=sel&&sel.type==='truck'&&sel.id===t.id;const hv=hovered==='truck'+t.id;
     b.className='tag mini'+(on?' sel':'');b.querySelector('small').textContent=t.state;b.dataset.hide=(on||hv||(!m&&t.kind==='bct'&&t.state==='적재중'))?'':'1';});
 }
@@ -988,7 +1040,7 @@ function select(s,o={}){
   if(isMobile()){$('#detail').classList.toggle('closed',!sel);if(sel)$('#list').classList.add('closed');}
 }
 function sparkSVG(p){
-  const h=p.hist.slice(-60);const lo=Math.min(...h,p.lo??Infinity),hi=Math.max(...h,p.hi??-Infinity);
+  let h=p.hist.slice(-60);if(h.length===1)h=[h[0],h[0]];if(!h.length)return '';const lo=Math.min(...h,p.lo??Infinity),hi=Math.max(...h,p.hi??-Infinity);
   const rg=(hi-lo)||1;const mn=lo-rg*.12,mx=hi+rg*.12;const W=300,H=64;
   const y=v=>(H-4)-(v-mn)/(mx-mn)*(H-8);const x=i=>i/(h.length-1)*W;
   let s=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="chart" aria-hidden="true">`;
@@ -1000,9 +1052,10 @@ function sparkSVG(p){
 }
 function kvRows(e){
   return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);
-    return `<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${nf(p.v,p.dp)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null?`<span class="lim">${limTxt(p)}</span>`:''}</dd></div>`;}).join('');
+    return `<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${fv(p)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null?`<span class="lim">${limTxt(p)}</span>`:''}</dd></div>`;}).join('');
 }
 function chemBlock(){
+  if(MODE==='data'&&!DATA.xrf.length)return `<div class="sect">클링커 화학</div><div class="note">클링커XRF 시트를 올리면 LSF·SM·IM과 광물 조성(Bogue)을 계산해 보여 줍니다.</div>`;
   const c=chem();const st=(v,a,b)=>v<a||v>b?'bad':(v<a+(b-a)*.1||v>b-(b-a)*.1?'warn':'ok');
   return `<div class="sect">클링커 화학 (최근 XRF) <small>Bogue 계산</small></div>
   <div class="chips">
@@ -1023,19 +1076,19 @@ function renderDetail(){
   if(sel.type==='eq'){
     const e=E[sel.id],s=eqStatus(e),bp=e.params[e.bar],pp=e.params[e.primary];
     const worst=Object.values(e.params).filter(p=>pStatus(p)!=='ok').sort((a,b)=>RANK[pStatus(b)]-RANK[pStatus(a)])[0];
-    const head=worst?`${worst.label} ${nf(worst.v,worst.dp)}${worst.unit} · ${limTxt(worst)}`:`${pp.label} ${nf(pp.v,pp.dp)}${pp.unit}`;
+    const head=worst?`${worst.label} ${nf(worst.v,worst.dp)}${worst.unit} · ${limTxt(worst)}`:`${pp.label} ${fv(pp)}${pp.unit}`;
     const smp=SAMPLES.filter(x=>x.eq===e.id);
     el.innerHTML=`<div class="sheet-handle"></div>
     <div class="dp-head"><div class="dp-ico">${ic(e.icon)}</div><div style="min-width:0"><div class="eyebrow">${AREA[e.area].name} · ${e.code}</div><div class="dp-name">${e.name}</div><div class="dp-sub">${e.spec}</div></div>
      <div class="dp-act"><button type="button" data-act="fly" aria-label="이 설비로 이동" data-tip="이 설비로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
     <div class="dp-st"><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span><span>${head}</span></div>
-    <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${nf(bp.v,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${clamp(bp.v,0,100)}%"></i></div></div>
-    <div class="spark"><div class="sh"><span>${pp.label} · 최근 2분</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>
+    <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
+    ${(MODE==='data'&&!pp.has)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>데이터 없음</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${MODE==='data'?`최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
     ${e.id==='KL'||e.id==='CKS'?chemBlock():''}
-    ${e.id==='LAB'?`<div class="sect">28일 강도 예측 <small>가상 모델</small></div><dl class="kv"><div><dt>28일 압축강도 (예측)</dt><dd class="num">${nf(cement().s28,1)}<small>MPa</small><span class="lim">KS L 5201 1종 42.5 이상</span></dd></div></dl>`:''}
+    ${e.id==='LAB'?`<div class="sect">28일 강도 예측 <small>가상 모델</small></div><dl class="kv"><div><dt>28일 압축강도 (${cement().m28?'실측':'예측'})</dt><dd class="num">${cement().s28==null?'—':nf(cement().s28,1)}<small>MPa</small><span class="lim">KS L 5201 1종 42.5 이상</span></dd></div></dl>`:''}
     ${smp.length?`<div class="sect">관련 시료</div><dl class="kv">${smp.map(x=>`<div><dt>${x.id} · ${x.what}</dt><dd><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span></dd></div>`).join('')}</dl>`:''}
-    <div class="note">수치는 시연용 가상 데이터입니다. 관리기준은 예시값이며 사내 기준으로 바꿔 쓰세요.</div>`;
+    <div class="note">${dataNote()}</div>`;
   }else{
     const t=TRUCKS.find(x=>x.id===sel.id);if(!t){sel=null;return renderDetail();}
     const bct=t.kind==='bct';const moving=t.wait<=0&&t.respawn<=0;
@@ -1052,7 +1105,7 @@ function renderDetail(){
       <div><dt>사일로</dt><dd>${t.silo}</dd></div>
       <div><dt>품질 판정</dt><dd><span class="badge s-ok">적합 (예측)</span></dd></div>
       <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`:`
-      <div><dt>적재물</dt><dd>석회석 (CaO ${nf(E.QRY.params.cao.v,1)}%)</dd></div>
+      <div><dt>적재물</dt><dd>석회석 (CaO ${fv(E.QRY.params.cao,1)}%)</dd></div>
       <div><dt>금일 운반</dt><dd class="num">${t.id==='DT-01'?31:29}<small>회</small></dd></div>
       <div><dt>속도</dt><dd class="num">${moving?nf(t.speed*1.6,0):0}<small>km/h</small></dd></div>`}
     </dl>
@@ -1070,15 +1123,15 @@ function renderList(){
   $('#cEq').textContent=EQ.length;$('#cSmp').textContent=SAMPLES.filter(s=>s.st!=='완료').length+'/'+SAMPLES.length;$('#cTrk').textContent=bctT.length;
   const rows=$('#rows');let h='';
   if(listTab==='eq'){
-    $('#listMeta').textContent='이상 '+EQ.filter(e=>eqStatus(e)!=='ok').length+'건';
+    $('#listMeta').textContent='이상 '+EQ.filter(e=>RANK[eqStatus(e)]>0).length+'건';
     const order=[...EQ].sort((a,b)=>RANK[eqStatus(b)]-RANK[eqStatus(a)]);
     h=order.map(e=>{const s=eqStatus(e),bp=e.params[e.bar],on=sel&&sel.type==='eq'&&sel.id===e.id;
-      return `<button type="button" class="rw${on?' on':''}" data-eq="${e.id}"><span class="a"><b>${e.name}</b><small>${e.code}</small></span><span class="d">${AREA[e.area].name} · ${e.params[e.primary].label}</span><span class="badge s-${s}">${ST[s]}</span><span class="p"><span class="bar"><i class="s-${pStatus(bp)==='ok'?'ok':pStatus(bp)}" style="width:${clamp(bp.v,0,100)}%"></i></span><span class="num">${nf(bp.v,0)}%</span></span>${ic('chevR')}</button>`;}).join('');
+      return `<button type="button" class="rw${on?' on':''}" data-eq="${e.id}"><span class="a"><b>${e.name}</b><small>${e.code}</small></span><span class="d">${AREA[e.area].name} · ${e.params[e.primary].label}</span><span class="badge s-${s}">${ST[s]}</span><span class="p"><span class="bar"><i class="s-${pStatus(bp)==='ok'?'ok':pStatus(bp)}" style="width:${bw(bp)}%"></i></span><span class="num">${fv(bp,0)}%</span></span>${ic('chevR')}</button>`;}).join('');
   }else if(listTab==='smp'){
-    $('#listMeta').textContent='품질관리실 대기 '+E.LAB.params.queue.v+'건';
+    $('#listMeta').textContent=MODE==='data'?'시료 목록은 가상 예시':'품질관리실 대기 '+E.LAB.params.queue.v+'건';
     h=SAMPLES.map(x=>`<button type="button" class="rw" data-eq="${x.eq}"><span class="a"><b>${x.id}</b><small>${hhmm(x.time)} 채취</small></span><span class="d"><i></i>${x.what}</span><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span><span class="p"><span class="bar"><i class="s-act" style="width:${x.prog}%"></i></span><span class="num">${x.prog}%</span></span>${ic('chevR')}</button>`).join('');
   }else{
-    $('#listMeta').textContent='금일 '+nf(E.DSP.params.ship.v)+' t 출하';
+    $('#listMeta').textContent=MODE==='data'?'출하 '+fv(E.DSP.params.ship,0)+' t · 차량은 가상':'금일 '+nf(E.DSP.params.ship.v)+' t 출하';
     h=bctT.map(t=>{const on=sel&&sel.type==='truck'&&sel.id===t.id;return `<button type="button" class="rw${on?' on':''}" data-trk="${t.id}"><span class="a"><b>${t.id}</b><small>${t.shp}</small></span><span class="d"><i></i>${t.silo} · ${t.product}</span><span class="badge ${t.state==='적재중'?'s-act':t.state==='출하'?'s-ok':'s-idle'}">${t.state}</span><span class="p"><span class="bar"><i class="s-act" style="width:${t.load/t.cap*100}%"></i></span><span class="num">${nf(t.load,0)} t</span></span>${ic('chevR')}</button>`;}).join('')||'<div class="empty-st">현재 구내 출하 차량이 없습니다.</div>';
   }
   rows.innerHTML=h;
@@ -1093,29 +1146,36 @@ function renderLot(){
   if(!t){$('#lot').hidden=true;return;}
   const done=t.state==='출하'||t.respawn>0;
   const lastTxt=t.respawn>0||t.state==='출하'?'완료 '+(t.doneAt?hhmm(t.doneAt):''):t.state==='적재중'?`적재 ${nf(t.load,0)}/28 t`:t.state;
-  $('#lot').innerHTML=`<div class="lot-main"><div class="lot-h">${ic('box')}로트 추적<small>${t.lot} · ${t.product} · ${t.id}</small></div>
+  $('#lot').innerHTML=`<div class="lot-main"><div class="lot-h">${ic('box')}로트 추적<small>${t.lot} · ${t.product} · ${t.id}${MODE==='data'?' · 가상 예시':''}</small></div>
    <div class="steps">${STEPS.map((s,i)=>{const cls=i<5||done?'done':'cur';return `<div class="step ${cls}"><span class="sb">${ic(i<5||done?(i===5?'check':s[1]):s[1])}</span><b>${s[0]}</b><small>${i<5?stamp(t.steps[i]):lastTxt}</small></div>`;}).join('')}</div></div>
    <div class="lot-side"><b class="id">${t.shp}</b><div class="row"><span>도착지</span><span>${t.cust}</span></div><div class="row"><span>클링커</span><span>${t.clk}</span></div><div class="row"><span>사일로</span><span>${t.silo}</span></div><div class="row"><span>판정</span><span style="color:var(--ok)">적합 (예측)</span></div></div>`;
 }
 
 /* KPI */
 function kpiCards(rep){
+  const D=MODE==='data'?DATA:null;
   const tpd=kilnTpd(),fc=E.CKS.params.fcao,cmt=cement(),sf=pStatus(fc);
-  const k=[
-   {ic:'factory',l:'클링커 생산',v:nf(tpd),u:'t/d',d:`${tpd>=5000?'▲':'▼'} ${nf(Math.abs(tpd/5000*100-100),1)}%`,dc:tpd>=5000?'up':'dn',s:'설계 5,000 t/d 대비',tip:'생료 투입량 × 24 ÷ 생료/클링커 환산계수 1.62 (가상)'},
-   {ic:'flame',l:'킬른 가동률',v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:'최근 30일 · 정지 4.2시간',tip:'(달력시간 − 정지시간) ÷ 달력시간'},
-   {ic:'flask',l:'클링커 f-CaO',v:nf(fc.v,2),u:'%',d:ST[sf],dc:sf==='ok'?'up':'dn',s:limTxt(fc)+' (가상)',tip:'최근 클링커 시료의 유리석회. 높으면 소성 부족, 너무 낮으면 과소성 의심'},
-   {ic:'chart',l:'28일 강도 예측',v:nf(cmt.s28,1),u:'MPa',d:cmt.s28>=42.5?'KS 적합':'KS 미달',dc:cmt.s28>=42.5?'up':'dn',s:'KS L 5201 1종 42.5 이상',tip:'C₃S·분말도·f-CaO 기반 가상 회귀식. 실제 공시체 결과로 보정 필요'}
-  ];
-  if(rep)k[1]={ic:'truck',l:'금일 출하',v:nf(E.DSP.params.ship.v),u:'t',d:nf(E.DSP.params.ship.v/E.DSP.params.plan.v*100,0)+'%',dc:'nt',s:'계획 5,200 t 대비',tip:'계량 완료된 벌크·포장 출하 합계'};
-  return k.map(x=>`<div class="kpi"><span class="kic">${ic(x.ic)}</span><div style="min-width:0"><div class="kl">${x.l}<span class="tipi" tabindex="0" data-tip="${esc(x.tip)}">${ic('info')}</span></div><div class="kval num">${x.v}<small>${x.u}</small></div><div class="ks"><span class="delta ${x.dc}">${x.d}</span> ${x.s}</div></div></div>`).join('');
+  const LP=D&&D.prod.length?D.prod[D.prod.length-1]:null;
+  const k=[];
+  k.push(tpd==null?{ic:'factory',l:'클링커 생산',v:'—',u:'t/d',s:'생산출하 시트를 올리면 표시',tip:'생산출하 시트의 클링커생산 열'}:
+    {ic:'factory',l:'클링커 생산',v:nf(tpd),u:'t/d',d:`${tpd>=5000?'▲':'▼'} ${nf(Math.abs(tpd/5000*100-100),1)}%`,dc:tpd>=5000?'up':'dn',s:D?`${md(LP.t)} 실적 · 설계 5,000 대비`:'설계 5,000 t/d 대비',tip:D?'생산출하 시트의 마지막 일자 클링커생산':'생료 투입량 × 24 ÷ 생료/클링커 환산계수 1.62 (가상)'});
+  if(rep){const sp=E.DSP.params;const has=!D||sp.ship.has;
+    k.push(has?{ic:'truck',l:D?'최근 출하':'금일 출하',v:nf(sp.ship.v),u:'t',d:sp.plan.v>0?nf(sp.ship.v/sp.plan.v*100,0)+'%':'',dc:'nt',s:`계획 ${nf(sp.plan.v)} t 대비`+(D&&LP?` · ${md(LP.t)}`:''),tip:'계량 완료된 벌크·포장 출하 합계'}:
+      {ic:'truck',l:'출하',v:'—',u:'t',s:'생산출하 시트를 올리면 표시',tip:'생산출하 시트의 시멘트출하·출하계획 열'});}
+  else if(D){k.push(LP&&LP.run!=null?{ic:'flame',l:'킬른 가동률',v:nf(LP.run,1),u:'%',s:`${md(LP.t)} 기준`,tip:'생산출하 시트의 킬른가동률 열'}:{ic:'flame',l:'킬른 가동률',v:'—',u:'%',s:'킬른가동률 열을 채우면 표시',tip:'생산출하 시트의 킬른가동률 열 (선택)'});}
+  else k.push({ic:'flame',l:'킬른 가동률',v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:'최근 30일 · 정지 4.2시간',tip:'(달력시간 − 정지시간) ÷ 달력시간'});
+  const fhas=!D||fc.has;
+  k.push({ic:'flask',l:'클링커 f-CaO',v:fv(fc,2),u:'%',d:fhas?ST[sf]:'',dc:sf==='ok'?'up':'dn',s:fhas?limTxt(fc)+(D?'':' (가상)'):'클링커XRF 시트를 올리면 표시',tip:'최근 클링커 시료의 유리석회. 높으면 소성 부족, 너무 낮으면 과소성 의심'});
+  k.push(cmt.s28==null?{ic:'chart',l:'28일 강도',v:'—',u:'MPa',s:'시멘트품질 시트를 올리면 표시',tip:'시멘트품질 시트의 28일강도(실측). 없으면 XRF·분말도로 예측'}:
+    {ic:'chart',l:cmt.m28?'28일 강도 실측':'28일 강도 예측',v:nf(cmt.s28,1),u:'MPa',d:cmt.s28>=42.5?'KS 적합':'KS 미달',dc:cmt.s28>=42.5?'up':'dn',s:cmt.m28?`시료 ${md(cmt.t28)} · KS 42.5 이상`:'KS L 5201 1종 42.5 이상',tip:cmt.m28?'시멘트품질 시트의 가장 최근 28일 압축강도 실측값':'C₃S·분말도·f-CaO 기반 가상 회귀식. 실제 공시체 결과로 보정 필요'});
+  return k.map(x=>`<div class="kpi"><span class="kic">${ic(x.ic)}</span><div style="min-width:0"><div class="kl">${x.l}<span class="tipi" tabindex="0" data-tip="${esc(x.tip)}">${ic('info')}</span></div><div class="kval num">${x.v}<small>${x.u}</small></div><div class="ks">${x.d?`<span class="delta ${x.dc}">${x.d}</span> `:''}${x.s}</div></div></div>`).join('');
 }
 
 /* 사이드 구역 메뉴 */
 function renderAreas(){
-  $('#areaNav').innerHTML=AREAS.map(a=>{const n=a.eqs.filter(id=>eqStatus(E[id])!=='ok').length;const bad=a.eqs.some(id=>eqStatus(E[id])==='bad');
+  $('#areaNav').innerHTML=AREAS.map(a=>{const n=a.eqs.filter(id=>RANK[eqStatus(E[id])]>0).length;const bad=a.eqs.some(id=>eqStatus(E[id])==='bad');
     return `<button type="button" class="nav" data-area="${a.id}">${ic(a.icon)}<span>${a.name}</span><em class="nb ${n?(bad?'':'w'):'z'}">${n||a.eqs.length}</em></button>`;}).join('');
-  $$('[data-area]').forEach(b=>b.onclick=()=>{const a=AREA[b.dataset.area];if(view!=='map')location.hash='#map';flyTo(a.c[0],a.c[2],a.d);select({type:'eq',id:a.eqs.find(id=>eqStatus(E[id])!=='ok')||a.eqs[0]});});
+  $$('[data-area]').forEach(b=>b.onclick=()=>{const a=AREA[b.dataset.area];if(view!=='map')location.hash='#map';flyTo(a.c[0],a.c[2],a.d);select({type:'eq',id:a.eqs.find(id=>RANK[eqStatus(E[id])]>0)||a.eqs[0]});});
 }
 
 /* =========================================================
@@ -1165,48 +1225,70 @@ function bullet(name,v,dom,band,dp,tip){
 }
 function ksRows(){
   const c=cement();
+  const R=(n,u,v,dp,ks,kf,inn,inf)=>[n,u,v,dp,ks,v==null?null:kf(v),inn,v==null?null:inf(v)];
   return [
-   ['분말도 (Blaine)','cm²/g',c.blaine,0,'2,800 이상',c.blaine>=2800,'3,200~3,500',c.blaine>=3200&&c.blaine<=3500],
-   ['삼산화황 (SO₃)','%',c.so3,2,'3.5 이하',c.so3<=3.5,'1.9~2.6',c.so3>=1.9&&c.so3<=2.6],
-   ['산화마그네슘 (MgO)','%',c.mgo,2,'5.0 이하',c.mgo<=5,'4.0 이하',c.mgo<=4],
-   ['강열감량 (LOI)','%',c.loi,1,'3.0 이하 *',c.loi<=3,'2.5 이하',c.loi<=2.5],
-   ['7일 압축강도 (예측)','MPa',c.s7,1,'22.5 이상',c.s7>=22.5,'33.0 이상',c.s7>=33],
-   ['28일 압축강도 (예측)','MPa',c.s28,1,'42.5 이상',c.s28>=42.5,'48.0 이상',c.s28>=48]
+   R('분말도 (Blaine)','cm²/g',c.blaine,0,'2,800 이상',v=>v>=2800,'3,200~3,500',v=>v>=3200&&v<=3500),
+   R('삼산화황 (SO₃)','%',c.so3,2,'3.5 이하',v=>v<=3.5,'1.9~2.6',v=>v>=1.9&&v<=2.6),
+   R('산화마그네슘 (MgO)','%',c.mgo,2,'5.0 이하',v=>v<=5,'4.0 이하',v=>v<=4),
+   R('강열감량 (LOI)','%',c.loi,1,'3.0 이하 *',v=>v<=3,'2.5 이하',v=>v<=2.5),
+   R(`7일 압축강도 (${c.m7?'실측':'예측'})`,'MPa',c.s7,1,'22.5 이상',v=>v>=22.5,'33.0 이상',v=>v>=33),
+   R(`28일 압축강도 (${c.m28?'실측':'예측'})`,'MPa',c.s28,1,'42.5 이상',v=>v>=42.5,'48.0 이상',v=>v>=48)
   ];
 }
+function dataNote(){
+  if(MODE!=='data')return '수치는 시연용 가상 데이터입니다. 관리기준은 예시값이며 사내 기준으로 바꿔 쓰세요.';
+  return `${SERVER?'팀 공유':'업로드'} 데이터 (${esc(DATA.meta.fileName||'-')}) 기준입니다. 값이 없는 항목은 '—'로 표시하고 상태 판정에서 뺍니다.`;
+}
 function renderReport(){
-  const kl=eqStatus(E.KL),ks=ksRows(),ksOk=ks.every(r=>r[5]),inOk=ks.every(r=>r[7]);
-  const l1=kl==='ok'?'오늘 킬른은 <em>정상 운전</em> 중이고,':kl==='warn'?'오늘 킬른은 <em>주의 관찰</em>이 필요하고,':'킬른에 <em>관리기준 이탈</em>이 발생했고,';
-  const l2=ksOk?(inOk?'시멘트 품질은 <em>KS 기준을 충족</em>합니다.':'시멘트 품질은 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'시멘트 품질에 <em>KS 기준 미달</em> 항목이 있습니다.';
+  const D=MODE==='data'?DATA:null;
+  const kl=eqStatus(E.KL),ks=ksRows(),have=ks.filter(r=>r[2]!=null),ksOk=have.every(r=>r[5]),inOk=have.every(r=>r[7]);
+  const l1=kl==='none'?'킬른 운전 데이터는 <em>아직 없고</em>,':kl==='ok'?'오늘 킬른은 <em>정상 운전</em> 중이고,':kl==='warn'?'오늘 킬른은 <em>주의 관찰</em>이 필요하고,':'킬른에 <em>관리기준 이탈</em>이 발생했고,';
+  const l2=!have.length?'시멘트 품질 데이터는 <em>아직 없습니다</em>.':ksOk?(inOk?'시멘트 품질은 <em>KS 기준을 충족</em>합니다.':'시멘트 품질은 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'시멘트 품질에 <em>KS 기준 미달</em> 항목이 있습니다.';
   const now=new Date();const wd='일월화수목금토'[now.getDay()];
-  let prodVals,prodLabels,prodTarget,prodUnit,fcVals,fcLabels;
-  if(period==='1'){const ch=now.getHours();prodVals=HOURS.map(x=>x.h<=ch?x.v:null);prodLabels=HOURS.map(x=>x.h+'시');prodTarget=208;prodUnit='t/h';
-    fcVals=FC2H.slice(-12).map(x=>x.v);fcLabels=FC2H.slice(-12).map(x=>hhmm(x.d));}
-  else{const n=+period;const ds=DAYS.slice(-n);prodVals=ds.map((x,i)=>i===ds.length-1?kilnTpd():x.clk);prodLabels=ds.map(x=>md(x.d));prodTarget=5000;prodUnit='t/d';
-    if(n===7){fcVals=FC2H.map(x=>x.v);fcLabels=FC2H.map(x=>md(x.d));}else{fcVals=DAYS.map(x=>x.fc);fcLabels=DAYS.map(x=>md(x.d));}}
-  const ch=chem();const sil=E.SIL.params,dsp=E.DSP.params;
+  if(D&&period==='1')period='7';
+  if(!D&&period==='all')period='30';
+  const segs=D?[['7','7일'],['30','30일'],['all','전체']]:[['1','오늘'],['7','7일'],['30','30일']];
+  let prod=null,fc=null;
+  if(!D){
+    if(period==='1'){const ch=now.getHours();prod={vals:HOURS.map(x=>x.h<=ch?x.v:null),labels:HOURS.map(x=>x.h+'시'),target:208,unit:'t/h'};
+      fc={vals:FC2H.slice(-12).map(x=>x.v),labels:FC2H.slice(-12).map(x=>hhmm(x.d))};}
+    else{const n=+period;const ds=DAYS.slice(-n);prod={vals:ds.map((x,i)=>i===ds.length-1?kilnTpd():x.clk),labels:ds.map(x=>md(x.d)),target:5000,unit:'t/d'};
+      fc=n===7?{vals:FC2H.map(x=>x.v),labels:FC2H.map(x=>md(x.d))}:{vals:DAYS.map(x=>x.fc),labels:DAYS.map(x=>md(x.d))};}
+  }else{
+    const ref=D.latest||now;
+    if(D.prod.length){const ds=period==='all'?D.prod:D.prod.slice(-(+period));prod={vals:ds.map(x=>x.clk),labels:ds.map(x=>md(x.t)),target:5000,unit:'t/d'};}
+    if(D.xrf.length){const days=period==='all'?Infinity:+period;const from=ref.getTime()-days*864e5;let pts=D.xrf.filter(x=>x.t.getTime()>from);if(!pts.length)pts=D.xrf.slice(-12);
+      if(pts.length>100){const m=new Map();pts.forEach(x=>{const key=x.t.toDateString();const a=m.get(key)||{t:x.t,s:0,n:0};a.s+=x.fcao;a.n++;m.set(key,a);});pts=[...m.values()].map(a=>({t:a.t,fcao:a.s/a.n}));}
+      fc={vals:pts.map(x=>x.fcao),labels:pts.map(x=>md(x.t)+(pts.length<=14?' '+hhmm(x.t):''))};}
+  }
+  const empty=m=>`<div class="note" style="text-align:center;padding:40px 8px">${m}</div>`;
+  const ch=chem();const sil=E.SIL.params,dsp=E.DSP.params,fp=E.CKS.params.fcao;
+  const low=['s1','s2','s3','s4'].map(k=>sil[k]).filter(p=>(!D||p.has)&&RANK[pStatus(p)]>0);
   const open=ALARMS.filter(a=>!a.ack||alarmActive(a)).slice(0,3);
+  const nLim=D?(D.counts['관리기준']||0):0;
   $('#report').innerHTML=`
-  <div class="banner">${ic('info')}시연용 가상 데이터입니다.<span>실제 DCS·LIMS와 연결하기 전 화면 시안이며, 모든 수치와 사내 관리기준은 예시값입니다.</span></div>
-  <div class="headline"><div><div class="eb">경영진 요약 · ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)} 기준</div><h1>${l1}<br>${l2}</h1><p>1공장 킬른 1호 · 설계 5,000 t/d · 2초마다 갱신</p></div>
-   <div class="seg" role="tablist" aria-label="기간">${[['1','오늘'],['7','7일'],['30','30일']].map(([k,t])=>`<button type="button" role="tab" data-period="${k}" class="${period===k?'on':''}">${t}</button>`).join('')}</div></div>
+  ${D?`<div class="banner">${ic('info')}${SERVER?'팀 공유 데이터':'업로드 데이터'}를 표시 중입니다.<span>${esc(D.meta.fileName||'-')} · ${esc(D.meta.uploadedBy||'-')} · ${D.meta.uploadedAt?stamp(new Date(D.meta.uploadedAt)):'-'} 올림. 관리기준은 ${nLim?`업로드 기준 ${nLim}건 반영, 나머지는`:''} 예시값이고, 차량·로트·시료 정보는 가상입니다.</span></div>`
+     :`<div class="banner">${ic('info')}시연용 가상 데이터입니다.<span>오른쪽 위 ‘데이터’ 버튼으로 엑셀을 올리면 실제 데이터로 바뀝니다. 사내 관리기준은 예시값입니다.</span></div>`}
+  <div class="headline"><div><div class="eb">경영진 요약 · ${D?`데이터 기준 ${D.latest?stamp(D.latest):'-'}`:`${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)} 기준`}</div><h1>${l1}<br>${l2}</h1><p>1공장 킬른 1호 · ${D?(SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'이 PC에 올린 파일 기준'):'설계 5,000 t/d · 2초마다 갱신'}</p></div>
+   <div class="seg" role="tablist" aria-label="기간">${segs.map(([k,t])=>`<button type="button" role="tab" data-period="${k}" class="${period===k?'on':''}">${t}</button>`).join('')}</div></div>
   <div class="krow">${kpiCards(true)}</div>
   <div class="grid">
-   <article class="card w2"><div class="pv">${barChart(prodVals,prodLabels,{target:prodTarget,unit:prodUnit,low:prodTarget*.9,aria:'클링커 생산 추이'})}</div>
-    <div class="meta"><span class="n">01</span><div><b>클링커 생산 실적</b><small>${period==='1'?'오늘 시간대별 생산량 (t/h)':'일별 생산량 (t/d)'}. 주황 막대는 목표의 90% 미만인 날로, ${period==='1'?'오늘은 해당 없음':'10/30 킬른 정지 4.2시간(가상)'} 영향입니다.</small></div></div></article>
-   <article class="card"><div class="pv">${bullet('LSF',ch.lsf,[92,100],[94.5,97.5],1,'석회포화도. 높으면 소성성 저하·f-CaO 상승, 낮으면 C₃S 감소')}${bullet('SM',ch.sm,[2.0,3.0],[2.35,2.75],2,'규산률. 높으면 액상량 감소로 소성 곤란')}${bullet('IM',ch.im,[1.0,2.2],[1.4,1.8],2,'철률. 액상 점도와 C₃A 양에 영향')}</div>
-    <div class="meta"><span class="n">02</span><div><b>클링커 모듈 관리</b><small>최근 XRF 결과. 파란 구간이 관리 범위(가상)이고 막대가 현재값입니다.</small></div></div></article>
-   <article class="card w2"><div class="pv">${ctrlChart(fcVals,fcLabels,{lo:.8,hi:1.8,min:.4,max:2.2,aria:'f-CaO 관리도'})}</div>
-    <div class="meta"><span class="n">03</span><div><b>f-CaO 관리도</b><small>${period==='30'?'일평균':'2시간 시료'} 기준. 빨간 점은 관리 범위를 벗어난 시료로, 원인과 조치를 알람 화면에 기록합니다.</small></div></div></article>
+   <article class="card w2"><div class="pv">${prod?barChart(prod.vals,prod.labels,{target:prod.target,unit:prod.unit,low:prod.target*.9,aria:'클링커 생산 추이'}):empty('생산출하 시트를 올리면 일별 클링커 생산 실적을 보여 줍니다.')}</div>
+    <div class="meta"><span class="n">01</span><div><b>클링커 생산 실적</b><small>${D?'일별 생산량 (t/d). 주황 막대는 설계 5,000 t/d의 90% 미만인 날입니다.':period==='1'?'오늘 시간대별 생산량 (t/h). 주황 막대는 목표의 90% 미만인 시간입니다.':`일별 생산량 (t/d). 주황 막대는 목표의 90% 미만인 날로, ${md(DAYS[20].d)} 킬른 정지 4.2시간(가상) 영향입니다.`}</small></div></div></article>
+   <article class="card"><div class="pv">${D&&!D.xrf.length?empty('클링커XRF 시트를 올리면 표시합니다.'):bullet('LSF',ch.lsf,[92,100],[94.5,97.5],1,'석회포화도. 높으면 소성성 저하·f-CaO 상승, 낮으면 C₃S 감소')+bullet('SM',ch.sm,[2.0,3.0],[2.35,2.75],2,'규산률. 높으면 액상량 감소로 소성 곤란')+bullet('IM',ch.im,[1.0,2.2],[1.4,1.8],2,'철률. 액상 점도와 C₃A 양에 영향')}</div>
+    <div class="meta"><span class="n">02</span><div><b>클링커 모듈 관리</b><small>최근 XRF 결과. 파란 구간이 관리 범위(예시값)이고 막대가 현재값입니다.</small></div></div></article>
+   <article class="card w2"><div class="pv">${fc?ctrlChart(fc.vals,fc.labels,{lo:fp.lo??.8,hi:fp.hi??1.8,min:.4,max:2.2,aria:'f-CaO 관리도'}):empty('클링커XRF 시트의 f-CaO로 관리도를 그립니다.')}</div>
+    <div class="meta"><span class="n">03</span><div><b>f-CaO 관리도</b><small>${D?'올린 시료값 기준(100개가 넘으면 일평균)':period==='30'?'일평균 기준':'2시간 시료 기준'}. 빨간 점은 관리 범위를 벗어난 시료로, 원인과 조치를 알람 화면에 기록합니다.</small></div></div></article>
    <article class="card"><div class="pv">
-     <div class="hb"><div class="hl"><span>금일 출하</span><b class="num">${nf(dsp.ship.v)} / ${nf(dsp.plan.v)} t</b></div><div class="bar"><i class="s-act" style="width:${clamp(dsp.ship.v/dsp.plan.v*100,0,100)}%"></i></div></div>
-     ${['s1','s2','s3','s4'].map(k=>{const p=sil[k],s=pStatus(p);return `<div class="hb"><div class="hl"><span>${p.label}</span><b class="num">${nf(p.v,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${p.v}%"></i></div></div>`;}).join('')}
-    </div><div class="meta"><span class="n">04</span><div><b>출하 · 사일로 재고</b><small>S-4 레벨이 하한(15%)에 가까워 시멘트밀 투입 사일로 전환을 검토합니다.</small></div></div></article>
-   <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">실적</th><th class="r">KS L 5201 1종</th><th>KS 판정</th><th class="r">사내 기준 (가상)</th><th>사내 판정</th></tr></thead><tbody>
-     ${ks.map(r=>`<tr><td>${r[0]}</td><td class="r num"><b>${nf(r[2],r[3])}</b> ${r[1]}</td><td class="r">${r[4]}</td><td><span class="badge ${r[5]?'s-ok':'s-bad'}">${r[5]?'적합':'부적합'}</span></td><td class="r">${r[6]}</td><td><span class="badge ${r[7]?'s-ok':'s-warn'}">${r[7]?'만족':'주의'}</span></td></tr>`).join('')}
+     <div class="hb"><div class="hl"><span>${D?'최근 출하':'금일 출하'}</span><b class="num">${fv(dsp.ship,0)} / ${fv(dsp.plan,0)} t</b></div><div class="bar"><i class="s-act" style="width:${(!D||dsp.ship.has)&&dsp.plan.v>0?clamp(dsp.ship.v/dsp.plan.v*100,0,100):0}%"></i></div></div>
+     ${['s1','s2','s3','s4'].map(k=>{const p=sil[k],s=pStatus(p);return `<div class="hb"><div class="hl"><span>${p.label}</span><b class="num">${fv(p,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${bw(p)}%"></i></div></div>`;}).join('')}
+    </div><div class="meta"><span class="n">04</span><div><b>출하 · 사일로 재고</b><small>${low.length?`${low.map(p=>p.label.split(' ·')[0]).join(', ')} 레벨이 관리 한계에 가까워 투입·출하 사일로 전환을 검토합니다.`:'사일로 레벨은 모두 관리 범위 안입니다.'}</small></div></div></article>
+   <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">실적</th><th class="r">KS L 5201 1종</th><th>KS 판정</th><th class="r">사내 기준 (예시)</th><th>사내 판정</th></tr></thead><tbody>
+     ${ks.map(r=>r[2]==null?`<tr><td>${r[0]}</td><td class="r">—</td><td class="r">${r[4]}</td><td><span class="badge s-none">데이터 없음</span></td><td class="r">${r[6]}</td><td><span class="badge s-none">데이터 없음</span></td></tr>`
+       :`<tr><td>${r[0]}</td><td class="r num"><b>${nf(r[2],r[3])}</b> ${r[1]}</td><td class="r">${r[4]}</td><td><span class="badge ${r[5]?'s-ok':'s-bad'}">${r[5]?'적합':'부적합'}</span></td><td class="r">${r[6]}</td><td><span class="badge ${r[7]?'s-ok':'s-warn'}">${r[7]?'만족':'주의'}</span></td></tr>`).join('')}
     </tbody></table></div></div>
-    <div class="meta"><span class="n">05</span><div><b>KS 규격 대비 평가</b><small>KS 기준값은 KS L 5201(포틀랜드 시멘트) 1종 기준으로 적었습니다. 최신 개정판 원문과 대조한 뒤 사용하세요. * 강열감량 한계는 개정 이력이 있어 특히 확인이 필요합니다. 강도는 가상 예측값입니다.</small></div></div></article>
-   <article class="card"><div class="pv" style="justify-content:flex-start"><div class="issues">${open.length?open.map(a=>`<div class="iss"><span class="badge s-${a.sev}">${ST[a.sev]}</span><div><b>${E[a.eq].name} · ${a.label}</b><small>${hhmm(a.t)} · ${a.val} · ${a.lim}${alarmActive(a)?'':' · 해제됨'}</small></div></div>`).join(''):'<div class="iss"><span class="badge s-ok">정상</span><div><b>확인할 알람이 없습니다</b></div></div>'}</div></div>
+    <div class="meta"><span class="n">05</span><div><b>KS 규격 대비 평가</b><small>KS 기준값은 KS L 5201(포틀랜드 시멘트) 1종 기준으로 적었습니다. 최신 개정판 원문과 대조한 뒤 사용하세요. * 강열감량 한계는 개정 이력이 있어 특히 확인이 필요합니다. 강도는 실측값이 있으면 실측, 없으면 예측값입니다.</small></div></div></article>
+   <article class="card"><div class="pv" style="justify-content:flex-start"><div class="issues">${open.length?open.map(a=>`<div class="iss"><span class="badge s-${a.sev}">${ST[a.sev]}</span><div><b>${E[a.eq].name} · ${a.label}</b><small>${stamp(a.t)} · ${a.val} · ${a.lim}${alarmActive(a)?'':' · 해제됨'}</small></div></div>`).join(''):'<div class="iss"><span class="badge s-ok">정상</span><div><b>확인할 알람이 없습니다</b></div></div>'}</div></div>
     <div class="meta"><span class="n">06</span><div><b>확인이 필요한 알람</b><small>미확인이거나 아직 해제되지 않은 알람 상위 3건입니다.</small></div></div></article>
   </div>
   <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(ASTM C150 부록 방식). 28일 강도 예측은 C₃S·분말도·f-CaO를 쓴 가상 회귀식이며, 실제 적용 시 공장 공시체 데이터로 다시 맞춰야 합니다.</p>`;
@@ -1246,20 +1328,23 @@ function toast(msg,sev='ok'){const w=$('#toasts');const t=document.createElement
    ========================================================= */
 let evTimer=0;
 function tick(){
-  evTimer+=2;
-  if(evTimer>=32){evTimer=0;const cand=allParams().filter(x=>x.p.ev);const c=cand[Math.floor(Math.random()*cand.length)];const p=c.p;
-    const span=p.lo!=null&&p.hi!=null?p.hi-p.lo:Math.abs(p.hi)*.1;p.target=p.hi-span*.04+Math.random()*span*.12;setTimeout(()=>{p.target=p.base;},16000+Math.random()*8000);}
-  allParams().forEach(({e,k,p})=>{
-    if(p.counter||p.derived)return;
-    p.v+=(p.target-p.v)*.14+gauss()*p.noise;
-    if(p.min!=null)p.v=Math.max(p.min,p.v);if(p.max!=null)p.v=Math.min(p.max,p.v);
-  });
-  const s=E.SIL.params;s.avg.v=(s.s1.v+s.s2.v+s.s3.v+s.s4.v)/4;
-  const d=E.DSP.params;d.prog.v=d.ship.v/d.plan.v*100;d.wait.v=TRUCKS.filter(t=>t.kind==='bct'&&t.respawn<=0&&(t.state==='진입'||t.state==='계량')).length;
-  const lab=E.LAB.params;if(Math.random()<.15){lab.queue.v=clamp(lab.queue.v+(Math.random()<.5?-1:1),2,7);}lab.done.v=Math.min(100,lab.done.v+.05);
-  SAMPLES.forEach(x=>{if(x.st==='분석중'||x.st==='채취'||x.st==='양생중'){x.prog=Math.min(x.st==='양생중'?99:100,x.prog+(x.st==='양생중'?.02:.8));if(x.prog>=100){x.st='완료';toast(`${x.id} 분석 완료 · ${x.what}`,'ok');}if(x.st==='채취'&&x.prog>30)x.st='분석중';}});
-  allParams().forEach(({e,k,p})=>{p.hist.push(p.v);if(p.hist.length>90)p.hist.shift();
-    const st=pStatus(p);if(RANK[st]>RANK[p.prev]){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]}`,st);}p.prev=st;});
+  if(MODE==='sim'){
+    evTimer+=2;
+    if(evTimer>=32){evTimer=0;const cand=allParams().filter(x=>x.p.ev);const c=cand[Math.floor(Math.random()*cand.length)];const p=c.p;
+      const span=p.lo!=null&&p.hi!=null?p.hi-p.lo:Math.abs(p.hi)*.1;p.target=p.hi-span*.04+Math.random()*span*.12;setTimeout(()=>{p.target=p.base;},16000+Math.random()*8000);}
+    allParams().forEach(({e,k,p})=>{
+      if(p.counter||p.derived)return;
+      p.v+=(p.target-p.v)*.14+gauss()*p.noise;
+      if(p.min!=null)p.v=Math.max(p.min,p.v);if(p.max!=null)p.v=Math.min(p.max,p.v);
+    });
+    const s=E.SIL.params;s.avg.v=(s.s1.v+s.s2.v+s.s3.v+s.s4.v)/4;
+    E.DSP.params.wait.v=TRUCKS.filter(t=>t.kind==='bct'&&t.respawn<=0&&(t.state==='진입'||t.state==='계량')).length;
+    const lab=E.LAB.params;if(Math.random()<.15){lab.queue.v=clamp(lab.queue.v+(Math.random()<.5?-1:1),2,7);}lab.done.v=Math.min(100,lab.done.v+.05);
+    SAMPLES.forEach(x=>{if(x.st==='분석중'||x.st==='채취'||x.st==='양생중'){x.prog=Math.min(x.st==='양생중'?99:100,x.prog+(x.st==='양생중'?.02:.8));if(x.prog>=100){x.st='완료';toast(`${x.id} 분석 완료 · ${x.what}`,'ok');}if(x.st==='채취'&&x.prog>30)x.st='분석중';}});
+    allParams().forEach(({e,k,p})=>{p.hist.push(p.v);if(p.hist.length>90)p.hist.shift();
+      const st=pStatus(p);if(RANK[st]>RANK[p.prev]){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]}`,st);}p.prev=st;});
+  }
+  const d=E.DSP.params;if(d.plan.v>0)d.prog.v=d.ship.v/d.plan.v*100;
   renderAll();
 }
 function renderAll(){
@@ -1270,6 +1355,9 @@ function renderAll(){
   if(view==='report')renderReport();
   if(view==='alarms')renderAlarms();
   $('#clock').textContent=hhmm(new Date());
+  $('#modeTxt').textContent=MODE==='sim'?'설계 5,000 t/d · 가상 데이터':`${SERVER?'팀 공유':'업로드'} 데이터 · ${DATA.latest?stamp(DATA.latest):'-'} 기준`;
+  $('#liveChip').classList.toggle('data',MODE==='data');$('#liveTxt').textContent=MODE==='sim'?'Live':(SERVER?'팀 공유':'업로드');
+  const dst=$('#dmBody .stat');if(dst&&!$('#dataModal').hidden)dst.outerHTML=statHTML();
 }
 
 /* =========================================================
@@ -1322,6 +1410,287 @@ function setupShell(){
   addEventListener('hashchange',()=>setView(location.hash.slice(1)));
 }
 
+/* =========================================================
+   데이터 불러오기 — 엑셀(.xlsx)·CSV를 외부 라이브러리 없이 브라우저에서 읽음
+   ① 이 PC 브라우저에 적용 (localStorage에 기억)
+   ② server.py 로 접속하면 팀 공유: 업로드 → 서버 저장 → 다른 사람 화면에 20초 안에 반영
+   ========================================================= */
+const SCHEMA={
+  '공정값':{req:['일시','설비코드','항목코드','값'],opt:['항목명','단위']},
+  '클링커XRF':{req:['일시','CaO','SiO2','Al2O3','Fe2O3','MgO','SO3','f-CaO']},
+  '시멘트품질':{req:['일시','품종','Blaine','SO3','MgO','강열감량'],opt:['3일강도','7일강도','28일강도']},
+  '생산출하':{req:['일자','클링커생산','시멘트출하','출하계획'],opt:['킬른가동률','S-1','S-2','S-3','S-4']},
+  '관리기준':{req:['설비코드','항목코드','하한','상한'],opt:['항목명','단위']}
+};
+const MAX_FILE=25*1024*1024;
+const normH=s=>String(s??'').replace(/\(.*?\)|\[.*?\]/g,'').replace(/₂/g,'2').replace(/₃/g,'3').replace(/[\s_·:]/g,'').toLowerCase();
+function toNum(v){if(v==null||v==='')return null;if(typeof v==='number')return isFinite(v)?v:NaN;if(typeof v==='boolean')return NaN;const t=String(v).replace(/,/g,'').trim();if(t==='')return null;const n=Number(t);return isFinite(n)?n:NaN;}
+function toDate(v){
+  if(v==null||v==='')return null;
+  if(typeof v==='number'){if(v<1||v>2958465)return null;const d=new Date(Math.round((v-25569)*864e5));return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds());}
+  const m=String(v).trim().replace(/[./]/g,'-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})\.?(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if(!m)return null;const d=new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0));return isNaN(d)?null:d;
+}
+function findEq(code){const c=String(code??'').trim().toUpperCase();if(!c)return null;return EQ.find(e=>e.id===c||e.code.toUpperCase()===c)||null;}
+function findParam(e,key,name){
+  const k=String(key??'').trim();if(k&&e.params[k])return [k,e.params[k]];
+  const lk=k.toLowerCase();for(const [kk,p] of Object.entries(e.params))if(lk&&kk.toLowerCase()===lk)return [kk,p];
+  const n=normH(name||key);for(const [kk,p] of Object.entries(e.params))if(n&&normH(p.label)===n)return [kk,p];
+  return [null,null];
+}
+
+/* ---------- .xlsx 읽기 (ZIP + XML) ---------- */
+const colIdx=ref=>{let n=0;for(const ch of ref){const c=ch.charCodeAt(0);if(c>=65&&c<=90)n=n*26+c-64;else if(c>=97&&c<=122)n=n*26+c-96;else break;}return n-1;};
+async function readXlsx(buf){
+  const u8=new Uint8Array(buf),dv=new DataView(buf);
+  let eocd=-1;for(let i=u8.length-22;i>=Math.max(0,u8.length-65557);i--){if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}}
+  if(eocd<0)throw new Error('엑셀(.xlsx) 파일 형식이 아닙니다. 엑셀에서 “Excel 통합 문서(.xlsx)”로 다시 저장해 주세요.');
+  const n=dv.getUint16(eocd+10,true);let off=dv.getUint32(eocd+16,true);const files={};const td=new TextDecoder('utf-8');
+  for(let k=0;k<n;k++){
+    if(off+46>u8.length||dv.getUint32(off,true)!==0x02014b50)break;
+    const method=dv.getUint16(off+10,true),csize=dv.getUint32(off+20,true),nlen=dv.getUint16(off+28,true),xlen=dv.getUint16(off+30,true),clen=dv.getUint16(off+32,true),lho=dv.getUint32(off+42,true);
+    files[td.decode(u8.subarray(off+46,off+46+nlen))]={method,csize,lho};off+=46+nlen+xlen+clen;
+  }
+  const get=async name=>{const f=files[name];if(!f)return null;
+    const st=f.lho+30+dv.getUint16(f.lho+26,true)+dv.getUint16(f.lho+28,true);const data=u8.subarray(st,st+f.csize);
+    if(f.method===0)return td.decode(data);
+    if(f.method!==8)throw new Error('지원하지 않는 압축 방식의 엑셀 파일입니다.');
+    if(typeof DecompressionStream==='undefined')throw new Error('이 브라우저는 엑셀 직접 읽기를 지원하지 않습니다. 최신 Edge·Chrome을 쓰거나 시트를 CSV로 저장해 올려 주세요.');
+    const out=await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();return td.decode(out);};
+  const xml=t=>new DOMParser().parseFromString(t||'<x/>','application/xml');
+  const wbTxt=await get('xl/workbook.xml');if(!wbTxt)throw new Error('엑셀 통합 문서 구조를 찾지 못했습니다.');
+  const wb=xml(wbTxt),rels=xml(await get('xl/_rels/workbook.xml.rels'));
+  const relMap={};for(const r of rels.getElementsByTagName('Relationship'))relMap[r.getAttribute('Id')]=r.getAttribute('Target');
+  const sst=[];const ss=await get('xl/sharedStrings.xml');
+  if(ss)for(const si of xml(ss).getElementsByTagName('si')){let t='';for(const x of si.getElementsByTagName('t'))t+=x.textContent;sst.push(t);}
+  const sheets={};
+  for(const sh of wb.getElementsByTagName('sheet')){
+    const rid=sh.getAttribute('r:id')||sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');
+    let tg=relMap[rid];if(!tg)continue;tg=tg.replace(/^\//,'');if(!tg.startsWith('xl/'))tg='xl/'+tg;
+    const doc=xml(await get(tg));const rows=[];let rn=0;
+    for(const r of doc.getElementsByTagName('row')){
+      const ri=r.getAttribute('r')?(+r.getAttribute('r')-1):rn;rn=ri+1;const row=[];let cn=0;
+      for(const c of r.getElementsByTagName('c')){
+        const ci=c.getAttribute('r')?colIdx(c.getAttribute('r')):cn;cn=ci+1;
+        const t=c.getAttribute('t'),vEl=c.getElementsByTagName('v')[0];let v=null;
+        if(t==='s')v=vEl?sst[+vEl.textContent]??null:null;
+        else if(t==='inlineStr'){v='';for(const x of c.getElementsByTagName('t'))v+=x.textContent;}
+        else if(t==='b')v=vEl?vEl.textContent==='1':null;
+        else if(t==='str'||t==='e')v=vEl?vEl.textContent:null;
+        else v=vEl&&vEl.textContent!==''?Number(vEl.textContent):null;
+        row[ci]=v;
+      }
+      rows[ri]=Array.from(row,x=>x===undefined?null:x);
+    }
+    sheets[sh.getAttribute('name')]=Array.from(rows,x=>x||[]);
+  }
+  return sheets;
+}
+function decodeText(buf){let s=new TextDecoder('utf-8').decode(buf);if(s.includes('�')){try{s=new TextDecoder('euc-kr').decode(buf);}catch(e){}}return s.replace(/^﻿/,'');}
+function parseCSV(s){
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<s.length;i++){const c=s[i];
+    if(q){if(c==='"'){if(s[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}
+    else if(c==='"')q=true;else if(c===','){row.push(f);f='';}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&s[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f='';}
+    else f+=c;}
+  if(f!==''||row.length){row.push(f);rows.push(row);}
+  return rows.map(r=>r.map(v=>v===''?null:v));
+}
+async function readFiles(list){
+  const files=[...list];if(!files.length)throw new Error('파일을 고르지 않았습니다.');
+  const total=files.reduce((a,f)=>a+f.size,0);if(total>MAX_FILE)throw new Error('파일이 너무 큽니다 (최대 25MB). 기간을 나눠 올려 주세요.');
+  const raw={};
+  for(const f of files){
+    if(/\.xlsx$/i.test(f.name))Object.assign(raw,await readXlsx(await f.arrayBuffer()));
+    else if(/\.(csv|txt)$/i.test(f.name))raw[f.name.replace(/\.[^.]+$/,'')]=parseCSV(decodeText(await f.arrayBuffer()));
+    else if(/\.xls[mb]?$/i.test(f.name))throw new Error(`${f.name}: 이 형식은 읽을 수 없습니다. 엑셀에서 “Excel 통합 문서(.xlsx)”로 다시 저장해 주세요.`);
+    else throw new Error(`${f.name}: 엑셀(.xlsx) 또는 CSV 파일만 올릴 수 있습니다.`);
+  }
+  return {raw,fileName:files.map(f=>f.name).join(', ')};
+}
+
+/* ---------- 시트 → 화면 데이터 ---------- */
+function matchSheets(raw){
+  const out={},rep={warn:[],err:[]};
+  for(const [name,rows] of Object.entries(raw||{})){
+    if(!Array.isArray(rows))continue;
+    let best=null;
+    for(let r=0;r<Math.min(6,rows.length);r++){const hdr=(rows[r]||[]).map(normH);
+      for(const [sn,sc] of Object.entries(SCHEMA)){const hit=sc.req.filter(c=>hdr.includes(normH(c))).length/sc.req.length+(normH(name)===normH(sn)?.01:0);
+        if(hit>.5&&(!best||hit>best.score))best={sn,r,score:hit,hdr};}}
+    if(!best){if(!/안내|설명|readme/i.test(name))rep.warn.push(`‘${name}’ 시트는 양식과 맞지 않아 건너뛰었습니다.`);continue;}
+    const sc=SCHEMA[best.sn],miss=sc.req.filter(c=>!best.hdr.includes(normH(c)));
+    if(miss.length){rep.err.push(`‘${name}’ 시트에 ${miss.map(x=>`‘${x}’`).join(', ')} 열이 없습니다.`);continue;}
+    const cols={};[...sc.req,...(sc.opt||[])].forEach(c=>{const i=best.hdr.indexOf(normH(c));if(i>=0)cols[c]=i;});
+    const recs=[];rows.slice(best.r+1).forEach((r,i)=>{if(!r||!r.some(v=>v!=null&&v!==''))return;const o={_row:best.r+2+i};for(const [c,j] of Object.entries(cols))o[c]=r[j];recs.push(o);});
+    if(out[best.sn])out[best.sn].rows.push(...recs);else out[best.sn]={sheet:name,rows:recs};
+  }
+  return {sheets:out,rep};
+}
+function buildData(raw){
+  const {sheets,rep}=matchSheets(raw);
+  const D={params:{},limits:[],xrf:[],cem:[],prod:[],counts:{},rep};
+  let nWarn=0;const bad=(sh,row,msg)=>{nWarn++;if(rep.warn.length<40)rep.warn.push(`${sh} ${row}행: ${msg}`);};
+  const eqParam=(sh,r)=>{const e=findEq(r['설비코드']);if(!e){bad(sh,r._row,`설비코드 ‘${r['설비코드']??''}’를 찾을 수 없습니다`);return [];}
+    const [k,p]=findParam(e,r['항목코드'],r['항목명']);if(!p){bad(sh,r._row,`${e.code}에 항목코드 ‘${r['항목코드']??''}’가 없습니다`);return [];}return [e,k,p];};
+  if(sheets['관리기준']){let n=0;for(const r of sheets['관리기준'].rows){const [e,k,p]=eqParam('관리기준',r);if(!p)continue;
+    const lo=toNum(r['하한']),hi=toNum(r['상한']);if(Number.isNaN(lo)||Number.isNaN(hi)){bad('관리기준',r._row,'하한·상한은 숫자로 적어 주세요');continue;}
+    if(lo!=null&&hi!=null&&lo>hi){bad('관리기준',r._row,'하한이 상한보다 큽니다');continue;}D.limits.push({e:e.id,k,lo,hi});n++;}D.counts['관리기준']=n;}
+  if(sheets['공정값']){let n=0;for(const r of sheets['공정값'].rows){const t=toDate(r['일시']);if(!t){bad('공정값',r._row,'일시를 읽을 수 없습니다 (예: 2026-11-10 09:00)');continue;}
+    const [e,k,p]=eqParam('공정값',r);if(!p)continue;if(p.derived){bad('공정값',r._row,`‘${p.label}’은 자동 계산 항목이라 건너뜁니다`);continue;}
+    const v=toNum(r['값']);if(v==null||Number.isNaN(v)){bad('공정값',r._row,'값이 비었거나 숫자가 아닙니다');continue;}
+    (D.params[e.id+'.'+k]||(D.params[e.id+'.'+k]=[])).push({t,v});n++;}D.counts['공정값']=n;}
+  const XR=[['CaO','cao'],['SiO2','sio2'],['Al2O3','al'],['Fe2O3','fe'],['MgO','mgo'],['SO3','so3'],['f-CaO','fcao']];
+  if(sheets['클링커XRF']){for(const r of sheets['클링커XRF'].rows){const t=toDate(r['일시']);if(!t){bad('클링커XRF',r._row,'일시를 읽을 수 없습니다');continue;}
+    const o={t};let ok=true;for(const [c,k] of XR){const v=toNum(r[c]);if(v==null||Number.isNaN(v)){bad('클링커XRF',r._row,`${c} 값이 비었거나 숫자가 아닙니다`);ok=false;break;}o[k]=v;}
+    if(ok&&(o.sio2<=0||o.fe<=0)){bad('클링커XRF',r._row,'SiO2·Fe2O3는 0보다 커야 합니다');ok=false;}if(ok)D.xrf.push(o);}D.counts['클링커XRF']=D.xrf.length;}
+  const CQ=[['Blaine','blaine',1],['SO3','so3',1],['MgO','mgo',1],['강열감량','loi',1],['3일강도','s3',0],['7일강도','s7',0],['28일강도','s28',0]];
+  if(sheets['시멘트품질']){for(const r of sheets['시멘트품질'].rows){const t=toDate(r['일시']);if(!t){bad('시멘트품질',r._row,'일시를 읽을 수 없습니다');continue;}
+    const o={t,product:String(r['품종']??'').trim()};let ok=true;
+    for(const [c,k,req] of CQ){let v=toNum(r[c]);if(Number.isNaN(v)){bad('시멘트품질',r._row,`${c} 값이 숫자가 아닙니다`);v=null;}if(req&&v==null){ok=false;}o[k]=v;}
+    if(!ok){bad('시멘트품질',r._row,'Blaine·SO3·MgO·강열감량은 꼭 채워 주세요');continue;}D.cem.push(o);}D.counts['시멘트품질']=D.cem.length;}
+  if(sheets['생산출하']){for(const r of sheets['생산출하'].rows){const t=toDate(r['일자']);if(!t){bad('생산출하',r._row,'일자를 읽을 수 없습니다');continue;}
+    const clk=toNum(r['클링커생산']),ship=toNum(r['시멘트출하']),plan=toNum(r['출하계획']);
+    if([clk,ship,plan].some(v=>v==null||Number.isNaN(v))){bad('생산출하',r._row,'클링커생산·시멘트출하·출하계획은 숫자로 채워 주세요');continue;}
+    const o={t,clk,ship,plan,run:toNum(r['킬른가동률'])};['S-1','S-2','S-3','S-4'].forEach((c,i)=>{const v=toNum(r[c]);o['s'+(i+1)]=Number.isNaN(v)?null:v;});if(Number.isNaN(o.run))o.run=null;D.prod.push(o);}D.counts['생산출하']=D.prod.length;}
+  [D.xrf,D.cem,D.prod].forEach(a=>a.sort((x,y)=>x.t-y.t));Object.values(D.params).forEach(a=>a.sort((x,y)=>x.t-y.t));
+  if(nWarn>rep.warn.length)rep.warn.push(`그 밖에 ${nWarn-rep.warn.length}건의 행을 더 건너뛰었습니다.`);
+  const total=Object.values(D.counts).reduce((a,b)=>a+b,0);
+  if(!Object.keys(sheets).length&&!rep.err.length)rep.err.push('양식에 맞는 시트를 찾지 못했습니다. 업로드 양식의 첫 줄 열 이름(예: 일시, 설비코드, 항목코드, 값)을 확인해 주세요.');
+  else if(Object.keys(sheets).length&&!total)rep.err.push('읽을 수 있는 데이터 행이 없습니다.');
+  D.total=total;return D;
+}
+
+/* 가상 데이터 기준점 (되돌리기용) */
+const BASE={params:new Map(),alarms:null};
+function snapBase(){allParams().forEach(({p})=>BASE.params.set(p,{v:p.v,base:p.base,target:p.target,lo:p.lo,hi:p.hi,hist:p.hist.slice()}));BASE.alarms=ALARMS;}
+function restoreBase(){allParams().forEach(({p})=>{const b=BASE.params.get(p);Object.assign(p,{v:b.v,base:b.base,target:b.target,lo:b.lo,hi:b.hi,hist:b.hist.slice(),has:false,times:null,time:null});});}
+function commitData(D,meta){
+  restoreBase();MODE='data';DATA=Object.assign(D,{meta:meta||{}});
+  D.limits.forEach(l=>{const p=E[l.e].params[l.k];p.lo=l.lo;p.hi=l.hi;});
+  const setS=(p,arr)=>{if(!arr.length)return;const a=arr.slice(-90);p.hist=a.map(x=>x.v);p.times=a.map(x=>x.t);p.v=p.base=p.target=a[a.length-1].v;p.time=a[a.length-1].t;p.has=true;};
+  for(const [key,arr] of Object.entries(D.params)){const [id,k]=key.split('.');setS(E[id].params[k],arr);}
+  if(D.xrf.length)['cao','sio2','al','fe','mgo','so3','fcao'].forEach(k=>setS(E.CKS.params[k],D.xrf.map(x=>({t:x.t,v:x[k]}))));
+  if(D.cem.length){setS(E.CM.params.blaine,D.cem.map(x=>({t:x.t,v:x.blaine})));setS(E.CM.params.so3,D.cem.map(x=>({t:x.t,v:x.so3})));}
+  if(D.prod.length){const L=D.prod[D.prod.length-1],dp=E.DSP.params;
+    setS(dp.ship,D.prod.map(x=>({t:x.t,v:x.ship})));setS(dp.plan,D.prod.map(x=>({t:x.t,v:x.plan})));
+    dp.prog.v=L.plan>0?L.ship/L.plan*100:0;dp.prog.has=true;dp.prog.time=L.t;
+    ['s1','s2','s3','s4'].forEach(k=>setS(E.SIL.params[k],D.prod.filter(x=>x[k]!=null).map(x=>({t:x.t,v:x[k]}))));}
+  const sp=E.SIL.params,ss=['s1','s2','s3','s4'].filter(k=>sp[k].has);if(ss.length){sp.avg.v=ss.reduce((a,k)=>a+sp[k].v,0)/ss.length;sp.avg.has=true;}
+  let latest=null;allParams().forEach(({p})=>{if(p.has&&p.time&&(!latest||p.time>latest))latest=p.time;});
+  D.cem.forEach(x=>{if(!latest||x.t>latest)latest=x.t;});D.latest=latest;
+  // 알람: 올린 데이터의 흐름에서 관리기준 근접·이탈로 바뀐 시점을 기록
+  ALARMS=[];allParams().forEach(({e,k,p})=>{if(!p.has||!p.times)return;const keep=p.v;let prev='ok';
+    p.hist.forEach((v,i)=>{p.v=v;const st=pStatus(p);if(RANK[st]>RANK[prev])pushAlarm(e,k,p,st,p.times[i]);prev=st;});p.v=keep;p.prev=pStatus(p);});
+  ALARMS.sort((a,b)=>b.t-a.t);
+  if(sel&&sel.type==='eq')renderDetail();
+  renderAll();if(view==='report')renderReport();
+}
+function backToSim(){restoreBase();allParams().forEach(({p})=>p.prev=pStatus(p));MODE='sim';DATA=null;ALARMS=BASE.alarms;try{localStorage.removeItem('b365-dataset');}catch(e){}renderAll();toast('가상 데이터로 돌아왔습니다','act');}
+function loadRaw(raw,meta,o={}){
+  const D=buildData(raw);
+  if(!D.total){if(!o.silent)toast('불러올 수 있는 데이터가 없습니다','bad');return false;}
+  commitData(D,meta);
+  if(!o.silent)toast(o.msg||'데이터를 반영했습니다','ok');
+  return true;
+}
+
+/* ---------- 팀 공유 서버 (server.py) ---------- */
+async function serverInit(){
+  if(location.protocol==='file:')return false;
+  try{const r=await fetch('api/status',{cache:'no-store'});if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;}catch(e){return false;}
+  await pullServer(true);setInterval(pollServer,20000);renderAll();return true;
+}
+async function pullServer(first){
+  try{const r=await fetch('api/dataset',{cache:'no-store'});if(r.status===404)return;if(!r.ok)throw new Error();
+    const ds=await r.json();const m=ds.meta||{};
+    if(loadRaw(ds.sheets,m,{silent:first,msg:`팀 데이터가 새로 반영되었습니다 · ${m.uploadedBy||''} ${m.uploadedAt?stamp(new Date(m.uploadedAt)):''}`}))SERVER.loaded=m.version;}
+  catch(e){toast('팀 공유 데이터를 불러오지 못했습니다','warn');}
+}
+async function pollServer(){
+  try{const r=await fetch('api/status',{cache:'no-store'});if(!r.ok)throw new Error();const s=await r.json();SERVER.ok=true;SERVER.needKey=s.needKey;SERVER.watch=s.watch;
+    if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}}
+  catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
+}
+function restoreLocal(){
+  try{const t=localStorage.getItem('b365-dataset');if(!t)return;const o=JSON.parse(t);loadRaw(o.sheets,o.meta,{silent:true});}catch(e){}
+}
+
+/* ---------- 데이터 창 ---------- */
+let lastFocus=null;
+function openModal(){const m=$('#dataModal');if(m.hidden){lastFocus=document.activeElement;m.hidden=false;}renderDataModal();setTimeout(()=>{const f=$('#dmApply')||$('#drop');f&&f.focus();},30);}
+function closeModal(){$('#dataModal').hidden=true;PENDING=null;lastFocus&&lastFocus.focus&&lastFocus.focus();}
+async function handleFiles(list){
+  let name='';
+  try{name=[...list].map(f=>f.name).join(', ');const {raw,fileName}=await readFiles(list);PENDING={raw,fileName,D:buildData(raw)};}
+  catch(e){PENDING={raw:{},fileName:name,D:{counts:{},total:0,rep:{err:[e.message||'파일을 읽지 못했습니다.'],warn:[]}}};}
+  openModal();
+}
+function statHTML(){
+  const m=DATA&&DATA.meta;
+  const badge=MODE==='sim'?'<span class="badge s-idle">가상 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">업로드 데이터 (이 PC)</span>';
+  let h=`<div class="stat"><div class="row"><span>지금 표시 중</span>${badge}</div>`;
+  if(m)h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy||'-')} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div><div class="row"><span>반영한 행</span><b>${Object.entries(DATA.counts).map(([k,v])=>`${k} ${nf(v)}`).join(' · ')}</b></div>`;
+  h+=`<div class="row"><span>공유 방식</span><b>${SERVER?(SERVER.ok===false?'팀 공유 서버 연결 끊김 · 재시도 중':'팀 공유 서버 연결됨 · 20초마다 확인')+(SERVER.watch?' · 공유 폴더 자동 읽기 켜짐':''):'이 PC 브라우저에만 반영'}</b></div></div>`;
+  return h;
+}
+function renderDataModal(){
+  const b=$('#dmBody');let who='';try{who=localStorage.getItem('b365-who')||'';}catch(e){}
+  let h=statHTML();
+  if(!PENDING){
+    h+=`<label class="drop" id="drop" tabindex="0">${ic('upload')}<b>엑셀(.xlsx)이나 CSV 파일을 끌어다 놓으세요</b><small>또는 눌러서 파일 선택 · 여러 파일을 한 번에 올려도 됩니다</small><input type="file" id="dmFile" accept=".xlsx,.csv,.txt" multiple hidden></label>
+    <div class="note">${ic('file','')} 양식: <a class="lnk" href="업로드양식.xlsx" download>업로드양식.xlsx</a> (화면 파일과 같은 폴더) · 시트 5개(공정값, 클링커XRF, 시멘트품질, 생산출하, 관리기준) 가운데 가진 데이터만 채워도 됩니다. 파일은 이 PC에서 읽고, ${SERVER?'팀 공유 서버에만 저장합니다.':'외부로 보내지 않습니다.'}</div>`;
+    if(!SERVER)h+=`<div class="note">팀이 같은 데이터를 보려면 사내 PC 한 대에서 <b>server.py</b>를 실행하고, 그 주소(예: http://PC이름:8365)로 접속하세요. 자세한 방법은 README에 있습니다.</div>`;
+    if(MODE==='data'&&!SERVER)h+=`<div class="acts"><button class="btn ghost" type="button" id="dmSim">가상 데이터로 돌아가기</button></div>`;
+  }else{
+    const P=PENDING,r=P.D.rep;
+    h+=`<div class="sect">불러오기 결과 <small>${esc(P.fileName)}</small></div><div class="msgs">`+
+      Object.entries(P.D.counts).map(([k,v])=>`<div class="msg ${v?'ok':''}">${ic(v?'check':'info')}<span><b>${k}</b> ${nf(v)}행 읽음</span></div>`).join('')+
+      r.err.map(x=>`<div class="msg err">${ic('alert')}<span>${esc(x)}</span></div>`).join('')+
+      r.warn.map(x=>`<div class="msg">${ic('info')}<span>${esc(x)}</span></div>`).join('')+`</div>`;
+    const can=P.D.total>0;
+    if(can&&SERVER)h+=`<div class="field"><label for="dmWho">올린 사람</label><input id="dmWho" value="${esc(who)}" placeholder="예: 품질관리팀 홍길동" maxlength="40"></div>`+(SERVER.needKey?`<div class="field"><label for="dmKey">업로드 비밀번호</label><input id="dmKey" type="password" autocomplete="off"></div>`:'');
+    if(can&&r.err.length)h+=`<div class="note">오류가 있는 시트는 빼고, 읽은 시트만 반영합니다.</div>`;
+    h+=`<div class="acts"><button class="btn ghost" type="button" id="dmCancel">다른 파일 고르기</button>${can?`<button class="btn" type="button" id="dmApply">${SERVER?'팀에 공유하고 적용':'이 화면에 적용'}</button>`:''}</div>`;
+  }
+  b.innerHTML=h;
+  const drop=$('#drop'),inp=$('#dmFile');
+  if(drop){inp.onchange=()=>{if(inp.files.length)handleFiles(inp.files);};
+    drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inp.click();}};
+    ['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
+    ['dragleave','drop'].forEach(t=>drop.addEventListener(t,()=>drop.classList.remove('over')));}
+  const sim=$('#dmSim');if(sim)sim.onclick=()=>{backToSim();renderDataModal();};
+  const cc=$('#dmCancel');if(cc)cc.onclick=()=>{PENDING=null;renderDataModal();};
+  const ap=$('#dmApply');if(ap)ap.onclick=applyPending;
+}
+async function applyPending(){
+  const P=PENDING,btn=$('#dmApply');if(!P)return;btn.disabled=true;
+  if(SERVER){
+    const who=($('#dmWho')?.value||'').trim()||'이름 없음';try{localStorage.setItem('b365-who',who);}catch(e){}
+    btn.textContent='올리는 중…';
+    try{const r=await fetch('api/dataset',{method:'POST',headers:{'Content-Type':'application/json','X-Upload-Key':$('#dmKey')?.value||''},body:JSON.stringify({sheets:P.raw,meta:{fileName:P.fileName,uploadedBy:who}})});
+      const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));
+      SERVER.loaded=j.meta.version;commitData(P.D,j.meta);closeModal();toast('팀에 공유했습니다. 다른 사람 화면에도 20초 안에 반영됩니다','ok');}
+    catch(e){btn.disabled=false;btn.textContent='팀에 공유하고 적용';toast(e.message==='Failed to fetch'?'팀 공유 서버에 연결할 수 없습니다':(e.message||'업로드하지 못했습니다'),'bad');}
+  }else{
+    const meta={fileName:P.fileName,uploadedBy:'이 PC',uploadedAt:new Date().toISOString()};
+    commitData(P.D,meta);
+    try{localStorage.setItem('b365-dataset',JSON.stringify({sheets:P.raw,meta}));}catch(e){toast('파일이 커서 다음에 열 때는 다시 올려야 합니다','warn');}
+    closeModal();toast('올린 데이터를 화면에 적용했습니다','ok');
+  }
+}
+function setupData(){
+  snapBase();
+  $('#dataBtn').onclick=openModal;
+  $('#dmClose').onclick=closeModal;
+  $('#dataModal').addEventListener('click',e=>{if(e.target.id==='dataModal')closeModal();});
+  addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#dataModal').hidden)closeModal();});
+  addEventListener('dragover',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files'))e.preventDefault();});
+  addEventListener('drop',e=>{if(e.dataTransfer&&e.dataTransfer.files.length){e.preventDefault();handleFiles(e.dataTransfer.files);}});
+  serverInit().then(ok=>{if(!ok)restoreLocal();});
+}
+
 /* 시작 */
 paintIcons();
 setupTheme();
@@ -1334,6 +1703,7 @@ renderAll();
 setTimeout(()=>toast(isMobile()?'한 손가락으로 끌어 이동 · 두 손가락으로 확대·회전':'끌어서 이동 · 휠로 확대 · 오른쪽 버튼으로 끌면 회전','act'),900);
 setInterval(tick,2000);
 requestAnimationFrame(frame);
+setupData();
 })();
 </script>
 
