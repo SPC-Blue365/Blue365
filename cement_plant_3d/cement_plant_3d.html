@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-11 15:30">
+<meta name="b365-build" content="2026-11-11 21:31">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -177,6 +177,20 @@ a{color:inherit;text-decoration:none}
 .wallprog.run i{animation:wprog var(--cyc,30s) linear forwards}
 @keyframes wprog{from{width:0}to{width:100%}}
 @media (max-width:760px){#wallBtn{display:none}.wallbar{left:8px;right:8px;bottom:8px;overflow-x:auto}}
+/* 내려받기 버튼 */
+.xbtns{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.xbtns .btn{display:inline-flex;align-items:center;gap:6px;background:var(--card);height:34px}
+.xbtns .btn .ic{width:16px;height:16px;color:var(--accent)}
+/* 관리기준 설정 */
+.cfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.cftbl{width:100%;border-collapse:collapse;font-size:13px}
+.cftbl th{font-size:11.5px;color:var(--fg3);font-weight:600;text-align:left;padding:0 6px 6px;white-space:nowrap}
+.cftbl td{padding:4px 6px;border-top:1px solid var(--line);white-space:nowrap}
+.cftbl input[type=text]{width:84px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 8px;text-align:right}
+.cftbl input[type=text]:focus{border-color:var(--accent);outline:none}
+.cftbl input:disabled{opacity:.6}
+.cftbl input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+@media (max-width:760px){.cfgrid{grid-template-columns:1fr}#cfgBtn{display:none}}
 .prange{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2)}
 .prange input{height:30px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 8px}
 .prange input:focus{border-color:var(--accent);outline:none}
@@ -527,7 +541,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-11 15:30</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-11 21:31</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -543,6 +557,7 @@ table.ks td.r,table.ks th.r{text-align:right}
       <div class="plant"><span class="code">5기</span><div><b>시멘트 공장 · 킬른 3~7호</b><small id="modeTxt">설계 24,500 t/d · 가상 데이터</small></div></div>
       <span class="live" id="liveChip" title="화면 갱신 상태"><i></i><span id="liveTxt">Live</span> <b class="num" id="clock">--:--</b></span>
       <button class="dbtn" type="button" id="dataBtn" aria-label="데이터 불러오기"><span data-ic="upload"></span><span>데이터</span></button>
+      <button class="icon-btn" type="button" id="cfgBtn" aria-label="관리기준 설정" data-tip="관리기준 설정"><span data-ic="gear"></span></button>
       <button class="icon-btn" type="button" id="wallBtn" aria-label="상황판 보기 (전체 화면 · 탭 자동 전환)" data-tip="상황판 보기"><span data-ic="screen"></span></button>
       <button class="icon-btn" type="button" id="themeBtn" aria-label="화면 테마 바꾸기"><span data-ic="moon"></span></button>
       <a class="icon-btn" href="#alarms" aria-label="알람 보기"><span data-ic="bell"></span><span class="dot" id="bellDot" hidden></span></a>
@@ -616,6 +631,13 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div class="sheet-handle"></div>
     <div class="mh"><div><div class="eyebrow">데이터</div><h2 id="dmTitle">데이터 불러오기</h2></div><button class="icon-btn" type="button" id="dmClose" aria-label="닫기"><span data-ic="x"></span></button></div>
     <div id="dmBody" style="display:flex;flex-direction:column;gap:14px"></div>
+  </div>
+</div>
+<div class="modal" id="cfgModal" hidden>
+  <div class="mbox" role="dialog" aria-modal="true" aria-labelledby="cfTitle" style="width:min(760px,100%)">
+    <div class="sheet-handle"></div>
+    <div class="mh"><div><div class="eyebrow">설정</div><h2 id="cfTitle">관리기준 설정</h2></div><button class="icon-btn" type="button" id="cfClose" aria-label="닫기"><span data-ic="x"></span></button></div>
+    <form id="cfBody" style="display:flex;flex-direction:column;gap:14px"></form>
   </div>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
@@ -943,6 +965,8 @@ const ICON={
   rotL:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   rotR:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
   home:'<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  download:'<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 19h16"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   screen:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
   target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
@@ -995,8 +1019,40 @@ const limTxt=p=>p.lo!=null&&p.hi!=null?`${p.limSrc==='spc'?'관리한계(±3σ)'
 const CLK_FACTOR=1.55;
 /* 클링커 f-CaO 사내 관리기준: 1.2% ± 0.5% */
 /* 기간 f-CaO 카드: 평균이 기준 안이어도 일평균 이탈 비율이 이 값(%)을 넘으면 '주의' (예시값 · 사내 기준으로 조정) */
-const FCAO_WARN_RATE=10;
-const FCAO_TARGET=1.2,FCAO_TOL=0.5,FCAO_LIM=[+(FCAO_TARGET-FCAO_TOL).toFixed(2),+(FCAO_TARGET+FCAO_TOL).toFixed(2)];
+let FCAO_WARN_RATE=10;
+let FCAO_TARGET=1.2,FCAO_TOL=0.5,FCAO_LIM=[0.7,1.7];
+/* 관리기준: 설정 화면(톱니 아이콘)에서 바꿉니다. 팀 공유 서버는 data/settings.json, 파일을 직접 열면 이 PC에 저장.
+   ks = KS L 5201 기준값 (ok=1: KS 원문과 대조 확인, 0: 추정 → 화면에 * 표시) / inh = 사내 관리 범위 (예시값) */
+const CFG_DEFAULT={v:1,
+  fcao:{target:1.2,tol:0.5,warnRate:10},
+  ks:{'1종':{blaine:{v:2800,ok:1},ist:{v:60,ok:0},fst:{v:600,ok:0},s3:{v:12.5,ok:0},s7:{v:22.5,ok:1},s28:{v:42.5,ok:1},MgO:{v:5.0,ok:1},SO3:{v:3.5,ok:1},LOI:{v:3.0,ok:0}},
+      '3종':{blaine:{v:3300,ok:0},ist:{v:45,ok:0},fst:{v:600,ok:0},s1:{v:10.0,ok:0},s3:{v:20.0,ok:0},s7:{v:32.5,ok:0},s28:{v:47.5,ok:0},MgO:{v:5.0,ok:0},SO3:{v:4.5,ok:0},LOI:{v:3.0,ok:0}}},
+  inh:{'1종':{blaine:{lo:3500,hi:4000},SO3:{lo:2.4,hi:3.0},MgO:{lo:null,hi:4.5},LOI:{lo:null,hi:3.0},s7:{lo:40,hi:null},s28:{lo:50,hi:null}},'3종':{}}};
+const KS_PRODS=['1종','3종'];
+/* 출하 시멘트 시험 항목: dir ge=이상이어야 적합, le=이하여야 적합 */
+const KS_ITEMS=[{f:'blaine',n:'분말도 (Blaine)',u:'cm²/g',dp:0,dir:'ge'},{f:'ist',n:'응결 초결',u:'분',dp:0,dir:'ge'},{f:'fst',n:'응결 종결',u:'시:분',dp:0,dir:'le',hm:1},
+  {f:'s1',n:'1일 압축강도',u:'MPa',dp:1,dir:'ge'},{f:'s3',n:'3일 압축강도',u:'MPa',dp:1,dir:'ge'},{f:'s7',n:'7일 압축강도',u:'MPa',dp:1,dir:'ge'},{f:'s28',n:'28일 압축강도',u:'MPa',dp:1,dir:'ge'},
+  {f:'MgO',n:'산화마그네슘 (MgO)',u:'%',dp:2,dir:'le'},{f:'SO3',n:'삼산화황 (SO₃)',u:'%',dp:2,dir:'le'},{f:'LOI',n:'강열감량 (LOI)',u:'%',dp:2,dir:'le'},{f:'Cl',n:'염화물 (Cl)',u:'ppm',dp:0,dir:'le'}];
+const KS_ITEM=Object.fromEntries(KS_ITEMS.map(x=>[x.f,x]));
+let CFG=JSON.parse(JSON.stringify(CFG_DEFAULT));
+const numOr=(v,d,lo,hi)=>{const n=typeof v==='number'?v:(v===''||v==null?NaN:Number(v));return isFinite(n)&&n>=lo&&n<=hi?n:d;};
+/* 받은 설정을 형식에 맞게 정리 (모르는 항목·잘못된 값은 버리고 기본값) */
+function cleanCfg(c){
+  const o=JSON.parse(JSON.stringify(CFG_DEFAULT));if(!c||typeof c!=='object')return o;
+  const f=c.fcao||{};o.fcao={target:numOr(f.target,1.2,0,5),tol:numOr(f.tol,0.5,0.05,3),warnRate:numOr(f.warnRate,10,0,100)};
+  KS_PRODS.forEach(pr=>{const k=(c.ks||{})[pr],h=(c.inh||{})[pr];
+    if(k&&typeof k==='object'){o.ks[pr]={};KS_ITEMS.forEach(it=>{const x=k[it.f];if(x&&typeof x==='object'){const v=numOr(x.v,null,0,1e6);if(v!=null)o.ks[pr][it.f]={v,ok:x.ok?1:0};}});}
+    if(h&&typeof h==='object'){o.inh[pr]={};KS_ITEMS.forEach(it=>{const x=h[it.f];if(x&&typeof x==='object'){const lo=numOr(x.lo,null,0,1e6),hi=numOr(x.hi,null,0,1e6);if(lo!=null||hi!=null)o.inh[pr][it.f]={lo,hi};}});}});
+  if(c.by)o.by=String(c.by).slice(0,60);if(c.at)o.at=String(c.at).slice(0,30);
+  return o;
+}
+const fcaoTxt=()=>`${nf(FCAO_TARGET,1)} ± ${nf(FCAO_TOL,1)}% (${nf(FCAO_LIM[0],2)}~${nf(FCAO_LIM[1],2)}%)`;
+function applyCfg(c,o={}){
+  CFG=cleanCfg(c);FCAO_TARGET=CFG.fcao.target;FCAO_TOL=CFG.fcao.tol;FCAO_WARN_RATE=CFG.fcao.warnRate;
+  FCAO_LIM=[+(FCAO_TARGET-FCAO_TOL).toFixed(2),+(FCAO_TARGET+FCAO_TOL).toFixed(2)];
+  if(typeof E!=='undefined')KILN_IDS.forEach(id=>{const p=E[id].params.fcao;p.lo=FCAO_LIM[0];p.hi=FCAO_LIM[1];});
+  if(!o.quiet&&typeof renderAll==='function'){renderAll();if(view==='report')renderReport(true);}
+}
 /* 킬른 호기 · 설계 용량 (t/d) · 라인 (A=3–5호 탭, B=6–7호 탭) */
 const KILN_DEF=[{n:3,cap:2200,z:-44,line:'A',stop:true},{n:4,cap:3120,z:-35,line:'A'},{n:5,cap:3120,z:-26,line:'A'},{n:6,cap:7600,z:-8,line:'B'},{n:7,cap:7600,z:6,line:'B'}];
 const RUN_DESIGN0=KILN_DEF.filter(d=>!d.stop).reduce((a,d)=>a+d.cap,0);
@@ -1894,21 +1950,29 @@ const kilnOpts=L=>[['all','전체'],...kilnEqs().filter(e=>!L||e.line===L).map(e
 /* 출하 시멘트 카드 (1종·3종): 시험 항목 드롭다운 */
 const SHIP_ITEMS=[['s28','28일 강도','MPa',1],['s1','1일 강도','MPa',1],['fst','응결 종결','시:분',0],['Cl','Cl','ppm',0],['SO3','SO₃','%',2],['MgO','MgO','%',2]];
 /* KS L 5201 기준: [값, 'ge'|'le', 확인] — 확인=1은 이 화면 09 KS 표와 같은 값, 0은 추정(KS 원문 확인 필요) */
-const KS_SHIP={'1종':{s28:[42.5,'ge',1],SO3:[3.5,'le',1],MgO:[5.0,'le',1],fst:[600,'le',0]},'3종':{s1:[10.0,'ge',0],s28:[47.5,'ge',0],SO3:[4.5,'le',0],MgO:[5.0,'le',0],fst:[600,'le',0]}};
 const hm=m=>`${Math.floor(m/60)}:${String(Math.round(m%60)).padStart(2,'0')}`;
+const fmtIt=(it,v)=>v==null?'—':it.hm?hm(v):nf(v,it.dp);
+const ksTxt=(it,k)=>k?`${fmtIt(it,k.v)}${it.hm?'':' '+it.u} ${it.dir==='ge'?'이상':it.hm?'이내':'이하'}${k.ok?'':' *'}`:'기준 없음';
+const inhTxt=(it,h)=>!h?'—':h.lo!=null&&h.hi!=null?`${fmtIt(it,h.lo)}~${fmtIt(it,h.hi)}`:h.lo!=null?`${fmtIt(it,h.lo)} 이상`:`${fmtIt(it,h.hi)} 이하`;
+/* 기간 안의 출하 로트를 항목별로 평가: KS는 로트마다 판정(미달 건수), 사내 기준은 범위 밖 건수 */
+function ksEval(prod,r=perRange()){
+  const lots=shipLots(prod).filter(x=>x.day>=r.from&&x.day<=r.to),K=CFG.ks[prod]||{},I=CFG.inh[prod]||{};
+  return KS_ITEMS.map(it=>{const vs=lots.map(x=>x[it.f]).filter(v=>v!=null),n=vs.length,ks=K[it.f]||null,ih=I[it.f]||null;
+    const pass=v=>it.dir==='ge'?v>=ks.v:v<=ks.v,inr=v=>(ih.lo==null||v>=ih.lo)&&(ih.hi==null||v<=ih.hi);
+    return {it,n,avg:n?vs.reduce((a,v)=>a+v,0)/n:null,min:n?Math.min(...vs):null,max:n?Math.max(...vs):null,ks,ih,
+      fail:ks&&n?vs.filter(v=>!pass(v)).length:null,out:ih&&n?vs.filter(v=>!inr(v)).length:null};
+  }).filter(x=>x.n||x.ks||x.ih);
+}
 function shipCard(prod){
-  const key='ship'+prod,r=perRange(),opts=SHIP_ITEMS.map(x=>[x[0],x[1]]),val=kpick(key,opts,'s28');
-  const [f,nm,u,dp]=SHIP_ITEMS.find(x=>x[0]===val);
-  const lots=shipLots(prod).filter(x=>x.day>=r.from&&x.day<=r.to&&x[f]!=null);
-  const lim=(KS_SHIP[prod]||{})[f],limTxt=lim?`KS L 5201 ${prod} ${f==='fst'?hm(lim[0])+' 이내':nf(lim[0],dp)+' '+u+(lim[1]==='ge'?' 이상':' 이하')}${lim[2]?'':' (추정 · KS 원문 확인 필요)'}`:'KS 기준 미확인';
-  const pass=v=>lim?(lim[1]==='ge'?v>=lim[0]:v<=lim[0]):null;
-  const base={key,ic:f[0]==='s'?'chart':'flask',l:`${prod} 출하`,u:f==='fst'?'시:분':u,sel:{opts,val,aria:`${prod} 출하 시험 항목`}};
-  if(!lots.length)return Object.assign(base,{v:'—',s:noData(r,nm)+(f==='s28'?' · 28일 강도는 채취 28일 뒤 발표':''),tip:`QMS 출하시멘트(${prod}) 시트의 ${nm}. ${limTxt}`});
-  const vs=lots.map(x=>x[f]),avg=vs.reduce((a,v)=>a+v,0)/vs.length,ok=pass(avg),fail=lim?vs.filter(v=>!pass(v)).length:0;
-  const fm=v=>f==='fst'?hm(v):nf(v,dp);
-  return Object.assign(base,{v:fm(avg),d:ok==null?'':(ok?'KS 적합':'KS 미달')+(lim[2]?'':'*'),dc:ok?'up':'dn',
-    s:`${perTxt(r)} · 로트 ${lots.length}건${lim?` · 미달 ${fail}건`:` · ${fm(Math.min(...vs))}~${fm(Math.max(...vs))}`} · QMS`,
-    tip:`${PER_NM[PER.g]}: 기간 내 출하시멘트(${prod}) 로트의 ${nm} 평균 (로트 채취일 기준). 범위 ${fm(Math.min(...vs))}~${fm(Math.max(...vs))}. ${limTxt}${ok!=null&&!lim[2]?' · *표시는 추정 기준으로 판정':''}`});
+  const key='ship'+prod,r=perRange(),opts=SHIP_ITEMS.map(x=>[x[0],x[1]]),val=kpick(key,opts,'s28'),it=KS_ITEM[val],nm=SHIP_ITEMS.find(x=>x[0]===val)[1];
+  const e=ksEval(prod,r).find(x=>x.it.f===val)||{it,n:0,ks:(CFG.ks[prod]||{})[val]||null};
+  const limTxt=e.ks?`KS L 5201 ${prod} ${ksTxt(it,e.ks).replace(' *','')}${e.ks.ok?'':' (추정 · KS 원문 확인 필요)'}`:'KS 기준 미등록';
+  const base={key,ic:val[0]==='s'?'chart':'flask',l:`${prod} 출하`,u:it.u,sel:{opts,val,aria:`${prod} 출하 시험 항목`}};
+  if(!e.n)return Object.assign(base,{v:'—',s:noData(r,nm)+(val==='s28'?' · 28일 강도는 채취 28일 뒤 발표':''),tip:`QMS 출하시멘트(${prod}) 시트의 ${nm}. ${limTxt}`});
+  const ok=e.ks?e.fail===0:null;
+  return Object.assign(base,{v:fmtIt(it,e.avg),d:ok==null?'':ok?'KS 적합'+(e.ks.ok?'':'*'):e.ks.ok?`KS 미달 ${e.fail}건`:`추정 기준 밖 ${e.fail}건*`,dc:ok?'up':e.ks&&e.ks.ok?'dn':'wn',
+    s:`${perTxt(r)} · 로트 ${e.n}건 · ${fmtIt(it,e.min)}~${fmtIt(it,e.max)} · QMS`,
+    tip:`${PER_NM[PER.g]}: 기간 내 출하시멘트(${prod}) 로트의 ${nm} 평균 (로트 채취일 기준). KS 판정은 로트마다 하며 한 건이라도 미달이면 '미달'. ${limTxt}${e.ks&&!e.ks.ok?' · *표시는 추정 기준으로 판정':''}`});
 }
 
 /* =========================================================
@@ -1978,7 +2042,7 @@ function runCard(){
   const sn=val==='all'?KILN_DEF.filter(d=>d.stop).map(d=>d.n+'호').join('·'):'';
   return Object.assign(c,{v:nf(rate,1),s:`${perTxt(r)} · 정지 ${nf(down,0)}시간${sn?` · ${sn} 제외`:''}${src==='DCS'?' · DCS':''}`,tip:`(달력시간 − 정지시간) ÷ 달력시간. ${src==='DCS'?'DCS 원료 투입량 > 1 t/h인 날을 가동으로 봄':'설비값 가상'}${sn?` · 장기 가동 중단 ${sn}은 공장 평균에서 제외`:''}`});
 }
-/* 카드: f-CaO (기간 평균, 관리기준 0.7~1.7%) */
+/* 카드: f-CaO (기간 평균, 사내 관리기준 대비) */
 function fcCard(L){
   const key='fc'+L,r=perRange(),opts=kilnOpts(L),val=kpick(key,opts,'all');
   const ids=val==='all'?kilnEqs().filter(e=>!L||e.line===L).map(e=>e.id):[val];
@@ -1988,7 +2052,7 @@ function fcCard(L){
   const out=ps.reduce((a,x)=>a+x[1].vals.filter(y=>y[1]<FCAO_LIM[0]||y[1]>FCAO_LIM[1]).length,0),days=ps.reduce((a,x)=>a+x[1].n,0);
   const ok=v>=FCAO_LIM[0]&&v<=FCAO_LIM[1],rate=days?out/days*100:0,warn=ok&&rate>FCAO_WARN_RATE;
   return Object.assign(c,{v:nf(v,2),d:!ok?'이탈':warn?'주의':'정상',dc:!ok?'dn':warn?'wn':'up',s:val==='all'&&ps.length>1?`${perTxt(r)} · ${ps.length}개 호기 · 일평균 이탈 ${out}/${days}회(${nf(rate,0)}%) · QMS`:`${perTxt(r)} · 일평균 이탈 ${out}/${days}일(${nf(rate,0)}%) · QMS`,
-    tip:`${PER_NM[PER.g]}: 호기별 일평균 f-CaO의 기간 평균${val==='all'?', 설계용량 가중평균':''}. 이탈은 일평균이 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)를 벗어난 횟수${val==='all'?' (호기별 하루 1회로 셈)':''}. 평균이 기준 안이어도 이탈 비율이 ${FCAO_WARN_RATE}%를 넘으면 '주의'`});
+    tip:`${PER_NM[PER.g]}: 호기별 일평균 f-CaO의 기간 평균${val==='all'?', 설계용량 가중평균':''}. 이탈은 일평균이 사내 관리기준 ${fcaoTxt()}를 벗어난 횟수${val==='all'?' (호기별 하루 1회로 셈)':''}. 평균이 기준 안이어도 이탈 비율이 ${FCAO_WARN_RATE}%를 넘으면 '주의'`});
 }
 function kpiCards(rep){
   const now=c=>Object.assign(c,{s:'현재 · '+c.s});
@@ -2059,18 +2123,6 @@ function bullet(name,v,dom,band,dp,tip){
   <div class="blt-t"><i class="bd" style="left:${pc(band[0])}%;width:${pc(band[1])-pc(band[0])}%"></i><i class="mk" style="left:${pc(v)}%"></i></div>
   <div class="blt-s"><span>${dom[0]}</span><span>관리 ${band[0]}~${band[1]}</span><span>${dom[1]}</span></div></div>`;
 }
-function ksRows(){
-  const c=cement();
-  const R=(n,u,v,dp,ks,kf,inn,inf)=>[n,u,v,dp,ks,v==null?null:kf(v),inn,v==null?null:inf(v)];
-  return [
-   R('분말도 (Blaine)','cm²/g',c.blaine,0,'2,800 이상',v=>v>=2800,'3,500~4,000',v=>v>=3500&&v<=4000),
-   R('삼산화황 (SO₃)','%',c.so3,2,'3.5 이하',v=>v<=3.5,'2.4~3.0',v=>v>=2.4&&v<=3.0),
-   R('산화마그네슘 (MgO)','%',c.mgo,2,'5.0 이하',v=>v<=5,'4.5 이하',v=>v<=4.5),
-   R('강열감량 (LOI)','%',c.loi,2,'3.0 이하 *',v=>v<=3,'3.0 이하',v=>v<=3),
-   R('7일 압축강도','MPa',c.s7,1,'22.5 이상',v=>v>=22.5,'40.0 이상',v=>v>=40),
-   R('28일 압축강도','MPa',c.s28,1,'42.5 이상',v=>v>=42.5,'50.0 이상',v=>v>=50)
-  ];
-}
 function dataNote(){
   return `분석값은 QMS 데이터(${esc(QMETA.fileName||'내장 기본 데이터')}${QD&&QD.to?`, ~${QD.to}`:''}), 운전값·레벨·생산량은 가상입니다. 값이 없는 분석 항목은 '—'로 표시하고 상태 판정에서 뺍니다.`;
 }
@@ -2094,7 +2146,14 @@ const winAvg=(key,fld)=>{const v=qSeries(key,fld).map(x=>x[1]);return v.length?v
 function avgSeries(list){const m=new Map();list.flat().forEach(([d,v])=>{const k=d.toDateString();const a=m.get(k)||{d,s:0,n:0};a.s+=v;a.n++;m.set(k,a);});return [...m.values()].sort((a,b)=>a.d-b.d).map(a=>[a.d,a.s/a.n,0]);}
 function thin(pts,max=150){if(pts.length<=max)return pts;const w=Math.ceil(pts.length/max),o=[];for(let i=0;i<pts.length;i+=w){const g=pts.slice(i,i+w);o.push([g[0][0],g.reduce((a,x)=>a+x[1],0)/g.length,0]);}return o;}
 let fcSel='all';   // 경영진 요약 04 f-CaO 관리도 호기 선택
-let shipSel='1종';
+let shipSel='1종',ksSel='1종';
+function ksTableHTML(rows){
+  if(!rows.some(x=>x.n))return '<div class="note" style="text-align:center;padding:40px 8px">이 기간에 시험 결과가 있는 출하 로트가 없습니다.</div>';
+  return `<div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">기간 평균</th><th class="r">범위</th><th class="r">로트</th><th class="r">KS L 5201</th><th>KS 판정</th><th class="r">사내 기준</th><th>사내 판정</th></tr></thead><tbody>${rows.map(x=>{const it=x.it;
+    if(!x.n)return `<tr><td>${it.n}</td><td class="r">—</td><td class="r">—</td><td class="r">0</td><td class="r">${ksTxt(it,x.ks)}</td><td><span class="badge s-none">데이터 없음</span></td><td class="r">${inhTxt(it,x.ih)}</td><td>${x.ih?'<span class="badge s-none">데이터 없음</span>':''}</td></tr>`;
+    return `<tr><td>${it.n}</td><td class="r num"><b>${fmtIt(it,x.avg)}</b> <small>${it.u}</small></td><td class="r num">${fmtIt(it,x.min)}~${fmtIt(it,x.max)}</td><td class="r num">${x.n}</td><td class="r">${ksTxt(it,x.ks)}</td>
+      <td>${x.ks?`<span class="badge ${x.fail?(x.ks.ok?'s-bad':'s-warn'):'s-ok'}">${x.fail?(x.ks.ok?`미달 ${x.fail}건`:`추정 기준 밖 ${x.fail}건*`):'적합'+(x.ks.ok?'':'*')}</span>`:'<span class="badge s-none">기준 없음</span>'}</td><td class="r">${inhTxt(it,x.ih)}</td><td>${x.ih?`<span class="badge ${x.out?'s-warn':'s-ok'}">${x.out?`범위 밖 ${x.out}건`:'만족'}</span>`:''}</td></tr>`;}).join('')}</tbody></table></div>`;
+}
 function lotChart(lots,ref){
   const w=560,h=220,L=48,R=12,T=14,B=26,iw=w-L-R,ih=h-T-B;const pts=lots.filter(x=>x.s28!=null);
   if(pts.length<2)return '<div class="note" style="text-align:center;padding:40px 8px">이 기간에 28일 강도가 나온 로트가 없습니다.</div>';
@@ -2105,15 +2164,12 @@ function lotChart(lots,ref){
   if(ref!=null)s+=`<line class="tg" x1="${L}" x2="${w-R}" y1="${y(ref)}" y2="${y(ref)}"/><text class="tgl" x="${w-R}" y="${y(ref)-6}" text-anchor="end">KS 1종 ${ref}</text>`;
   const d=pts.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(p.s28).toFixed(1)).join(' ');s+=`<path class="ln" d="${d}"/>`;
   pts.forEach((p,i)=>{if(i===pts.length-1||(ref!=null&&p.s28<ref))s+=`<circle class="pt${ref!=null&&p.s28<ref?' bad':''}" cx="${x(i).toFixed(1)}" cy="${y(p.s28).toFixed(1)}" r="4"><title>${p.day} · 로트 ${p.lot} · ${p.s28} MPa</title></circle>`;});
-  const every=Math.ceil(pts.length/6);pts.forEach((p,i)=>{if(i%every===0)s+=`<text class="tk" x="${x(i).toFixed(1)}" y="${h-7}" text-anchor="middle">${p.day.slice(2,7).replace('-','/')}</text>`;});
+  const every=Math.ceil(pts.length/6);const sameY=pts[0].day.slice(0,4)===pts[pts.length-1].day.slice(0,4),dl=d=>sameY?`${+d.slice(5,7)}/${+d.slice(8)}`:d.slice(2,7).replace('-','.');pts.forEach((p,i)=>{if(i%every===0)s+=`<text class="tk" x="${x(i).toFixed(1)}" y="${h-7}" text-anchor="middle">${dl(p.day)}</text>`;});
   return s+'</svg>';
 }
 function renderReport(force){
   const ae=document.activeElement;if(!force&&ae&&$('#report').contains(ae)&&ae.matches('input,select'))return;   // 날짜를 고르는 중이면 다시 그리지 않음
-  const kls=kilnEqs().map(e=>[e,eqStatus(e)]),ks=ksRows(),have=ks.filter(r=>r[2]!=null),ksOk=have.every(r=>r[5]),inOk=have.every(r=>r[7]);
-  const kstop=kls.filter(x=>x[1]==='stop'),khas=kls.filter(x=>x[1]!=='none'&&x[1]!=='stop'),kbad=kls.filter(x=>x[1]==='bad'),kwarn=kls.filter(x=>x[1]==='warn'),kn=a=>a.map(x=>x[0].kiln+'호').join('·');
-  const l1=!khas.length?'킬른 운전 데이터는 <em>아직 없고</em>,':kbad.length?`현재 킬른 ${kn(kbad)}에 <em>관리기준 이탈</em>이 있고,`:kwarn.length?`현재 킬른 ${kn(kwarn)}은 <em>주의 관찰</em>이 필요하고,`:`현재 가동 중인 킬른 ${khas.length}기 모두 <em>정상</em>이며,`;
-  const l2=!have.length?'출하 시멘트 시험 결과는 <em>아직 없습니다</em>.':ksOk?(inOk?'최근 1종 출하 로트는 <em>KS 기준을 충족</em>합니다.':'최근 1종 출하 로트는 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'최근 1종 출하 로트에 <em>KS 기준 미달</em> 항목이 있습니다.';
+  const {kls,kstop,kn,l1,l2}=repHeadline(),ksAll=ksEval(ksSel);
   // 생산: 기간에 맞춰 (일=호기별, 62일 이하=일별, 그 이상=월별 평균)
   const prod=prodSeries();
   // f-CaO (QMS)
@@ -2129,11 +2185,10 @@ function renderReport(force){
   const now=new Date(),wd='일월화수목금토'[now.getDay()];
   const prods=['1종','3종','S/C 2종'],lots=(()=>{const [a,b]=qWindow();return shipLots(shipSel).filter(x=>a&&x.day>=a&&x.day<=b);})();
   const lastBy=prods.map(p=>{const l=shipLots(p);return [p,l[l.length-1],[...l].reverse().find(x=>x.s28!=null)];});
-  const c=cement();
   $('#report').innerHTML=`
   <div class="banner">${ic('info')}분석값은 QMS 데이터입니다.<span>${esc(QMETA.fileName||'내장 기본 데이터')} · 기간 ${QD&&QD.from?QD.from:'-'} ~ ${QD&&QD.to?QD.to:'-'}${QMETA.uploadedBy?` · ${esc(QMETA.uploadedBy)} ${QMETA.uploadedAt?stamp(new Date(QMETA.uploadedAt)):''} 올림`:''}. 생산량·운전값·레벨·차량은 가상이고, 사내 관리기준은 예시값입니다.</span></div>
-  <div class="headline"><div><div class="eb">경영진 요약 · 분석 데이터 기준 ${QD&&QD.to?QD.to:'-'} · 화면 ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)}</div><h1>${l1}<br>${l2}</h1><p>킬른 5기 (3~7호) · 가동 ${kls.length-kstop.length}기${kstop.length?` · ${kn(kstop)} 가동 중단`:''} · ${SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'QMS 파일 기준'} · 제목은 현재 상태·최근 로트 기준, 아래 카드·차트는 선택 기간 기준</p></div>
-   <div class="pctl"><div class="pbar rpbar" role="group" aria-label="분석 기간">${perBarHTML()}</div><small>분석 기간 ${winLabel()}</small></div></div>
+  <div class="headline"><div><div class="eb">경영진 요약 · 분석 데이터 기준 ${QD&&QD.to?QD.to:'-'} · 화면 ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)}</div><h1>${l1}<br>${l2}</h1><p>킬른 5기 (3~7호) · 가동 ${kls.length-kstop.length}기${kstop.length?` · ${kn(kstop)} 가동 중단`:''} · ${SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'QMS 파일 기준'} · 킬른 상태는 현재, 출하 품질과 아래 카드·차트는 선택 기간 기준</p></div>
+   <div class="pctl"><div class="pbar rpbar" role="group" aria-label="분석 기간">${perBarHTML()}</div><div class="xbtns"><small>분석 기간 ${winLabel()}</small><button type="button" class="btn ghost" data-exp="ppt">${ic('download')}PPT 내려받기</button><button type="button" class="btn ghost" data-exp="xlsx">${ic('download')}엑셀 내려받기</button></div></div></div>
   <div class="krow">${kpiCards(true)}</div>
   <div class="grid">
    <article class="card full"><div class="pv" style="justify-content:flex-start">${kilnTable()}</div>
@@ -2143,29 +2198,27 @@ function renderReport(force){
    <article class="card"><div class="pv" style="justify-content:flex-start">${moduleTable()}</div>
     <div class="meta"><span class="n">03</span><div><b>클링커 모듈 (QMS · 기간 평균)</b><small>호기별 클링커 XRF의 ${winLabel()} 평균(일평균의 평균). 요입 LSF는 원료 시트의 킬른 요입 시료입니다.</small></div></div></article>
    <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="호기">${[['all','가동 평균'],...KILN_DEF.map(d=>['K'+d.n,d.n+'호'+(isStopped(E['K'+d.n])?' (정지)':'')])].map(([k,t])=>`<button type="button" role="tab" data-fc="${k}" class="${fcSel===k?'on':''}">${t}</button>`).join('')}</div>${fc?ctrlChart(fc.vals,fc.labels,{lo:FCAO_LIM[0],hi:FCAO_LIM[1],center:FCAO_TARGET,min:0,max:Math.max(2.4,Math.ceil(Math.max(...fc.vals)*2)/2),aria:'f-CaO 관리도'}):empty(fcSel!=='all'&&isStopped(E[fcSel])?`${E[fcSel].kiln}호는 가동 중단 중이라 시료가 없습니다.`:'이 기간에 QMS 클링커 f-CaO 시료가 없습니다.')}</div>
-    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'가동 호기 평균':E[fcSel].kiln+'호'} (QMS)</b><small>${winLabel()} · ${winDays()<=7&&fcSel!=='all'?'시료값':'일평균'} 기준(점이 많으면 묶어서 평균). 사내 관리기준 1.2 ± 0.5%(0.7~1.7%)이며, 빨간 점은 범위를 벗어난 값입니다.</small></div></div></article>
+    <div class="meta"><span class="n">04</span><div><b>f-CaO 관리도 · ${fcSel==='all'?'가동 호기 평균':E[fcSel].kiln+'호'} (QMS)</b><small>${winLabel()} · ${winDays()<=7&&fcSel!=='all'?'시료값':'일평균'} 기준(점이 많으면 묶어서 평균). 사내 관리기준 ${fcaoTxt()}이며, 빨간 점은 범위를 벗어난 값입니다.</small></div></div></article>
    <article class="card"><div class="pv">
      <div class="hb"><div class="hl"><span>금일 출하 (가상)</span><b class="num">${fv(dsp.ship,0)} / ${fv(dsp.plan,0)} t</b></div><div class="bar"><i class="s-act" style="width:${dsp.plan.v>0?clamp(dsp.ship.v/dsp.plan.v*100,0,100):0}%"></i></div></div>
      ${SL_DEF.map(d=>{const e=E[d.id],p=e.params.level,s=pStatus(p),q=QD&&QD.ssilo[d.id];return `<div class="hb"><div class="hl"><span>${d.n}호 · ${d.fa?'F/A':(q?q.product:d.prod)}${q?` <small style="color:var(--fg3)">${q.mill.slice(2)}호 C/M ${md(tsDate(q.ts))}</small>`:''}</span><b class="num">${fv(p,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${bw(p)}%"></i></div></div>`;}).join('')}
     </div><div class="meta"><span class="n">05</span><div><b>시멘트 사일로</b><small>레벨은 가상, 품종과 C/M·일자는 QMS 시멘트 시트의 최근 투입 기록입니다.${low.length?` ${low.map(e=>e.n+'호').join(', ')} 레벨이 관리 한계에 가깝습니다.`:''}</small></div></div></article>
    <article class="card full"><div class="pv" style="justify-content:flex-start">${millTable()}</div>
     <div class="meta"><span class="n">06</span><div><b>시멘트 밀 투입·출하 경로</b><small>‘현재 생산’은 QMS 시멘트 시트의 C/M별 마지막 시료(품명·투입사일로)입니다. 경로표(현장 정보)와 다르면 ‘경로표와 다름’으로 표시합니다. 4호 사일로 F/A는 혼합재로 투입합니다.</small></div></div></article>
-   <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="품종">${prods.map(p=>`<button type="button" role="tab" data-ship="${p}" class="${shipSel===p?'on':''}">${p}</button>`).join('')}</div>${lotChart(lots,shipSel==='1종'?42.5:null)}
+   <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="품종">${prods.map(p=>`<button type="button" role="tab" data-ship="${p}" class="${shipSel===p?'on':''}">${p}</button>`).join('')}</div>${lotChart(lots,((CFG.ks[shipSel]||{}).s28||{}).v??null).replace(/KS 1종 /g,`KS ${shipSel} `)}
      <div class="tbl"><table class="ks"><thead><tr><th>품종</th><th>최근 로트</th><th class="r">Blaine</th><th class="r">SO₃</th><th class="r">3일</th><th class="r">7일</th><th class="r">28일 (최근)</th><th>선박</th></tr></thead><tbody>${lastBy.map(([p,L,L28])=>L?`<tr><td><b>${p}</b></td><td>${L.lot}<br><small style="color:var(--fg3)">${L.day}</small></td><td class="r num">${L.blaine==null?'—':nf(L.blaine)}</td><td class="r num">${L.SO3==null?'—':nf(L.SO3,2)}</td><td class="r num">${L.s3==null?'시험 중':nf(L.s3,1)}</td><td class="r num">${L.s7==null?'시험 중':nf(L.s7,1)}</td><td class="r num">${L28?`${nf(L28.s28,1)} <small style="color:var(--fg3)">${L28.day.slice(5)}</small>`:'—'}</td><td style="white-space:normal">${esc(L.ships||'—')}</td></tr>`:`<tr><td><b>${p}</b></td><td colspan="7">로트 없음</td></tr>`).join('')}</tbody></table></div></div>
-    <div class="meta"><span class="n">07</span><div><b>출하 시멘트 강도 (QMS)</b><small>출하시멘트 시트의 로트별 28일 압축강도 추이(선택한 기간의 로트, 채취일 기준)입니다. 28일 강도는 채취 28일 뒤에 나오므로 최근 로트는 비어 있을 수 있습니다. 최근 로트는 재령이 지나지 않아 강도가 ‘시험 중’일 수 있습니다. 3종·S/C 2종의 KS 기준선은 확인 후 추가하겠습니다.</small></div></div></article>
+    <div class="meta"><span class="n">07</span><div><b>출하 시멘트 강도 (QMS)</b><small>출하시멘트 시트의 로트별 28일 압축강도 추이(선택한 기간의 로트, 채취일 기준)입니다. 28일 강도는 채취 28일 뒤에 나오므로 최근 로트는 비어 있을 수 있습니다. 최근 로트는 재령이 지나지 않아 강도가 ‘시험 중’일 수 있습니다. 점선은 관리기준 설정의 KS 28일 기준입니다.</small></div></div></article>
    <article class="card"><div class="pv" style="justify-content:flex-start"><div class="issues">${open.length?open.map(a=>`<div class="iss"><span class="badge s-${a.sev}">${ST[a.sev]}</span><div><b>${E[a.eq].name} · ${a.label}</b><small>${stamp(a.t)} · ${a.val} · ${a.lim}${alarmActive(a)?'':' · 해제됨'}</small></div></div>`).join(''):'<div class="iss"><span class="badge s-ok">정상</span><div><b>확인할 알람이 없습니다</b></div></div>'}</div></div>
     <div class="meta"><span class="n">08</span><div><b>확인이 필요한 알람</b><small>분석값 알람은 QMS 시료가 관리한계(최근 90일 평균±3σ)에 다가가거나 벗어난 시점입니다.</small></div></div></article>
-   <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="tbl"><table class="ks"><thead><tr><th>항목</th><th class="r">실적</th><th class="r">KS L 5201 1종</th><th>KS 판정</th><th class="r">사내 기준 (예시)</th><th>사내 판정</th></tr></thead><tbody>
-     ${ks.map(r=>r[2]==null?`<tr><td>${r[0]}</td><td class="r">—</td><td class="r">${r[4]}</td><td><span class="badge s-none">데이터 없음</span></td><td class="r">${r[6]}</td><td><span class="badge s-none">데이터 없음</span></td></tr>`
-       :`<tr><td>${r[0]}</td><td class="r num"><b>${nf(r[2],r[3])}</b> ${r[1]}</td><td class="r">${r[4]}</td><td><span class="badge ${r[5]?'s-ok':'s-bad'}">${r[5]?'적합':'부적합'}</span></td><td class="r">${r[6]}</td><td><span class="badge ${r[7]?'s-ok':'s-warn'}">${r[7]?'만족':'주의'}</span></td></tr>`).join('')}
-    </tbody></table></div></div>
-    <div class="meta"><span class="n">09</span><div><b>KS 규격 대비 평가 (1종 출하 로트, QMS)</b><small>화학은 최근 로트 ${c.lot?`${c.lot.lot} (${c.lot.day})`:'—'}, 분말도는 ${c.lotB?`${c.lotB.lot} (${c.lotB.day})`:'—'}, 7일 강도는 ${c.lot7?`${c.lot7.lot} (${c.lot7.day})`:'—'}, 28일 강도는 ${c.lot28?`${c.lot28.lot} (${c.lot28.day})`:'—'} 기준입니다. KS 기준값은 KS L 5201 1종 기준이며 최신 개정판 원문과 대조가 필요합니다(* 강열감량 특히 확인). 사내 기준은 예시값입니다.</small></div></div></article>
+   <article class="card w2"><div class="pv" style="justify-content:flex-start"><div class="seg" role="tablist" aria-label="품종">${KS_PRODS.map(p=>`<button type="button" role="tab" data-ks="${p}" class="${ksSel===p?'on':''}">${p}</button>`).join('')}</div>${ksTableHTML(ksAll)}</div>
+    <div class="meta"><span class="n">09</span><div><b>KS 규격 대비 평가 · ${ksSel} 출하 로트 (QMS)</b><small>${winLabel()}에 채취한 로트 기준입니다. KS 판정은 로트마다 하며, 미달은 기준을 벗어난 로트 수입니다. <b>* 표시는 KS L 5201 원문과 아직 대조하지 않은 추정 기준</b>이라 ‘미달’로 단정하지 않고 ‘추정 기준 밖’으로 표시하며, 사내 기준은 예시값입니다. 기준값은 오른쪽 위 톱니 아이콘(관리기준 설정)에서 바꿉니다.</small></div></div></article>
    <article class="card"><div class="pv" style="justify-content:flex-start">${acceptTable()}</div>
     <div class="meta"><span class="n">10</span><div><b>인수검사 현황 (QMS)</b><small>원료·석고·고령토 인수검사 로트 수(최근 30일 / 전체). 파일의 합부판정 칸이 비어 있어 판정은 표시하지 않습니다.</small></div></div></article>
   </div>
   <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(ASTM C150 부록 방식, f-CaO 차감). 분석 항목의 관리한계는 최근 90일 QMS 데이터의 평균±3σ로 자동 계산합니다(시멘트는 C/M·품종별). 시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 행은 자동으로 바로잡습니다.</p>`;
   $$('[data-fc]').forEach(b=>b.onclick=()=>{fcSel=b.dataset.fc;renderReport();});
   $$('[data-ship]').forEach(b=>b.onclick=()=>{shipSel=b.dataset.ship;renderReport();});
+  $$('[data-ks]').forEach(b=>b.onclick=()=>{ksSel=b.dataset.ks;renderReport();});
   $$('.krw').forEach(r=>{const go=()=>{location.hash='#map';setTimeout(()=>select({type:'eq',id:r.dataset.kiln||r.dataset.goto},{fly:true}),40);};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go();}};});
 }
 function moduleTable(){
@@ -2366,7 +2419,7 @@ function backToDefault(){const d=defaultQms();try{localStorage.removeItem('b365-
 async function serverInit(){
   if(location.protocol==='file:')return false;
   try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return true;}if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;}catch(e){return false;}
-  await loadMe();await pullServer(true);setInterval(pollServer,20000);renderAll();return true;
+  await loadMe();await pullCfg();await pullServer(true);setInterval(pollServer,20000);renderAll();return true;
 }
 const ROLE_KO={admin:'관리자',editor:'편집',viewer:'뷰어'};
 function toLogin(){location.replace('login');}
@@ -2394,6 +2447,7 @@ async function pollServer(){
   try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return;}if(!r.ok)throw new Error();const s=await r.json();SERVER.ok=true;SERVER.needKey=s.needKey;SERVER.watch=s.watch;
     if(SERVER.me&&SERVER.me.role==='admin')loadMe();
     checkPageVersion(s);
+    if(s.cfg!==undefined&&s.cfg!==SERVER.cfg&&$('#cfgModal').hidden)await pullCfg();
     if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
@@ -2419,7 +2473,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-11 15:30</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-11 21:31</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
@@ -2500,7 +2554,7 @@ function wallCycleStart(){
   void pg.offsetWidth;pg.style.setProperty('--cyc',WALL.cyc+'s');pg.classList.add('run');
   WALL.timer=setTimeout(()=>{
     // 누가 화면을 만지는 중(1분)이거나 데이터 창이 열려 있으면 넘기지 않고 다시 셈
-    if(Date.now()>=WALL.pauseUntil&&$('#dataModal').hidden&&view==='map'){const ids=TABS.map(t=>t.id);select(null);setTab(ids[(ids.indexOf(curTab)+1)%ids.length]);}
+    if(Date.now()>=WALL.pauseUntil&&$('#dataModal').hidden&&$('#cfgModal').hidden&&view==='map'){const ids=TABS.map(t=>t.id);select(null);setTab(ids[(ids.indexOf(curTab)+1)%ids.length]);}
     wallCycleStart();},WALL.cyc*1000);
 }
 function wallIdle(){const app=$('#app');app.classList.remove('idle');clearTimeout(WALL.idleT);if(WALL.on)WALL.idleT=setTimeout(()=>app.classList.add('idle'),5000);}
@@ -2539,16 +2593,330 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-11 15:30';
+const BUILD='2026-11-11 21:31';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
   const note=m=>{if(SERVER.verNoted!==m){SERVER.verNoted=m;toast(m,'act');}};
   if(tried===s.page)return note('새 화면 버전이 있습니다. 새로고침(F5)해 주세요');          // 한 번 다시 열었는데도 같으면 반복하지 않음
-  const ae=document.activeElement,busy=!$('#dataModal').hidden||(ae&&ae.matches&&ae.matches('input,select,textarea'));
+  const ae=document.activeElement,busy=!$('#dataModal').hidden||!$('#cfgModal').hidden||(ae&&ae.matches&&ae.matches('input,select,textarea'));
   if(busy)return note('새 화면 버전이 있습니다. 입력을 마치면 자동으로 바뀝니다');
   try{sessionStorage.setItem('b365-reload',s.page);}catch(e){}
   toast(`새 화면 버전(${s.page})으로 바꿉니다`,'act');setTimeout(()=>location.reload(),3000);
+}
+/* =========================================================
+   경영진 요약 내보내기: PPT(.pptx) · 엑셀(.xlsx)
+   외부 라이브러리 없이 파일을 직접 만듭니다 (사내망·오프라인). 선택한 기간 기준.
+   ========================================================= */
+const TE=new TextEncoder();
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(b){let c=~0;for(let i=0;i<b.length;i++)c=CRC_T[(c^b[i])&255]^(c>>>8);return ~c>>>0;}
+/* ZIP (무압축 저장). files: [[경로, 문자열|Uint8Array]] */
+function zipStore(files,mime){
+  const parts=[],cen=[];let off=0;
+  for(const [name,d0] of files){const d=typeof d0==='string'?TE.encode(d0):d0,nb=TE.encode(name),crc=crc32(d);
+    const lh=new DataView(new ArrayBuffer(30));lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,d.length,true);lh.setUint32(22,d.length,true);lh.setUint16(26,nb.length,true);
+    parts.push(new Uint8Array(lh.buffer),nb,d);
+    const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,d.length,true);ch.setUint32(24,d.length,true);ch.setUint16(28,nb.length,true);ch.setUint32(42,off,true);
+    cen.push(new Uint8Array(ch.buffer),nb);off+=30+nb.length+d.length;}
+  const cs=cen.reduce((a,x)=>a+x.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cs,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cen,new Uint8Array(e.buffer)],{type:mime});
+}
+function saveBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},3000);}
+const xesc=s=>String(s??'').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const XH='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+
+/* ---------- 보고서 데이터 (화면과 같은 계산) ---------- */
+function repHeadline(){
+  const kls=kilnEqs().map(e=>[e,eqStatus(e)]),ks1=ksEval('1종'),have=ks1.filter(x=>x.n&&x.ks);
+  const ksFail=have.filter(x=>x.ks.ok).reduce((a,x)=>a+x.fail,0),estFail=have.filter(x=>!x.ks.ok).reduce((a,x)=>a+x.fail,0),inOut=ks1.filter(x=>x.n&&x.ih).reduce((a,x)=>a+x.out,0);
+  const kstop=kls.filter(x=>x[1]==='stop'),khas=kls.filter(x=>x[1]!=='none'&&x[1]!=='stop'),kbad=kls.filter(x=>x[1]==='bad'),kwarn=kls.filter(x=>x[1]==='warn'),kn=a=>a.map(x=>x[0].kiln+'호').join('·');
+  const l1=!khas.length?'킬른 운전 데이터는 <em>아직 없고</em>,':kbad.length?`현재 킬른 ${kn(kbad)}에 <em>관리기준 이탈</em>이 있고,`:kwarn.length?`현재 킬른 ${kn(kwarn)}은 <em>주의 관찰</em>이 필요하고,`:`현재 가동 중인 킬른 ${khas.length}기 모두 <em>정상</em>이며,`;
+  const l2=!have.length?'선택 기간의 1종 출하 시험 결과는 <em>아직 없습니다</em>.':ksFail?`1종 출하 로트에 <em>KS 기준 미달 ${ksFail}건</em>이 있습니다.`
+    :estFail?`1종 출하 로트는 <em>확인된 KS 기준을 충족</em>합니다 (추정 기준 밖 ${estFail}건 확인 필요).`:inOut?'1종 출하 로트는 모두 <em>KS 기준을 충족</em>하나 사내 기준 밖이 있습니다.':'1종 출하 로트는 모두 <em>KS 기준을 충족</em>합니다.';
+  return {kls,kstop,kn,l1,l2};
+}
+function reportData(){
+  const r=perRange(),t=todayStr(),to=r.to>t?t:r.to;let cards;
+  REPF=true;try{cards=[prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')];}finally{REPF=false;}
+  const kilns=kilnEqs().map(e=>{const kp=kilnPer(e.id,r),fc=streamPer('clk:'+e.id,'fcao',r),av=f=>{const x=streamPer('clk:'+e.id,f,r);return x?x.avg:null;},fl=streamPer('feed:'+e.id,'LSF',r);
+    return {e,st:eqStatus(e),kp,fc,out:fc?fc.vals.filter(y=>y[1]<FCAO_LIM[0]||y[1]>FCAO_LIM[1]).length:null,LSF:av('LSF'),SM:av('SM'),IM:av('IM'),C3S:av('C3S'),feedLSF:fl?fl.avg:null};});
+  const ks={};KS_PRODS.forEach(p=>ks[p]=ksEval(p,r));
+  return {r,from:r.from,to,days:perDays(r),cards,kilns,prod:prodSeries(),ks,head:repHeadline(),made:new Date(),
+    src:`${QMETA.fileName||'내장 기본 데이터'} (QMS 데이터 ${QD&&QD.from?QD.from:'-'} ~ ${QD&&QD.to?QD.to:'-'})`,virt:prodSrc(KILN_IDS,r)==='가상'};
+}
+const stTxt=s=>s==='ok'?'정상 운전':ST[s];
+/* 보고서에 넣을 핵심 문장 */
+function repInsights(D){
+  const out=[],k=D.kilns.filter(x=>x.fc&&x.fc.n).map(x=>({n:x.e.kiln,rate:x.out/x.fc.n*100,out:x.out,d:x.fc.n,avg:x.fc.avg})).sort((a,b)=>b.rate-a.rate);
+  if(k.length)out.push(`f-CaO 사내 관리기준 ${fcaoTxt()} 이탈이 가장 잦은 호기는 ${k[0].n}호입니다: 일평균 ${k[0].d}일 중 ${k[0].out}일(${nf(k[0].rate,0)}%) 이탈, 기간 평균 ${nf(k[0].avg,2)}%.`);
+  else out.push('선택 기간에 클링커 f-CaO 시료가 없습니다.');
+  KS_PRODS.forEach(p=>{const rows=D.ks[p].filter(x=>x.n&&x.ks);if(!rows.length){out.push(`${p} 출하: 선택 기간에 KS 평가 대상 시험 결과가 없습니다.`);return;}
+    const bad=rows.filter(x=>x.ks.ok&&x.fail),est=rows.filter(x=>!x.ks.ok&&x.fail),n=Math.max(...D.ks[p].map(x=>x.n));
+    out.push(`${p} 출하 로트 ${n}건: `+(bad.length?`KS 기준 미달 — ${bad.map(x=>`${x.it.n} ${x.fail}건`).join(', ')}.`:rows.some(x=>x.ks.ok)?`확인된 KS 기준 ${rows.filter(x=>x.ks.ok).length}개 항목 모두 적합.`:'KS 기준이 모두 추정값(*)이라 확정 판정은 보류합니다.')+(est.length?` 추정 기준(*) 밖: ${est.map(x=>`${x.it.n} ${x.fail}건`).join(', ')} — KS 원문 확인 필요.`:''));});
+  out.push(D.virt?'클링커 생산량·킬른 가동률은 DCS 데이터가 없어 가상값입니다. 보고에 쓰려면 DCS 원료 투입량을 QMS 양식 ‘킬른’ 시트로 올려야 합니다.':'클링커 생산량·킬른 가동률은 DCS 원료 투입량 일평균으로 계산했습니다.');
+  return out;
+}
+
+/* ---------- 차트(SVG) → PNG ---------- */
+const CHART_CSS=".gl{stroke:#E5E8EB;stroke-width:1}.tk{fill:#8B95A1;font-size:11px;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif}.b{fill:#3182F6;opacity:.42}.b.now{opacity:1}.b.warn{fill:#D98200;opacity:1}.tg{stroke:#4E5968;stroke-dasharray:4 4;stroke-width:1.2}.tgl{fill:#4E5968;font-size:11px;font-weight:600;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif}.band{fill:#3182F6;opacity:.1}.lim{stroke:#3182F6;stroke-width:1;stroke-dasharray:3 4;opacity:.7}.ln{fill:none;stroke:#3182F6;stroke-width:2;stroke-linejoin:round}.pt{fill:#3182F6}.pt.bad{fill:#E5484D}.area{fill:#3182F6;opacity:.08}";
+function svgPng(svg,scale=3){return new Promise((res,rej)=>{
+  const m=svg&&svg.match(/^<svg viewBox="0 0 (\d+) (\d+)"/);if(!m)return res(null);const w=+m[1],h=+m[2];
+  const src=svg.replace('<svg ',`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" `).replace(/(<svg[^>]*>)/,`$1<style>${CHART_CSS}</style><rect width="100%" height="100%" fill="#FFFFFF"/>`);
+  const img=new Image();
+  img.onload=()=>{const c=document.createElement('canvas');c.width=w*scale;c.height=h*scale;c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    c.toBlob(b=>b?b.arrayBuffer().then(a=>res({data:new Uint8Array(a),w,h})):rej(new Error('차트 그림을 만들지 못했습니다')),'image/png');};
+  img.onerror=()=>rej(new Error('차트 그림을 만들지 못했습니다'));img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(src);});}
+function logoBytes(){const im=document.querySelector('.logo.co img');if(!im||!/^data:image\/png;base64,/.test(im.src))return null;
+  const b=atob(im.src.split(',')[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return {data:u,w:im.naturalWidth||213,h:im.naturalHeight||72};}
+async function repCharts(D){
+  const P=D.prod,prod=P?barChart(P.vals,P.labels,{target:P.target,unit:P.unit,low:P.target?P.target*.9:null,aria:'클링커 생산 추이'}):null;
+  const fpts=thin(avgSeries(kilnEqs().map(e=>qSeries('clk:'+e.id,'fcao'))));
+  const fc=fpts.length>1?ctrlChart(fpts.map(x=>x[1]),fpts.map(x=>x[2]?`${md(x[0])} ${hhmm(x[0])}`:md(x[0])),{lo:FCAO_LIM[0],hi:FCAO_LIM[1],center:FCAO_TARGET,min:0,max:Math.max(2.4,Math.ceil(Math.max(...fpts.map(x=>x[1]))*2)/2),aria:'f-CaO 관리도'}):null;
+  const lot=p=>{const k=(CFG.ks[p]||{}).s28,l=shipLots(p).filter(x=>x.day>=D.from&&x.day<=D.to);const s=lotChart(l,k?k.v:null);return s.startsWith('<svg')?s.replace(/KS 1종 /g,`KS ${p} `):null;};
+  return {prod:await svgPng(prod),fc:await svgPng(fc),lot1:await svgPng(lot('1종')),lot3:await svgPng(lot('3종'))};
+}
+
+/* ---------- PPTX ---------- */
+const NS_A='http://schemas.openxmlformats.org/drawingml/2006/main',NS_R='http://schemas.openxmlformats.org/officeDocument/2006/relationships',NS_P='http://schemas.openxmlformats.org/presentationml/2006/main';
+const PNS=`xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"`,EMU=v=>Math.round(v*914400);
+const C={bg:'F2F4F6',card:'FFFFFF',fg:'191F28',fg2:'4E5968',fg3:'8B95A1',line:'E5E8EB',accent:'3182F6',ok:'0E9F6E',warn:'D98200',bad:'E5484D',head:'F4F6F9'};
+const GRP='<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>';
+function mkSlide(){
+  let id=1;const sh=[],media=[];
+  const xf=(x,y,w,h,tag='a')=>`<${tag}:xfrm><a:off x="${EMU(x)}" y="${EMU(y)}"/><a:ext cx="${EMU(w)}" cy="${EMU(h)}"/></${tag}:xfrm>`;
+  const run=(t,o={})=>`<a:r><a:rPr lang="ko-KR" altLang="en-US" sz="${Math.round((o.sz||12)*100)}" b="${o.b?1:0}" dirty="0"><a:solidFill><a:srgbClr val="${o.c||C.fg}"/></a:solidFill><a:latin typeface="맑은 고딕"/><a:ea typeface="맑은 고딕"/></a:rPr><a:t>${xesc(t)}</a:t></a:r>`;
+  /* 문단: 문자열 또는 [[글, 옵션], ...] */
+  const para=(p,d={})=>{const runs=typeof p==='string'?[[p,{}]]:(p.runs||p),al=(p.al||d.al||'l');return `<a:p><a:pPr algn="${al}"><a:lnSpc><a:spcPct val="${d.sp||110000}"/></a:lnSpc>${d.gap?`<a:spcAft><a:spcPts val="${d.gap*100}"/></a:spcAft>`:''}</a:pPr>${runs.map(r=>run(r[0],Object.assign({},d,r[1]))).join('')}</a:p>`;};
+  const S={media,
+    box(x,y,w,h,o={}){sh.push(`<p:sp><p:nvSpPr><p:cNvPr id="${++id}" name="box${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr>${xf(x,y,w,h)}<a:prstGeom prst="${o.sq?'rect':'roundRect'}"><a:avLst>${o.sq?'':`<a:gd name="adj" fmla="val ${o.adj||6000}"/>`}</a:avLst></a:prstGeom><a:solidFill><a:srgbClr val="${o.fill||C.card}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`);},
+    text(x,y,w,h,paras,d={}){sh.push(`<p:sp><p:nvSpPr><p:cNvPr id="${++id}" name="text${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xf(x,y,w,h)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="${d.anchor||'t'}"><a:noAutofit/></a:bodyPr><a:lstStyle/>${(Array.isArray(paras)?paras:[paras]).map(p=>para(p,d)).join('')}</p:txBody></p:sp>`);},
+    pic(x,y,w,h,img){media.push(img);const rid='rId'+(media.length+1);sh.push(`<p:pic><p:nvPicPr><p:cNvPr id="${++id}" name="pic${id}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xf(x,y,w,h)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`);},
+    /* 표: cols=열 너비 비율, rows=[[셀]] 셀은 문자열 또는 {t,c,b,al} — 첫 줄은 머리글 */
+    table(x,y,w,cols,rows,o={}){const tot=cols.reduce((a,b)=>a+b,0),cw=cols.map(c=>EMU(w*c/tot)),rh=EMU(o.rowH||.4),sz=o.sz||11;
+      const cell=(c,ri,ci)=>{const o2=typeof c==='object'&&c?c:{t:c},head=ri===0;const al=o2.al||(ci===0?'l':(o.al||'r'));
+        return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>${para([[o2.t==null?'':String(o2.t),{sz:head?sz-1:sz,b:head||o2.b,c:head?C.fg3:(o2.c||C.fg)}]],{al,sp:100000})}</a:txBody><a:tcPr marL="${EMU(.08)}" marR="${EMU(.08)}" marT="${EMU(.03)}" marB="${EMU(.03)}" anchor="ctr"><a:lnL w="0"><a:noFill/></a:lnL><a:lnR w="0"><a:noFill/></a:lnR><a:lnT w="0"><a:noFill/></a:lnT><a:lnB w="6350"><a:solidFill><a:srgbClr val="${C.line}"/></a:solidFill></a:lnB>${head?`<a:solidFill><a:srgbClr val="${C.head}"/></a:solidFill>`:'<a:noFill/>'}</a:tcPr></a:tc>`;};
+      sh.push(`<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${++id}" name="table${id}"/><p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>${xf(x,y,w,(o.rowH||.4)*rows.length,'p')}<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table"><a:tbl><a:tblPr firstRow="1"/><a:tblGrid>${cw.map(v=>`<a:gridCol w="${v}"/>`).join('')}</a:tblGrid>${rows.map((r,ri)=>`<a:tr h="${rh}">${r.map((c,ci)=>cell(c,ri,ci)).join('')}</a:tr>`).join('')}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`);},
+    xml(){return `${XH}<p:sld ${PNS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${C.bg}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GRP}${sh.join('')}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`;}};
+  return S;
+}
+/* '<em>강조</em>' 가 든 문장 → 강조만 파란 글자 */
+const emRuns=(t,o={})=>String(t).split(/<em>(.*?)<\/em>/).map((x,i)=>[x.replace(/<[^>]+>/g,''),i%2?Object.assign({},o,{c:C.accent}):o]).filter(r=>r[0]);
+const PW=13.333,PM=.5,CW=PW-PM*2;
+function pptFrame(S,D,n,l1,l2){
+  S.text(PM,.38,CW,.25,[[['Blue365 · 시멘트 공정 품질 요약',{b:1,c:C.accent}],[`   ${D.r.lab}${D.to<D.r.to?` (${D.to}까지)`:''}`,{c:C.fg3}]]],{sz:10.5});
+  S.text(PM,.72,CW,1.1,[emRuns(l1,{b:1}),emRuns(l2,{b:1})],{sz:24,sp:112000});
+  S.text(PM,7.08,CW-1,.22,`자료: ${D.src} · 작성 ${ymd(D.made)} ${hhmm(D.made)}${D.virt?' · 생산량·가동률은 가상값':''}`,{sz:8.5,c:C.fg3});
+  S.text(PW-PM-1,7.08,1,.22,{runs:[[String(n),{}]],al:'r'},{sz:8.5,c:C.fg3});
+}
+const DC={up:C.ok,dn:C.bad,wn:C.warn,nt:C.fg3};
+async function buildPptx(D){
+  const ch=await repCharts(D),logo=logoBytes(),slides=[],plain=t=>String(t??'').replace(/<[^>]+>/g,'');
+  const period=`${D.from} ~ ${D.to} (${D.days.length}일)`;
+  // 1. 표지
+  {const S=mkSlide();if(logo){S.box(PM,.5,2.2,.95,{adj:12000});S.pic(PM+.15,.5+(.95-1.9*logo.h/logo.w)/2,1.9,1.9*logo.h/logo.w,logo);}
+   S.text(PM,2.2,CW,.4,[[['Blue365 · 경영진 요약',{b:1,c:C.accent}]]],{sz:16});
+   S.text(PM,2.75,CW,1.9,[[['시멘트 공정 품질 요약',{b:1}]],[[D.r.lab,{b:1,c:C.accent}],[' 실적',{b:1}]]],{sz:40,sp:112000});
+   S.box(PM,5.0,CW,1.55);S.table(PM+.25,5.12,CW-.5,[1.3,8],[[{t:'구분'},{t:'내용',al:'l'}],...[['분석 기간',period],['자료',D.src],['작성',`${ymd(D.made)} ${hhmm(D.made)} · Blue365 시멘트 공정 3D`]].map(r=>[{t:r[0],c:C.fg3},{t:r[1],al:'l'}])],{rowH:.33,sz:11,al:'l'});
+   S.text(PM,6.75,CW,.5,`분석값은 QMS(LIMS) 데이터입니다.${D.virt?' 클링커 생산량·킬른 가동률은 DCS 데이터가 없어 가상값이며, ':' '}사내 관리기준과 * 표시 KS 기준은 확인이 필요한 값입니다.`,{sz:10,c:C.fg3});
+   slides.push(S);}
+  // 2. 핵심 요약
+  {const S=mkSlide();pptFrame(S,D,2,plain2(D.head.l1),plain2(D.head.l2));const w=(CW-.17*4)/5;
+   D.cards.forEach((c,i)=>{const x=PM+i*(w+.17),y=2.05;S.box(x,y,w,1.85);
+     S.text(x+.18,y+.16,w-.36,.25,c.l,{sz:11,c:C.fg2});
+     S.text(x+.18,y+.46,w-.36,.55,[[[plain(c.v),{sz:26,b:1}],[c.u?' '+c.u:'',{sz:11,c:C.fg3}]]],{sz:26});
+     const tag=[];if(c.vt)tag.push(['가상  ',{b:1,c:C.fg3}]);if(c.d)tag.push([plain(c.d),{b:1,c:DC[c.dc]||C.fg3}]);
+     if(tag.length)S.text(x+.18,y+1.05,w-.36,.25,[tag],{sz:10.5});
+     S.text(x+.18,y+1.32,w-.36,.45,plain(c.s),{sz:8.5,c:C.fg3,sp:105000});});
+   S.box(PM,4.1,CW,2.75);S.text(PM+.3,4.28,3,.3,[[['01',{b:1,c:C.accent}],['  핵심 내용',{b:1}]]],{sz:13});
+   S.text(PM+.3,4.72,CW-.6,2.05,repInsights(D).map(t=>[['•  '+t,{}]]),{sz:12,c:C.fg2,sp:118000,gap:5});
+   slides.push(S);}
+  // 3. 호기별 현황
+  {const S=mkSlide(),run=D.kilns.filter(k=>k.st!=='stop'),bad=D.kilns.filter(k=>k.st==='bad');
+   pptFrame(S,D,3,`킬른 5기 중 <em>${run.length}기 가동</em>,`,bad.length?`현재 <em>${bad.map(k=>k.e.kiln+'호').join('·')}</em> 관리기준 이탈`:'현재 가동 호기 <em>이탈 없음</em>');
+   const q=(v,dp)=>v==null?'—':nf(v,dp),rows=[['호기','설계 (t/d)','현재 상태','생산 일평균 (t/d)','설계 대비','가동률','f-CaO 평균','기준 이탈','LSF','SM','IM','C₃S']];
+   D.kilns.forEach(k=>{const kp=k.kp,ran=kp&&kp.hrs>0;rows.push([{t:k.e.kiln+'호',b:1},nf(k.e.cap),{t:stTxt(k.st),c:k.st==='bad'?C.bad:k.st==='warn'?C.warn:k.st==='stop'?C.fg3:C.ok,b:1,al:'ctr'},ran?nf(kp.tpd):'—',ran?nf(kp.tpd/k.e.cap*100,1)+'%':'—',kp?nf(kp.hrs/(kp.days*24)*100,1)+'%':'—',
+     k.fc?{t:nf(k.fc.avg,2)+'%',c:k.fc.avg<FCAO_LIM[0]||k.fc.avg>FCAO_LIM[1]?C.bad:C.fg,b:1}:'—',k.fc?`${k.out}/${k.fc.n}일`:'—',q(k.LSF,1),q(k.SM,2),q(k.IM,2),q(k.C3S,1)]);});
+   S.box(PM,2.05,CW,3.2);S.table(PM+.2,2.2,CW-.4,[.8,1,1.2,1.5,1.05,.95,1.15,1.15,.8,.8,.8,.8],rows,{rowH:.47,sz:12});
+   S.text(PM+.2,5.42,CW-.4,1.4,[[['02',{b:1,c:C.accent}],['  읽는 법',{b:1,c:C.fg}]],`현재 상태는 지금 시점, 나머지는 선택 기간(${period}) 기준입니다. 생산 일평균 = 원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'가상':'DCS'}). 가동률 = (달력시간 − 정지시간) ÷ 달력시간.`,`f-CaO·LSF·SM·IM·C₃S는 QMS 클링커 XRF 일평균의 기간 평균입니다. 기준 이탈은 일평균이 사내 관리기준 ${fcaoTxt()}를 벗어난 날 수입니다.`],{sz:10.5,c:C.fg2,sp:120000,gap:3});
+   slides.push(S);}
+  // 4. 생산 추이
+  {const S=mkSlide(),c=D.cards[0];pptFrame(S,D,4,`클링커 생산은 일평균 <em>${plain(c.v)} t/d</em>,`,c.d?`가동 호기 설계 대비 <em>${plain(c.d)}</em>${D.virt?' (가상값)':''}`:'설계 대비 자료 없음');
+   S.box(PM,2.05,CW,4.85);if(ch.prod){const w=CW-.6,h=w*ch.prod.h/ch.prod.w;S.pic(PM+.3,2.2,w,Math.min(h,4.2),ch.prod);}else S.text(PM,4.2,CW,.4,{runs:[['이 기간의 생산 자료가 없습니다.',{}]],al:'ctr'},{sz:13,c:C.fg3});
+   S.text(PM+.3,6.5,CW-.6,.3,[[['03',{b:1,c:C.accent}],[`  클링커 생산 실적 · ${D.prod?D.prod.kind:''} (${D.virt?'가상':'DCS'})`,{b:1,c:C.fg}],[D.prod&&D.prod.target?`   점선은 가동 호기 설계 ${nf(D.prod.target)} t/d, 주황 막대는 그 90% 미만`:'',{c:C.fg3}]]],{sz:11});
+   slides.push(S);}
+  // 5. f-CaO
+  {const S=mkSlide(),c=D.cards[2];pptFrame(S,D,5,`클링커 f-CaO는 기간 평균 <em>${plain(c.v)}%</em>,`,c.d==='정상'?`사내 관리기준 ${fcaoTxt()} <em>이내</em>`:c.d==='주의'?`평균은 기준 이내이나 <em>일별 이탈이 잦아 주의</em>`:c.d?`사내 관리기준 ${fcaoTxt()} <em>이탈</em>`:'시료 없음');
+   const lw=7.9;S.box(PM,2.05,lw,4.85);if(ch.fc){const w=lw-.5;S.pic(PM+.25,2.3,w,w*ch.fc.h/ch.fc.w,ch.fc);}else S.text(PM,4.2,lw,.4,{runs:[['이 기간의 f-CaO 시료가 없습니다.',{}]],al:'ctr'},{sz:13,c:C.fg3});
+   S.text(PM+.25,5.75,lw-.5,1,[[['04',{b:1,c:C.accent}],['  f-CaO 관리도 · 호기 평균 (QMS)',{b:1,c:C.fg}]],`일평균 기준(점이 많으면 묶어 평균). 파란 띠가 사내 관리기준 ${fcaoTxt()}, 빨간 점은 범위를 벗어난 값입니다.`],{sz:10.5,c:C.fg2,sp:118000,gap:3});
+   const rx=PM+lw+.2,rw=CW-lw-.2,rows=[['호기','평균','최고','이탈/일수']];D.kilns.forEach(k=>rows.push([{t:k.e.kiln+'호',b:1},k.fc?{t:nf(k.fc.avg,2)+'%',b:1,c:k.fc.avg<FCAO_LIM[0]||k.fc.avg>FCAO_LIM[1]?C.bad:C.fg}:'—',k.fc?nf(k.fc.max,2)+'%':'—',k.fc?`${k.out}/${k.fc.n} (${nf(k.out/k.fc.n*100,0)}%)`:'시료 없음']));
+   S.box(rx,2.05,rw,4.85);S.table(rx+.15,2.2,rw-.3,[.8,1,1,1.6],rows,{rowH:.5,sz:12});
+   S.text(rx+.2,5.4,rw-.4,1.3,[[['05',{b:1,c:C.accent}],['  호기별 f-CaO',{b:1,c:C.fg}]],`평균은 일평균의 기간 평균, 이탈은 일평균이 기준을 벗어난 날 수입니다. 이탈 비율이 ${FCAO_WARN_RATE}%를 넘으면 ‘주의’로 봅니다.`],{sz:10.5,c:C.fg2,sp:118000,gap:3});
+   slides.push(S);}
+  // 6·7. 출하 품질 (품종별 KS 평가)
+  KS_PRODS.forEach((p,pi)=>{const S=mkSlide(),rows0=D.ks[p],have=rows0.filter(x=>x.n&&x.ks),n=rows0.length?Math.max(...rows0.map(x=>x.n)):0;
+    const bad=have.filter(x=>x.ks.ok&&x.fail),est=have.filter(x=>!x.ks.ok&&x.fail),conf=have.filter(x=>x.ks.ok).length;
+    pptFrame(S,D,6+pi,n?`${p} 출하 로트 <em>${n}건</em>,`:`${p} 출하 시험 결과가`,!n?'<em>이 기간에 없습니다</em>':bad.length?`<em>KS 기준 미달 ${bad.reduce((a,x)=>a+x.fail,0)}건</em> (${bad.map(x=>x.it.n).join(', ')})`:conf?`확인된 KS 기준 <em>${conf}개 항목 모두 적합</em>${est.length?' (추정 기준 밖 있음)':''}`:`KS 기준은 <em>모두 추정값(*)</em> — 원문 확인 필요`);
+    const T=[['항목','기간 평균','범위','로트','KS L 5201 '+p,'KS 판정','사내 기준','사내 판정']];
+    rows0.forEach(x=>{const it=x.it;T.push([{t:it.n},x.n?{t:`${fmtIt(it,x.avg)} ${it.hm?'':it.u}`.trim(),b:1}:'—',x.n?`${fmtIt(it,x.min)}~${fmtIt(it,x.max)}`:'—',String(x.n),ksTxt(it,x.ks),
+      !x.ks?{t:'기준 없음',c:C.fg3,al:'ctr'}:!x.n?{t:'데이터 없음',c:C.fg3,al:'ctr'}:x.fail?{t:x.ks.ok?`미달 ${x.fail}건`:`추정 기준 밖 ${x.fail}건*`,c:x.ks.ok?C.bad:C.warn,b:1,al:'ctr'}:{t:'적합'+(x.ks.ok?'':'*'),c:C.ok,b:1,al:'ctr'},
+      inhTxt(it,x.ih),!x.ih||!x.n?{t:x.ih?'데이터 없음':'',c:C.fg3,al:'ctr'}:x.out?{t:`범위 밖 ${x.out}건`,c:C.warn,b:1,al:'ctr'}:{t:'만족',c:C.ok,b:1,al:'ctr'}]);});
+    const rh=Math.min(.37,4.25/T.length);S.box(PM,2.05,CW,4.85);S.table(PM+.2,2.17,CW-.4,[1.7,1.25,1.4,.6,1.55,1.4,1.2,1.2],T,{rowH:rh,sz:11});
+    S.text(PM+.3,6.55,CW-.6,.3,[[[pi?'07':'06',{b:1,c:C.accent}],[`  KS 규격 대비 평가 · ${p} (QMS 출하시멘트, 채취일 ${period})`,{b:1,c:C.fg}],['   KS 판정은 로트마다 · * 는 KS 원문 미확인 추정 기준 · 사내 기준은 예시값',{c:C.fg3}]]],{sz:10});
+    slides.push(S);});
+  // 8. 28일 강도 추이
+  {const S=mkSlide(),c1=D.cards[3],c3=D.cards[4];pptFrame(S,D,8,`28일 압축강도 평균은 1종 <em>${plain(c1.v)}</em>, 3종 <em>${plain(c3.v)}</em> MPa`,'로트별 추이 (28일 강도는 채취 28일 뒤 발표)');
+   const w=(CW-.2)/2;[['1종',ch.lot1],['3종',ch.lot3]].forEach(([p,im],i)=>{const x=PM+i*(w+.2);S.box(x,2.05,w,4.85);
+     if(im){const iw=w-.4;S.pic(x+.2,2.4,iw,iw*im.h/im.w,im);}else S.text(x,4.1,w,.4,{runs:[['이 기간에 28일 강도가 나온 로트가 없습니다.',{}]],al:'ctr'},{sz:12,c:C.fg3});
+     const k=(CFG.ks[p]||{}).s28;S.text(x+.3,5.3,w-.6,1.3,[[[i?'09':'08',{b:1,c:C.accent}],[`  ${p} 28일 압축강도 (로트별)`,{b:1,c:C.fg}]],k?`점선은 KS L 5201 ${p} ${nf(k.v,1)} MPa 이상${k.ok?'':' (추정값 *)'}. 빨간 점은 기준 미달 로트입니다.`:'KS 기준이 등록되지 않았습니다.'],{sz:10.5,c:C.fg2,sp:118000,gap:3});});
+   slides.push(S);}
+  // 9. 근거·기준
+  {const S=mkSlide();pptFrame(S,D,9,'이 자료의 <em>근거와 기준</em>','계산식 · 데이터 출처 · 확인이 필요한 값');
+   S.box(PM,2.05,CW,4.85);const K=p=>KS_ITEMS.filter(it=>(CFG.ks[p]||{})[it.f]).map(it=>`${it.n} ${ksTxt(it,CFG.ks[p][it.f])}`).join(' · ');
+   S.text(PM+.3,2.25,CW-.6,4.5,[
+     [['데이터 출처',{b:1,c:C.fg}]],`분석값: ${D.src}. 클링커·원료는 XRF, 출하 시멘트는 로트별 시험 결과(채취일 기준)입니다. 0·빈칸은 미시험으로 봅니다.`,
+     [['계산식',{b:1,c:C.fg}]],`LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(f-CaO 차감). 클링커 생산 = 원료 투입량 × 24 ÷ ${CLK_FACTOR}. 기간 값은 일평균의 평균입니다.`,
+     [['사내 관리기준',{b:1,c:C.fg}]],`클링커 f-CaO ${fcaoTxt()}, 일평균 이탈 비율 ${FCAO_WARN_RATE}% 초과 시 ‘주의’.${CFG.at?` (설정 변경: ${CFG.by||''} ${String(CFG.at).replace('T',' ').slice(0,16)})`:' (기본 예시값)'}`,
+     [['KS L 5201 기준 (* = 원문 미확인 추정값)',{b:1,c:C.fg}]],`1종: ${K('1종')||'없음'}`,`3종: ${K('3종')||'없음'}`,
+     [['주의',{b:1,c:C.fg}]],`${D.virt?'클링커 생산량·킬른 가동률은 DCS 데이터가 없어 가상값입니다(같은 날짜는 항상 같은 값). ':''}* 표시 기준으로 한 판정은 KS L 5201 최신판 원문 확인 뒤 확정해야 합니다.`],{sz:10.5,c:C.fg2,sp:118000,gap:4});
+   slides.push(S);}
+  // ---- 파일 묶기
+  const files=[],ct=[`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>`,
+    `<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>`];
+  const REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships',rels=x=>`${XH}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${x}</Relationships>`;
+  let mi=0;const body=[],prel=[`<Relationship Id="rId1" Type="${REL}/slideMaster" Target="slideMasters/slideMaster1.xml"/>`],ids=[];
+  slides.forEach((S,i)=>{const n=i+1;ct.push(`<Override PartName="/ppt/slides/slide${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`);
+    prel.push(`<Relationship Id="rId${n+1}" Type="${REL}/slide" Target="slides/slide${n}.xml"/>`);ids.push(`<p:sldId id="${255+n}" r:id="rId${n+1}"/>`);
+    body.push([`ppt/slides/slide${n}.xml`,S.xml()]);
+    body.push([`ppt/slides/_rels/slide${n}.xml.rels`,rels(`<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`+S.media.map((m,k)=>{mi++;body.push([`ppt/media/image${mi}.png`,m.data]);return `<Relationship Id="rId${k+2}" Type="${REL}/image" Target="../media/image${mi}.png"/>`;}).join(''))]);});
+  prel.push(`<Relationship Id="rId${slides.length+2}" Type="${REL}/theme" Target="theme/theme1.xml"/>`);
+  const font='<a:latin typeface="맑은 고딕"/><a:ea typeface="맑은 고딕"/><a:cs typeface=""/>',fill3='<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'.repeat(3),ln3='<a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>'.repeat(3);
+  files.push(['[Content_Types].xml',`${XH}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">${ct.join('')}</Types>`],
+    ['_rels/.rels',rels(`<Relationship Id="rId1" Type="${REL}/officeDocument" Target="ppt/presentation.xml"/>`)],
+    ['ppt/presentation.xml',`${XH}<p:presentation ${PNS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${ids.join('')}</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`],
+    ['ppt/_rels/presentation.xml.rels',rels(prel.join(''))],
+    ['ppt/slideMasters/slideMaster1.xml',`${XH}<p:sldMaster ${PNS}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${C.bg}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GRP}</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst></p:sldMaster>`],
+    ['ppt/slideMasters/_rels/slideMaster1.xml.rels',rels(`<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${REL}/theme" Target="../theme/theme1.xml"/>`)],
+    ['ppt/slideLayouts/slideLayout1.xml',`${XH}<p:sldLayout ${PNS} type="blank" preserve="1"><p:cSld name="Blank"><p:spTree>${GRP}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`],
+    ['ppt/slideLayouts/_rels/slideLayout1.xml.rels',rels(`<Relationship Id="rId1" Type="${REL}/slideMaster" Target="../slideMasters/slideMaster1.xml"/>`)],
+    ['ppt/theme/theme1.xml',`${XH}<a:theme xmlns:a="${NS_A}" name="Blue365"><a:themeElements><a:clrScheme name="Blue365"><a:dk1><a:srgbClr val="191F28"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="4E5968"/></a:dk2><a:lt2><a:srgbClr val="F2F4F6"/></a:lt2><a:accent1><a:srgbClr val="3182F6"/></a:accent1><a:accent2><a:srgbClr val="0E9F6E"/></a:accent2><a:accent3><a:srgbClr val="D98200"/></a:accent3><a:accent4><a:srgbClr val="E5484D"/></a:accent4><a:accent5><a:srgbClr val="8B95A1"/></a:accent5><a:accent6><a:srgbClr val="4E5968"/></a:accent6><a:hlink><a:srgbClr val="3182F6"/></a:hlink><a:folHlink><a:srgbClr val="4E5968"/></a:folHlink></a:clrScheme><a:fontScheme name="Blue365"><a:majorFont>${font}</a:majorFont><a:minorFont>${font}</a:minorFont></a:fontScheme><a:fmtScheme name="Blue365"><a:fillStyleLst>${fill3}</a:fillStyleLst><a:lnStyleLst>${ln3}</a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst>${fill3}</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`],
+    ...body);
+  return zipStore(files,'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+}
+const plain2=t=>String(t??'');
+
+/* ---------- XLSX ---------- */
+const colName=i=>{let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+/* 스타일 번호: 0 기본 · 1 머리글 · 2 소수 2자리 · 3 천 단위 · 4 소수 1자리 · 5 제목(굵게) · 6 회색 설명 · 7 줄바꿈 */
+const XL={H:1,N2:2,N0:3,N1:4,T:5,G:6,W:7};
+function xlsxSheet(sh){
+  const rows=sh.rows.map((r,ri)=>`<row r="${ri+1}">${r.map((c,ci)=>{if(c==null||c==='')return '';const o=typeof c==='object'?c:{v:c},ref=colName(ci)+(ri+1),st=o.s?` s="${o.s}"`:'';
+    return typeof o.v==='number'&&isFinite(o.v)?`<c r="${ref}"${st}><v>${o.v}</v></c>`:`<c r="${ref}" t="inlineStr"${st}><is><t xml:space="preserve">${xesc(o.v)}</t></is></c>`;}).join('')}</row>`).join('');
+  return `${XH}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0">${sh.freeze?`<pane ySplit="${sh.freeze}" topLeftCell="A${sh.freeze+1}" activePane="bottomLeft" state="frozen"/>`:''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="16.5"/><cols>${sh.cols.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData></worksheet>`;
+}
+function buildXlsx(D){
+  const H=a=>a.map(v=>({v,s:XL.H})),n2=v=>v==null?null:{v:+v,s:XL.N2},n1=v=>v==null?null:{v:+v,s:XL.N1},n0=v=>v==null?null:{v:Math.round(v),s:XL.N0};
+  const period=`${D.from} ~ ${D.to} (${D.days.length}일)`,plain=t=>String(t??'').replace(/<[^>]+>/g,''),top=t=>[[{v:t,s:XL.T}],[{v:`분석 기간 ${period} · 자료 ${D.src} · 작성 ${ymd(D.made)} ${hhmm(D.made)}`,s:XL.G}],[]];
+  const S=[];
+  // 1. 요약
+  S.push({name:'요약',cols:[22,14,10,22,70],freeze:4,rows:[...top('Blue365 시멘트 공정 품질 요약'),H(['항목','값','단위','판정','기준·설명']),
+    ...D.cards.map(c=>{const v=plain(c.v),num=Number(v.replace(/,/g,''));return [c.l,v!=='—'&&isFinite(num)&&!/:/.test(v)?num:v,c.u,[c.vt?'가상':'',plain(c.d||'')].filter(Boolean).join(' · '),plain(c.s)];}),
+    [],[{v:'핵심 내용',s:XL.T}],...repInsights(D).map(t=>[{v:t,s:XL.W}])]});
+  // 2. 호기별
+  S.push({name:'호기별',cols:[8,11,12,15,11,10,11,10,12,10,10,8,8,8,10],freeze:4,rows:[...top('호기별 현황'),H(['호기','설계 t/d','현재 상태','생산 일평균 t/d','설계 대비 %','가동률 %','정지 시간','생산 출처','f-CaO 평균 %','f-CaO 최고 %','기준 이탈 일','시료 일수','LSF','SM','IM','C3S','요입 LSF']),
+    ...D.kilns.map(k=>{const kp=k.kp,ran=kp&&kp.hrs>0;return [k.e.kiln+'호',n0(k.e.cap),stTxt(k.st),ran?n0(kp.tpd):null,ran?n1(kp.tpd/k.e.cap*100):null,kp?n1(kp.hrs/(kp.days*24)*100):null,kp?n0(kp.days*24-kp.hrs):null,kp?kp.src:'',k.fc?n2(k.fc.avg):null,k.fc?n2(k.fc.max):null,k.out,k.fc?k.fc.n:null,n1(k.LSF),n2(k.SM),n2(k.IM),n1(k.C3S),n1(k.feedLSF)];})]});
+  // 3. 일별 (생산·f-CaO)
+  {const ks=kilnEqs(),fc=Object.fromEntries(ks.map(e=>{const x=streamPer('clk:'+e.id,'fcao',D.r);return [e.id,x?Object.fromEntries(x.vals):{}];}));
+   S.push({name:'일별',cols:[12,...ks.map(()=>11),12,10,...ks.map(()=>11)],freeze:4,rows:[...top('일별 클링커 생산(t/d)과 f-CaO 일평균(%)'),H(['날짜',...ks.map(e=>`${e.kiln}호 생산`),'생산 합계','출처',...ks.map(e=>`${e.kiln}호 f-CaO`)]),
+     ...D.days.map(d=>{const x=ks.map(e=>kilnDay(e.id,d));return [d,...x.map(v=>n0(v.tpd)),n0(x.reduce((a,v)=>a+v.tpd,0)),x.some(v=>v.src==='DCS')?'DCS':'가상',...ks.map(e=>n2(fc[e.id][d]))];})]});}
+  // 4. 출하 로트
+  {const F=[['blaine','Blaine cm²/g',n0],['r45','45㎛ 잔사 %',n2],['ist','초결 분',n0],['fst','종결 분',n0],['s1','1일 MPa',n1],['s3','3일 MPa',n1],['s7','7일 MPa',n1],['s28','28일 MPa',n1],['SO3','SO3 %',n2],['MgO','MgO %',n2],['LOI','LOI %',n2],['Cl','Cl ppm',n0],['Al2O3','Al2O3 %',n2],['dens','밀도',n2]];
+   const lots=shipLots().filter(x=>x.day>=D.from&&x.day<=D.to);
+   S.push({name:'출하 로트',cols:[12,13,10,14,14,...F.map(()=>11)],freeze:4,rows:[...top('출하 시멘트 로트별 시험 결과 (채취일 기준)'),H(['채취일','LIMS 로트','품종','첨가재','비고(선박)',...F.map(f=>f[1])]),
+     ...lots.map(l=>[l.day,l.lot,l.product,l.add,l.ships,...F.map(f=>f[2](l[f[0]]))])]});}
+  // 5. KS 평가
+  {const rows=[...top('KS L 5201 대비 평가 (기간 내 출하 로트)'),H(['품종','항목','단위','기간 평균','최소','최대','로트 수','KS 기준','KS 확인 여부','KS 미달 건수','KS 판정','사내 기준','사내 범위 밖 건수'])];
+   KS_PRODS.forEach(p=>D.ks[p].forEach(x=>{const it=x.it,f=it.dp>=2?n2:it.dp===1?n1:n0;rows.push([p,it.n,it.hm?'분':it.u,f(x.avg),f(x.min),f(x.max),x.n,ksTxt(it,x.ks).replace(' *',''),x.ks?(x.ks.ok?'원문 확인':'추정 (확인 필요)'):'',x.fail,!x.ks?'기준 없음':!x.n?'데이터 없음':x.fail?(x.ks.ok?'미달':'추정 기준 밖'):'적합',inhTxt(it,x.ih),x.out]);}));
+   S.push({name:'KS 평가',cols:[8,20,8,11,10,10,9,20,16,13,14,16,16],freeze:4,rows});}
+  // 6. 기준·근거
+  S.push({name:'기준·근거',cols:[26,100],rows:[[{v:'기준과 근거',s:XL.T}],[],H(['구분','내용']),
+    ['분석 기간',period],['자료',D.src],['f-CaO 사내 관리기준',`${fcaoTxt()} · 일평균 이탈 비율 ${FCAO_WARN_RATE}% 초과 시 주의`],['관리기준 변경 이력',CFG.at?`${CFG.by||''} ${String(CFG.at).replace('T',' ').slice(0,16)}`:'기본값(예시)'],
+    ['클링커 생산',`원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'DCS 데이터가 없어 가상값':'DCS 일평균'})`],['킬른 가동률','(달력시간 − 정지시간) ÷ 달력시간'],
+    ['모듈 계산식','LSF = CaO/(2.8SiO2+1.18Al2O3+0.65Fe2O3)×100, SM = SiO2/(Al2O3+Fe2O3), IM = Al2O3/Fe2O3, C3S는 Bogue 식(f-CaO 차감)'],
+    ['기간 평균','QMS 일평균의 기간 평균 (출하 시멘트는 로트 평균, 채취일 기준)'],['KS 판정','로트마다 판정. ‘추정’ 기준은 KS L 5201 원문과 대조하지 않은 값이므로 확정 판정이 아님'],
+    ['주의',`${D.virt?'생산량·가동률은 가상값입니다. ':''}사내 기준은 예시값일 수 있습니다. 분석 시트의 0·빈칸은 미시험으로 봅니다.`]]});
+  const REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships',files=[
+    ['[Content_Types].xml',`${XH}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${S.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+    ['_rels/.rels',`${XH}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
+    ['xl/workbook.xml',`${XH}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${REL}"><bookViews><workbookView/></bookViews><sheets>${S.map((s,i)=>`<sheet name="${xesc(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`],
+    ['xl/_rels/workbook.xml.rels',`${XH}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${S.map((_,i)=>`<Relationship Id="rId${i+1}" Type="${REL}/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${S.length+1}" Type="${REL}/styles" Target="styles.xml"/></Relationships>`],
+    ['xl/styles.xml',`${XH}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="0.0"/></numFmts><fonts count="4"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="14"/><name val="맑은 고딕"/></font><font><sz val="10"/><color rgb="FF8B95A1"/><name val="맑은 고딕"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8F3FF"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFB0B8C1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`],
+    ...S.map((s,i)=>[`xl/worksheets/sheet${i+1}.xml`,xlsxSheet(s)])];
+  return zipStore(files,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+let EXPORTING=false;
+async function exportReport(kind){
+  if(EXPORTING)return;EXPORTING=true;toast(kind==='ppt'?'PPT 파일을 만드는 중입니다…':'엑셀 파일을 만드는 중입니다…','act');
+  try{const D=reportData(),name=`Blue365_품질요약_${D.from}${D.to!==D.from?'_'+D.to:''}`;
+    if(kind==='ppt')saveBlob(await buildPptx(D),name+'.pptx');else saveBlob(buildXlsx(D),name+'.xlsx');
+    toast(`${name}.${kind==='ppt'?'pptx':'xlsx'} 를 내려받았습니다 (다운로드 폴더)`,'ok');}
+  catch(e){console.error(e);toast('파일을 만들지 못했습니다: '+(e&&e.message||e),'bad');}
+  EXPORTING=false;
+}
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-exp]');if(b)exportReport(b.dataset.exp);});
+
+/* =========================================================
+   관리기준 설정 화면 (f-CaO · KS · 사내 기준)
+   ========================================================= */
+let cfgProd='1종';
+const cfgCanEdit=()=>!SERVER||(SERVER.me&&SERVER.me.role==='admin');
+const cfIn=(it,v)=>v==null?'':it.hm?hm(v):String(v);
+function parseCf(it,t){t=String(t??'').trim();if(!t)return null;if(it.hm){const m=t.match(/^(\d{1,2}):(\d{2})$/);if(m)return (+m[1])*60+(+m[2]);const n=Number(t);return isFinite(n)&&n>0?(n<=30?Math.round(n*60):Math.round(n)):NaN;}const n=Number(t.replace(/,/g,''));return isFinite(n)&&n>=0?n:NaN;}
+function renderCfg(){
+  const ed=cfgCanEdit(),dis=ed?'':' disabled',K=CFG.ks[cfgProd]||{},I=CFG.inh[cfgProd]||{};
+  $('#cfBody').innerHTML=`<div class="banner">${ic('info')}${ed?(SERVER?'기준을 바꾸면 모든 접속자 화면에 20초 안에 반영됩니다.':'기준은 이 PC의 브라우저에 저장됩니다.'):'보기 전용입니다.'}<span>${ed?'KS 값은 KS L 5201 원문과 대조한 뒤 ‘확인’에 표시하세요. 표시하지 않은 값은 화면에 * (추정)로 나옵니다.':'관리자만 바꿀 수 있습니다.'}${CFG.at?` 마지막 변경: ${esc(CFG.by||'')} ${esc(String(CFG.at).replace('T',' ').slice(0,16))}`:' 지금은 기본값(예시)입니다.'}</span></div>
+   <div class="sect">클링커 f-CaO 사내 관리기준</div>
+   <div class="cfgrid"><div class="field"><label for="cfT">목표 (%)</label><input id="cfT" inputmode="decimal" value="${CFG.fcao.target}"${dis}></div><div class="field"><label for="cfTol">허용폭 ± (%)</label><input id="cfTol" inputmode="decimal" value="${CFG.fcao.tol}"${dis}></div><div class="field"><label for="cfW">‘주의’로 보는 이탈 비율 (%)</label><input id="cfW" inputmode="decimal" value="${CFG.fcao.warnRate}"${dis}></div></div>
+   <div class="sect">출하 시멘트 기준 <span class="seg" role="tablist" aria-label="품종">${KS_PRODS.map(p=>`<button type="button" role="tab" data-cfp="${p}" class="${cfgProd===p?'on':''}">${p}</button>`).join('')}</span></div>
+   <div class="tbl"><table class="cftbl"><thead><tr><th>항목</th><th>단위</th><th>KS 기준값</th><th>방향</th><th>확인</th><th>사내 하한</th><th>사내 상한</th></tr></thead><tbody>${KS_ITEMS.map(it=>{const k=K[it.f]||{},h=I[it.f]||{};
+     return `<tr><td>${it.n}</td><td><small>${it.u}</small></td><td><input type="text" data-cf="ks.${it.f}" value="${cfIn(it,k.v)}" aria-label="${it.n} KS 기준값"${dis}></td><td><small>${it.dir==='ge'?'이상':'이하'}</small></td><td><input type="checkbox" data-cf="ok.${it.f}" aria-label="${it.n} KS 원문 확인"${k.ok?' checked':''}${dis}></td>
+      <td><input type="text" data-cf="lo.${it.f}" value="${cfIn(it,h.lo)}" aria-label="${it.n} 사내 하한"${dis}></td><td><input type="text" data-cf="hi.${it.f}" value="${cfIn(it,h.hi)}" aria-label="${it.n} 사내 상한"${dis}></td></tr>`;}).join('')}</tbody></table></div>
+   <div class="note">빈칸은 ‘기준 없음’입니다. 응결 종결은 시:분(예: 10:00)으로 적습니다. KS 판정은 로트마다 하고, 사내 기준은 범위를 벗어난 로트 수를 셉니다.</div>
+   <div class="acts">${ed?'<button class="btn ghost" type="button" id="cfReset">기본값으로</button>':''}<button class="btn ghost" type="button" id="cfCancel">닫기</button>${ed?'<button class="btn" type="submit">저장</button>':''}</div>`;
+  paintIcons($('#cfBody'));
+  $$('[data-cfp]').forEach(b=>b.onclick=()=>{const d=readCfg(true);if(d)CFG_DRAFT=d;else return;cfgProd=b.dataset.cfp;const keep=CFG;CFG=CFG_DRAFT;renderCfg();CFG=keep;});
+  $('#cfCancel').onclick=closeCfg;const rs=$('#cfReset');if(rs)rs.onclick=()=>{const keep=CFG;CFG=cleanCfg(null);CFG_DRAFT=CFG;renderCfg();CFG=keep;toast('기본값을 불러왔습니다. 저장을 눌러야 적용됩니다','act');};
+}
+let CFG_DRAFT=null;
+/* 화면의 입력값을 읽어 설정으로 (잘못된 칸이 있으면 알려 주고 null) */
+function readCfg(quiet){
+  const base=JSON.parse(JSON.stringify(CFG_DRAFT||CFG)),bad=[];
+  const num=(id,lo,hi,nm)=>{const n=Number($(id).value);if(!isFinite(n)||n<lo||n>hi){bad.push(nm);return null;}return n;};
+  base.fcao={target:num('#cfT',0,5,'f-CaO 목표'),tol:num('#cfTol',0.05,3,'f-CaO 허용폭'),warnRate:num('#cfW',0,100,'주의 이탈 비율')};
+  const K={},I={};KS_ITEMS.forEach(it=>{const g=k=>$(`[data-cf="${k}.${it.f}"]`),v=parseCf(it,g('ks').value),lo=parseCf(it,g('lo').value),hi=parseCf(it,g('hi').value);
+    if([v,lo,hi].some(x=>x!==null&&isNaN(x))||(lo!=null&&hi!=null&&lo>hi)){bad.push(it.n);return;}
+    if(v!=null)K[it.f]={v,ok:g('ok').checked?1:0};if(lo!=null||hi!=null)I[it.f]={lo,hi};});
+  if(bad.length){toast(`값을 확인해 주세요: ${bad.slice(0,3).join(', ')}`,'warn');return null;}
+  base.ks[cfgProd]=K;base.inh[cfgProd]=I;return base;
+}
+function openCfg(){CFG_DRAFT=null;$('#cfgModal').hidden=false;renderCfg();}
+function closeCfg(){$('#cfgModal').hidden=true;CFG_DRAFT=null;}
+async function saveCfg(){
+  const d=readCfg();if(!d)return;
+  if(SERVER){
+    try{const r=await fetch('api/settings',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({settings:d})});const j=await r.json().catch(()=>({}));
+      if(r.status===401&&j.login){toLogin();return;}if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));SERVER.cfg=j.stamp;applyCfg(j.settings);}
+    catch(e){toast(e.message==='Failed to fetch'?'팀 공유 서버에 연결할 수 없습니다':(e.message||'저장하지 못했습니다'),'bad');return;}
+  }else{d.at=new Date().toISOString();d.by='이 PC';try{localStorage.setItem('b365-cfg',JSON.stringify(d));}catch(e){}applyCfg(d);}
+  closeCfg();toast(SERVER?'관리기준을 저장했습니다. 다른 화면에도 20초 안에 반영됩니다':'관리기준을 이 PC에 저장했습니다','ok');
+}
+async function pullCfg(){try{const r=await fetch('api/settings',{cache:'no-store',credentials:'same-origin'});if(!r.ok)return;const j=await r.json();SERVER.cfg=j.stamp;applyCfg(j.settings);}catch(e){}}
+function setupCfg(){
+  $('#cfgBtn').onclick=openCfg;$('#cfClose').onclick=closeCfg;
+  $('#cfgModal').addEventListener('click',e=>{if(e.target.id==='cfgModal')closeCfg();});
+  addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#cfgModal').hidden)closeCfg();});
+  $('#cfBody').addEventListener('submit',e=>{e.preventDefault();saveCfg();});
+  if(location.protocol==='file:'||!SERVER){try{const t=localStorage.getItem('b365-cfg');if(t)applyCfg(JSON.parse(t),{quiet:true});}catch(e){}}
 }
 /* 기간 바 (지도 카드 · 경영진 요약 공용) */
 const PG_NM={d:['일','평균'],m:['월','평균'],y:['년','평균'],r:['기간','지정']};
@@ -2605,6 +2973,7 @@ renderAll();
 setTimeout(()=>{if(!WALL.on)toast(isMobile()?'한 손가락으로 끌어 이동 · 두 손가락으로 확대·회전':'끌어서 이동 · 휠로 확대 · 오른쪽 버튼으로 끌면 회전','act');},900);
 setInterval(tick,2000);
 setupWall();
+setupCfg();
 requestAnimationFrame(frame);
 })();
 </script>

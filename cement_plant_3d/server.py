@@ -15,6 +15,7 @@
   GET  /업로드양식.xlsx    업로드 양식
   GET  /api/status       서버 상태와 최신 데이터 버전
   GET  /api/dataset      최신 데이터(JSON)
+  GET/POST /api/settings 관리기준 (f-CaO·KS·사내 기준) — 바꾸기는 관리자만, data/settings.json 에 저장
   POST /api/dataset      화면에서 올린 데이터 저장 → 모든 접속자에게 20초 안에 반영
   저장 위치: data/latest.json, 이력은 data/history/ (최근 200개 · 최대 1GB 보관, --history-mb 로 변경)
 """
@@ -179,6 +180,58 @@ class Store:
 STORE: Store
 KEY = ""
 _PB = {"m": None, "v": None}
+SETTINGS_LOCK = threading.Lock()
+
+
+def settings_path() -> Path:
+    return STORE.dir / "settings.json"
+
+
+def settings_read():
+    """(설정, 변경 표시). 없거나 손상되면 (None, None) → 화면이 기본값을 씀"""
+    p = settings_path()
+    try:
+        with SETTINGS_LOCK:
+            d = json.loads(p.read_text("utf-8"))
+        return (d if isinstance(d, dict) else None), str(d.get("at", "")) if isinstance(d, dict) else None
+    except (OSError, ValueError):
+        return None, None
+
+
+CFG_ITEMS = ("blaine", "ist", "fst", "s1", "s3", "s7", "s28", "MgO", "SO3", "LOI", "Cl")
+CFG_PRODS = ("1종", "3종")
+
+
+def settings_clean(c) -> dict:
+    """화면에서 온 관리기준을 형식에 맞게 정리 (모르는 항목은 버림, 범위를 벗어난 값은 오류)"""
+    if not isinstance(c, dict):
+        raise ValueError("설정 형식이 올바르지 않습니다")
+
+    def num(v, lo, hi, name, none_ok=False):
+        if v is None and none_ok:
+            return None
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or not (lo <= v <= hi):
+            raise ValueError(f"{name} 값이 올바르지 않습니다")
+        return v
+
+    f = c.get("fcao") if isinstance(c.get("fcao"), dict) else {}
+    out = {"v": 1, "fcao": {"target": num(f.get("target"), 0, 5, "f-CaO 목표"), "tol": num(f.get("tol"), 0.05, 3, "f-CaO 허용폭"),
+                           "warnRate": num(f.get("warnRate"), 0, 100, "주의 이탈 비율")}, "ks": {}, "inh": {}}
+    for pr in CFG_PRODS:
+        k = (c.get("ks") or {}).get(pr) if isinstance(c.get("ks"), dict) else None
+        h = (c.get("inh") or {}).get(pr) if isinstance(c.get("inh"), dict) else None
+        out["ks"][pr], out["inh"][pr] = {}, {}
+        for it in CFG_ITEMS:
+            x = k.get(it) if isinstance(k, dict) else None
+            if isinstance(x, dict) and x.get("v") is not None:
+                out["ks"][pr][it] = {"v": num(x.get("v"), 0, 1e6, f"{pr} {it} KS 기준"), "ok": 1 if x.get("ok") else 0}
+            y = h.get(it) if isinstance(h, dict) else None
+            if isinstance(y, dict) and (y.get("lo") is not None or y.get("hi") is not None):
+                lo, hi = num(y.get("lo"), 0, 1e6, f"{pr} {it} 사내 하한", True), num(y.get("hi"), 0, 1e6, f"{pr} {it} 사내 상한", True)
+                if lo is not None and hi is not None and lo > hi:
+                    raise ValueError(f"{pr} {it} 사내 기준의 하한이 상한보다 큽니다")
+                out["inh"][pr][it] = {"lo": lo, "hi": hi}
+    return out
 
 
 def page_build():
@@ -225,6 +278,47 @@ WATCH: str | None = None
 
 def log(msg: str) -> None:
     print(f"[{dt.datetime.now():%Y-%m-%d %H:%M:%S}] {msg}", flush=True)
+
+
+# ---------------------------------------------------------------- 자동 백업
+BACKUP_DIR: Path | None = None
+BACKUP_KEEP = 14
+
+
+def backup_once() -> Path | None:
+    """하루 한 번 data 폴더의 핵심 파일을 zip 으로 보관 (사용자·관리기준·최신 데이터·감사 기록).
+    이력(history)과 로그인 유지 정보(sessions.json)는 넣지 않습니다."""
+    if not BACKUP_DIR:
+        return None
+    out = BACKUP_DIR / f"blue365-backup-{dt.date.today():%Y%m%d}.zip"
+    if out.exists():
+        return None
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    src = STORE.dir
+    names = [n for n in ("users.json", "settings.json", "latest.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
+    if not names:
+        return None
+    tmp = out.with_suffix(".tmp")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        for n in names:
+            try:
+                z.writestr(n, (src / n).read_bytes())      # 파일은 통째로 바꿔 쓰므로(os.replace) 읽는 순간의 온전한 내용
+            except OSError:
+                pass
+    os.replace(tmp, out)
+    for f in sorted(BACKUP_DIR.glob("blue365-backup-*.zip"))[:-BACKUP_KEEP]:
+        f.unlink(missing_ok=True)
+    log(f"자동 백업: {out} ({out.stat().st_size / 1024:.0f} KB, {len(names)}개 파일)")
+    return out
+
+
+def backup_loop() -> None:
+    while True:
+        try:
+            backup_once()
+        except Exception as e:      # 백업 실패가 서버를 멈추지 않게
+            log(f"자동 백업 실패: {e}")
+        time.sleep(1800)
 
 
 # ---------------------------------------------------------------- 공유 폴더 감시
@@ -617,7 +711,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build()})
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1]})
+        if path == "/api/settings":
+            if not self._need("viewer"):
+                return
+            d, stamp = settings_read()
+            return self._send(200, {"settings": d, "stamp": stamp})
         if path == "/api/dataset":
             if not self._need("viewer"):
                 return
@@ -663,6 +762,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._password(body)
         if path == "/api/admin/user":
             return self._admin(body)
+        if path == "/api/settings":
+            return self._settings(body)
         self._send(404, {"error": "없는 주소입니다"})
 
     def _login(self, b):
@@ -751,6 +852,24 @@ class Handler(BaseHTTPRequestHandler):
             sess_save()
         USERS.log(u["id"], "비밀번호 변경", "", self.ip)
         return self._send(200, {"ok": True})
+
+    def _settings(self, b):
+        me = self._need("admin")                    # 관리기준은 관리자만 바꿈
+        if not me:
+            return
+        try:
+            d = settings_clean(b.get("settings"))
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        d["at"] = dt.datetime.now().isoformat(timespec="seconds")
+        d["by"] = f"{me['dept']} {me['name']}"
+        p = settings_path()
+        with SETTINGS_LOCK:
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
+            os.replace(tmp, p)
+        USERS.log(me["id"], "관리기준 변경", f"f-CaO {d['fcao']['target']}±{d['fcao']['tol']}%, 주의 {d['fcao']['warnRate']}%", self.ip)
+        return self._send(200, {"ok": True, "settings": d, "stamp": d["at"]})
 
     def _admin(self, b):
         me = self._need("admin")
@@ -872,7 +991,7 @@ def main() -> None:
             stream.reconfigure(errors="replace")
         except (AttributeError, ValueError):
             pass
-    global STORE, KEY, WATCH, ALLOW, USERS, HISTORY_MB, SESS_FILE
+    global STORE, KEY, WATCH, ALLOW, USERS, HISTORY_MB, SESS_FILE, BACKUP_DIR, BACKUP_KEEP
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
     ap.add_argument("--host", default="0.0.0.0", help="받을 주소 (기본: 모든 네트워크)")
     ap.add_argument("--port", type=int, default=8365, help="포트 (기본 8365)")
@@ -882,6 +1001,9 @@ def main() -> None:
     ap.add_argument("--allow", default="", help="접속 허용 대역, 쉼표로 구분 (예: 192.168.10.0/24,10.20.). 비우면 사내망 사설 IP 전체")
     ap.add_argument("--allow-any", action="store_true", help="접속 대역 제한 끄기 (권장하지 않음)")
     ap.add_argument("--history-mb", type=int, default=HISTORY_MB, help="이력(data/history) 최대 용량 MB (기본 1024)")
+    ap.add_argument("--backup-dir", default="", help="자동 백업을 둘 폴더 (기본: 데이터 폴더 안 backup). 다른 디스크·공유 폴더를 권장")
+    ap.add_argument("--backup-keep", type=int, default=14, help="보관할 백업 개수 (기본 14일치)")
+    ap.add_argument("--no-backup", action="store_true", help="자동 백업 끄기")
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="(선택) 업로드에 추가로 요구할 서버 공통 암호")
     a = ap.parse_args()
 
@@ -892,6 +1014,10 @@ def main() -> None:
     USERS = Users(STORE.dir)
     SESS_FILE = STORE.dir / "sessions.json"
     sess_load()
+    BACKUP_KEEP = max(1, a.backup_keep)
+    BACKUP_DIR = None if a.no_backup else (Path(a.backup_dir) if a.backup_dir else STORE.dir / "backup")
+    if BACKUP_DIR:
+        threading.Thread(target=backup_loop, daemon=True).start()
     KEY = a.key
     try:
         ALLOW = [] if a.allow_any else (parse_allow(a.allow) if a.allow else parse_allow(",".join(PRIVATE_NETS))) + parse_allow(",".join(LOCAL_NETS))
@@ -939,6 +1065,9 @@ def main() -> None:
     if odd:
         print(f"  ※ 이 PC 주소({', '.join(odd)})가 허용 대역 밖입니다. 회사가 공인 IP를 사내망에 쓰는 경우이니")
         print(f"     --allow {odd[0].rsplit('.', 1)[0]}.  처럼 사내 대역을 지정하세요.")
+    print(f"  자동 백업   : {str(BACKUP_DIR) + f' (하루 1회, 최근 {BACKUP_KEEP}개 보관)' if BACKUP_DIR else '사용 안 함'}")
+    if BACKUP_DIR and not a.backup_dir:
+        print("                ※ 같은 디스크입니다. PC 고장에 대비하려면 --backup-dir 로 다른 디스크·공유 폴더를 지정하세요.")
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
     print("  끝내려면 Ctrl+C")
     print("=" * 56, flush=True)
