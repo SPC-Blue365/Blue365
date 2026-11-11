@@ -94,6 +94,9 @@
   const num = v => { if (v == null || v === '') return null; const n = typeof v === 'number' ? v : Number(String(v).replace(/,/g, '').trim()); return isFinite(n) ? n : null; };
   const ana = v => { const n = num(v); return n === 0 ? null : n; };           // 0·빈칸 = 미시험
   const r5 = v => v == null ? null : Number(v.toPrecision(5));
+  // 시각·시간 → 분: 엑셀 시간(하루의 비율), 'H:MM' 문자열, 큰 수는 분으로 봄 (0·빈칸 = 미시험)
+  const hmMin = v => { if (v == null || v === '') return null; if (typeof v === 'number') { const m = v < 1 ? v * 1440 : v <= 30 ? v * 60 : v; return m > 0 ? Math.round(m) : null; }
+    const t = String(v).trim().match(/^(\d{1,2}):(\d{2})/); if (t) { const m = (+t[1]) * 60 + (+t[2]); return m > 0 ? m : null; } const n = num(v); return n ? (n < 1 ? Math.round(n * 1440) : n <= 30 ? Math.round(n * 60) : Math.round(n)) : null; };
   const txt = v => v == null ? '' : String(v).trim();
 
   function unitOf(s) {
@@ -123,7 +126,7 @@
     clk: [['CaO', 'cao'], ['SiO2', 'sio2'], ['Al2O3', 'al2o3'], ['Fe2O3', 'fe2o3'], ['MgO', 'mgo'], ['SO3', 'so3'], ['K2O', 'k2o'], ['Na2O', 'na2o'], ['fcao', 'f-cao', 'fcao'], ['Cl', 'cl'], ['F', 'f'], ['temp', '온도'], ['lw', '용중']],
     xrd: [['alite', 'alite', 'c3s'], ['belite', 'belite', 'c2s'], ['C3A', 'c3a'], ['C4AF', 'c4af'], ['fcao', 'f-cao'], ['peri', 'periclase'], ['cr', '총크롬'], ['cr6', '6가크롬']],
     cem: [['blaine', 'blaine'], ['r45', '45㎛', '45μm', '45um'], ['SO3', 'so3'], ['LOI', 'loi'], ['MgO', 'mgo'], ['CaO', 'cao'], ['SiO2', 'sio2'], ['Al2O3', 'al2o3'], ['Fe2O3', 'fe2o3'], ['Cl', 'cl'], ['fcao', 'f-cao'], ['ls', '석회석비율'], ['feed', '시멘트밀투입량'], ['temp', '원료온도']],
-    ship: [['ls', '석회석비율'], ['addr', '첨가재비율'], ['LOI', 'loi'], ['Al2O3', 'al2o3'], ['MgO', 'mgo'], ['SO3', 'so3'], ['Cl', 'cl'], ['TA', 'ta'], ['s1', '압축강도1일'], ['s3', '압축강도3일'], ['s7', '압축강도7일'], ['s28', '압축강도28일'], ['dens', '밀도'], ['r45', '45㎛'], ['blaine', 'blaine'], ['cons', '주도'], ['flow', 'flow'], ['ac', 'autoclave'], ['ist', '초결시간']]
+    ship: [['ls', '석회석비율'], ['addr', '첨가재비율'], ['LOI', 'loi'], ['Al2O3', 'al2o3'], ['MgO', 'mgo'], ['SO3', 'so3'], ['Cl', 'cl'], ['TA', 'ta'], ['s1', '압축강도1일'], ['s3', '압축강도3일'], ['s7', '압축강도7일'], ['s28', '압축강도28일'], ['dens', '밀도'], ['r45', '45㎛'], ['blaine', 'blaine'], ['cons', '주도'], ['flow', 'flow'], ['ac', 'autoclave'], ['ist', '초결시간'], ['fst', '종결시간']]
   };
   const DAILY = {   // 일별 평균으로 남길 필드 (용량 절감)
     raw: ['LSF', 'SM', 'IM', 'MgO', 'SO3', 'K2O', 'Cl'], feed: ['LSF', 'SM', 'IM'], res: ['r90', 'r200'], dcs: ['feed', 'coal', 'bzt', 'o2', 'co', 'mload', 'pc', 'sec'],
@@ -181,7 +184,7 @@
         }
         if (kind === 'ship') {
           o.lot = txt(row[find(['limslot.no', 'limslotno'])]); o.product = product(row[cName]); o.add = txt(row[ix('첨가재명칭')]); o.ships = txt(row[ix('비고')]);
-          for (const [f, i] of cols) o[f] = ana(row[i]);
+          for (const [f, i] of cols) o[f] = f === 'fst' ? hmMin(row[i]) : ana(row[i]);
           if (o.ls === null && cols.some(c => c[0] === 'ls')) o.ls = num(row[cols.find(c => c[0] === 'ls')[1]]);
           recs.ship.push(o); n++; continue;
         }
@@ -244,7 +247,7 @@
     for (const o of recs.cem) if (o.silo) { const s = ssilo[o.silo] || (ssilo[o.silo] = { n30: {}, ts: 0 }); if (o.ts >= s.ts) Object.assign(s, { ts: o.ts, product: o.product, mill: o.unit, label: o.siloRaw }); if (o.ts >= d30) s.n30[o.product || '-'] = (s.n30[o.product || '-'] || 0) + 1; }
 
     // 출하 시멘트 로트 (전체)
-    const SF = ['ls', 'addr', 'LOI', 'Al2O3', 'MgO', 'SO3', 'Cl', 'TA', 's1', 's3', 's7', 's28', 'dens', 'r45', 'blaine', 'cons', 'flow', 'ac', 'ist'];
+    const SF = ['ls', 'addr', 'LOI', 'Al2O3', 'MgO', 'SO3', 'Cl', 'TA', 's1', 's3', 's7', 's28', 'dens', 'r45', 'blaine', 'cons', 'flow', 'ac', 'ist', 'fst'];
     recs.ship.sort((a, b) => a.ts - b.ts);
     const ship = { f: SF, rows: recs.ship.map(o => [o.day, o.lot, o.product, o.add, o.ships, ...SF.map(f => o[f] == null ? null : r5(o[f]))]) };
 
