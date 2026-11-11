@@ -1301,7 +1301,7 @@ function frame(now){
     if(!st&&!REDUCED){k.spin.rotation.x+=dt*E[k.id].params.rpm.v*.12;k.hz.material.opacity=.4+.16*Math.sin(now/600+i);}
     if(k.hot!==!st){k.hot=!st;k.shm.map=k.hot?COLTEX:null;k.shm.needsUpdate=true;}
     k.shm.emissiveIntensity=st?0:(dark?1.35:1.15)+.25*pu;k.kl.intensity=st?0:(dark?1.8:1)+.4*pu;});
-  BEACONS.forEach((b,i)=>{const on=!isStopped(E[b.kid]);const ph=REDUCED?1:((now/1000+i*.23)%1<.5?1:0);   // 가동 중: 1초 주기로 깜빡임
+  BEACONS.forEach((b,i)=>{const on=!isStopped(E[b.kid]);const ph=REDUCED?1:((now/1000)%1<.5?1:0);   // 가동 중: 1초 주기로 깜빡임 (전 호기 같은 박자)
     b.lm.color.set(on?'#FF5A50':'#8B939E');b.lm.emissiveIntensity=on?(ph?2.1:.08):0;b.sp.visible=on&&!!ph;b.sp.material.opacity=dark?.95:.8;});
   PWW.forEach(w=>{if(!REDUCED&&EQOBJ[w.id].visible)w.wheel.rotation.y+=dt*1.4*E[w.id].params.load.v/80;});
   SMOKE.forEach(s=>{const u=s.userData;s.visible=EQOBJ[u.kid].visible&&!isStopped(E[u.kid]);u.t=(u.t+dt*.07)%1;const t=u.t;s.position.set(u.x+t*6,u.y+t*14,u.z-t*3);s.scale.setScalar(1+t*3.4);s.material.opacity=(dark?.32:.45)*(1-t);});

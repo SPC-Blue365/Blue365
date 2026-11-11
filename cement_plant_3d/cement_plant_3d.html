@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-11 09:59">
+<meta name="b365-build" content="2026-11-11 10:05">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -469,7 +469,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-11 09:59</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-11 10:05</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1596,7 +1596,7 @@ function frame(now){
     if(!st&&!REDUCED){k.spin.rotation.x+=dt*E[k.id].params.rpm.v*.12;k.hz.material.opacity=.4+.16*Math.sin(now/600+i);}
     if(k.hot!==!st){k.hot=!st;k.shm.map=k.hot?COLTEX:null;k.shm.needsUpdate=true;}
     k.shm.emissiveIntensity=st?0:(dark?1.35:1.15)+.25*pu;k.kl.intensity=st?0:(dark?1.8:1)+.4*pu;});
-  BEACONS.forEach((b,i)=>{const on=!isStopped(E[b.kid]);const ph=REDUCED?1:((now/1000+i*.23)%1<.5?1:0);   // 가동 중: 1초 주기로 깜빡임
+  BEACONS.forEach((b,i)=>{const on=!isStopped(E[b.kid]);const ph=REDUCED?1:((now/1000)%1<.5?1:0);   // 가동 중: 1초 주기로 깜빡임 (전 호기 같은 박자)
     b.lm.color.set(on?'#FF5A50':'#8B939E');b.lm.emissiveIntensity=on?(ph?2.1:.08):0;b.sp.visible=on&&!!ph;b.sp.material.opacity=dark?.95:.8;});
   PWW.forEach(w=>{if(!REDUCED&&EQOBJ[w.id].visible)w.wheel.rotation.y+=dt*1.4*E[w.id].params.load.v/80;});
   SMOKE.forEach(s=>{const u=s.userData;s.visible=EQOBJ[u.kid].visible&&!isStopped(E[u.kid]);u.t=(u.t+dt*.07)%1;const t=u.t;s.position.set(u.x+t*6,u.y+t*14,u.z-t*3);s.scale.setScalar(1+t*3.4);s.material.opacity=(dark?.32:.45)*(1-t);});
@@ -2293,7 +2293,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-11 09:59</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-11 10:05</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
