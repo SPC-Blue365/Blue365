@@ -253,7 +253,7 @@ def watch_loop(folder: Path, interval: int) -> None:
 # ---------------------------------------------------------------- 사용자 · 로그인
 ROLES = ("viewer", "editor", "admin")                    # 뷰어 < 편집 < 관리자
 ROLE_KO = {"viewer": "뷰어", "editor": "편집", "admin": "관리자"}
-SESSION_HOURS = 12
+SESSION_HOURS = 12            # 관리자: 로그인 뒤 12시간 고정 / 뷰어·편집: 12시간 동안 화면 활동이 없으면 로그아웃
 AUDIT_MAX = 5 * 1024 * 1024      # audit.log 가 이 크기를 넘으면 audit-날짜.log 로 보관
 ID_RE = re.compile(r"^[A-Za-z0-9_.-]{3,20}$")
 
@@ -335,6 +335,19 @@ class Users:
             self._save()
         return u
 
+    def reapply(self, uid, pw, name, dept, ip):
+        """거절된 아이디의 재신청: 새 비밀번호·부서·이름으로 바꾸고 다시 승인 대기로"""
+        with self.lock:
+            u = self.data["users"].get(uid.lower())
+            if not u or u.get("status") != "rejected":
+                return None
+            u["salt"] = secrets.token_hex(16)
+            u["hash"] = self._hash(pw, u["salt"])
+            u.update(id=uid, name=name, dept=dept, role=None, status="pending", ip=ip, reapplied=(u.get("reapplied") or 0) + 1,
+                     created=dt.datetime.now().isoformat(timespec="seconds"), approvedBy=None, approvedAt=None, mustChange=False)
+            self._save()
+            return u
+
     def verify(self, uid, pw):
         u = self.get(uid)
         if not u or not isinstance(pw, str):
@@ -369,12 +382,49 @@ class Users:
         return ip in self.data["ips"]
 
     def public(self, u):
-        return {k: u.get(k) for k in ("id", "name", "dept", "role", "status", "created", "ip", "lastLogin", "lastIp", "approvedBy", "approvedAt")}
+        return {k: u.get(k) for k in ("id", "name", "dept", "role", "status", "created", "ip", "lastLogin", "lastIp", "approvedBy", "approvedAt", "reapplied")}
 
 
 USERS: Users
-SESS: dict = {}            # 토큰 → {uid, exp}
+SESS: dict = {}            # 토큰의 SHA-256 → {uid, exp, born, ck} (토큰 원문은 서버에 두지 않음)
 SESS_LOCK = threading.Lock()
+SESS_FILE: Path | None = None      # data/sessions.json — 서버를 다시 켜도 로그인 유지
+COOKIE_DAYS = 30                   # 뷰어·편집 쿠키 보관 기간 (서버가 SESSION_HOURS 무활동이면 먼저 끊음)
+
+
+def tk(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def sess_save() -> None:
+    """SESS_LOCK 을 잡은 상태에서 호출"""
+    if not SESS_FILE:
+        return
+    try:
+        tmp = SESS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(SESS), "utf-8")
+        os.replace(tmp, SESS_FILE)
+    except OSError as e:
+        log(f"로그인 유지 정보 저장 실패: {e}")
+
+
+def sess_load() -> None:
+    if not SESS_FILE or not SESS_FILE.exists():
+        return
+    try:
+        data = json.loads(SESS_FILE.read_text("utf-8"))
+        now = time.time()
+        with SESS_LOCK:
+            for k, v in data.items():
+                if isinstance(v, dict) and isinstance(v.get("uid"), str) and v.get("exp", 0) > now:
+                    SESS[k] = v
+    except Exception:      # 손상된 파일은 무시 (모두 다시 로그인)
+        pass
+
+
+def cookie(token: str, admin: bool) -> str:
+    age = SESSION_HOURS * 3600 if admin else COOKIE_DAYS * 86400
+    return f"b365s={token}; Path=/; Max-Age={age}; HttpOnly; SameSite=Strict"
 FAILS: dict = {}           # IP → [실패 시각...] (로그인 10회/10분 초과 시 잠시 차단)
 
 
@@ -417,6 +467,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", CSP)      # 외부 주소로 데이터를 보내거나 불러오지 못하게
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if getattr(self, "_cookie", None) and "Set-Cookie" not in (extra or {}):
+            self.send_header("Set-Cookie", self._cookie)
+            self._cookie = None
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -453,14 +506,24 @@ class Handler(BaseHTTPRequestHandler):
         t = self._token()
         if not t:
             return None
+        h, now = tk(t), time.time()
         with SESS_LOCK:
-            s = SESS.get(t)
-            if not s or s["exp"] < time.time():
-                SESS.pop(t, None)
+            s = SESS.get(h)
+            if not s or s["exp"] < now:
+                if SESS.pop(h, None):
+                    sess_save()
                 return None
         u = USERS.get(s["uid"])
         if not u or u.get("status") != "active" or u.get("role") not in ROLES:
             return None
+        # 뷰어·편집: 화면이 열려 있으면(20초마다 확인 요청) 계속 연장 → 상황판이 로그아웃되지 않음. 관리자는 연장하지 않음
+        if u["role"] != "admin" and s["exp"] - now < SESSION_HOURS * 3600 - 600:
+            with SESS_LOCK:
+                s["exp"] = now + SESSION_HOURS * 3600
+                if now - s.get("ck", 0) > 86400:          # 쿠키도 하루에 한 번 새로 내려 줌
+                    s["ck"] = now
+                    self._cookie = cookie(t, False)
+                sess_save()
         return u
 
     def _need(self, role: str, temp_ok: bool = False):
@@ -578,7 +641,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/logout":
             t = self._token()
             with SESS_LOCK:
-                SESS.pop(t, None)
+                if SESS.pop(tk(t), None) if t else None:
+                    sess_save()
             return self._send(200, {"ok": True}, extra={"Set-Cookie": "b365s=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"})
         if path == "/api/register":
             return self._register(body)
@@ -604,7 +668,7 @@ class Handler(BaseHTTPRequestHandler):
         if st == "pending":
             return self._send(403, {"error": "관리자 승인을 기다리는 중입니다. 승인되면 로그인할 수 있습니다."})
         if st == "rejected":
-            return self._send(403, {"error": "등록 요청이 거절되었습니다. 관리자에게 문의하세요."})
+            return self._send(403, {"error": "등록 요청이 거절되었습니다. ‘ID 등록’ 탭에서 같은 아이디로 다시 신청할 수 있습니다."})
         if st != "active" or u.get("role") not in ROLES:
             return self._send(403, {"error": "사용이 중지된 계정입니다. 관리자에게 문의하세요."})
         FAILS.pop(self.ip, None)
@@ -612,12 +676,13 @@ class Handler(BaseHTTPRequestHandler):
         with SESS_LOCK:
             for k in [k for k, s in SESS.items() if s["exp"] < now]:
                 SESS.pop(k, None)
-            SESS[t] = {"uid": u["id"].lower(), "exp": now + SESSION_HOURS * 3600}
+            SESS[tk(t)] = {"uid": u["id"].lower(), "exp": now + SESSION_HOURS * 3600, "born": now, "ck": now}
+            sess_save()
         USERS.update(u["id"], lastLogin=dt.datetime.now().isoformat(timespec="seconds"), lastIp=self.ip)
         USERS.mark_ip(self.ip, u["id"])
         USERS.log(u["id"], "로그인", ROLE_KO[u["role"]], self.ip)
         return self._send(200, {"ok": True, "user": {**{k: u.get(k) for k in ("id", "name", "dept", "role")}, "mustChange": bool(u.get("mustChange"))}},
-                          extra={"Set-Cookie": f"b365s={t}; Path=/; Max-Age={SESSION_HOURS * 3600}; HttpOnly; SameSite=Strict"})
+                          extra={"Set-Cookie": cookie(t, u["role"] == "admin")})
 
     def _register(self, b):
         uid, pw = str(b.get("id", "")).strip(), b.get("pw")
@@ -628,7 +693,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요"})
         if not name or not dept or re.search(r"[<>&\"'`]", name + dept):
             return self._send(400, {"error": "부서와 이름을 바르게 적어 주세요"})
-        if USERS.get(uid):
+        old = USERS.get(uid)
+        again = bool(old) and old.get("status") == "rejected" and not b.get("setup")     # 거절된 요청은 다시 신청할 수 있음
+        if old and not again:
             return self._send(409, {"error": "이미 있는 아이디입니다"})
         setup = bool(b.get("setup"))
         if setup:
@@ -643,6 +710,11 @@ class Handler(BaseHTTPRequestHandler):
         pend = sum(1 for x in USERS.all() if x.get("status") == "pending" and x.get("ip") == self.ip)
         if pend >= 3:
             return self._send(429, {"error": "이 PC에서 승인 대기 중인 요청이 이미 3건 있습니다"})
+        if again:
+            if not USERS.reapply(uid, pw, name, dept, self.ip):
+                return self._send(409, {"error": "이미 있는 아이디입니다"})
+            USERS.log(uid, "ID 재등록 요청", f"{dept} {name} (이전 요청 거절됨)", self.ip)
+            return self._send(200, {"ok": True, "again": True})
         if not USERS.add(uid, pw, name, dept, self.ip):
             return self._send(409, {"error": "이미 있는 아이디입니다"})
         USERS.log(uid, "ID 등록 요청", f"{dept} {name}", self.ip)
@@ -659,10 +731,11 @@ class Handler(BaseHTTPRequestHandler):
         if b.get("new") == b.get("old"):
             return self._send(400, {"error": "새 비밀번호가 지금 비밀번호와 같습니다"})
         USERS.update(u["id"], pw=b["new"], mustChange=False)
-        keep = self._token()                       # 다른 PC에 남은 로그인은 끊음 (지금 화면은 유지)
+        keep = tk(self._token() or "")             # 다른 PC에 남은 로그인은 끊음 (지금 화면은 유지)
         with SESS_LOCK:
             for k in [k for k, x in SESS.items() if x["uid"] == u["id"].lower() and k != keep]:
                 SESS.pop(k, None)
+            sess_save()
         USERS.log(u["id"], "비밀번호 변경", "", self.ip)
         return self._send(200, {"ok": True})
 
@@ -716,6 +789,7 @@ class Handler(BaseHTTPRequestHandler):
         with SESS_LOCK:
             for k in [k for k, s in SESS.items() if s["uid"] == uid.lower()]:
                 SESS.pop(k, None)
+            sess_save()
 
     def _upload(self):
         u = self._need("editor")
@@ -785,7 +859,7 @@ def main() -> None:
             stream.reconfigure(errors="replace")
         except (AttributeError, ValueError):
             pass
-    global STORE, KEY, WATCH, ALLOW, USERS, HISTORY_MB
+    global STORE, KEY, WATCH, ALLOW, USERS, HISTORY_MB, SESS_FILE
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
     ap.add_argument("--host", default="0.0.0.0", help="받을 주소 (기본: 모든 네트워크)")
     ap.add_argument("--port", type=int, default=8365, help="포트 (기본 8365)")
@@ -803,6 +877,8 @@ def main() -> None:
     HISTORY_MB = max(50, a.history_mb)
     STORE = Store(Path(a.data))
     USERS = Users(STORE.dir)
+    SESS_FILE = STORE.dir / "sessions.json"
+    sess_load()
     KEY = a.key
     try:
         ALLOW = [] if a.allow_any else (parse_allow(a.allow) if a.allow else parse_allow(",".join(PRIVATE_NETS))) + parse_allow(",".join(LOCAL_NETS))
@@ -839,7 +915,8 @@ def main() -> None:
     print(f"  데이터 저장 : {STORE.dir}")
     n_users = sum(1 for u in USERS.all() if u.get("status") == "active")
     n_pend = sum(1 for u in USERS.all() if u.get("status") == "pending")
-    print(f"  로그인      : 사용 (승인된 사용자 {n_users}명, 승인 대기 {n_pend}건)")
+    print(f"  로그인      : 사용 (승인된 사용자 {n_users}명, 승인 대기 {n_pend}건, 유지 중인 로그인 {len(SESS)}건)")
+    print(f"  로그인 유지 : 뷰어·편집은 화면을 켜 둔 동안 계속 유지(무활동 {SESSION_HOURS}시간 뒤 종료), 관리자는 {SESSION_HOURS}시간")
     print("  업로드      : 편집 권한 + 업로드할 때 본인 비밀번호 확인" + (" + 서버 업로드 암호(--key)" if KEY else ""))
     if not USERS.has_admin():
         print(f"  ★ 관리자 계정이 없습니다. 이 PC의 브라우저에서 http://localhost:{a.port} 로 접속해 먼저 만드세요.")

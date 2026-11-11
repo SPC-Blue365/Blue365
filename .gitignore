@@ -161,6 +161,9 @@ cython_debug/
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/cement_plant_3d/data/
+#.idea/
+
+# Blue365 시멘트 공정 3D: 서버 데이터(사용자·비밀번호 해시·로그인 유지 정보·업로드 데이터·감사 기록)는 저장소에 올리지 않음
+cement_plant_3d/data/
 __pycache__/
 cement_plant_3d/artifact.html
