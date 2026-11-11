@@ -190,7 +190,7 @@
         }
         const unit = unitOf(row[cUnit]); if (!unit) { noUnit++; continue; }
         o.unit = unit; if (cName >= 0) o.grade = txt(row[cName]);
-        for (const [f, i] of cols) o[f] = ana(row[i]);
+        for (const [f, i] of cols) o[f] = kind === 'dcs' ? num(row[i]) : ana(row[i]);   // 운전값(DCS)의 0은 실제 값(정지), 분석값의 0·빈칸은 미시험
         if (kind === 'cem') {   // LIMS 내려받기에서 Blaine·45㎛ 값이 서로 바뀌어 들어오는 경우 자동 보정
           if (o.blaine != null && o.r45 != null && o.blaine < 100 && o.r45 > 1000) { const t = o.blaine; o.blaine = o.r45; o.r45 = t; swapped++; }
           o.product = product(row[cName]); o.silo = cemSilo(row[cSs]); o.siloRaw = txt(row[cSs]);
@@ -205,7 +205,7 @@
     if (swapped) warn.push(`시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 ${swapped}행을 자동으로 바로잡았습니다.`);
     if (noUnit) warn.push(`공정구분(호기·밀)을 알 수 없는 ${noUnit}행은 건너뛰었습니다.`);
 
-    const all = [...recs.raw, ...recs.clk, ...recs.cem, ...recs.res];
+    const all = [...recs.raw, ...recs.clk, ...recs.cem, ...recs.res, ...recs.xrd, ...recs.dcs, ...recs.ship];
     const main = [...recs.raw, ...recs.clk, ...recs.cem];
     const to = all.reduce((a, o) => o.day > a ? o.day : a, '0000'), from = (main.length ? main : all).reduce((a, o) => o.day < a ? o.day : a, '9999');
     const toMs = all.length ? dayMs(to) : 0, recentFrom = Math.round((toMs - 13 * 864e5) / 60000), statFrom = Math.round((toMs - 89 * 864e5) / 60000);

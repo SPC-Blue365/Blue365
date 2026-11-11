@@ -143,6 +143,8 @@ a{color:inherit;text-decoration:none}
 .plab:hover{background:var(--preview)}
 .plab:focus-within{outline:2px solid var(--accent);outline-offset:1px}
 .plab input,.plab select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;font:inherit}
+.plab input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;cursor:pointer}   /* 칸 어디를 눌러도 달력이 열리게 */
+.ptil{color:var(--fg3);padding:0 2px}
 .prange{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2)}
 .prange input{height:30px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 8px}
 .prange input:focus{border-color:var(--accent);outline:none}
@@ -162,7 +164,7 @@ a{color:inherit;text-decoration:none}
 .kpis .kpi [data-tip]:hover::after,.kpis .kpi [data-tip]:focus-visible::after{left:auto;right:-6px;transform:none}
 .kpis .kpi:first-child [data-tip]:hover::after,.kpis .kpi:first-child [data-tip]:focus-visible::after{left:-6px;right:auto}
 .klt{white-space:nowrap;flex:none}
-.vtag{display:inline-block;margin-left:4px;font-size:10.5px;font-weight:700;color:var(--fg2);background:var(--idle-soft);border-radius:6px;padding:1px 5px;vertical-align:1px}
+.vtag{display:inline-block;font-size:10.5px;font-weight:700;color:var(--fg2);background:var(--idle-soft);border-radius:6px;padding:1px 5px}
 .ksel{position:relative;display:inline-flex;align-items:center;flex:0 1 auto;min-width:0}
 .kselv{font-size:11.5px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:8px;height:22px;line-height:22px;padding:0 18px 0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .ksel select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font:inherit;font-size:14px;border:0}   /* 실제 선택은 기본 select (휴대폰에서도 동작), 보이는 건 현재 값만 */
@@ -857,20 +859,23 @@ const dayDate=day=>new Date(+day.slice(0,4),+day.slice(5,7)-1,+day.slice(8,10));
 let QD=null,QMETA={};
 
 /* 시료 (가상) */
+const MMDD=(()=>{const d=new Date();return pad(d.getMonth()+1)+pad(d.getDate());})();
 const SAMPLES=[
-  {id:'S-1109-041',what:'5호 클링커 XRF · f-CaO',eq:'K5',st:'분석중',prog:60,t:-25},
-  {id:'S-1109-042',what:'3호 C/M 시멘트 분말도 · SO₃',eq:'CM3',st:'채취',prog:15,t:-8},
-  {id:'S-1109-040',what:'5호 R/M 원료 XRF (LSF·SM·IM)',eq:'RM5',st:'완료',prog:100,t:-52},
-  {id:'S-1109-043',what:'6호 사일로 출하 시멘트 강도 공시체',eq:'SL6',st:'양생중',prog:4,t:-70},
-  {id:'S-1109-039',what:'47Q 석회석 CaO 품위',eq:'Q47',st:'완료',prog:100,t:-95}
+  {id:'S-'+MMDD+'-041',what:'5호 클링커 XRF · f-CaO',eq:'K5',st:'분석중',prog:60,t:-25},
+  {id:'S-'+MMDD+'-042',what:'3호 C/M 시멘트 분말도 · SO₃',eq:'CM3',st:'채취',prog:15,t:-8},
+  {id:'S-'+MMDD+'-040',what:'5호 R/M 원료 XRF (LSF·SM·IM)',eq:'RM5',st:'완료',prog:100,t:-52},
+  {id:'S-'+MMDD+'-043',what:'6호 사일로 출하 시멘트 강도 공시체',eq:'SL6',st:'양생중',prog:4,t:-70},
+  {id:'S-'+MMDD+'-039',what:'47Q 석회석 CaO 품위',eq:'Q47',st:'완료',prog:100,t:-95}
 ].map(s=>Object.assign(s,{time:new Date(Date.now()+s.t*60000)}));
 const SMP_BADGE={'완료':'s-ok','분석중':'s-act','채취':'s-idle','양생중':'s-idle'};
 
 /* 알람 (가상) */
 let ALARMS=[];
 let alarmSeq=1;
+const ALARM_MAX=300;   // 최근 알람만 보관
 function pushAlarm(e,k,p,sev,t=new Date(),ack=false){
   ALARMS.unshift({id:alarmSeq++,t,eq:e.id,k,label:p.label,val:`${nf(p.v,p.dp)}${p.unit?' '+p.unit:''}`,lim:limTxt(p),sev,ack});
+  if(ALARMS.length>ALARM_MAX)ALARMS.length=ALARM_MAX;
 }
 (function seedAlarms(){
   const now=Date.now(), m=60000;
@@ -1092,9 +1097,10 @@ let shpSeq=23, lotSeq=8;
 const CUSTOMERS=['레미콘 A사 (가상)','레미콘 B사 (가상)','건설현장 C (가상)','레미콘 D사 (가상)'];
 function newLot(t){
   const n=Date.now(),h=3600e3;
-  t.shp='#SHP-1109-'+pad(shpSeq++).padStart(3,'0');
-  t.lot='CM-261109-'+pad(lotSeq++);
-  t.clk='CL-261107-'+'ABC'[lotSeq%3];
+  const d0=new Date(),d2=new Date(Date.now()-2*864e5),ymd6=d=>String(d.getFullYear()).slice(2)+pad(d.getMonth()+1)+pad(d.getDate());
+  t.shp='#SHP-'+ymd6(d0).slice(2)+'-'+pad(shpSeq++).padStart(3,'0');
+  t.lot='CM-'+ymd6(d0)+'-'+pad(lotSeq++);
+  t.clk='CL-'+ymd6(d2)+'-'+'ABC'[lotSeq%3];
   t.silo=SHIP_SILOS[lotSeq%SHIP_SILOS.length];const sd=SLD[t.silo];
   t.product=PROD_NAME[sd.prod]||sd.prod;
   const ms=millsForSilo(t.silo);t.cm=(ms.find(m=>CUR[m]&&CUR[m].silo===t.silo)||ms[0]||'CM2').slice(2);
@@ -1539,7 +1545,7 @@ function cementKpis(){
    shipCard('1종'),shipCard('3종')
   ];
 }
-const ksHTML=x=>`${x.d?`<span class="delta ${x.dc}">${x.d}</span> `:''}${x.s}`;
+const ksHTML=x=>`${x.vt?VTAG+' ':''}${x.d?`<span class="delta ${x.dc}">${x.d}</span> `:''}${x.s}`;
 const kselLabel=x=>(x.sel.opts.find(o=>o[0]===x.sel.val)||x.sel.opts[0])[1];
 const kselHTML=x=>x.sel?`<span class="ksel"><span class="kselv">${esc(kselLabel(x))}</span><select data-ksel="${x.key}" aria-label="${esc(x.sel.aria)}">${x.sel.opts.map(o=>`<option value="${o[0]}"${o[0]===x.sel.val?' selected':''}>${esc(o[1])}</option>`).join('')}</select>${ic('chevD')}</span>`:'';
 const kpiHTML=k=>k.map(x=>`<div class="kpi"${x.key?` data-k="${x.key}"`:''}><span class="kic">${ic(x.ic)}</span><div style="min-width:0"><div class="kl"><span class="klt">${x.l}</span>${kselHTML(x)}<span class="tipi" tabindex="0" data-tip="${esc(x.tip)}">${ic('info')}</span></div><div class="kval num">${x.v}<small>${x.u}</small></div><div class="ks">${ksHTML(x)}</div></div></div>`).join('');
@@ -1582,7 +1588,7 @@ function shipCard(prod){
    ========================================================= */
 const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const todayStr=()=>ymd(new Date());
-const PER={g:'m',a:todayStr(),from:null,to:null};
+const PER={g:'m',a:todayStr(),from:null,to:null,follow:true};   // follow: 현재 기간(오늘·당월·올해)을 보는 중이면 날짜가 바뀔 때 따라감
 const PER_NM={d:'일 평균',m:'월 평균',y:'년 평균',r:'기간 평균'},PER_NOW={d:'오늘',m:'당월',y:'올해'};
 function perRange(g=PER.g,a=PER.a){const y=+a.slice(0,4),m=+a.slice(5,7);
   if(g==='r'&&PER.from&&PER.to){const f=PER.from,t=PER.to,sd=x=>`${+x.slice(5,7)}/${+x.slice(8)}`;return {from:f,to:t,lab:`${f} ~ ${t}`,sh:f.slice(0,4)===t.slice(0,4)?`${sd(f)}~${sd(t)}`:`${f.slice(2)}~${t.slice(2)}`};}
@@ -1593,7 +1599,7 @@ function perShift(a,g,k){const d=new Date(+a.slice(0,4),+a.slice(5,7)-1,+a.slice
 const perIsNow=()=>{const r=perRange(),t=todayStr();return r.from<=t&&t<=r.to;};
 /* 기간 안의 날짜 목록 (미래 제외) */
 function perDays(r){const out=[],t=todayStr();let d=new Date(+r.from.slice(0,4),+r.from.slice(5,7)-1,+r.from.slice(8,10));
-  for(let i=0;i<367;i++){const k=ymd(d);if(k>r.to||k>t)break;out.push(k);d.setDate(d.getDate()+1);}return out;}
+  for(let i=0;i<3700;i++){const k=ymd(d);if(k>r.to||k>t)break;out.push(k);d.setDate(d.getDate()+1);}return out;}
 /* 기간 문구: 진행 중인 기간은 'n일까지' 표시 */
 const perTxt=r=>{const t=todayStr();if(!(r.from<=t&&t<r.to)||PER.g==='d'||PER.g==='r')return r.sh;return PER.g==='m'?`${r.sh} 1~${+t.slice(8)}일`:`${r.sh} 1/1~${+t.slice(5,7)}/${+t.slice(8)}`;};
 /* 가상 일별 운전 (DCS가 없을 때): 같은 날짜는 항상 같은 값 */
@@ -1626,23 +1632,23 @@ function prodCard(L){
   const key='tpd'+L,r=perRange(),opts=kilnOpts(L),val=kpick(key,opts,'all');
   const ids=val==='all'?kilnEqs().filter(e=>!L||e.line===L).map(e=>e.id):[val];
   const ps=ids.map(id=>[id,kilnPer(id,r)]).filter(x=>x[1]);
-  const c={key,ic:'factory',l:'클링커 생산'+(prodSrc(ids,r)==='가상'?VTAG:''),sel:{opts,val,aria:'클링커 생산 호기 선택'},u:'t/d'};
+  const c={key,ic:'factory',l:'클링커 생산',vt:prodSrc(ids,r)==='가상',sel:{opts,val,aria:'클링커 생산 호기 선택'},u:'t/d'};
   if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
   const tpd=ps.reduce((a,x)=>a+x[1].tpd,0),run=ps.filter(x=>x[1].hrs>0),des=run.reduce((a,x)=>a+E[x[0]].cap,0),src=ps.some(x=>x[1].src==='DCS')?'DCS':'가상';
   if(!des)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · 설계 ${nf(ps.reduce((a,x)=>a+E[x[0]].cap,0))} t/d`,tip:'기간 내 가동 기록이 없습니다.'});
   return Object.assign(c,{v:nf(tpd),d:`${tpd>=des?'▲':'▼'} ${nf(Math.abs(tpd/des*100-100),1)}%`,dc:tpd>=des?'up':'dn',
-    s:`${perTxt(r)} 일평균 · 설계 ${nf(des)} t/d 대비 · ${src}`,tip:`${PER_NM[PER.g]}: 기간 내 하루 생산량의 평균. 하루 생산 = 원료 투입량 × 24 ÷ 환산계수 ${CLK_FACTOR}. 설계 대비는 기간 중 가동한 호기의 설계용량 합. ${src==='DCS'?'DCS 일평균 기준':'설비값 가상'}`});
+    s:`${perTxt(r)} 일평균 · 설계 ${nf(des)} t/d 대비${src==='DCS'?' · DCS':''}`,tip:`${PER_NM[PER.g]}: 기간 내 하루 생산량의 평균. 하루 생산 = 원료 투입량 × 24 ÷ 환산계수 ${CLK_FACTOR}. 설계 대비는 기간 중 가동한 호기의 설계용량 합. ${src==='DCS'?'DCS 일평균 기준':'설비값 가상'}`});
 }
 /* 카드: 킬른 가동률 */
 function runCard(){
   const key='run',r=perRange(),opts=kilnOpts(''),val=kpick(key,opts,'all');
   const ids=val==='all'?kilnEqs().filter(e=>!KILN_DEF.find(d=>'K'+d.n===e.id).stop).map(e=>e.id):[val];
-  const ps=ids.map(id=>kilnPer(id,r)).filter(Boolean),c={key,ic:'flame',l:'킬른 가동률'+(prodSrc(ids,r)==='가상'?VTAG:''),sel:{opts,val,aria:'킬른 가동률 호기 선택'},u:'%'};
+  const ps=ids.map(id=>kilnPer(id,r)).filter(Boolean),c={key,ic:'flame',l:'킬른 가동률',vt:prodSrc(ids,r)==='가상',sel:{opts,val,aria:'킬른 가동률 호기 선택'},u:'%'};
   if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
   const hrs=ps.reduce((a,x)=>a+x.hrs,0),cal=ps.reduce((a,x)=>a+x.days*24,0),rate=hrs/cal*100,down=cal-hrs,src=ps.some(x=>x.src==='DCS')?'DCS':'가상';
   if(val!=='all'&&!hrs)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · ${src}`,tip:`${E[val].kiln}호 킬른은 기간 내 가동 기록이 없습니다.`});
   const sn=val==='all'?KILN_DEF.filter(d=>d.stop).map(d=>d.n+'호').join('·'):'';
-  return Object.assign(c,{v:nf(rate,1),s:`${perTxt(r)} · 정지 ${nf(down,0)}시간${sn?` · ${sn} 제외`:''} · ${src}`,tip:`(달력시간 − 정지시간) ÷ 달력시간. ${src==='DCS'?'DCS 원료 투입량 > 1 t/h인 날을 가동으로 봄':'설비값 가상'}${sn?` · 장기 가동 중단 ${sn}은 공장 평균에서 제외`:''}`});
+  return Object.assign(c,{v:nf(rate,1),s:`${perTxt(r)} · 정지 ${nf(down,0)}시간${sn?` · ${sn} 제외`:''}${src==='DCS'?' · DCS':''}`,tip:`(달력시간 − 정지시간) ÷ 달력시간. ${src==='DCS'?'DCS 원료 투입량 > 1 t/h인 날을 가동으로 봄':'설비값 가상'}${sn?` · 장기 가동 중단 ${sn}은 공장 평균에서 제외`:''}`});
 }
 /* 카드: f-CaO (기간 평균, 관리기준 0.7~1.7%) */
 function fcCard(L){
@@ -1904,6 +1910,7 @@ function stepSupply(){
 }
 function syncYardTags(){PB_DEF.forEach(d=>{const b=TAG['eq'+d.id];if(b)b.querySelector('span').textContent=E[d.id].name;});}
 function tick(){
+  if(PER.follow&&PER.g!=='r'&&!perIsNow()){PER.a=todayStr();renderPbar();}   // 자정·월말·연말이 지나면 현재 기간으로
   if(MODE==='sim'){
     evTimer+=2;
     if(evTimer>=32){evTimer=0;const cand=allParams().filter(x=>x.p.ev&&!x.p.ana&&!x.p.has&&!(x.p.kid&&isStopped(E[x.p.kid])));const c=cand[Math.floor(Math.random()*cand.length)];const p=c.p;
@@ -2159,11 +2166,13 @@ function perBarHTML(){
   const seg=`<div class="seg" role="group" aria-label="기간 단위">${['d','m','y','r'].map(g=>`<button type="button" data-pg="${g}" class="${PER.g===g?'on':''}" aria-pressed="${PER.g===g}">${PG_NM[g][0]}<span class="pgl"> ${PG_NM[g][1]}</span></button>`).join('')}</div>`;
   let mid,hint='';
   if(PER.g==='r'){
-    mid=`<form class="prange" data-prange><input type="date" name="from" value="${PER.from}" max="${t}" aria-label="시작일" required><span>~</span><input type="date" name="to" value="${PER.to}" max="${t}" aria-label="끝날" required><button class="pnow" type="submit">적용</button></form>`;
+    const chip=(k,v,lb)=>`<label class="plab"><span>${v.slice(2).replace(/-/g,'.')}</span><input type="date" data-prange="${k}" value="${v}" max="${t}" aria-label="${lb}"></label>`;
+    mid=`<div class="pnav">${chip('from',PER.from,'시작일')}<span class="ptil">~</span>${chip('to',PER.to,'끝날')}</div>`;
     if(l&&l<r.from)hint=`<button type="button" class="phint" data-phint title="QMS 데이터는 ${l}까지 있습니다"><span class="plong">QMS는 ${+l.slice(5,7)}/${+l.slice(8)}까지 · </span>최근 30일 보기</button>`;
   }else{
     const y0=QD&&QD.from?+QD.from.slice(0,4):+t.slice(0,4)-1,ys=[];for(let k=+t.slice(0,4);k>=Math.min(y0,+t.slice(0,4)-1);k--)ys.push(k);
-    const pick=PER.g==='d'?`<input type="date" data-ppick="d" value="${PER.a}" max="${t}" aria-label="날짜 고르기">`:PER.g==='m'?`<input type="month" data-ppick="m" value="${PER.a.slice(0,7)}" max="${t.slice(0,7)}" aria-label="월 고르기">`:
+    const ms=[];{let y=+t.slice(0,4),m=+t.slice(5,7);const lo=`${Math.min(y0,+PER.a.slice(0,4))}-01`;for(let i=0;i<240;i++){const k=`${y}-${pad(m)}`;if(k<lo)break;ms.push(k);if(--m<1){m=12;y--;}}}
+    const pick=PER.g==='d'?`<input type="date" data-ppick="d" value="${PER.a}" max="${t}" aria-label="날짜 고르기">`:PER.g==='m'?`<select data-ppick="m" aria-label="월 고르기">${ms.map(k=>`<option value="${k}"${PER.a.slice(0,7)===k?' selected':''}>${k.slice(0,4)}년 ${+k.slice(5)}월</option>`).join('')}</select>`:
       `<select data-ppick="y" aria-label="연도 고르기">${ys.map(k=>`<option value="${k}"${+PER.a.slice(0,4)===k?' selected':''}>${k}년</option>`).join('')}</select>`;
     const nx=perRange(PER.g,perShift(PER.a,PER.g,1)).from>t;
     mid=`<div class="pnav"><button type="button" class="pbtn" data-pnav="-1" aria-label="이전 기간">${ic('chevL')}</button><label class="plab"><span>${r.lab}${PER.g!=='d'&&r.from<=t&&t<r.to?'<span class="plong"> · 진행 중</span>':''}</span>${pick}</label><button type="button" class="pbtn" data-pnav="1" aria-label="다음 기간"${nx?' disabled':''}>${ic('chevR')}</button></div>`+(perIsNow()?'':`<button type="button" class="pnow" data-pnow>${PER_NOW[PER.g]}로</button>`);
@@ -2175,7 +2184,8 @@ function renderPbar(){const b=$('#pbar');if(b)b.innerHTML=perBarHTML();}
 function setPer(g,a,range){
   if(g&&g!==PER.g){if(g==='r'){const c=perRange(),t=todayStr();PER.from=PER.from||c.from;PER.to=PER.to||(c.to>t?t:c.to);}else if(PER.g==='r'&&PER.to)PER.a=PER.to;PER.g=g;}
   if(a)PER.a=a>todayStr()?todayStr():a;
-  if(range){let [f,t]=range;if(f>t)[f,t]=[t,f];PER.from=f;PER.to=t;}
+  if(range){let [f,t]=range;if(f>t)[f,t]=[t,f];const td=todayStr();if(t>td)t=td;if(f>td)f=td;PER.from=f;PER.to=t;}
+  PER.follow=PER.g!=='r'&&perIsNow();
   renderPbar();renderKpis($('#kpiMap'),kpiCards(false));if(view==='report')renderReport(true);
 }
 function setupPeriod(){
@@ -2184,10 +2194,10 @@ function setupPeriod(){
     if(el.dataset.pnav){const n=perShift(PER.a,PER.g,+el.dataset.pnav);return setPer(null,n);}
     if(el.hasAttribute('data-pnow'))return setPer(null,todayStr());
     if(el.hasAttribute('data-phint')){const l=qmsLast();if(!l)return;if(PER.g==='r'){const d=dayDate(l);d.setDate(d.getDate()-29);return setPer(null,null,[ymd(d),l]);}return setPer(null,l);}});
-  document.addEventListener('change',e=>{const el=e.target;if(!el.dataset||!el.dataset.ppick||!el.value)return;const g=el.dataset.ppick;
+  document.addEventListener('change',e=>{const el=e.target;if(!el.dataset||!el.value)return;
+    if(el.dataset.prange){const r=el.dataset.prange==='from'?[el.value,PER.to]:[PER.from,el.value];if(r[0]>r[1])toast('시작일이 끝날보다 늦어 두 날짜를 바꿔 적용했습니다','act');return setPer(null,null,r);}
+    if(!el.dataset.ppick)return;const g=el.dataset.ppick;
     setPer(null,g==='d'?el.value:g==='m'?el.value+'-01':el.value+'-01-01');});
-  document.addEventListener('submit',e=>{const f=e.target;if(!f.hasAttribute||!f.hasAttribute('data-prange'))return;e.preventDefault();
-    const a=f.elements.from.value,b=f.elements.to.value;if(!a||!b){toast('시작일과 끝날을 모두 골라 주세요','warn');return;}setPer(null,null,[a,b]);toast(`기간 ${a<=b?a:b} ~ ${a<=b?b:a} 적용`,'act');});
   renderPbar();
 }
 /* 시작 */

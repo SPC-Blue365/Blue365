@@ -5,7 +5,8 @@
 
   python server.py                         → 서버 창에 표시되는 http://<이 PC IP>:8365 로 팀원 접속
   python server.py --watch "\\\\서버\\품질\\업로드"   → 공유 폴더의 최신 .xlsx 자동 반영
-  python server.py --key 비밀번호            → 업로드할 때 비밀번호 요구
+  python server.py --key 암호                → (선택) 업로드에 서버 공통 암호를 하나 더 요구
+  로그인 필수: 처음에는 이 PC에서 http://localhost:8365 로 관리자 계정을 만듭니다. 업로드는 편집 권한 + 본인 비밀번호 재확인
 
 하는 일
   GET  /login            로그인 · ID 등록 (승인 후 로그인)
@@ -253,6 +254,7 @@ def watch_loop(folder: Path, interval: int) -> None:
 ROLES = ("viewer", "editor", "admin")                    # 뷰어 < 편집 < 관리자
 ROLE_KO = {"viewer": "뷰어", "editor": "편집", "admin": "관리자"}
 SESSION_HOURS = 12
+AUDIT_MAX = 5 * 1024 * 1024      # audit.log 가 이 크기를 넘으면 audit-날짜.log 로 보관
 ID_RE = re.compile(r"^[A-Za-z0-9_.-]{3,20}$")
 
 
@@ -287,18 +289,36 @@ class Users:
     def log(self, actor: str, action: str, detail: str = "", ip: str = ""):
         clean = lambda x: re.sub(r"[\x00-\x1f\x7f\u2028\u2029]", " ", str(x))[:200]   # 줄바꿈·탭으로 가짜 기록 줄을 만들지 못하게
         line = f"{dt.datetime.now():%Y-%m-%d %H:%M:%S}\t{clean(actor)}\t{clean(action)}\t{clean(detail)}\t{clean(ip)}\n"
-        with self.lock, open(self.audit, "a", encoding="utf-8") as f:
-            f.write(line)
+        with self.lock:
+            try:
+                if self.audit.exists() and self.audit.stat().st_size > AUDIT_MAX:      # 너무 커지면 날짜를 붙여 보관하고 새로 시작
+                    os.replace(self.audit, self.audit.with_name(f"audit-{dt.datetime.now():%Y%m%d-%H%M%S}.log"))
+            except OSError:
+                pass
+            with open(self.audit, "a", encoding="utf-8") as f:
+                f.write(line)
         log(f"[기록] {actor} · {action} · {detail}")
 
     def audit_tail(self, n=60):
         if not self.audit.exists():
             return []
-        lines = self.audit.read_text("utf-8").splitlines()[-n:]
+        with open(self.audit, "rb") as f:                 # 끝부분 64KB만 읽음
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 65536))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+        if size > 65536:
+            lines = lines[1:]                             # 잘린 첫 줄 버림
+        lines = lines[-n:]
         return [dict(zip(("t", "who", "act", "detail", "ip"), (l.split("\t") + [""] * 5)[:5])) for l in reversed(lines)]
 
+    def all(self) -> list:
+        """사용자 목록 사본 (다른 요청이 동시에 등록·삭제해도 안전)"""
+        with self.lock:
+            return list(self.data["users"].values())
+
     def has_admin(self) -> bool:
-        return any(u.get("role") == "admin" and u.get("status") == "active" for u in self.data["users"].values())
+        return any(u.get("role") == "admin" and u.get("status") == "active" for u in self.all())
 
     def get(self, uid: str):
         return self.data["users"].get((uid or "").lower())
@@ -309,6 +329,8 @@ class Users:
              "role": "admin" if admin else None, "status": "active" if admin else "pending",
              "created": dt.datetime.now().isoformat(timespec="seconds"), "ip": ip, "lastLogin": None, "lastIp": None}
         with self.lock:
+            if uid.lower() in self.data["users"]:      # 같은 아이디가 동시에 등록되는 경우
+                return None
             self.data["users"][uid.lower()] = u
             self._save()
         return u
@@ -374,6 +396,7 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "Blue365/1.0"
+    timeout = 30               # 30초 동안 아무것도 오지 않는 연결은 끊음
 
     def log_message(self, fmt, *args):  # 접속 기록은 요약해서
         if not self.path.startswith("/api/status") and not self.path.startswith("/api/me"):
@@ -503,7 +526,7 @@ class Handler(BaseHTTPRequestHandler):
                 out["user"] = {k: u.get(k) for k in ("id", "name", "dept", "role")}
                 out["user"]["mustChange"] = bool(u.get("mustChange"))
                 if u["role"] == "admin" and not u.get("mustChange"):
-                    out["pending"] = sum(1 for x in USERS.data["users"].values() if x.get("status") == "pending")
+                    out["pending"] = sum(1 for x in USERS.all() if x.get("status") == "pending")
             return self._send(200, out)
         if path in ("/업로드양식.xlsx", "/template.xlsx"):
             if not self._need("viewer"):
@@ -527,7 +550,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/admin/users":
             if not self._need("admin"):
                 return
-            users = sorted(USERS.data["users"].values(), key=lambda x: (x.get("status") != "pending", x.get("created") or ""))
+            users = sorted(USERS.all(), key=lambda x: (x.get("status") != "pending", x.get("created") or ""))
             return self._send(200, {"users": [USERS.public(u) for u in users], "audit": USERS.audit_tail()})
         self._send(404, {"error": "없는 주소입니다"})
 
@@ -613,13 +636,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(403, {"error": "관리자 계정이 이미 있습니다"})
             if not is_local(self.ip):
                 return self._send(403, {"error": "관리자 계정은 서버 PC에서만 만들 수 있습니다"})
-            USERS.add(uid, pw, name, dept, self.ip, admin=True)
+            if not USERS.add(uid, pw, name, dept, self.ip, admin=True):
+                return self._send(409, {"error": "이미 있는 아이디입니다"})
             USERS.log(uid, "관리자 계정 생성", f"{dept} {name}", self.ip)
             return self._send(200, {"ok": True, "admin": True})
-        pend = sum(1 for x in USERS.data["users"].values() if x.get("status") == "pending" and x.get("ip") == self.ip)
+        pend = sum(1 for x in USERS.all() if x.get("status") == "pending" and x.get("ip") == self.ip)
         if pend >= 3:
             return self._send(429, {"error": "이 PC에서 승인 대기 중인 요청이 이미 3건 있습니다"})
-        USERS.add(uid, pw, name, dept, self.ip)
+        if not USERS.add(uid, pw, name, dept, self.ip):
+            return self._send(409, {"error": "이미 있는 아이디입니다"})
         USERS.log(uid, "ID 등록 요청", f"{dept} {name}", self.ip)
         return self._send(200, {"ok": True})
 
@@ -710,10 +735,13 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n).decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as e:
             return self._send(400, {"error": f"데이터 형식 오류: {e}"})
+        if not isinstance(body, dict):
+            return self._send(400, {"error": "데이터 형식 오류"})
         if not USERS.verify(u["id"], body.get("password")):          # 업로드할 때마다 본인 비밀번호 다시 확인
             USERS.log(u["id"], "업로드 비밀번호 틀림", "", self.ip)
             return self._send(401, {"error": "비밀번호가 맞지 않습니다 (업로드 확인)"})
-        meta_in = body.get("meta") or {}
+        meta_in = body.get("meta") if isinstance(body.get("meta"), dict) else {}
+        meta_in["source"] = "upload"                                 # 올린 사람·출처는 서버가 정함
         meta_in["uploadedBy"] = f"{u['dept']} {u['name']}"
         try:
             if body.get("qms") is not None:
@@ -752,6 +780,11 @@ def lan_ips() -> list[str]:
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     global STORE, KEY, WATCH, ALLOW, USERS, HISTORY_MB
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
     ap.add_argument("--host", default="0.0.0.0", help="받을 주소 (기본: 모든 네트워크)")
@@ -762,7 +795,7 @@ def main() -> None:
     ap.add_argument("--allow", default="", help="접속 허용 대역, 쉼표로 구분 (예: 192.168.10.0/24,10.20.). 비우면 사내망 사설 IP 전체")
     ap.add_argument("--allow-any", action="store_true", help="접속 대역 제한 끄기 (권장하지 않음)")
     ap.add_argument("--history-mb", type=int, default=HISTORY_MB, help="이력(data/history) 최대 용량 MB (기본 1024)")
-    ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="업로드 비밀번호(영문·숫자)")
+    ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="(선택) 업로드에 추가로 요구할 서버 공통 암호")
     a = ap.parse_args()
 
     if not PAGE.exists():
@@ -804,8 +837,8 @@ def main() -> None:
     pm = re.search(rb'name="b365-build" content="([^"]+)"', PAGE.read_bytes()[:4000]) if PAGE.exists() else None
     print(f"  화면 파일   : {PAGE.name} · 버전 {pm.group(1).decode() if pm else '알 수 없음 (예전 파일입니다. 최신 cement_plant_3d.html로 바꾸세요)'}")
     print(f"  데이터 저장 : {STORE.dir}")
-    n_users = sum(1 for u in USERS.data["users"].values() if u.get("status") == "active")
-    n_pend = sum(1 for u in USERS.data["users"].values() if u.get("status") == "pending")
+    n_users = sum(1 for u in USERS.all() if u.get("status") == "active")
+    n_pend = sum(1 for u in USERS.all() if u.get("status") == "pending")
     print(f"  로그인      : 사용 (승인된 사용자 {n_users}명, 승인 대기 {n_pend}건)")
     print("  업로드      : 편집 권한 + 업로드할 때 본인 비밀번호 확인" + (" + 서버 업로드 암호(--key)" if KEY else ""))
     if not USERS.has_admin():
