@@ -178,6 +178,19 @@ class Store:
 
 STORE: Store
 KEY = ""
+_PB = {"m": None, "v": None}
+
+
+def page_build():
+    """화면 파일의 버전(빌드 시각). 파일이 바뀌면 열려 있는 화면들이 스스로 다시 엽니다."""
+    try:
+        m = PAGE.stat().st_mtime
+        if _PB["m"] != m:
+            mm = re.search(rb'name="b365-build" content="([^"]+)"', PAGE.read_bytes()[:4000])
+            _PB.update(m=m, v=mm.group(1).decode() if mm else None)
+        return _PB["v"]
+    except OSError:
+        return None
 
 # ---------------------------------------------------------------- 접속 허용 대역
 # 기본: 사내망(사설 IP) 대역만 허용 → 인터넷(공인 IP)에서 온 접속은 거절
@@ -604,7 +617,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True})
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build()})
         if path == "/api/dataset":
             if not self._need("viewer"):
                 return

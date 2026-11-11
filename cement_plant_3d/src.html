@@ -145,6 +145,30 @@ a{color:inherit;text-decoration:none}
 .plab input,.plab select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;font:inherit}
 .plab input::-webkit-calendar-picker-indicator{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;cursor:pointer}   /* 칸 어디를 눌러도 달력이 열리게 */
 .ptil{color:var(--fg3);padding:0 2px}
+/* 상황판 보기: 메뉴·상단 바·목록을 숨기고 지도와 카드만 크게 */
+.app.wall .side,.app.wall .top,.app.wall .tabbar,.app.wall .list,.app.wall .lot,.app.wall .ctrls,.app.wall .fab{display:none!important}
+.app.wall .main{padding-bottom:0}
+.app.wall .kpis .kpi{flex-basis:220px;max-width:280px;padding:16px 16px}
+.app.wall .kpi .kval{font-size:28px}
+.app.wall .kpi .kl{font-size:13px}
+.app.wall .kpi .ks{font-size:12.5px}
+.app.wall .ptabs button{font-size:15px}
+.app.wall .tag{font-size:13px}
+.app.wall.idle,.app.wall.idle *{cursor:none!important}
+.app.wall.idle .wctl{display:none}
+.wallbar{position:absolute;left:16px;bottom:16px;z-index:6;display:flex;align-items:center;gap:10px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:8px 12px;font-size:13.5px;max-width:calc(100% - 32px);white-space:nowrap}
+.wallbar .logo.co{padding:3px 6px}.wallbar .logo.co img{height:20px}
+.wallbar b{font-size:15px}
+.wclock{font-weight:700;padding-left:10px;border-left:1px solid var(--line)}
+.winfo{color:var(--fg3);font-size:12.5px}
+.wctl{display:flex;align-items:center;gap:8px;padding-left:10px;border-left:1px solid var(--line)}
+.wlab{color:var(--fg3);font-size:12px}
+.wallbar .seg button{padding:5px 9px;font-size:12.5px}
+.wallprog{position:absolute;left:0;right:0;bottom:0;height:3px;z-index:6;pointer-events:none}
+.wallprog i{display:block;height:100%;width:0;background:var(--accent);border-radius:0 3px 3px 0;opacity:.8}
+.wallprog.run i{animation:wprog var(--cyc,30s) linear forwards}
+@keyframes wprog{from{width:0}to{width:100%}}
+@media (max-width:760px){#wallBtn{display:none}.wallbar{left:8px;right:8px;bottom:8px;overflow-x:auto}}
 .prange{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2)}
 .prange input{height:30px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 8px}
 .prange input:focus{border-color:var(--accent);outline:none}
@@ -511,6 +535,7 @@ table.ks td.r,table.ks th.r{text-align:right}
       <div class="plant"><span class="code">5기</span><div><b>시멘트 공장 · 킬른 3~7호</b><small id="modeTxt">설계 24,500 t/d · 가상 데이터</small></div></div>
       <span class="live" id="liveChip" title="화면 갱신 상태"><i></i><span id="liveTxt">Live</span> <b class="num" id="clock">--:--</b></span>
       <button class="dbtn" type="button" id="dataBtn" aria-label="데이터 불러오기"><span data-ic="upload"></span><span>데이터</span></button>
+      <button class="icon-btn" type="button" id="wallBtn" aria-label="상황판 보기 (전체 화면 · 탭 자동 전환)" data-tip="상황판 보기"><span data-ic="screen"></span></button>
       <button class="icon-btn" type="button" id="themeBtn" aria-label="화면 테마 바꾸기"><span data-ic="moon"></span></button>
       <a class="icon-btn" href="#alarms" aria-label="알람 보기"><span data-ic="bell"></span><span class="dot" id="bellDot" hidden></span></a>
       <div class="user" id="userBox"><span class="avatar" id="uAv">QC</span><div><b id="uName">품질관리팀</b><small id="uRole">모니터링 담당</small></div></div><span class="umenu" id="uMenu" hidden><a class="icon-btn" href="account" id="uAcct" aria-label="내 계정 · 사용자 관리" title="내 계정 · 사용자 관리"><span data-ic="user"></span><span class="cnt" id="uPend" hidden></span></a><button class="icon-btn" type="button" id="uOut" aria-label="로그아웃" title="로그아웃"><span data-ic="logout"></span></button></span>
@@ -550,6 +575,13 @@ table.ks td.r,table.ks th.r{text-align:right}
           </div>
           <div class="rows" id="rows"></div>
         </div>
+        <div class="wallbar" id="wallBar" hidden>
+          <span class="logo co"><img src="logo.png" alt="삼표시멘트"></span><b>Blue365</b>
+          <span class="wclock num" id="wallClock"></span><span class="winfo" id="wallInfo"></span>
+          <span class="wctl"><span class="wlab">탭 자동 전환</span><span class="seg" id="wallSeg" role="group" aria-label="탭 자동 전환 간격"><button type="button" data-cyc="0">끔</button><button type="button" data-cyc="15">15초</button><button type="button" data-cyc="30">30초</button><button type="button" data-cyc="60">1분</button></span>
+            <button type="button" class="pnow" id="wallFs">전체 화면</button><button type="button" class="pnow" id="wallExit">나가기</button></span>
+        </div>
+        <div class="wallprog" id="wallProg" hidden><i></i></div>
         <button type="button" class="fab" id="fab"><span data-ic="list"></span>목록</button>
       </section>
 
@@ -616,6 +648,7 @@ const ICON={
   rotL:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   rotR:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
   home:'<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+  screen:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
   target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   chevR:'<path d="M9 6l6 6-6 6"/>', chevL:'<path d="M15 6l-6 6 6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
@@ -1937,7 +1970,7 @@ function renderAll(){
   renderList();renderLot();updateBadges();
   if(view==='report')renderReport();
   if(view==='alarms')renderAlarms();
-  $('#clock').textContent=hhmm(new Date());
+  $('#clock').textContent=hhmm(new Date());renderWall();
   $('#modeTxt').textContent=`분석 QMS ~${QD&&QD.to?QD.to.slice(2).replace(/-/g,'.'):'-'} · 설비값 가상`;
   $('#liveChip').classList.toggle('data',!!SERVER);$('#liveTxt').textContent=SERVER?'팀 공유':'Live';
   const dst=$('#dmBody .stat');if(dst&&!$('#dataModal').hidden)dst.outerHTML=statHTML();
@@ -2065,6 +2098,7 @@ async function pullServer(first){
 async function pollServer(){
   try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return;}if(!r.ok)throw new Error();const s=await r.json();SERVER.ok=true;SERVER.needKey=s.needKey;SERVER.watch=s.watch;
     if(SERVER.me&&SERVER.me.role==='admin')loadMe();
+    checkPageVersion(s);
     if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
@@ -2159,6 +2193,68 @@ function setupData(){
   serverInit().then(ok=>{if(!ok&&restoreLocal())toast('이 PC에 올렸던 QMS 데이터를 불러왔습니다','act');});
 }
 
+/* =========================================================
+   상황판 보기 (계속 띄워 두는 화면): 메뉴 숨김 · 탭 자동 전환 · 마우스 숨김
+   주소 끝에 ?wall 을 붙여 열면 바로 상황판으로 시작
+   ========================================================= */
+const WALL={on:false,cyc:30,timer:null,idleT:null,pauseUntil:0,lock:null};
+try{const c=localStorage.getItem('b365-wall-cyc');if(c!==null&&[0,15,30,60].includes(+c))WALL.cyc=+c;}catch(e){}
+function wallCycleStart(){
+  clearTimeout(WALL.timer);const pg=$('#wallProg');pg.classList.remove('run');pg.hidden=!(WALL.on&&WALL.cyc>0);
+  if(!WALL.on||!WALL.cyc)return;
+  void pg.offsetWidth;pg.style.setProperty('--cyc',WALL.cyc+'s');pg.classList.add('run');
+  WALL.timer=setTimeout(()=>{
+    // 누가 화면을 만지는 중(1분)이거나 데이터 창이 열려 있으면 넘기지 않고 다시 셈
+    if(Date.now()>=WALL.pauseUntil&&$('#dataModal').hidden&&view==='map'){const ids=TABS.map(t=>t.id);select(null);setTab(ids[(ids.indexOf(curTab)+1)%ids.length]);}
+    wallCycleStart();},WALL.cyc*1000);
+}
+function wallIdle(){const app=$('#app');app.classList.remove('idle');clearTimeout(WALL.idleT);if(WALL.on)WALL.idleT=setTimeout(()=>app.classList.add('idle'),5000);}
+function renderWall(){
+  if(!WALL.on)return;const n=new Date();
+  $('#wallClock').textContent=`${n.getMonth()+1}/${n.getDate()} (${'일월화수목금토'[n.getDay()]}) ${hhmm(n)}`;
+  $('#wallInfo').textContent=`분석 QMS ~${QD&&QD.to?QD.to.slice(5).replace('-','/'):'-'} · ${SERVER?(SERVER.ok===false?'서버 연결 끊김 · 재시도 중':'팀 공유'):'이 PC'}`;
+  $$('#wallSeg [data-cyc]').forEach(b=>{const on=+b.dataset.cyc===WALL.cyc;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);});
+  $('#wallFs').hidden=!document.documentElement.requestFullscreen||!!document.fullscreenElement;
+}
+function setWall(on,o={}){
+  WALL.on=on;const app=$('#app');app.classList.toggle('wall',on);$('#wallBar').hidden=!on;
+  try{localStorage.setItem('b365-wall',on?'1':'0');}catch(e){}
+  if(on){
+    if(view!=='map')location.hash='#map';
+    select(null);wallIdle();
+    if(o.fs&&document.documentElement.requestFullscreen)document.documentElement.requestFullscreen().catch(()=>{});
+    if(navigator.wakeLock)navigator.wakeLock.request('screen').then(l=>{WALL.lock=l;}).catch(()=>{});   // 화면 꺼짐 방지 (HTTPS·localhost에서만 동작)
+  }else{
+    app.classList.remove('idle');clearTimeout(WALL.idleT);
+    if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+    if(WALL.lock){WALL.lock.release().catch(()=>{});WALL.lock=null;}
+  }
+  renderWall();wallCycleStart();
+  setTimeout(()=>{if(THREEOK&&!sel){Object.assign(goal,homeView());}},400);   // 화면 크기가 바뀐 뒤 다시 맞춤
+}
+function setupWall(){
+  $('#wallBtn').onclick=()=>setWall(true,{fs:true});
+  $('#wallExit').onclick=()=>setWall(false);
+  $('#wallFs').onclick=()=>{document.documentElement.requestFullscreen().catch(()=>{});};
+  $$('#wallSeg [data-cyc]').forEach(b=>b.onclick=()=>{WALL.cyc=+b.dataset.cyc;try{localStorage.setItem('b365-wall-cyc',String(WALL.cyc));}catch(e){}renderWall();wallCycleStart();});
+  ['pointermove','pointerdown','keydown','wheel','touchstart'].forEach(t=>addEventListener(t,()=>{if(!WALL.on)return;wallIdle();if(t!=='pointermove')WALL.pauseUntil=Date.now()+60000;},{passive:true}));
+  addEventListener('keydown',e=>{if(e.key==='Escape'&&WALL.on&&$('#dataModal').hidden&&!document.fullscreenElement)setWall(false);});
+  document.addEventListener('fullscreenchange',renderWall);
+  let start=new URLSearchParams(location.search).has('wall');try{start=start||localStorage.getItem('b365-wall')==='1';}catch(e){}
+  if(start&&!isMobile())setWall(true);
+}
+/* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
+const BUILD='__B365_BUILD__';
+function checkPageVersion(s){
+  if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
+  let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
+  const note=m=>{if(SERVER.verNoted!==m){SERVER.verNoted=m;toast(m,'act');}};
+  if(tried===s.page)return note('새 화면 버전이 있습니다. 새로고침(F5)해 주세요');          // 한 번 다시 열었는데도 같으면 반복하지 않음
+  const ae=document.activeElement,busy=!$('#dataModal').hidden||(ae&&ae.matches&&ae.matches('input,select,textarea'));
+  if(busy)return note('새 화면 버전이 있습니다. 입력을 마치면 자동으로 바뀝니다');
+  try{sessionStorage.setItem('b365-reload',s.page);}catch(e){}
+  toast(`새 화면 버전(${s.page})으로 바꿉니다`,'act');setTimeout(()=>location.reload(),3000);
+}
 /* 기간 바 (지도 카드 · 경영진 요약 공용) */
 const PG_NM={d:['일','평균'],m:['월','평균'],y:['년','평균'],r:['기간','지정']};
 function perBarHTML(){
@@ -2211,8 +2307,9 @@ setupData();
 setView(location.hash.slice(1)||'map');
 select(sel);
 renderAll();
-setTimeout(()=>toast(isMobile()?'한 손가락으로 끌어 이동 · 두 손가락으로 확대·회전':'끌어서 이동 · 휠로 확대 · 오른쪽 버튼으로 끌면 회전','act'),900);
+setTimeout(()=>{if(!WALL.on)toast(isMobile()?'한 손가락으로 끌어 이동 · 두 손가락으로 확대·회전':'끌어서 이동 · 휠로 확대 · 오른쪽 버튼으로 끌면 회전','act');},900);
 setInterval(tick,2000);
+setupWall();
 requestAnimationFrame(frame);
 })();
 </script>
