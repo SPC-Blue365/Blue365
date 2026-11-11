@@ -162,6 +162,7 @@ a{color:inherit;text-decoration:none}
 .kpis .kpi [data-tip]:hover::after,.kpis .kpi [data-tip]:focus-visible::after{left:auto;right:-6px;transform:none}
 .kpis .kpi:first-child [data-tip]:hover::after,.kpis .kpi:first-child [data-tip]:focus-visible::after{left:-6px;right:auto}
 .klt{white-space:nowrap;flex:none}
+.vtag{display:inline-block;margin-left:4px;font-size:10.5px;font-weight:700;color:var(--fg2);background:var(--idle-soft);border-radius:6px;padding:1px 5px;vertical-align:1px}
 .ksel{position:relative;display:inline-flex;align-items:center;flex:0 1 auto;min-width:0}
 .kselv{font-size:11.5px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:8px;height:22px;line-height:22px;padding:0 18px 0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .ksel select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font:inherit;font-size:14px;border:0}   /* 실제 선택은 기본 select (휴대폰에서도 동작), 보이는 건 현재 값만 */
@@ -178,6 +179,7 @@ a{color:inherit;text-decoration:none}
 .kpi .ks{font-size:11.5px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .kpi .kl{white-space:nowrap}
 .delta{font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 5px}
+.delta.wn{color:var(--warn);background:var(--warn-soft)}
 .delta.up{color:var(--ok);background:var(--ok-soft)} .delta.dn{color:var(--bad);background:var(--bad-soft)} .delta.nt{color:var(--fg3);background:var(--idle-soft)}
 .ctrls{position:absolute;top:16px;right:372px;display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:4px;z-index:5;transition:right .3s var(--ease)}
 .ctrls button{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:var(--fg2)}
@@ -662,6 +664,8 @@ const limTxt=p=>p.lo!=null&&p.hi!=null?`${p.limSrc==='spc'?'관리한계(±3σ)'
 /* 원료/클링커 환산계수 (원료 투입량 → 클링커 생산 추정) */
 const CLK_FACTOR=1.55;
 /* 클링커 f-CaO 사내 관리기준: 1.2% ± 0.5% */
+/* 기간 f-CaO 카드: 평균이 기준 안이어도 일평균 이탈 비율이 이 값(%)을 넘으면 '주의' (예시값 · 사내 기준으로 조정) */
+const FCAO_WARN_RATE=10;
 const FCAO_TARGET=1.2,FCAO_TOL=0.5,FCAO_LIM=[+(FCAO_TARGET-FCAO_TOL).toFixed(2),+(FCAO_TARGET+FCAO_TOL).toFixed(2)];
 /* 킬른 호기 · 설계 용량 (t/d) · 라인 (A=3–5호 탭, B=6–7호 탭) */
 const KILN_DEF=[{n:3,cap:2200,z:-44,line:'A',stop:true},{n:4,cap:3120,z:-35,line:'A'},{n:5,cap:3120,z:-26,line:'A'},{n:6,cap:7600,z:-8,line:'B'},{n:7,cap:7600,z:6,line:'B'}];
@@ -835,11 +839,6 @@ function chem(id){
   const o={C:0,S:0,A:0,F:0,SO:0,f:0,M:0};let W=0;ks.forEach(e=>{const x=oxides(e);W+=e.cap;for(const k in o)o[k]+=x[k]*e.cap;});for(const k in o)o[k]/=W;
   return chemOf(o);
 }
-function plantFcao(){
-  const ks=kilnEqs().filter(e=>!isStopped(e)&&e.params.fcao.has);if(!ks.length)return null;
-  let W=0,v=0,worst='ok',max=ks[0];ks.forEach(e=>{const p=e.params.fcao;W+=e.cap;v+=p.v*e.cap;const st=pStatus(p);if(RANK[st]>RANK[worst])worst=st;if(p.v>max.params.fcao.v)max=e;});
-  return {v:v/W,st:worst,max};
-}
 /* 출하 시멘트 품질 (QMS 출하시멘트 로트) */
 function shipLots(prod){if(!QD||!QD.ship)return [];const f=QD.ship.f;return QD.ship.rows.filter(r=>!prod||r[2]===prod).map(r=>{const o={day:r[0],lot:r[1],product:r[2],add:r[3],ships:r[4]};f.forEach((k,i)=>o[k]=r[5+i]);return o;});}
 function cement(){
@@ -852,8 +851,6 @@ function cement(){
 const kilnTpd=id=>{if(isStopped(E[id]))return 0;return E[id].params.feed.v*24/CLK_FACTOR;};
 const runKilns=()=>kilnEqs().filter(e=>!isStopped(e));
 const runDesign=()=>runKilns().reduce((a,e)=>a+e.cap,0);
-const stopNames=()=>kilnEqs().filter(isStopped).map(e=>e.kiln+'호').join('·');
-const plantTpd=()=>KILN_IDS.reduce((a,id)=>a+kilnTpd(id),0);
 /* QMS 시각(분, 시간대 없음) → 표시용 Date */
 const tsDate=ts=>{const d=new Date(ts*60000);return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),d.getUTCHours(),d.getUTCMinutes());};
 const dayDate=day=>new Date(+day.slice(0,4),+day.slice(5,7)-1,+day.slice(8,10));
@@ -1532,14 +1529,14 @@ function lineKpis(L){
    {ic:'silo',l:'클링커 사일로 재고',v:css.length?nf(stock):'—',u:'t',s:css.length?`${CS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')}호 · 평균 레벨 ${nf(lvl,0)}%`:'공정값 시트에 재고를 올리면 표시',tip:'클링커 사일로 재고 합계 (용량은 가상값)'}
   ];
 }
-function cementKpis(map){
+function cementKpis(){
   const ms=millEqs(),on=ms.filter(e=>!off(e.params.load)&&e.params.load.v>5),prod=on.reduce((a,e)=>a+(off(e.params.prod)?0:e.params.prod.v),0);
-  const sl=SL_DEF.filter(d=>!d.fa).map(d=>E[d.id]).filter(e=>!off(e.params.level)),low=sl.filter(e=>RANK[pStatus(e.params.level)]>0),sp=E.DSP.params,cmt=cement();
+  const sl=SL_DEF.filter(d=>!d.fa).map(d=>E[d.id]).filter(e=>!off(e.params.level)),low=sl.filter(e=>RANK[pStatus(e.params.level)]>0),sp=E.DSP.params;
   return [
    {ic:'gauge',l:'시멘트 생산 (C/M 합계)',v:on.length?nf(prod):'—',u:'t/h',s:`가동 ${on.length}/${ms.length}기`,tip:'가동 중인 시멘트 밀 생산량 합계'},
    {ic:'silo',l:'시멘트 사일로',v:sl.length?nf(sl.reduce((a,e)=>a+e.params.level.v,0)/sl.length,0):'—',u:'% 평균',d:low.length?`주의 ${low.length}`:'',dc:'dn',s:low.length?`${low.map(e=>e.n+'호').join('·')} 레벨 확인`:'1·2·5~11호 정상 범위',tip:'시멘트 사일로 9기 평균 레벨 (4호 F/A 사일로 제외)'},
    {ic:'truck',l:'금일 출하',v:nf(sp.ship.v),u:'t',d:sp.plan.v>0?nf(sp.ship.v/sp.plan.v*100,0)+'%':'',dc:'nt',s:`계획 ${nf(sp.plan.v)} t 대비 · 가상`,tip:'계량 완료된 출하 합계 (설비값 가상)'},
-   ...(map?[shipCard('1종'),shipCard('3종')]:[strengthKpi()])
+   shipCard('1종'),shipCard('3종')
   ];
 }
 const ksHTML=x=>`${x.d?`<span class="delta ${x.dc}">${x.d}</span> `:''}${x.s}`;
@@ -1560,20 +1557,6 @@ let KSEL={};try{KSEL=JSON.parse(localStorage.getItem('b365-ksel')||'{}')||{};}ca
 function kselSave(k,v){KSEL[k]=v;try{localStorage.setItem('b365-ksel',JSON.stringify(KSEL));}catch(e){}}
 document.addEventListener('change',e=>{const sl=e.target.closest&&e.target.closest('select[data-ksel]');if(!sl)return;kselSave(sl.dataset.ksel,sl.value);renderKpis($('#kpiMap'),kpiCards(false));});
 const kilnOpts=L=>[['all','전체'],...kilnEqs().filter(e=>!L||e.line===L).map(e=>[e.id,e.kiln+'호'+(isStopped(e)?' 정지':'')])];
-/* 호기 드롭다운: 'all'이면 합계 카드, 호기를 고르면 그 호기 값 */
-function withKiln(card,key,L,base,per){
-  const opts=kilnOpts(L),v=KSEL[key],val=opts.some(o=>o[0]===v)?v:'all';
-  const c=val==='all'?Object.assign({},card):Object.assign({ic:card.ic},per(E[val]));
-  c.key=key;c.l=base;c.sel={opts,val,aria:base+' 호기 선택'};return c;
-}
-const RUN30={K4:99.1,K5:97.4,K6:98.9,K7:99.0};   // 호기별 최근 30일 가동률 (가상)
-const perTpd=e=>{if(isStopped(e))return {v:'0',u:'t/d',d:'가동 중단',dc:'nt',s:`설계 ${nf(e.cap)} t/d`,tip:`${e.kiln}호 킬른은 가동 중단 상태입니다.`};
-  const t=kilnTpd(e.id);return {v:nf(t),u:'t/d',d:`${t>=e.cap?'▲':'▼'} ${nf(Math.abs(t/e.cap*100-100),1)}%`,dc:t>=e.cap?'up':'dn',s:`설계 ${nf(e.cap)} t/d 대비 · 가상`,tip:`${e.kiln}호 원료 투입량 ${nf(e.params.feed.v,0)} t/h × 24 ÷ 원료/클링커 환산계수 ${CLK_FACTOR} (설비값 가상)`};};
-const perRun=e=>isStopped(e)?{v:'—',u:'%',d:'가동 중단',dc:'nt',s:'최근 30일 · 가상',tip:`${e.kiln}호 킬른은 가동 중단 상태입니다.`}:
-  {v:nf(RUN30[e.id]??98,1),u:'%',s:'최근 30일 · 가상',tip:'(달력시간 − 정지시간) ÷ 달력시간 (설비값 가상)'};
-const perFc=e=>{const p=e.params.fcao;if(isStopped(e))return {v:'—',u:'%',d:'가동 중단',dc:'nt',s:'클링커 시료 없음',tip:`${e.kiln}호 킬른은 가동 중단 상태입니다.`};
-  if(!p.has)return {v:'—',u:'%',s:'최근 14일 QMS 시료 없음',tip:'QMS 클링커 시트'};
-  const st=pStatus(p);return {v:nf(p.v,2),u:'%',d:st==='ok'?'정상':ST[st],dc:st==='ok'?'up':'dn',s:`${p.time?stamp(p.time)+' 시료 · ':''}QMS`,tip:`QMS 클링커 시트의 ${e.kiln}호 최근 시료 f-CaO. 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)`};};
 /* 출하 시멘트 카드 (1종·3종): 시험 항목 드롭다운 */
 const SHIP_ITEMS=[['s28','28일 강도','MPa',1],['s1','1일 강도','MPa',1],['fst','응결 종결','시:분',0],['Cl','Cl','ppm',0],['SO3','SO₃','%',2],['MgO','MgO','%',2]];
 /* KS L 5201 기준: [값, 'ge'|'le', 확인] — 확인=1은 이 화면 09 KS 표와 같은 값, 0은 추정(KS 원문 확인 필요) */
@@ -1594,9 +1577,6 @@ function shipCard(prod){
     tip:`${PER_NM[PER.g]}: 기간 내 출하시멘트(${prod}) 로트의 ${nm} 평균 (로트 채취일 기준). 범위 ${fm(Math.min(...vs))}~${fm(Math.max(...vs))}. ${limTxt}${ok!=null&&!lim[2]?' · *표시는 추정 기준으로 판정':''}`});
 }
 
-function strengthKpi(){const c=cement();
-  return c.s28==null?{ic:'chart',l:'28일 강도 (1종 출하)',v:'—',u:'MPa',s:'QMS 출하시멘트(1종) 강도 없음',tip:'출하시멘트(1종) 시트의 압축강도28일'}:
-   {ic:'chart',l:'28일 강도 (1종 출하)',v:nf(c.s28,1),u:'MPa',d:c.s28>=42.5?'KS 적합':'KS 미달',dc:c.s28>=42.5?'up':'dn',s:`로트 ${c.lot28.lot} · ${md(c.t28)} 채취 · QMS`,tip:'QMS 출하시멘트(1종)에서 28일 강도가 나온 가장 최근 로트. KS L 5201 1종 42.5 MPa 이상'};}
 /* =========================================================
    지도 카드 공통 기간: 일 평균 / 월 평균 / 년 평균 (기본: 당월)
    ========================================================= */
@@ -1639,12 +1619,14 @@ const noData=(r,what)=>{const l=qmsLast();return `${perTxt(r)} ${what} 없음${l
 
 let REPF=false;   // 경영진 요약: 드롭다운 선택과 무관하게 전체·28일 강도로
 const kpick=(key,opts,def)=>!REPF&&opts.some(o=>o[0]===KSEL[key])?KSEL[key]:def;
+const VTAG='<span class="vtag" title="DCS 데이터가 없어 가상값입니다">가상</span>';
+const prodSrc=(ids,r)=>{const t=todayStr(),last=r.to>t?t:r.to;return ids.some(id=>{const s=QD&&QD.streams['dcs:'+id];return s&&s.df.includes('feed')&&s.d.some(x=>x[0]>=r.from&&x[0]<=last);})?'DCS':'가상';};
 /* 카드: 클링커 생산 (기간 일평균) */
 function prodCard(L){
   const key='tpd'+L,r=perRange(),opts=kilnOpts(L),val=kpick(key,opts,'all');
   const ids=val==='all'?kilnEqs().filter(e=>!L||e.line===L).map(e=>e.id):[val];
   const ps=ids.map(id=>[id,kilnPer(id,r)]).filter(x=>x[1]);
-  const c={key,ic:'factory',l:'클링커 생산',sel:{opts,val,aria:'클링커 생산 호기 선택'},u:'t/d'};
+  const c={key,ic:'factory',l:'클링커 생산'+(prodSrc(ids,r)==='가상'?VTAG:''),sel:{opts,val,aria:'클링커 생산 호기 선택'},u:'t/d'};
   if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
   const tpd=ps.reduce((a,x)=>a+x[1].tpd,0),run=ps.filter(x=>x[1].hrs>0),des=run.reduce((a,x)=>a+E[x[0]].cap,0),src=ps.some(x=>x[1].src==='DCS')?'DCS':'가상';
   if(!des)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · 설계 ${nf(ps.reduce((a,x)=>a+E[x[0]].cap,0))} t/d`,tip:'기간 내 가동 기록이 없습니다.'});
@@ -1655,7 +1637,7 @@ function prodCard(L){
 function runCard(){
   const key='run',r=perRange(),opts=kilnOpts(''),val=kpick(key,opts,'all');
   const ids=val==='all'?kilnEqs().filter(e=>!KILN_DEF.find(d=>'K'+d.n===e.id).stop).map(e=>e.id):[val];
-  const ps=ids.map(id=>kilnPer(id,r)).filter(Boolean),c={key,ic:'flame',l:'킬른 가동률',sel:{opts,val,aria:'킬른 가동률 호기 선택'},u:'%'};
+  const ps=ids.map(id=>kilnPer(id,r)).filter(Boolean),c={key,ic:'flame',l:'킬른 가동률'+(prodSrc(ids,r)==='가상'?VTAG:''),sel:{opts,val,aria:'킬른 가동률 호기 선택'},u:'%'};
   if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
   const hrs=ps.reduce((a,x)=>a+x.hrs,0),cal=ps.reduce((a,x)=>a+x.days*24,0),rate=hrs/cal*100,down=cal-hrs,src=ps.some(x=>x.src==='DCS')?'DCS':'가상';
   if(val!=='all'&&!hrs)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · ${src}`,tip:`${E[val].kiln}호 킬른은 기간 내 가동 기록이 없습니다.`});
@@ -1670,20 +1652,14 @@ function fcCard(L){
   if(!ps.length)return Object.assign(c,{v:'—',s:noData(r,'클링커 시료'),tip:'QMS 클링커 시트의 f-CaO'});
   const W=ps.reduce((a,x)=>a+E[x[0]].cap,0),v=ps.reduce((a,x)=>a+x[1].avg*E[x[0]].cap,0)/W;
   const out=ps.reduce((a,x)=>a+x[1].vals.filter(y=>y[1]<FCAO_LIM[0]||y[1]>FCAO_LIM[1]).length,0),days=ps.reduce((a,x)=>a+x[1].n,0);
-  const ok=v>=FCAO_LIM[0]&&v<=FCAO_LIM[1];
-  return Object.assign(c,{v:nf(v,2),d:ok?'정상':'이탈',dc:ok?'up':'dn',s:val==='all'&&ps.length>1?`${perTxt(r)} · ${ps.length}개 호기 · 일평균 이탈 ${out}/${days}회 · QMS`:`${perTxt(r)} · 일평균 이탈 ${out}/${days}일 · QMS`,
-    tip:`${PER_NM[PER.g]}: 호기별 일평균 f-CaO의 기간 평균${val==='all'?', 설계용량 가중평균':''}. 이탈은 일평균이 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)를 벗어난 횟수${val==='all'?' (호기별 하루 1회로 셈)':''}`});
+  const ok=v>=FCAO_LIM[0]&&v<=FCAO_LIM[1],rate=days?out/days*100:0,warn=ok&&rate>FCAO_WARN_RATE;
+  return Object.assign(c,{v:nf(v,2),d:!ok?'이탈':warn?'주의':'정상',dc:!ok?'dn':warn?'wn':'up',s:val==='all'&&ps.length>1?`${perTxt(r)} · ${ps.length}개 호기 · 일평균 이탈 ${out}/${days}회(${nf(rate,0)}%) · QMS`:`${perTxt(r)} · 일평균 이탈 ${out}/${days}일(${nf(rate,0)}%) · QMS`,
+    tip:`${PER_NM[PER.g]}: 호기별 일평균 f-CaO의 기간 평균${val==='all'?', 설계용량 가중평균':''}. 이탈은 일평균이 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)를 벗어난 횟수${val==='all'?' (호기별 하루 1회로 셈)':''}. 평균이 기준 안이어도 이탈 비율이 ${FCAO_WARN_RATE}%를 넘으면 '주의'`});
 }
 function kpiCards(rep){
   const now=c=>Object.assign(c,{s:'현재 · '+c.s});
   if(!rep&&(curTab==='A'||curTab==='B')){const L=curTab,k=lineKpis(L);return [prodCard(L),now(k[1]),fcCard(L),now(k[3])];}
-  if(!rep&&curTab==='C'){const k=cementKpis(true);return [now(k[0]),now(k[1]),k[2],k[3],k[4]];}
-  const tpd=plantTpd(),pf=plantFcao(),rd=runDesign()||DESIGN_TOTAL,sn=stopNames(),k=[];
-  k.push({ic:'factory',l:'클링커 생산 (공장)',v:nf(tpd),u:'t/d',d:`${tpd>=rd?'▲':'▼'} ${nf(Math.abs(tpd/rd*100-100),1)}%`,dc:tpd>=rd?'up':'dn',s:`가동 ${runKilns().length}기 설계 ${nf(rd)} t/d 대비 · 가상`,tip:`호기별 원료 투입량 × 24 ÷ 원료/클링커 환산계수 ${CLK_FACTOR}의 합 (설비값 가상)`+(sn?` · ${sn} 가동 중단 제외`:'')});
-  if(rep){const sp=E.DSP.params;k.push({ic:'truck',l:'금일 출하',v:nf(sp.ship.v),u:'t',d:sp.plan.v>0?nf(sp.ship.v/sp.plan.v*100,0)+'%':'',dc:'nt',s:`계획 ${nf(sp.plan.v)} t 대비 · 가상`,tip:'계량 완료된 출하 합계 (설비값 가상)'});}
-  else k.push({ic:'flame',l:`킬른 가동률 (가동 ${runKilns().length}기)`,v:'98.6',u:'%',d:'▲ 0.4%p',dc:'up',s:`최근 30일 · ${sn||'중단 없음'} 제외 · 가상`,tip:'(달력시간 − 정지시간) ÷ 달력시간 (설비값 가상)'});
-  k.push(!pf?{ic:'flask',l:'f-CaO (가동 호기 평균)',v:'—',u:'%',s:'최근 14일 QMS 클링커 시료 없음',tip:'QMS 클링커 시트'}:
-    {ic:'flask',l:'f-CaO (가동 호기 평균)',v:nf(pf.v,2),u:'%',d:pf.st==='ok'?'정상':ST[pf.st],dc:pf.st==='ok'?'up':'dn',s:`최고 ${pf.max.kiln}호 ${nf(pf.max.params.fcao.v,2)}% · QMS`,tip:'QMS 클링커 시트의 호기별 최근 시료 f-CaO, 설계용량 가중평균(가동 중단·시료 없는 호기 제외). 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)'});
+  if(!rep&&curTab==='C'){const k=cementKpis();return [now(k[0]),now(k[1]),k[2],k[3],k[4]];}
   if(rep){REPF=true;try{return kpiHTML([prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')].map(c=>{delete c.sel;return c;}));}finally{REPF=false;}}
   return [prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')];
 }
@@ -1705,17 +1681,6 @@ function renderAreas(){
 /* =========================================================
    경영진 요약
    ========================================================= */
-function mulberry(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
-const RNG=mulberry(20261110);
-const DAYS=[...Array(30)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-29+i);const k={},fk={};let clk=0,fs=0;
-  KILN_DEF.forEach(kd=>{const id='K'+kd.n;if(kd.stop){k[id]=0;fk[id]=null;return;}let v=kd.cap*(.985+(RNG()-.5)*.04);if(i===20&&kd.n===5)v=kd.cap*.82;k[id]=v;clk+=v;fk[id]=1.16+(RNG()-.5)*.36+(i===20&&kd.n===5?.5:0);fs+=fk[id];});
-  return {d,clk,k,fc:fs/KILN_DEF.filter(x=>!x.stop).length,fk};});
-DAYS[29].clk=null;
-const HOURS=[...Array(24)].map((_,h)=>({h,v:RUN_DESIGN0/24*(.99+(RNG()-.5)*.03)}));
-const FC2H=[...Array(84)].map((_,i)=>{const d=new Date(Date.now()-(83-i)*2*3600e3);const k={};let s=0;
-  let n=0;KILN_DEF.forEach((kd,j)=>{const id='K'+kd.n;if(kd.stop){k[id]=null;return;}k[id]=1.18+(RNG()-.5)*.42+(i===61&&id==='K7'?.68:0)+(j===4?.12:0);s+=k[id];n++;});return {d,v:s/n,k};});
-let fcSel='all';
-const isoDay=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 function niceMax(v){const p=Math.pow(10,Math.floor(Math.log10(v)));const n=v/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
 /* 경영진 요약 02: 기간에 맞춘 생산 막대 (지도 카드와 같은 일별 값) */
 function prodSeries(){
@@ -1735,7 +1700,7 @@ function barChart(vals,labels,o){
   const bw=iw/vals.length;let lastI=-1;vals.forEach((v,i)=>{if(v!=null)lastI=i;});
   vals.forEach((v,i)=>{if(v==null)return;const x=L+i*bw+bw*.18,ww=Math.max(2,bw*.64),yy=y(v);const cls=o.low&&v<o.low?'b warn':(i===lastI?'b now':'b');
     s+=`<rect class="${cls}" x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${ww.toFixed(1)}" height="${(T+ih-yy).toFixed(1)}" rx="${Math.min(4,ww/2).toFixed(1)}"><title>${labels[i]} · ${nf(v)} ${o.unit}</title></rect>`;});
-  if(o.target){const yy=y(o.target);s+=`<line class="tg" x1="${L}" x2="${w-R}" y1="${yy}" y2="${yy}"/><text class="tgl" x="${w-R}" y="${yy-6}" text-anchor="end">목표 ${nf(o.target)}</text>`;}
+  if(o.target){const yy=y(o.target);s+=`<line class="tg" x1="${L}" x2="${w-R}" y1="${yy}" y2="${yy}"/><text class="tgl" x="${w-R}" y="${yy-6}" text-anchor="end">설계 ${nf(o.target)}</text>`;}
   const every=Math.ceil(vals.length/7);labels.forEach((lb,i)=>{if(i%every===0)s+=`<text class="tk" x="${(L+i*bw+bw/2).toFixed(1)}" y="${h-7}" text-anchor="middle">${lb}</text>`;});
   return s+'</svg>';
 }
@@ -1794,6 +1759,7 @@ function qSeries(key,fld){
 const winAvg=(key,fld)=>{const v=qSeries(key,fld).map(x=>x[1]);return v.length?v.reduce((p,c)=>p+c,0)/v.length:null;};
 function avgSeries(list){const m=new Map();list.flat().forEach(([d,v])=>{const k=d.toDateString();const a=m.get(k)||{d,s:0,n:0};a.s+=v;a.n++;m.set(k,a);});return [...m.values()].sort((a,b)=>a.d-b.d).map(a=>[a.d,a.s/a.n,0]);}
 function thin(pts,max=150){if(pts.length<=max)return pts;const w=Math.ceil(pts.length/max),o=[];for(let i=0;i<pts.length;i+=w){const g=pts.slice(i,i+w);o.push([g[0][0],g.reduce((a,x)=>a+x[1],0)/g.length,0]);}return o;}
+let fcSel='all';   // 경영진 요약 04 f-CaO 관리도 호기 선택
 let shipSel='1종';
 function lotChart(lots,ref){
   const w=560,h=220,L=48,R=12,T=14,B=26,iw=w-L-R,ih=h-T-B;const pts=lots.filter(x=>x.s28!=null);
@@ -1812,8 +1778,8 @@ function renderReport(force){
   const ae=document.activeElement;if(!force&&ae&&$('#report').contains(ae)&&ae.matches('input,select'))return;   // 날짜를 고르는 중이면 다시 그리지 않음
   const kls=kilnEqs().map(e=>[e,eqStatus(e)]),ks=ksRows(),have=ks.filter(r=>r[2]!=null),ksOk=have.every(r=>r[5]),inOk=have.every(r=>r[7]);
   const kstop=kls.filter(x=>x[1]==='stop'),khas=kls.filter(x=>x[1]!=='none'&&x[1]!=='stop'),kbad=kls.filter(x=>x[1]==='bad'),kwarn=kls.filter(x=>x[1]==='warn'),kn=a=>a.map(x=>x[0].kiln+'호').join('·');
-  const l1=!khas.length?'킬른 운전 데이터는 <em>아직 없고</em>,':kbad.length?`킬른 ${kn(kbad)}에 <em>관리기준 이탈</em>이 있고,`:kwarn.length?`킬른 ${kn(kwarn)}은 <em>주의 관찰</em>이 필요하고,`:`가동 중인 킬른 ${khas.length}기 모두 <em>정상</em>이며,`;
-  const l2=!have.length?'출하 시멘트 시험 결과는 <em>아직 없습니다</em>.':ksOk?(inOk?'1종 출하 시멘트는 <em>KS 기준을 충족</em>합니다.':'1종 출하 시멘트는 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'1종 출하 시멘트에 <em>KS 기준 미달</em> 항목이 있습니다.';
+  const l1=!khas.length?'킬른 운전 데이터는 <em>아직 없고</em>,':kbad.length?`현재 킬른 ${kn(kbad)}에 <em>관리기준 이탈</em>이 있고,`:kwarn.length?`현재 킬른 ${kn(kwarn)}은 <em>주의 관찰</em>이 필요하고,`:`현재 가동 중인 킬른 ${khas.length}기 모두 <em>정상</em>이며,`;
+  const l2=!have.length?'출하 시멘트 시험 결과는 <em>아직 없습니다</em>.':ksOk?(inOk?'최근 1종 출하 로트는 <em>KS 기준을 충족</em>합니다.':'최근 1종 출하 로트는 <em>KS 기준은 충족</em>하나 사내 기준 주의가 있습니다.'):'최근 1종 출하 로트에 <em>KS 기준 미달</em> 항목이 있습니다.';
   // 생산: 기간에 맞춰 (일=호기별, 62일 이하=일별, 그 이상=월별 평균)
   const prod=prodSeries();
   // f-CaO (QMS)
@@ -1832,7 +1798,7 @@ function renderReport(force){
   const c=cement();
   $('#report').innerHTML=`
   <div class="banner">${ic('info')}분석값은 QMS 데이터입니다.<span>${esc(QMETA.fileName||'내장 기본 데이터')} · 기간 ${QD&&QD.from?QD.from:'-'} ~ ${QD&&QD.to?QD.to:'-'}${QMETA.uploadedBy?` · ${esc(QMETA.uploadedBy)} ${QMETA.uploadedAt?stamp(new Date(QMETA.uploadedAt)):''} 올림`:''}. 생산량·운전값·레벨·차량은 가상이고, 사내 관리기준은 예시값입니다.</span></div>
-  <div class="headline"><div><div class="eb">경영진 요약 · 분석 데이터 기준 ${QD&&QD.to?QD.to:'-'} · 화면 ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)}</div><h1>${l1}<br>${l2}</h1><p>킬른 5기 (3~7호) · 가동 ${kls.length-kstop.length}기${kstop.length?` · ${kn(kstop)} 가동 중단`:''} · ${SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'QMS 파일 기준'}</p></div>
+  <div class="headline"><div><div class="eb">경영진 요약 · 분석 데이터 기준 ${QD&&QD.to?QD.to:'-'} · 화면 ${now.getFullYear()}.${pad(now.getMonth()+1)}.${pad(now.getDate())} (${wd}) ${hhmm(now)}</div><h1>${l1}<br>${l2}</h1><p>킬른 5기 (3~7호) · 가동 ${kls.length-kstop.length}기${kstop.length?` · ${kn(kstop)} 가동 중단`:''} · ${SERVER?'팀 공유 서버에서 20초마다 새 데이터 확인':'QMS 파일 기준'} · 제목은 현재 상태·최근 로트 기준, 아래 카드·차트는 선택 기간 기준</p></div>
    <div class="pctl"><div class="pbar rpbar" role="group" aria-label="분석 기간">${perBarHTML()}</div><small>분석 기간 ${winLabel()}</small></div></div>
   <div class="krow">${kpiCards(true)}</div>
   <div class="grid">

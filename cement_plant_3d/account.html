@@ -49,7 +49,7 @@ form.pw input{height:40px;border-radius:10px;border:1px solid var(--line);backgr
 </style>
 </head>
 <body>
-<header class="top"><a class="lnk" href="/">← 공정 화면</a><span class="sp"></span><b id="who"></b><button class="btn ghost" type="button" id="out">로그아웃</button></header>
+<header class="top"><a class="lnk" href="/" id="back">← 공정 화면</a><span class="sp"></span><b id="who"></b><button class="btn ghost" type="button" id="out">로그아웃</button></header>
 <main class="wrap">
   <div><h1 id="head">내 계정</h1><p class="lead" id="lead"></p></div>
   <section id="admin" hidden style="display:flex;flex-direction:column;gap:18px">
@@ -73,6 +73,7 @@ let ME=null;const pick={};
 async function load(){
   const m=await api('api/me');ME=m.user;if(!ME){location.replace('/login');return;}
   $('#who').textContent=`${ME.dept} ${ME.name} · ${RK[ME.role]}`;
+  if(ME.mustChange){$('#head').innerHTML='임시 비밀번호로 로그인했습니다.<br><em>새 비밀번호</em>로 바꿔 주세요';$('#lead').textContent='비밀번호를 바꾸기 전에는 공정 화면과 데이터를 볼 수 없습니다.';$('#pwN').textContent='01';$('#back').hidden=true;$('#pOld').focus();return;}
   if(ME.role!=='admin'){$('#head').textContent='내 계정';$('#lead').textContent=`${ME.id} · ${RK[ME.role]} 권한`;$('#pwN').textContent='01';return;}
   const d=await api('api/admin/users');const pend=d.users.filter(u=>u.status==='pending'),rest=d.users.filter(u=>u.status!=='pending');
   $('#admin').hidden=false;
@@ -105,7 +106,7 @@ async function act(a,id,btn){
   catch(e){toast(e.message);btn.disabled=false;}
 }
 $('#pwForm').onsubmit=async e=>{e.preventDefault();if($('#pNew').value!==$('#pNew2').value){toast('새 비밀번호 확인이 일치하지 않습니다');return;}
-  try{await api('api/password',{old:$('#pOld').value,new:$('#pNew').value});$('#pwForm').reset();toast('비밀번호를 바꿨습니다');}catch(err){toast(err.message);}};
+  try{await api('api/password',{old:$('#pOld').value,new:$('#pNew').value});$('#pwForm').reset();toast('비밀번호를 바꿨습니다');if(ME&&ME.mustChange){setTimeout(()=>location.replace('/'),900);}}catch(err){toast(err.message);}};
 $('#out').onclick=async()=>{await fetch('api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',credentials:'same-origin'});location.replace('/login');};
 load().catch(e=>toast(e.message));setInterval(()=>{if(ME&&ME.role==='admin'&&!document.querySelector('[data-pick]:focus,select:focus,input:focus'))load().catch(()=>{});},15000);
 })();

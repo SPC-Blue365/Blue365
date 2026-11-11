@@ -15,7 +15,7 @@
   GET  /api/status       서버 상태와 최신 데이터 버전
   GET  /api/dataset      최신 데이터(JSON)
   POST /api/dataset      화면에서 올린 데이터 저장 → 모든 접속자에게 20초 안에 반영
-  저장 위치: data/latest.json, 이력은 data/history/ (최근 200개 보관)
+  저장 위치: data/latest.json, 이력은 data/history/ (최근 200개 · 최대 1GB 보관, --history-mb 로 변경)
 """
 from __future__ import annotations
 
@@ -46,6 +46,7 @@ TEMPLATE = ROOT / "업로드양식.xlsx"
 # 화면이 받는 데이터: 업로드는 집계된 QMS 데이터셋(qms), 공유 폴더 자동 읽기는 원본 시트(sheets) — 화면이 집계함
 MAX_BODY = 30 * 1024 * 1024  # 화면에서 25MB 파일을 JSON으로 바꾸면 조금 커짐
 KEEP_HISTORY = 200
+HISTORY_MB = 1024            # data/history 최대 용량 (MB). --history-mb 로 변경
 
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RNS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
@@ -158,9 +159,14 @@ class Store:
             tmp.write_text(doc, "utf-8")
             os.replace(tmp, self.latest)
             (self.hist / f"{meta['version']}.json").write_text(doc, "utf-8")
-            old = sorted(self.hist.glob("*.json"))[:-KEEP_HISTORY]
-            for f in old:
+            files = sorted(self.hist.glob("*.json"))
+            for f in files[:-KEEP_HISTORY]:                 # 개수 상한
                 f.unlink(missing_ok=True)
+            files = files[-KEEP_HISTORY:]
+            total = sum(f.stat().st_size for f in files)
+            while len(files) > 5 and total > HISTORY_MB * 1024 * 1024:   # 용량 상한 (최근 5개는 항상 보관)
+                total -= files[0].stat().st_size
+                files.pop(0).unlink(missing_ok=True)
             self.meta = meta
         return meta
 
@@ -279,7 +285,8 @@ class Users:
         return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), bytes.fromhex(salt), 200_000).hex()
 
     def log(self, actor: str, action: str, detail: str = "", ip: str = ""):
-        line = f"{dt.datetime.now():%Y-%m-%d %H:%M:%S}\t{actor}\t{action}\t{detail}\t{ip}\n"
+        clean = lambda x: re.sub(r"[\x00-\x1f\x7f\u2028\u2029]", " ", str(x))[:200]   # 줄바꿈·탭으로 가짜 기록 줄을 만들지 못하게
+        line = f"{dt.datetime.now():%Y-%m-%d %H:%M:%S}\t{clean(actor)}\t{clean(action)}\t{clean(detail)}\t{clean(ip)}\n"
         with self.lock, open(self.audit, "a", encoding="utf-8") as f:
             f.write(line)
         log(f"[기록] {actor} · {action} · {detail}")
@@ -359,6 +366,12 @@ def is_local(ip: str) -> bool:
         return False
 
 
+# 화면은 파일 하나(스크립트·스타일 내장)라 'unsafe-inline'은 허용하되, 외부 주소 연결·불러오기는 모두 막음
+CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+       "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; "
+       "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Blue365/1.0"
 
@@ -378,6 +391,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")          # 다른 사이트 안에 끼워 넣기 금지
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", CSP)      # 외부 주소로 데이터를 보내거나 불러오지 못하게
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -424,11 +440,14 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return u
 
-    def _need(self, role: str):
-        """권한 확인: 부족하면 401/403 응답 후 None"""
+    def _need(self, role: str, temp_ok: bool = False):
+        """권한 확인: 부족하면 401/403 응답 후 None. 임시 비밀번호 사용자는 비밀번호를 바꾸기 전까지 막음"""
         u = self._user()
         if not u:
             self._send(401, {"error": "로그인이 필요합니다", "login": "/login"})
+            return None
+        if u.get("mustChange") and not temp_ok:
+            self._send(403, {"error": "임시 비밀번호입니다. 먼저 비밀번호를 바꿔 주세요", "mustChange": True, "login": "/account"})
             return None
         if ROLES.index(u["role"]) < ROLES.index(role):
             self._send(403, {"error": f"{ROLE_KO[role]} 권한이 필요합니다"})
@@ -463,8 +482,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = unquote(urlparse(self.path).path)
         if path in ("/", "/index.html", "/cement_plant_3d.html"):
-            if not self._user():
+            u = self._user()
+            if not u:
                 return self._redirect("/login")
+            if u.get("mustChange"):
+                return self._redirect("/account")
             return self._file(PAGE)
         if path == "/logo.png":
             return self._file(ROOT / "logo.png", "image/png")
@@ -479,7 +501,8 @@ class Handler(BaseHTTPRequestHandler):
             out = {"user": None, "setup": not USERS.has_admin(), "local": is_local(self.ip), "knownIp": USERS.known_ip(self.ip)}
             if u:
                 out["user"] = {k: u.get(k) for k in ("id", "name", "dept", "role")}
-                if u["role"] == "admin":
+                out["user"]["mustChange"] = bool(u.get("mustChange"))
+                if u["role"] == "admin" and not u.get("mustChange"):
                     out["pending"] = sum(1 for x in USERS.data["users"].values() if x.get("status") == "pending")
             return self._send(200, out)
         if path in ("/업로드양식.xlsx", "/template.xlsx"):
@@ -514,6 +537,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self._same_origin():
             return self._send(403, {"error": "다른 사이트에서 온 요청은 받지 않습니다"})
+        if not (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
+            return self._send(415, {"error": "JSON 형식 요청만 받습니다"})
         path = unquote(urlparse(self.path).path)
         try:
             if path == "/api/dataset":
@@ -549,7 +574,8 @@ class Handler(BaseHTTPRequestHandler):
         u = USERS.verify(str(b.get("id", "")), b.get("pw"))
         if not u:
             fails.append(now)
-            USERS.log(str(b.get("id", ""))[:20] or "-", "로그인 실패", "", self.ip)
+            tried = str(b.get("id", ""))
+            USERS.log(tried if ID_RE.match(tried) else "(형식 오류 아이디)", "로그인 실패", "", self.ip)
             return self._send(401, {"error": "아이디 또는 비밀번호가 맞지 않습니다"})
         st = u.get("status")
         if st == "pending":
@@ -567,7 +593,7 @@ class Handler(BaseHTTPRequestHandler):
         USERS.update(u["id"], lastLogin=dt.datetime.now().isoformat(timespec="seconds"), lastIp=self.ip)
         USERS.mark_ip(self.ip, u["id"])
         USERS.log(u["id"], "로그인", ROLE_KO[u["role"]], self.ip)
-        return self._send(200, {"ok": True, "user": {k: u.get(k) for k in ("id", "name", "dept", "role")}},
+        return self._send(200, {"ok": True, "user": {**{k: u.get(k) for k in ("id", "name", "dept", "role")}, "mustChange": bool(u.get("mustChange"))}},
                           extra={"Set-Cookie": f"b365s={t}; Path=/; Max-Age={SESSION_HOURS * 3600}; HttpOnly; SameSite=Strict"})
 
     def _register(self, b):
@@ -598,14 +624,20 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {"ok": True})
 
     def _password(self, b):
-        u = self._need("viewer")
+        u = self._need("viewer", temp_ok=True)
         if not u:
             return
         if not USERS.verify(u["id"], b.get("old")):
             return self._send(401, {"error": "현재 비밀번호가 맞지 않습니다"})
         if not pw_ok(b.get("new")):
             return self._send(400, {"error": "새 비밀번호는 영문과 숫자를 섞어 8자 이상으로 정해 주세요"})
+        if b.get("new") == b.get("old"):
+            return self._send(400, {"error": "새 비밀번호가 지금 비밀번호와 같습니다"})
         USERS.update(u["id"], pw=b["new"], mustChange=False)
+        keep = self._token()                       # 다른 PC에 남은 로그인은 끊음 (지금 화면은 유지)
+        with SESS_LOCK:
+            for k in [k for k, x in SESS.items() if x["uid"] == u["id"].lower() and k != keep]:
+                SESS.pop(k, None)
         USERS.log(u["id"], "비밀번호 변경", "", self.ip)
         return self._send(200, {"ok": True})
 
@@ -720,7 +752,7 @@ def lan_ips() -> list[str]:
 
 
 def main() -> None:
-    global STORE, KEY, WATCH, ALLOW, USERS
+    global STORE, KEY, WATCH, ALLOW, USERS, HISTORY_MB
     ap = argparse.ArgumentParser(description="Blue365 시멘트 공정 3D 팀 공유 서버")
     ap.add_argument("--host", default="0.0.0.0", help="받을 주소 (기본: 모든 네트워크)")
     ap.add_argument("--port", type=int, default=8365, help="포트 (기본 8365)")
@@ -729,11 +761,13 @@ def main() -> None:
     ap.add_argument("--interval", type=int, default=60, help="공유 폴더 확인 주기(초, 기본 60)")
     ap.add_argument("--allow", default="", help="접속 허용 대역, 쉼표로 구분 (예: 192.168.10.0/24,10.20.). 비우면 사내망 사설 IP 전체")
     ap.add_argument("--allow-any", action="store_true", help="접속 대역 제한 끄기 (권장하지 않음)")
+    ap.add_argument("--history-mb", type=int, default=HISTORY_MB, help="이력(data/history) 최대 용량 MB (기본 1024)")
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="업로드 비밀번호(영문·숫자)")
     a = ap.parse_args()
 
     if not PAGE.exists():
         sys.exit("cement_plant_3d.html이 없습니다. 같은 폴더에서 python build.py를 먼저 실행하세요.")
+    HISTORY_MB = max(50, a.history_mb)
     STORE = Store(Path(a.data))
     USERS = Users(STORE.dir)
     KEY = a.key
