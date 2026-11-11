@@ -887,8 +887,8 @@ function csEq(d,i){
 function cmEq(d,i){
   const id='CM'+d.n,c=CUR[id],bl=BLAINE_LIM[(c&&c.prod)||'1종'],cap=[120,120,130,110,180,200][i];
   return {id,code:'CM-'+d.n,n:d.n,name:d.n+'호 C/M',tab:'C',major:1,area:'grind',icon:'gauge',spec:`시멘트 밀 · 설계 ${cap} t/h (가상)`,bar:'load',barLabel:'부하',primary:'blaine',
-   params:{load:P('부하','%',[84,82,86,79,88,83][i],null,97,0,.8,{min:0,max:100}),prod:P('투입량','t/h',Math.round(cap*.92),Math.round(cap*.8),null,0,cap*.01,{src:'cem:'+id,fld:'feed'}),
-    blaine:QA('분말도 (Blaine)','cm²/g',0,'cem:'+id,'blaine',{spcProd:1}),r45:QA('45 µm 잔사','%',1,'cem:'+id,'r45',{spcProd:1}),so3:QA('SO₃','%',2,'cem:'+id,'SO3',{spcProd:1}),loi:QA('강열감량','%',2,'cem:'+id,'LOI',{spcProd:1}),mgo:QA('MgO','%',2,'cem:'+id,'MgO',{spcProd:1}),temp:P('밀 출구 온도','℃',104,null,120,0,1,{src:'cem:'+id,fld:'temp'})}};
+   params:{load:P('부하','%',[84,82,86,79,88,83][i],null,97,0,.8,{min:0,max:100}),prod:P('투입량','t/h',Math.round(cap*.92),Math.round(cap*.8),null,0,cap*.01,{src:'cemop:'+id,fld:'feed'}),
+    blaine:QA('분말도 (Blaine)','cm²/g',0,'cem:'+id,'blaine',{spcProd:1}),r45:QA('45 µm 잔사','%',1,'cem:'+id,'r45',{spcProd:1}),so3:QA('SO₃','%',2,'cem:'+id,'SO3',{spcProd:1}),loi:QA('강열감량','%',2,'cem:'+id,'LOI',{spcProd:1}),mgo:QA('MgO','%',2,'cem:'+id,'MgO',{spcProd:1}),temp:P('밀 출구 온도','℃',104,null,120,0,1,{src:'cemop:'+id,fld:'temp'})}};
 }
 function slEq(d,i){
   const lv=[55,38,58,72,61,44,66,16.6,49,33][i];
@@ -917,11 +917,11 @@ const off=p=>(p.ana&&!p.has)||(p.kid&&isStopped(E[p.kid]));
 const fv=(p,dp=p.dp)=>off(p)?'—':nf(p.v,dp);
 const bw=p=>off(p)?0:clamp(p.v,0,100);
 const kilnEqs=()=>KILN_IDS.map(id=>E[id]);
-const oxides=e=>{const c=e.params;return {C:c.cao.v,S:c.sio2.v,A:c.al.v,F:c.fe.v,SO:c.so3.v,f:c.fcao.v,M:c.mgo.v};};
+const oxides=e=>{const c=e.params;return {C:c.cao.v,S:c.sio2.v,A:c.al.v,F:c.fe.v,SO:c.so3.v,f:c.fcao.has?c.fcao.v:NaN,M:c.mgo.v};};
 function chemOf(o){
   const {C,S,A,F,SO,f}=o;const lsf=C/(2.8*S+1.18*A+.65*F)*100, sm=S/(A+F), im=A/F;
-  const c3s=4.071*(C-f)-7.600*S-6.718*A-1.430*F-2.852*SO, c2s=2.867*S-.7544*c3s, c3a=2.650*A-1.692*F, c4af=3.043*F;
-  return {lsf,sm,im,c3s,c2s,c3a,c4af,f,mgo:o.M};
+  const c3s=4.071*C-7.600*S-6.718*A-1.430*F, c2s=2.867*S-.7544*c3s, c3a=2.650*A-1.692*F, c4af=3.043*F;   // LIMS와 같은 Bogue 식
+  return {lsf,sm,im,c3s,mc3s:isFinite(f)?c3s-4.071*f:null,c2s:Math.max(0,c2s),c3a,c4af,f,mgo:o.M};
 }
 /* id가 있으면 그 호기, 없으면 5기 설계용량 가중평균 (업로드 모드에서는 XRF가 있는 호기만) */
 function chem(id){
@@ -1480,13 +1480,13 @@ function routeBlock(e){
       row('저장 품종',(PROD_NAME[d.prod]||d.prod)+(d.alt?` · ${d.alt} (${d.altNote})`:''))+row('투입 가능 C/M',millsForSilo(e.id).map(m=>E[m].n).join('·')+'호 C/M')+siloQms(e.id)}</dl>`;}
   if(e.id.startsWith('CS')){const a=CS_A.includes(e.id);
     const q=QD&&QD.csilo[e.id];
-    return `<div class="sect">인출 경로</div><dl class="kv">${row('인출 가능 C/M',a?'2~6호 C/M':'2~7호 C/M (7호 C/M은 6·7호 킬른 클링커만 사용)')+(e.sep?row('관리 구분','3종 시멘트용 클링커 · 수출 클링커 겸용 (별도 관리)'):'')+(q?row(`최근 투입 (QMS ${stamp(tsDate(q.ts))})`,`${q.kiln.slice(1)}호 킬른 · ${q.grade}`)+row('최근 30일 품명',Object.entries(q.n30).map(([k,v])=>`${k} ${v}건`).join(' · ')||'—'):row('최근 투입 (QMS)','시료 기록 없음'))}</dl>`;}
+    return `<div class="sect">인출 경로</div><dl class="kv">${row('인출 가능 C/M',a?'2~6호 C/M':'2~7호 C/M (7호 C/M은 6·7호 킬른 클링커만 사용)')+(e.sep?row('관리 구분','3종 시멘트용 클링커 · 수출 클링커 겸용 (별도 관리)'):'')+(q?row(`최근 투입 (QMS ${stamp(tsDate(q.ts))})`,`${q.kiln.slice(1)}호 킬른 · ${q.grade}${q.ctype?` · ${q.ctype}`:''}`)+row('최근 30일 품명',Object.entries(q.n30).map(([k,v])=>`${k} ${v}건`).join(' · ')||'—'):row('최근 투입 (QMS)','시료 기록 없음'))}</dl>`;}
   if(e.kiln){const L=e.line;
     return `<div class="sect">같은 라인 설비 (${TAB[L].name})</div><dl class="kv">${row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M')+row('원료 사일로',RS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호')+row('예열기','PH-'+e.kiln+' ('+e.kiln+'호 P/H)')+row('P/H 알람등',isStopped(e)?'<span class="badge s-idle">꺼짐</span> 가동 중단':'<span class="badge s-ok">켜짐</span> 킬른 가동 중')+row('클링커 사일로',CS_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호')}</dl>`;}
   return '';
 }
 function siloQms(id){const q=QD&&QD.ssilo[id];if(!q)return `<div><dt>최근 투입 (QMS)</dt><dd>시료 기록 없음</dd></div>`;
-  return `<div><dt>최근 투입 (QMS ${stamp(tsDate(q.ts))})</dt><dd style="white-space:normal;text-align:right">${q.mill.slice(2)}호 C/M · ${q.product}</dd></div><div><dt>최근 30일 품종</dt><dd style="white-space:normal;text-align:right">${Object.entries(q.n30).map(([k,v])=>`${k} ${v}건`).join(' · ')||'—'}</dd></div>`;}
+  return `<div><dt>최근 투입 (QMS ${stamp(tsDate(q.ts))})</dt><dd style="white-space:normal;text-align:right">${q.mill.slice(2)}호 C/M · ${q.product}${q.ctype&&q.ctype!==q.product?` · ${q.ctype}`:''}</dd></div><div><dt>최근 30일 품종</dt><dd style="white-space:normal;text-align:right">${Object.entries(q.n30).map(([k,v])=>`${k} ${v}건`).join(' · ')||'—'}</dd></div>`;}
 function routeOk(m){const c=CUR[m];if(!c||!c.prod||!c.silo)return true;return ROUTE[m].prods.some(x=>x.p===c.prod&&x.silos.includes(c.silo));}
 function sparkSVG(p){
   let h=p.hist.slice(-60);if(h.length===1)h=[h[0],h[0]];if(!h.length)return '';const lo=Math.min(...h,p.lo??Infinity),hi=Math.max(...h,p.hi??-Infinity);
@@ -1509,13 +1509,13 @@ function chemBlock(id){
   if(isStopped(E[id]))return `<div class="sect">클링커 화학</div><div class="note">${E[id].kiln}호는 가동 중단 중이라 최근 클링커 시료가 없습니다.</div>`;
   if(!E[id].params.cao.has)return `<div class="sect">클링커 화학 (QMS)</div><div class="note">최근 14일 안에 ${E[id].kiln}호 클링커 XRF 시료가 없습니다.${E[id].params.cao.lastTs?` 마지막 시료 ${stamp(tsDate(E[id].params.cao.lastTs))}.`:''}</div>`;
   const c=chem(id),fp=E[id].params.fcao,ss=QD&&QD.streams['clk:'+id],stt=(f,v)=>{const x=ss&&ss.st[f];if(!x||!x[1])return 'ok';const z=Math.abs(v-x[0])/x[1];return z>3?'bad':z>2.4?'warn':'ok';},st=(v,a,b,f)=>stt(f,v);
-  return `<div class="sect">클링커 화학 (${E[id].kiln}호 최근 XRF · QMS) <small>${E[id].params.cao.time?stamp(E[id].params.cao.time):""} · Bogue 계산</small></div>
+  return `<div class="sect">클링커 화학 (${E[id].kiln}호 최근 XRF · QMS) <small>${E[id].params.cao.time?stamp(E[id].params.cao.time):""} · LIMS와 같은 Bogue 식</small></div>
   <div class="chips">
    <div class="chip s-${st(c.lsf,0,0,'LSF')}" data-tip="LSF = CaO / (2.8·SiO₂ + 1.18·Al₂O₃ + 0.65·Fe₂O₃) × 100 · 색은 최근 90일 평균±3σ 기준"><small>LSF</small><b class="num">${nf(c.lsf,1)}</b></div>
    <div class="chip s-${st(c.sm,0,0,'SM')}" data-tip="SM = SiO₂ / (Al₂O₃ + Fe₂O₃)"><small>SM</small><b class="num">${nf(c.sm,2)}</b></div>
    <div class="chip s-${st(c.im,0,0,'IM')}" data-tip="IM = Al₂O₃ / Fe₂O₃"><small>IM</small><b class="num">${nf(c.im,2)}</b></div>
-   <div class="chip" data-tip="C₃S = 4.071(CaO−f-CaO) − 7.600SiO₂ − 6.718Al₂O₃ − 1.430Fe₂O₃ − 2.852SO₃"><small>C₃S</small><b class="num">${nf(c.c3s,1)}</b></div>
-   <div class="chip"><small>C₂S</small><b class="num">${nf(c.c2s,1)}</b></div>
+   <div class="chip" data-tip="C₃S = 4.071CaO − 7.600SiO₂ − 6.718Al₂O₃ − 1.430Fe₂O₃ (LIMS와 같은 식, SO₃·f-CaO 보정 없음). f-CaO를 뺀 mC₃S ${c.mc3s!=null?nf(c.mc3s,1):'—'}"><small>C₃S</small><b class="num">${nf(c.c3s,1)}</b></div>
+   <div class="chip" data-tip="C₂S = 2.867SiO₂ − 0.7544C₃S (LSF가 높아 음수가 되면 0)"><small>C₂S</small><b class="num">${nf(c.c2s,1)}</b></div>
    <div class="chip"><small>C₃A</small><b class="num">${nf(c.c3a,1)}</b></div>
    <div class="chip"><small>C₄AF</small><b class="num">${nf(c.c4af,1)}</b></div>
    <div class="chip s-${pStatus(fp)}"><small>f-CaO</small><b class="num">${fv(fp,2)}</b></div>
@@ -1907,9 +1907,9 @@ function renderReport(force){
    <article class="card"><div class="pv">
      <div class="hb"><div class="hl"><span>금일 출하 (가상)</span><b class="num">${fv(dsp.ship,0)} / ${fv(dsp.plan,0)} t</b></div><div class="bar"><i class="s-act" style="width:${dsp.plan.v>0?clamp(dsp.ship.v/dsp.plan.v*100,0,100):0}%"></i></div></div>
      ${SL_DEF.map(d=>{const e=E[d.id],p=e.params.level,s=pStatus(p),q=QD&&QD.ssilo[d.id];return `<div class="hb"><div class="hl"><span>${d.n}호 · ${d.fa?'F/A':(q?q.product:d.prod)}${q?` <small style="color:var(--fg3)">${q.mill.slice(2)}호 C/M ${md(tsDate(q.ts))}</small>`:''}</span><b class="num">${fv(p,0)}%</b></div><div class="bar"><i class="s-${s==='ok'?'act':s}" style="width:${bw(p)}%"></i></div></div>`;}).join('')}
-    </div><div class="meta"><span class="n">05</span><div><b>시멘트 사일로</b><small>레벨은 가상, 품종과 C/M·일자는 QMS 시멘트 시트의 최근 투입 기록입니다.${low.length?` ${low.map(e=>e.n+'호').join(', ')} 레벨이 관리 한계에 가깝습니다.`:''}</small></div></div></article>
+    </div><div class="meta"><span class="n">05</span><div><b>시멘트 사일로</b><small>레벨은 가상, 품종과 C/M·일자는 QMS 시멘트밀 시트의 최근 투입 기록입니다.${low.length?` ${low.map(e=>e.n+'호').join(', ')} 레벨이 관리 한계에 가깝습니다.`:''}</small></div></div></article>
    <article class="card full"><div class="pv" style="justify-content:flex-start">${millTable()}</div>
-    <div class="meta"><span class="n">06</span><div><b>시멘트 밀 투입·출하 경로</b><small>‘현재 생산’은 QMS 시멘트 시트의 C/M별 마지막 시료(품명·투입사일로)입니다. 경로표(현장 정보)와 다르면 ‘경로표와 다름’으로 표시합니다. 4호 사일로 F/A는 혼합재로 투입합니다.</small></div></div></article>
+    <div class="meta"><span class="n">06</span><div><b>시멘트 밀 투입·출하 경로</b><small>‘현재 생산’은 QMS 시멘트밀 시트의 C/M별 마지막 시료(품명·투입사일로)입니다. 경로표(현장 정보)와 다르면 ‘경로표와 다름’으로 표시합니다. 4호 사일로 F/A는 혼합재로 투입합니다.</small></div></div></article>
    <article class="card w2"><div class="pv"><div class="seg" role="tablist" aria-label="품종">${prods.map(p=>`<button type="button" role="tab" data-ship="${p}" class="${shipSel===p?'on':''}">${p}</button>`).join('')}</div>${lotChart(lots,((CFG.ks[shipSel]||{}).s28||{}).v??null).replace(/KS 1종 /g,`KS ${shipSel} `)}
      <div class="tbl"><table class="ks"><thead><tr><th>품종</th><th>최근 로트</th><th class="r">Blaine</th><th class="r">SO₃</th><th class="r">3일</th><th class="r">7일</th><th class="r">28일 (최근)</th><th>선박</th></tr></thead><tbody>${lastBy.map(([p,L,L28])=>L?`<tr><td><b>${p}</b></td><td>${L.lot}<br><small style="color:var(--fg3)">${L.day}</small></td><td class="r num">${L.blaine==null?'—':nf(L.blaine)}</td><td class="r num">${L.SO3==null?'—':nf(L.SO3,2)}</td><td class="r num">${L.s3==null?'시험 중':nf(L.s3,1)}</td><td class="r num">${L.s7==null?'시험 중':nf(L.s7,1)}</td><td class="r num">${L28?`${nf(L28.s28,1)} <small style="color:var(--fg3)">${L28.day.slice(5)}</small>`:'—'}</td><td style="white-space:normal">${esc(L.ships||'—')}</td></tr>`:`<tr><td><b>${p}</b></td><td colspan="7">로트 없음</td></tr>`).join('')}</tbody></table></div></div>
     <div class="meta"><span class="n">07</span><div><b>출하 시멘트 강도 (QMS)</b><small>출하시멘트 시트의 로트별 28일 압축강도 추이(선택한 기간의 로트, 채취일 기준)입니다. 28일 강도는 채취 28일 뒤에 나오므로 최근 로트는 비어 있을 수 있습니다. 최근 로트는 재령이 지나지 않아 강도가 ‘시험 중’일 수 있습니다. 점선은 관리기준 설정의 KS 28일 기준입니다.</small></div></div></article>
@@ -1920,7 +1920,7 @@ function renderReport(force){
    <article class="card"><div class="pv" style="justify-content:flex-start">${acceptTable()}</div>
     <div class="meta"><span class="n">10</span><div><b>인수검사 현황 (QMS)</b><small>원료·석고·고령토 인수검사 로트 수(최근 30일 / 전체). 파일의 합부판정 칸이 비어 있어 판정은 표시하지 않습니다.</small></div></div></article>
   </div>
-  <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(ASTM C150 부록 방식, f-CaO 차감). 분석 항목의 관리한계는 최근 90일 QMS 데이터의 평균±3σ로 자동 계산합니다(시멘트는 C/M·품종별). 시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 행은 자동으로 바로잡습니다.</p>`;
+  <p class="foot">계산식 · LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S·C₂S·C₃A·C₄AF는 LIMS 계산값(없으면 같은 Bogue 식으로 계산: C₃S = 4.071CaO − 7.600SiO₂ − 6.718Al₂O₃ − 1.430Fe₂O₃, SO₃·f-CaO 보정 없음). 0·빈칸은 미시험, 음수(검출한계 아래 등)는 무효로 뺍니다. 분석 항목의 관리한계는 최근 90일 QMS 데이터의 평균±3σ로 자동 계산합니다(시멘트는 C/M·품종별). 시멘트밀 시트의 Blaine·45㎛ 값이 서로 바뀐 행은 자동으로 바로잡습니다.</p>`;
   $$('[data-fc]').forEach(b=>b.onclick=()=>{fcSel=b.dataset.fc;renderReport();});
   $$('[data-ship]').forEach(b=>b.onclick=()=>{shipSel=b.dataset.ship;renderReport();});
   $$('[data-ks]').forEach(b=>b.onclick=()=>{ksSel=b.dataset.ks;renderReport();});
@@ -2103,7 +2103,7 @@ function applyQms(Q,meta,o={}){
     if(p.spc){let st=s.st[p.fld];const pr=s.last&&s.last.product;if(p.spcProd&&s.stp&&pr&&s.stp[pr]&&s.stp[pr][p.fld])st=s.stp[pr][p.fld];
       if(st&&st[2]>=10&&st[1]>0){const r=v=>Number(v.toFixed(Math.max(p.dp,1)+1));p.lo=r((st[0]-3*st[1])*mult);p.hi=r((st[0]+3*st[1])*mult);p.limSrc='spc';}}
   });
-  // C/M 현재 생산: QMS 시멘트 시트의 마지막 시료
+  // C/M 현재 생산: QMS 시멘트밀 시트의 마지막 시료
   CM_DEF.forEach(d=>{const id='CM'+d.n,s=Q&&Q.streams['cem:'+id];CUR[id]=s&&s.last.product?{prod:s.last.product,silo:E[s.last.silo]?s.last.silo:(s.last.silo||null),siloLabel:s.last.siloRaw,clk:CUR0[id].clk,qms:1,ts:s.last.ts}:JSON.parse(JSON.stringify(CUR0[id]));});
   // 분석값 알람 재구성: 관리한계 근접·이탈로 바뀐 시점
   ALARMS=ALARMS.filter(a=>!(E[a.eq].params[a.k]||{}).ana);
@@ -2191,7 +2191,7 @@ function renderDataModal(){
   let h=statHTML();
   if(!PENDING){
     h+=`<label class="drop" id="drop" tabindex="0">${ic('upload')}<b>QMS 통합 양식 엑셀(.xlsx)을 끌어다 놓으세요</b><small>또는 눌러서 파일 선택 · LIMS에서 받은 결과를 양식 시트에 붙여넣은 파일</small><input type="file" id="dmFile" accept=".xlsx" hidden></label>
-    <div class="note">${ic('file','')} 양식: <a class="lnk" href="업로드양식.xlsx" download>업로드양식.xlsx</a> (화면 파일과 같은 폴더) · 원료·잔사·킬른(DCS)·클링커·클링커일일·시멘트·출하시멘트·인수검사 시트. 필요한 시트만 채워도 됩니다. 파일은 이 PC에서 읽고 ${SERVER?'팀 공유 서버에는 집계 결과만 저장합니다.':'외부로 보내지 않습니다.'}</div>`;
+    <div class="note">${ic('file','')} 양식: <a class="lnk" href="업로드양식.xlsx" download>업로드양식.xlsx</a> (화면 파일과 같은 폴더) · 원료·잔사·킬른(DCS)·클링커·클링커일일·시멘트(밀 운전 DCS)·시멘트밀·출하시멘트·인수검사 시트. 필요한 시트만 채워도 됩니다. 파일은 이 PC에서 읽고 ${SERVER?'팀 공유 서버에는 집계 결과만 저장합니다.':'외부로 보내지 않습니다.'}</div>`;
     if(!SERVER)h+=`<div class="note">팀이 같은 데이터를 보려면 사내 PC 한 대에서 <b>server.py</b>를 실행하고 그 주소(예: http://PC이름:8365)로 접속하세요.</div>`;
     if(SERVER&&!canUp())h+=`<div class="note">${ic('info','')} <b>뷰어 권한</b>은 보기만 할 수 있습니다. 데이터를 올리려면 관리자에게 <b>편집</b> 권한을 요청하세요.</div>`;
     if(!SERVER&&QMETA.source!=='embedded')h+=`<div class="acts"><button class="btn ghost" type="button" id="dmSim">내장 기본 데이터로 돌아가기</button></div>`;
@@ -2479,8 +2479,8 @@ async function buildPptx(D){
   {const S=mkSlide();pptFrame(S,D,9,'이 자료의 <em>근거와 기준</em>','계산식 · 데이터 출처 · 확인이 필요한 값');
    S.box(PM,2.05,CW,4.85);const K=p=>KS_ITEMS.filter(it=>(CFG.ks[p]||{})[it.f]).map(it=>`${it.n} ${ksTxt(it,CFG.ks[p][it.f])}`).join(' · ');
    S.text(PM+.3,2.25,CW-.6,4.5,[
-     [['데이터 출처',{b:1,c:C.fg}]],`분석값: ${D.src}. 클링커·원료는 XRF, 출하 시멘트는 로트별 시험 결과(채취일 기준)입니다. 0·빈칸은 미시험으로 봅니다.`,
-     [['계산식',{b:1,c:C.fg}]],`LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 Bogue 식(f-CaO 차감). 클링커 생산 = 원료 투입량 × 24 ÷ ${CLK_FACTOR}. 기간 값은 일평균의 평균입니다.`,
+     [['데이터 출처',{b:1,c:C.fg}]],`분석값: ${D.src}. 클링커·원료는 XRF, 출하 시멘트는 로트별 시험 결과(채취일 기준)입니다. 0·빈칸은 미시험(결과 안 나옴), 음수는 무효로 봅니다.`,
+     [['계산식',{b:1,c:C.fg}]],`LSF = CaO/(2.8SiO₂+1.18Al₂O₃+0.65Fe₂O₃)×100, SM = SiO₂/(Al₂O₃+Fe₂O₃), IM = Al₂O₃/Fe₂O₃, C₃S는 LIMS 계산값(Bogue, SO₃·f-CaO 보정 없음). 클링커 생산 = 원료 투입량 × 24 ÷ ${CLK_FACTOR}. 기간 값은 일평균의 평균입니다.`,
      [['사내 관리기준',{b:1,c:C.fg}]],`클링커 f-CaO ${fcaoTxt()}, 일평균 이탈 비율 ${FCAO_WARN_RATE}% 초과 시 ‘주의’.${CFG.at?` (설정 변경: ${CFG.by||''} ${String(CFG.at).replace('T',' ').slice(0,16)})`:' (기본 예시값)'}`,
      [['KS L 5201 기준 (* = 원문 미확인 추정값)',{b:1,c:C.fg}]],`1종: ${K('1종')||'없음'}`,`3종: ${K('3종')||'없음'}`,
      [['주의',{b:1,c:C.fg}]],`${D.virt?'클링커 생산량·킬른 가동률은 DCS 데이터가 없어 가상값입니다(같은 날짜는 항상 같은 값). ':''}* 표시 기준으로 한 판정은 KS L 5201 최신판 원문 확인 뒤 확정해야 합니다.`],{sz:10.5,c:C.fg2,sp:118000,gap:4});
@@ -2547,9 +2547,9 @@ function buildXlsx(D){
   S.push({name:'기준·근거',cols:[26,100],rows:[[{v:'기준과 근거',s:XL.T}],[],H(['구분','내용']),
     ['분석 기간',period],['자료',D.src],['f-CaO 사내 관리기준',`${fcaoTxt()} · 일평균 이탈 비율 ${FCAO_WARN_RATE}% 초과 시 주의`],['관리기준 변경 이력',CFG.at?`${CFG.by||''} ${String(CFG.at).replace('T',' ').slice(0,16)}`:'기본값(예시)'],
     ['클링커 생산',`원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'DCS 데이터가 없어 가상값':'DCS 일평균'})`],['킬른 가동률','(달력시간 − 정지시간) ÷ 달력시간'],
-    ['모듈 계산식','LSF = CaO/(2.8SiO2+1.18Al2O3+0.65Fe2O3)×100, SM = SiO2/(Al2O3+Fe2O3), IM = Al2O3/Fe2O3, C3S는 Bogue 식(f-CaO 차감)'],
+    ['모듈 계산식','LSF = CaO/(2.8SiO2+1.18Al2O3+0.65Fe2O3)×100, SM = SiO2/(Al2O3+Fe2O3), IM = Al2O3/Fe2O3, C3S는 LIMS 계산값 (Bogue 4.071CaO−7.600SiO2−6.718Al2O3−1.430Fe2O3, SO3·f-CaO 보정 없음)'],
     ['기간 평균','QMS 일평균의 기간 평균 (출하 시멘트는 로트 평균, 채취일 기준)'],['KS 판정','로트마다 판정. ‘추정’ 기준은 KS L 5201 원문과 대조하지 않은 값이므로 확정 판정이 아님'],
-    ['주의',`${D.virt?'생산량·가동률은 가상값입니다. ':''}사내 기준은 예시값일 수 있습니다. 분석 시트의 0·빈칸은 미시험으로 봅니다.`]]});
+    ['주의',`${D.virt?'생산량·가동률은 가상값입니다. ':''}사내 기준은 예시값일 수 있습니다. 분석 시트의 0·빈칸은 미시험(결과 안 나옴), 음수는 무효로 봅니다.`]]});
   const REL='http://schemas.openxmlformats.org/officeDocument/2006/relationships',files=[
     ['[Content_Types].xml',`${XH}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${S.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
     ['_rels/.rels',`${XH}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
