@@ -132,6 +132,20 @@ a{color:inherit;text-decoration:none}
 .kpis{position:absolute;left:16px;top:16px;display:grid;grid-template-columns:repeat(4,minmax(0,212px));gap:12px;width:calc(100% - 470px);z-index:5}
 .views.nodetail .kpis{width:calc(100% - 100px)}
 .kpis{display:flex;overflow-x:auto;scrollbar-width:none}
+.pbar{position:relative;flex:none;display:flex;align-items:center;gap:8px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:6px;max-width:calc(100% - 32px)}
+.pbar .seg button{padding:6px 10px}
+.pnav{display:flex;align-items:center;gap:2px}
+.pbtn{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--fg2)}
+.pbtn:hover:not(:disabled){background:var(--preview);color:var(--accent)}
+.pbtn:disabled{opacity:.3;cursor:default}
+.pbtn .ic{width:16px;height:16px}
+.plab{position:relative;display:inline-flex;align-items:center;height:30px;padding:0 10px;border-radius:9px;font-weight:700;font-size:13.5px;white-space:nowrap;cursor:pointer}
+.plab:hover{background:var(--preview)}
+.plab:focus-within{outline:2px solid var(--accent);outline-offset:1px}
+.plab input,.plab select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;font:inherit}
+.pnow{height:30px;padding:0 10px;border-radius:9px;font-size:12.5px;font-weight:700;color:var(--accent);background:var(--accent-soft)}
+.phint{height:30px;padding:0 10px;border-radius:9px;font-size:12px;font-weight:600;color:var(--warn);background:var(--warn-soft);white-space:nowrap}
+@media (max-width:1500px){.pbar .seg button{padding:6px 8px;font-size:12.5px}.plong{display:none}}
 .kpis::-webkit-scrollbar{display:none}
 .kpis .kpi{flex:1 0 196px;max-width:236px}
 @media (min-width:761px){.kpis{pointer-events:none;padding-bottom:120px;margin-bottom:-120px}.kpis .kpi{pointer-events:auto}}   /* 도움말이 잘리지 않게 아래 여백 (지도 조작은 통과) */
@@ -354,9 +368,12 @@ table.ks td.r,table.ks th.r{text-align:right}
 @keyframes tin{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes tout{to{opacity:0;transform:translateY(8px)}}
 .tabbar{display:none}
-.ptabs{position:absolute;left:16px;top:16px;z-index:6;display:flex;gap:2px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:0 8px;max-width:calc(100% - 470px);overflow-x:auto;scrollbar-width:none}
+.maptop{position:absolute;left:16px;right:16px;top:16px;z-index:6;display:flex;gap:12px;justify-content:space-between;align-items:flex-start;pointer-events:none}
+.maptop>*{pointer-events:auto}
+.ptabs{position:relative;flex:0 1 auto;min-width:0;display:flex;gap:2px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:0 8px;max-width:calc(100% - 470px);overflow-x:auto;scrollbar-width:none}
 .ptabs::-webkit-scrollbar{display:none}
-.views.nodetail .ptabs{max-width:calc(100% - 100px)}
+.views.nodetail .ptabs{max-width:none}
+.ptabs{max-width:none}
 .ptabs button{position:relative;height:48px;padding:0 12px;font-weight:700;font-size:14px;color:var(--fg3);white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:color .2s var(--ease)}
 .ptabs button:hover{color:var(--fg2)}
 .ptabs button::after{content:"";position:absolute;left:10px;right:10px;bottom:0;height:3px;border-radius:3px 3px 0 0;background:var(--accent);transform:scaleX(0);transition:transform .28s var(--ease)}
@@ -409,14 +426,20 @@ table.ks td.r,table.ks th.r{text-align:right}
   .live{padding:6px 10px}
   .views{padding-bottom:0}
   .main{padding-bottom:calc(62px + env(safe-area-inset-bottom,0px))}
-  .ptabs,.views.nodetail .ptabs{left:16px;right:16px;top:10px;max-width:none;padding:0 4px}
+  .maptop{top:10px;flex-direction:column;gap:8px;align-items:stretch}
+  .ptabs,.views.nodetail .ptabs{max-width:none;padding:0 4px}
+  .pgl,.plong{display:none}
   .ptabs button{height:42px;font-size:13px;padding:0 10px}
-  .kpis{display:flex;width:auto;left:0;right:0;top:62px;max-width:none;flex-wrap:nowrap;overflow-x:auto;padding:0 16px 8px;scrollbar-width:none}
+  .kpis{display:flex;width:auto;left:0;right:0;top:106px;max-width:none;flex-wrap:nowrap;overflow-x:auto;padding:0 16px 8px;scrollbar-width:none}
   .kpis::-webkit-scrollbar{display:none}
   .kpi{width:178px;flex:none;padding:12px 14px;gap:10px}
   .kpi .kic{width:34px;height:34px;border-radius:10px}
   .kpi .kval{font-size:19px}
-  .ctrls,.views.nodetail .ctrls{right:16px;top:172px}
+  .ctrls,.views.nodetail .ctrls{right:16px;top:216px}
+  .pbar{gap:4px;padding:4px;overflow-x:auto;scrollbar-width:none}
+  .pbar::-webkit-scrollbar{display:none}
+  .pbar .seg button{padding:5px 8px;font-size:12px}
+  .plab{padding:0 6px;font-size:12.5px}
   .ctrls button{width:36px;height:36px}
   .detail,.list{position:fixed;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));top:auto;width:auto;max-height:56%;border-radius:20px 20px 0 0;padding:10px 16px 16px;z-index:40;box-shadow:0 -8px 30px rgba(0,0,0,.14)}
   .detail.closed,.list.closed{transform:translateY(110%);opacity:0;pointer-events:none}
@@ -487,7 +510,17 @@ table.ks td.r,table.ks th.r{text-align:right}
       <section class="view" id="view-map" aria-label="공정 지도">
         <div id="stage" tabindex="0" aria-label="공정 3D 지도. 끌어서 이동, 휠로 확대, 오른쪽 버튼으로 끌면 회전"></div>
         <div id="tags"></div>
+        <div class="maptop">
         <div class="ptabs" id="ptabs" role="tablist" aria-label="공정 탭"></div>
+        <div class="pbar" id="pbar" role="group" aria-label="카드 값 기간">
+          <div class="seg" id="pseg"><button type="button" data-g="d">일<span class="pgl"> 평균</span></button><button type="button" data-g="m">월<span class="pgl"> 평균</span></button><button type="button" data-g="y">년<span class="pgl"> 평균</span></button></div>
+          <div class="pnav"><button type="button" class="pbtn" id="pPrev" aria-label="이전 기간"><span data-ic="chevL"></span></button>
+            <label class="plab"><span id="pLab">-</span><input id="pPickD" type="date" aria-label="날짜 고르기"><input id="pPickM" type="month" aria-label="월 고르기"><select id="pPickY" aria-label="연도 고르기"></select></label>
+            <button type="button" class="pbtn" id="pNext" aria-label="다음 기간"><span data-ic="chevR"></span></button></div>
+          <button type="button" class="pnow" id="pNow" hidden>당월</button>
+          <button type="button" class="phint" id="pHint" hidden></button>
+        </div>
+        </div>
         <div class="kpis" id="kpiMap"></div>
         <div class="ctrls" role="toolbar" aria-label="지도 조작">
           <button type="button" data-cam="in" aria-label="확대" data-ic="plus"></button>
@@ -580,7 +613,7 @@ const ICON={
   home:'<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
   target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
-  chevR:'<path d="M9 6l6 6-6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
+  chevR:'<path d="M9 6l6 6-6 6"/>', chevL:'<path d="M15 6l-6 6 6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
   truck:'<path d="M2 6h12v10H2zM14 9h4l3 3v4h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
   flask:'<path d="M9 3h6M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/>',
   flame:'<path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-3 3-5 5-5 8 0 4 3 7 7 7z"/>',
@@ -1546,21 +1579,101 @@ const SHIP_ITEMS=[['s28','28일 강도','MPa',1],['s1','1일 강도','MPa',1],['
 const KS_SHIP={'1종':{s28:[42.5,'ge',1],SO3:[3.5,'le',1],MgO:[5.0,'le',1],fst:[600,'le',0]},'3종':{s1:[10.0,'ge',0],s28:[47.5,'ge',0],SO3:[4.5,'le',0],MgO:[5.0,'le',0],fst:[600,'le',0]}};
 const hm=m=>`${Math.floor(m/60)}:${String(Math.round(m%60)).padStart(2,'0')}`;
 function shipCard(prod){
-  const key='ship'+prod,opts=SHIP_ITEMS.map(x=>[x[0],x[1]]),val=opts.some(o=>o[0]===KSEL[key])?KSEL[key]:'s28';
-  const [f,nm,u,dp]=SHIP_ITEMS.find(x=>x[0]===val),lots=shipLots(prod);let r=null;for(let i=lots.length-1;i>=0;i--)if(lots[i][f]!=null){r=lots[i];break;}
+  const key='ship'+prod,r=perRange(),opts=SHIP_ITEMS.map(x=>[x[0],x[1]]),val=opts.some(o=>o[0]===KSEL[key])?KSEL[key]:'s28';
+  const [f,nm,u,dp]=SHIP_ITEMS.find(x=>x[0]===val);
+  const lots=shipLots(prod).filter(x=>x.day>=r.from&&x.day<=r.to&&x[f]!=null);
   const lim=(KS_SHIP[prod]||{})[f],limTxt=lim?`KS L 5201 ${prod} ${f==='fst'?hm(lim[0])+' 이내':nf(lim[0],dp)+' '+u+(lim[1]==='ge'?' 이상':' 이하')}${lim[2]?'':' (추정 · KS 원문 확인 필요)'}`:'KS 기준 미확인';
-  const base={key,ic:f[0]==='s'?'chart':'flask',l:`${prod} 출하`,u:f==='fst'?'':u,sel:{opts,val,aria:`${prod} 출하 시험 항목`}};
-  if(!r)return Object.assign(base,{v:'—',s:`QMS 출하시멘트(${prod}) ${nm} 없음`,tip:`QMS 출하시멘트(${prod}) 시트의 ${nm}`});
-  const v=r[f],ok=lim?(lim[1]==='ge'?v>=lim[0]:v<=lim[0]):null;
-  return Object.assign(base,{v:f==='fst'?hm(v):nf(v,dp),u:f==='fst'?'시:분':u,d:ok==null?'':(ok?'KS 적합':'KS 미달')+(lim[2]?'':'*'),dc:ok?'up':'dn',
-    s:`${nm} · 로트 ${r.lot} · ${md(dayDate(r.day))} · QMS`,tip:`QMS 출하시멘트(${prod})에서 ${nm} 값이 있는 가장 최근 로트. ${limTxt}${ok!=null&&!lim[2]?' · *표시는 추정 기준으로 판정':''}`});
+  const pass=v=>lim?(lim[1]==='ge'?v>=lim[0]:v<=lim[0]):null;
+  const base={key,ic:f[0]==='s'?'chart':'flask',l:`${prod} 출하`,u:f==='fst'?'시:분':u,sel:{opts,val,aria:`${prod} 출하 시험 항목`}};
+  if(!lots.length)return Object.assign(base,{v:'—',s:noData(r,nm)+(f==='s28'?' · 28일 강도는 채취 28일 뒤 발표':''),tip:`QMS 출하시멘트(${prod}) 시트의 ${nm}. ${limTxt}`});
+  const vs=lots.map(x=>x[f]),avg=vs.reduce((a,v)=>a+v,0)/vs.length,ok=pass(avg),fail=lim?vs.filter(v=>!pass(v)).length:0;
+  const fm=v=>f==='fst'?hm(v):nf(v,dp);
+  return Object.assign(base,{v:fm(avg),d:ok==null?'':(ok?'KS 적합':'KS 미달')+(lim[2]?'':'*'),dc:ok?'up':'dn',
+    s:`${perTxt(r)} · 로트 ${lots.length}건${lim?` · 미달 ${fail}건`:` · ${fm(Math.min(...vs))}~${fm(Math.max(...vs))}`} · QMS`,
+    tip:`${PER_NM[PER.g]}: 기간 내 출하시멘트(${prod}) 로트의 ${nm} 평균 (로트 채취일 기준). 범위 ${fm(Math.min(...vs))}~${fm(Math.max(...vs))}. ${limTxt}${ok!=null&&!lim[2]?' · *표시는 추정 기준으로 판정':''}`});
 }
+
 function strengthKpi(){const c=cement();
   return c.s28==null?{ic:'chart',l:'28일 강도 (1종 출하)',v:'—',u:'MPa',s:'QMS 출하시멘트(1종) 강도 없음',tip:'출하시멘트(1종) 시트의 압축강도28일'}:
    {ic:'chart',l:'28일 강도 (1종 출하)',v:nf(c.s28,1),u:'MPa',d:c.s28>=42.5?'KS 적합':'KS 미달',dc:c.s28>=42.5?'up':'dn',s:`로트 ${c.lot28.lot} · ${md(c.t28)} 채취 · QMS`,tip:'QMS 출하시멘트(1종)에서 28일 강도가 나온 가장 최근 로트. KS L 5201 1종 42.5 MPa 이상'};}
+/* =========================================================
+   지도 카드 공통 기간: 일 평균 / 월 평균 / 년 평균 (기본: 당월)
+   ========================================================= */
+const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const todayStr=()=>ymd(new Date());
+const PER={g:'m',a:todayStr()};
+const PER_NM={d:'일 평균',m:'월 평균',y:'년 평균'},PER_NOW={d:'오늘',m:'당월',y:'올해'};
+function perRange(g=PER.g,a=PER.a){const y=+a.slice(0,4),m=+a.slice(5,7);
+  if(g==='d')return {from:a,to:a,lab:`${y}년 ${m}월 ${+a.slice(8)}일`,sh:`${m}/${+a.slice(8)}`};
+  if(g==='m')return {from:`${y}-${pad(m)}-01`,to:`${y}-${pad(m)}-${pad(new Date(y,m,0).getDate())}`,lab:`${y}년 ${m}월`,sh:`${m}월`};
+  return {from:`${y}-01-01`,to:`${y}-12-31`,lab:`${y}년`,sh:`${y}년`};}
+function perShift(a,g,k){const d=new Date(+a.slice(0,4),+a.slice(5,7)-1,+a.slice(8,10));if(g==='d')d.setDate(d.getDate()+k);else if(g==='m'){d.setDate(1);d.setMonth(d.getMonth()+k);}else{d.setMonth(0,1);d.setFullYear(d.getFullYear()+k);}return ymd(d);}
+const perIsNow=()=>{const r=perRange(),t=todayStr();return r.from<=t&&t<=r.to;};
+/* 기간 안의 날짜 목록 (미래 제외) */
+function perDays(r){const out=[],t=todayStr();let d=new Date(+r.from.slice(0,4),+r.from.slice(5,7)-1,+r.from.slice(8,10));
+  for(let i=0;i<367;i++){const k=ymd(d);if(k>r.to||k>t)break;out.push(k);d.setDate(d.getDate()+1);}return out;}
+/* 기간 문구: 진행 중인 기간은 'n일까지' 표시 */
+const perTxt=r=>{const t=todayStr();if(!(r.from<=t&&t<r.to)||PER.g==='d')return r.sh;return PER.g==='m'?`${r.sh} 1~${+t.slice(8)}일`:`${r.sh} 1/1~${+t.slice(5,7)}/${+t.slice(8)}`;};
+/* 가상 일별 운전 (DCS가 없을 때): 같은 날짜는 항상 같은 값 */
+const hsh=str=>{let h=2166136261;for(let i=0;i<str.length;i++)h=Math.imul(h^str.charCodeAt(i),16777619);return ((h>>>0)%100000)/100000;};
+function kilnDay(id,day){
+  const e=E[id],kd=KILN_DEF.find(d=>'K'+d.n===id);
+  const s=QD&&QD.streams['dcs:'+id],fi=s?s.df.indexOf('feed'):-1;
+  if(fi>=0){const row=s.d.find(r=>r[0]===day);if(row&&row[2+fi]!=null){const f=row[2+fi];return {tpd:f>1?f*24/CLK_FACTOR:0,hrs:f>1?24:0,src:'DCS'};}}
+  if(day===todayStr())return {tpd:kilnTpd(id),hrs:isStopped(e)?0:24,src:'가상'};
+  if(kd.stop)return {tpd:0,hrs:0,src:'가상'};
+  const down=hsh(id+day+'d')<.025?24*(.25+hsh(id+day+'h')*.6):0,hrs=24-down;
+  return {tpd:kd.cap*(.975+hsh(id+day+'t')*.035)*hrs/24,hrs,src:'가상'};
+}
+function kilnPer(id,r){const ds=perDays(r);if(!ds.length)return null;const xs=ds.map(d=>kilnDay(id,d));
+  const hasD=xs.some(x=>x.src==='DCS'),use=hasD?xs.filter(x=>x.src==='DCS'):xs;
+  return {tpd:use.reduce((a,x)=>a+x.tpd,0)/use.length,hrs:use.reduce((a,x)=>a+x.hrs,0),days:use.length,src:hasD?'DCS':'가상'};}
+/* QMS 일평균의 기간 평균 */
+function streamPer(key,f,r){const s=QD&&QD.streams[key];if(!s)return null;const fi=s.df.indexOf(f);if(fi<0)return null;
+  const v=s.d.filter(x=>x[0]>=r.from&&x[0]<=r.to&&x[2+fi]!=null).map(x=>[x[0],x[2+fi]]);if(!v.length)return null;
+  return {avg:v.reduce((a,x)=>a+x[1],0)/v.length,n:v.length,max:Math.max(...v.map(x=>x[1])),vals:v};}
+const qmsLast=()=>QD&&QD.to?QD.to:null;
+const noData=(r,what)=>{const l=qmsLast();return `${perTxt(r)} ${what} 없음${l&&l<r.from?` · QMS는 ${+l.slice(5,7)}/${+l.slice(8)}까지`:''}`;};
+
+/* 카드: 클링커 생산 (기간 일평균) */
+function prodCard(L){
+  const key='tpd'+L,r=perRange(),opts=kilnOpts(L),val=opts.some(o=>o[0]===KSEL[key])?KSEL[key]:'all';
+  const ids=val==='all'?kilnEqs().filter(e=>!L||e.line===L).map(e=>e.id):[val];
+  const ps=ids.map(id=>[id,kilnPer(id,r)]).filter(x=>x[1]);
+  const c={key,ic:'factory',l:'클링커 생산',sel:{opts,val,aria:'클링커 생산 호기 선택'},u:'t/d'};
+  if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
+  const tpd=ps.reduce((a,x)=>a+x[1].tpd,0),run=ps.filter(x=>x[1].hrs>0),des=run.reduce((a,x)=>a+E[x[0]].cap,0),src=ps.some(x=>x[1].src==='DCS')?'DCS':'가상';
+  if(!des)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · 설계 ${nf(ps.reduce((a,x)=>a+E[x[0]].cap,0))} t/d`,tip:'기간 내 가동 기록이 없습니다.'});
+  return Object.assign(c,{v:nf(tpd),d:`${tpd>=des?'▲':'▼'} ${nf(Math.abs(tpd/des*100-100),1)}%`,dc:tpd>=des?'up':'dn',
+    s:`${perTxt(r)} 일평균 · 설계 ${nf(des)} t/d 대비 · ${src}`,tip:`${PER_NM[PER.g]}: 기간 내 하루 생산량의 평균. 하루 생산 = 원료 투입량 × 24 ÷ 환산계수 ${CLK_FACTOR}. 설계 대비는 기간 중 가동한 호기의 설계용량 합. ${src==='DCS'?'DCS 일평균 기준':'설비값 가상'}`});
+}
+/* 카드: 킬른 가동률 */
+function runCard(){
+  const key='run',r=perRange(),opts=kilnOpts(''),val=opts.some(o=>o[0]===KSEL[key])?KSEL[key]:'all';
+  const ids=val==='all'?kilnEqs().filter(e=>!KILN_DEF.find(d=>'K'+d.n===e.id).stop).map(e=>e.id):[val];
+  const ps=ids.map(id=>kilnPer(id,r)).filter(Boolean),c={key,ic:'flame',l:'킬른 가동률',sel:{opts,val,aria:'킬른 가동률 호기 선택'},u:'%'};
+  if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
+  const hrs=ps.reduce((a,x)=>a+x.hrs,0),cal=ps.reduce((a,x)=>a+x.days*24,0),rate=hrs/cal*100,down=cal-hrs,src=ps.some(x=>x.src==='DCS')?'DCS':'가상';
+  if(val!=='all'&&!hrs)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · ${src}`,tip:`${E[val].kiln}호 킬른은 기간 내 가동 기록이 없습니다.`});
+  const sn=val==='all'?KILN_DEF.filter(d=>d.stop).map(d=>d.n+'호').join('·'):'';
+  return Object.assign(c,{v:nf(rate,1),s:`${perTxt(r)} · 정지 ${nf(down,0)}시간${sn?` · ${sn} 제외`:''} · ${src}`,tip:`(달력시간 − 정지시간) ÷ 달력시간. ${src==='DCS'?'DCS 원료 투입량 > 1 t/h인 날을 가동으로 봄':'설비값 가상'}${sn?` · 장기 가동 중단 ${sn}은 공장 평균에서 제외`:''}`});
+}
+/* 카드: f-CaO (기간 평균, 관리기준 0.7~1.7%) */
+function fcCard(L){
+  const key='fc'+L,r=perRange(),opts=kilnOpts(L),val=opts.some(o=>o[0]===KSEL[key])?KSEL[key]:'all';
+  const ids=val==='all'?kilnEqs().filter(e=>!L||e.line===L).map(e=>e.id):[val];
+  const ps=ids.map(id=>[id,streamPer('clk:'+id,'fcao',r)]).filter(x=>x[1]),c={key,ic:'flask',l:'f-CaO',sel:{opts,val,aria:'f-CaO 호기 선택'},u:'%'};
+  if(!ps.length)return Object.assign(c,{v:'—',s:noData(r,'클링커 시료'),tip:'QMS 클링커 시트의 f-CaO'});
+  const W=ps.reduce((a,x)=>a+E[x[0]].cap,0),v=ps.reduce((a,x)=>a+x[1].avg*E[x[0]].cap,0)/W;
+  const out=ps.reduce((a,x)=>a+x[1].vals.filter(y=>y[1]<FCAO_LIM[0]||y[1]>FCAO_LIM[1]).length,0),days=ps.reduce((a,x)=>a+x[1].n,0);
+  const ok=v>=FCAO_LIM[0]&&v<=FCAO_LIM[1];
+  return Object.assign(c,{v:nf(v,2),d:ok?'정상':'이탈',dc:ok?'up':'dn',s:val==='all'&&ps.length>1?`${perTxt(r)} · ${ps.length}개 호기 · 일평균 이탈 ${out}/${days}회 · QMS`:`${perTxt(r)} · 일평균 이탈 ${out}/${days}일 · QMS`,
+    tip:`${PER_NM[PER.g]}: 호기별 일평균 f-CaO의 기간 평균${val==='all'?', 설계용량 가중평균':''}. 이탈은 일평균이 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)를 벗어난 횟수${val==='all'?' (호기별 하루 1회로 셈)':''}`});
+}
 function kpiCards(rep){
-  if(!rep&&(curTab==='A'||curTab==='B')){const L=curTab,k=lineKpis(L);k[0]=withKiln(k[0],'tpd'+L,L,'클링커 생산',perTpd);k[2]=withKiln(k[2],'fc'+L,L,'f-CaO',perFc);return k;}
-  if(!rep&&curTab==='C')return cementKpis(true);
+  const now=c=>Object.assign(c,{s:'현재 · '+c.s});
+  if(!rep&&(curTab==='A'||curTab==='B')){const L=curTab,k=lineKpis(L);return [prodCard(L),now(k[1]),fcCard(L),now(k[3])];}
+  if(!rep&&curTab==='C'){const k=cementKpis(true);return [now(k[0]),now(k[1]),k[2],k[3],k[4]];}
   const tpd=plantTpd(),pf=plantFcao(),rd=runDesign()||DESIGN_TOTAL,sn=stopNames(),k=[];
   k.push({ic:'factory',l:'클링커 생산 (공장)',v:nf(tpd),u:'t/d',d:`${tpd>=rd?'▲':'▼'} ${nf(Math.abs(tpd/rd*100-100),1)}%`,dc:tpd>=rd?'up':'dn',s:`가동 ${runKilns().length}기 설계 ${nf(rd)} t/d 대비 · 가상`,tip:`호기별 원료 투입량 × 24 ÷ 원료/클링커 환산계수 ${CLK_FACTOR}의 합 (설비값 가상)`+(sn?` · ${sn} 가동 중단 제외`:'')});
   if(rep){const sp=E.DSP.params;k.push({ic:'truck',l:'금일 출하',v:nf(sp.ship.v),u:'t',d:sp.plan.v>0?nf(sp.ship.v/sp.plan.v*100,0)+'%':'',dc:'nt',s:`계획 ${nf(sp.plan.v)} t 대비 · 가상`,tip:'계량 완료된 출하 합계 (설비값 가상)'});}
@@ -1568,7 +1681,7 @@ function kpiCards(rep){
   k.push(!pf?{ic:'flask',l:'f-CaO (가동 호기 평균)',v:'—',u:'%',s:'최근 14일 QMS 클링커 시료 없음',tip:'QMS 클링커 시트'}:
     {ic:'flask',l:'f-CaO (가동 호기 평균)',v:nf(pf.v,2),u:'%',d:pf.st==='ok'?'정상':ST[pf.st],dc:pf.st==='ok'?'up':'dn',s:`최고 ${pf.max.kiln}호 ${nf(pf.max.params.fcao.v,2)}% · QMS`,tip:'QMS 클링커 시트의 호기별 최근 시료 f-CaO, 설계용량 가중평균(가동 중단·시료 없는 호기 제외). 사내 관리기준 1.2 ± 0.5% (0.7~1.7%)'});
   if(rep){k.push(strengthKpi());return kpiHTML(k);}
-  return [withKiln(k[0],'tpd','', '클링커 생산',perTpd),withKiln(k[1],'run','','킬른 가동률',perRun),withKiln(k[2],'fc','','f-CaO',perFc),shipCard('1종'),shipCard('3종')];
+  return [prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')];
 }
 
 /* 킬른 호기 메뉴 */
@@ -1937,6 +2050,7 @@ function applyQms(Q,meta,o={}){
   if(Q&&Q.samples){SAMPLES.length=0;Q.samples.slice(0,8).forEach((x,i)=>SAMPLES.push({id:'QMS-'+(i+1),what:x[2]+(x[3]?' · '+x[3]:''),eq:E[x[1]]?x[1]:'LAB',st:'완료',prog:100,time:tsDate(x[0])}));}
   if(sel&&sel.type==='eq')renderDetail();
   if(!o.quiet){setBracket();renderAll();}
+  if($('#pbar'))renderPbar();
 }
 function defaultQms(){try{return JSON.parse($('#qmsDefault').textContent||'null');}catch(e){return null;}}
 const DEFAULT_META={fileName:'Blue365_QMS.xlsx (내장 기본 데이터)',source:'embedded'};
@@ -2067,7 +2181,33 @@ function setupData(){
   serverInit().then(ok=>{if(!ok&&restoreLocal())toast('이 PC에 올렸던 QMS 데이터를 불러왔습니다','act');});
 }
 
+/* 기간 바 */
+function renderPbar(){
+  const r=perRange(),t=todayStr();
+  $$('#pseg button').forEach(b=>{const on=b.dataset.g===PER.g;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);});
+  $('#pLab').innerHTML=r.lab+(PER.g!=='d'&&r.from<=t&&t<r.to?'<span class="plong"> · 진행 중</span>':'');
+  $('#pNext').disabled=perShift(PER.a,PER.g,1)>t&&perRange(PER.g,perShift(PER.a,PER.g,1)).from>t;
+  const now=perIsNow();$('#pNow').hidden=now;$('#pNow').textContent=PER_NOW[PER.g]+'로';
+  const d=$('#pPickD'),m=$('#pPickM'),y=$('#pPickY');d.hidden=PER.g!=='d';m.hidden=PER.g!=='m';y.hidden=PER.g!=='y';
+  d.max=t;m.max=t.slice(0,7);d.value=PER.a;m.value=PER.a.slice(0,7);
+  const y0=QD&&QD.from?+QD.from.slice(0,4):+t.slice(0,4)-1,ys=[];for(let k=+t.slice(0,4);k>=Math.min(y0,+t.slice(0,4)-1);k--)ys.push(k);
+  const yh=ys.map(k=>`<option value="${k}">${k}년</option>`).join('');if(y._h!==yh){y.innerHTML=yh;y._h=yh;}y.value=PER.a.slice(0,4);
+  const l=qmsLast(),h=$('#pHint');h.hidden=!(l&&l<r.from);if(!h.hidden){h.innerHTML=`<span class="plong">QMS는 ${+l.slice(5,7)}/${+l.slice(8)}까지 · </span>${PER.g==='d'?(+l.slice(5,7))+'/'+(+l.slice(8)):PER.g==='m'?(+l.slice(5,7))+'월':l.slice(0,4)+'년'} 보기`;h.title=`QMS 데이터는 ${l}까지 있습니다`;}
+}
+function setPer(g,a){PER.g=g||PER.g;if(a)PER.a=a>todayStr()?todayStr():a;renderPbar();renderKpis($('#kpiMap'),kpiCards(false));}
+function setupPeriod(){
+  $$('#pseg button').forEach(b=>b.onclick=()=>setPer(b.dataset.g));
+  $('#pPrev').onclick=()=>setPer(null,perShift(PER.a,PER.g,-1));
+  $('#pNext').onclick=()=>{const n=perShift(PER.a,PER.g,1);setPer(null,n>todayStr()?todayStr():n);};
+  $('#pNow').onclick=()=>setPer(null,todayStr());
+  $('#pHint').onclick=()=>{const l=qmsLast();if(l)setPer(null,l);};
+  $('#pPickD').onchange=e=>{if(e.target.value)setPer(null,e.target.value);};
+  $('#pPickM').onchange=e=>{if(e.target.value)setPer(null,e.target.value+'-01');};
+  $('#pPickY').onchange=e=>setPer(null,e.target.value+'-01-01');
+  renderPbar();
+}
 /* 시작 */
+setupPeriod();
 paintIcons();
 setupTheme();
 setupShell();
