@@ -183,6 +183,43 @@ _PB = {"m": None, "v": None}
 SETTINGS_LOCK = threading.Lock()
 
 
+def sokbo_path() -> Path:
+    return STORE.dir / "sokbo.json"
+
+
+def sokbo_read():
+    """출하속보(화면이 PDF에서 읽은 표) — (내용, 버전). 없으면 (None, None)"""
+    try:
+        with SETTINGS_LOCK:
+            d = json.loads(sokbo_path().read_text("utf-8"))
+        return d, (d.get("meta") or {}).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None, None
+
+
+def sokbo_clean(v, depth=0):
+    """출하속보 값 정리: 허용 형식(사전·목록·문자·숫자)만, 문자열은 꺾쇠 등 제거·길이 제한"""
+    if depth > 6:
+        raise ValueError("출하속보 구조가 너무 깊습니다")
+    if v is None or isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        if v != v or v in (float("inf"), float("-inf")):
+            return None
+        return v
+    if isinstance(v, str):
+        return re.sub(r"[<>`]", "", v)[:160]
+    if isinstance(v, list):
+        if len(v) > 120:
+            raise ValueError("출하속보 목록이 너무 깁니다")
+        return [sokbo_clean(x, depth + 1) for x in v]
+    if isinstance(v, dict):
+        if len(v) > 80:
+            raise ValueError("출하속보 항목이 너무 많습니다")
+        return {re.sub(r"[^\w가-힣/.\-() &]", "", str(k))[:40]: sokbo_clean(x, depth + 1) for k, x in v.items()}
+    raise ValueError("출하속보 형식이 올바르지 않습니다")
+
+
 def settings_path() -> Path:
     return STORE.dir / "settings.json"
 
@@ -315,7 +352,7 @@ def backup_once() -> Path | None:
         return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     src = STORE.dir
-    names = [n for n in ("users.json", "settings.json", "latest.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
+    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
     if not names:
         return None
     tmp = out.with_suffix(".tmp")
@@ -731,12 +768,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1]})
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1]})
         if path == "/api/settings":
             if not self._need("viewer"):
                 return
             d, stamp = settings_read()
             return self._send(200, {"settings": d, "stamp": stamp})
+        if path == "/api/sokbo":
+            if not self._need("viewer"):
+                return
+            d, _ = sokbo_read()
+            return self._send(200, d) if d else self._send(404, {"error": "아직 올라온 출하속보가 없습니다"})
         if path == "/api/dataset":
             if not self._need("viewer"):
                 return
@@ -784,7 +826,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._admin(body)
         if path == "/api/settings":
             return self._settings(body)
+        if path == "/api/sokbo":
+            return self._sokbo(body)
         self._send(404, {"error": "없는 주소입니다"})
+
+    def _sokbo(self, b):
+        """출하속보 올리기 (편집 이상, 본인 비밀번호 다시 확인) → data/sokbo.json"""
+        u = self._need("editor")
+        if not u:
+            return
+        if KEY and not hmac.compare_digest(self.headers.get("X-Upload-Key", "").encode(), KEY.encode()):
+            return self._send(401, {"error": "업로드 비밀번호(서버 --key)가 맞지 않습니다"})
+        if not USERS.verify(u["id"], b.get("password")):
+            USERS.log(u["id"], "업로드 비밀번호 틀림", "출하속보", self.ip)
+            return self._send(401, {"error": "비밀번호가 맞지 않습니다 (업로드 확인)"})
+        try:
+            s = sokbo_clean(b.get("sokbo"))
+            if not isinstance(s, dict) or s.get("kind") != "sokbo" or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(s.get("date", ""))):
+                raise ValueError("출하속보 형식이 올바르지 않습니다")
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        now = dt.datetime.now()
+        fn = re.sub(r"[<>`\\/:*?\"|]", "", str((b.get("meta") or {}).get("fileName") or ""))[:80]
+        meta = {"version": now.strftime("%Y%m%d%H%M%S%f"), "uploadedAt": now.isoformat(timespec="seconds"),
+                "uploadedBy": f"{u['dept']} {u['name']}", "fileName": fn, "date": s["date"], "source": "upload"}
+        p = sokbo_path()
+        with SETTINGS_LOCK:
+            tmp = p.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"sokbo": s, "meta": meta}, ensure_ascii=False), "utf-8")
+            os.replace(tmp, p)
+        USERS.log(u["id"], "출하속보 업로드", f"{s['date']} {fn}", self.ip)
+        self._send(200, {"ok": True, "sokbo": s, "meta": meta})
 
     def _login(self, b):
         now = time.time()

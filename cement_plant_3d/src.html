@@ -645,6 +645,8 @@ table.ks td.r,table.ks th.r{text-align:right}
 <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
 <script src="qms.js"></script>
 <script id="qmsDefault" type="application/json">null</script>
+<script src="sokbo.js"></script>
+<script id="sokboDefault" type="application/json">null</script>
 <script>
 (function(){
 'use strict';
@@ -685,6 +687,8 @@ const ICON={
   target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   chevR:'<path d="M9 6l6 6-6 6"/>', chevL:'<path d="M15 6l-6 6 6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
   truck:'<path d="M2 6h12v10H2zM14 9h4l3 3v4h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  ship:'<path d="M3 15l2.2 5h13.6L21 15z"/><path d="M6 15V9h12v6M10 9V5h4v4"/>',
+  anchor:'<circle cx="12" cy="5" r="2"/><path d="M12 7v14M7 10h10M4 13a8 8 0 0 0 16 0"/>',
   flask:'<path d="M9 3h6M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/>',
   flame:'<path d="M12 22c4 0 7-3 7-7 0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-3 3-5 5-5 8 0 4 3 7 7 7z"/>',
   layers:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
@@ -794,7 +798,7 @@ const RUN_DESIGN0=KILN_DEF.filter(d=>!d.stop).reduce((a,d)=>a+d.cap,0);
 const KILN_IDS=KILN_DEF.map(d=>'K'+d.n);
 const DESIGN_TOTAL=KILN_DEF.reduce((a,d)=>a+d.cap,0);
 /* 지도 탭 */
-const TABS=[{id:'all',name:'전체 공장',icon:'factory'},{id:'A',name:'3–5호 킬른',icon:'flame'},{id:'B',name:'6–7호 킬른',icon:'flame'},{id:'C',name:'시멘트 밀·사일로',icon:'silo'}];
+const TABS=[{id:'all',name:'전체 공장',icon:'factory'},{id:'A',name:'3–5호 킬른',icon:'flame'},{id:'B',name:'6–7호 킬른',icon:'flame'},{id:'C',name:'시멘트 밀·사일로',icon:'silo'},{id:'P',name:'삼척항',icon:'ship'}];
 const TAB=Object.fromEntries(TABS.map(t=>[t.id,t]));
 const AREAS=[{id:'raw',name:'원료'},{id:'burn',name:'소성'},{id:'grind',name:'분쇄'},{id:'ship',name:'출하'},{id:'qc',name:'품질'}];
 const AREA=Object.fromEntries(AREAS.map(a=>[a.id,a]));
@@ -944,9 +948,33 @@ function slEq(d,i){
    params:{level:P('레벨','%',lv,15,95,lv<20?1:0,lv<20?.12:.4,{min:0,max:100}),stock:P('저장량','t',Math.round(d.cap*lv/100),null,null,0,0,{derived:1})}};
 }
 
+/* =========================================================
+   항만: 삼척항(공장 동쪽 바다, 3D) · 동해항(카드) — 출하속보(PDF)로 갱신
+   선석 21·22(2부두)·31·32(3부두): 출하속보에 나온 번호 기준. 실제 배치는 추정
+   ========================================================= */
+const PORT={shore:172,shipX:206,jets:[{id:'J2',z:14,b:[21,22]},{id:'J3',z:-28,b:[31,32]}]};
+const BERTH_DEF=[{id:'BT21',n:21,jz:14,side:1},{id:'BT22',n:22,jz:14,side:-1},{id:'BT31',n:31,jz:-28,side:1},{id:'BT32',n:32,jz:-28,side:-1}];
+BERTH_DEF.forEach(d=>d.z=d.jz+d.side*9.2);
+const PIER_CAP=null;   // 부두 사일로 용량 미확인 → 재고(t)만 표시
+let SOK=null,SOKMETA={},PORTV=[];const BERTH_ST={};   // 출하속보 · 선박 표시 계획 · 선석별 현재 선박
+const PIER_DEF=[1,2,3,4,5,6].map((n,i)=>({id:'PIER'+n,n:String(n),z:-36+i*12}));
+const CARGO_KO={'B/K':'벌크 시멘트','C/K':'클링커','C/P':'시멘트 포장','P/Cokes':'Pet-coke','P/Coke':'Pet-coke','P-Cokes':'Pet-coke','유연탄':'유연탄','S/C':'슬래그 시멘트'};
+const cargoKo=c=>CARGO_KO[c]||c||'—';
+function pierEq(d){return {id:d.id,code:'PS-'+d.n,n:d.n,name:`부두 ${d.n}호 사일로`,tab:'P',area:'ship',icon:'silo',cap:PIER_CAP,
+  spec:`삼척항 부두 사일로 · 선박 선적용 · ${PIER_CAP?'용량 '+nf(PIER_CAP)+' t':'용량 미확인'}`,bar:'rel',barLabel:PIER_CAP?'레벨':'재고 (부두 6기 중 최대 대비)',primary:'stock',
+  params:{stock:P('재고 (출하속보)','t',0,null,null,0,0,{derived:1}),rel:P(PIER_CAP?'레벨':'재고 비율','%',0,null,null,0,0,{derived:1,min:0,max:100})}};}
+function berthEq(d){return {id:d.id,code:'#'+d.n,n:String(d.n),name:`${d.n}번 선석`,tab:'P',area:'ship',icon:'ship',berth:d.n,
+  get spec(){const b=BERTH_ST[d.id];return b&&b.ship?`삼척항 · ${b.ship.name} · ${b.ship.label}`:'삼척항 · 공석';},bar:'prog',barLabel:'선적률',primary:'load',
+  params:{prog:P('선적률','%',0,null,null,0,0,{derived:1,min:0,max:100}),load:P('선적량','t',0,null,null,0,0,{derived:1}),th:P('선적 속도 (T/H)','t/h',0,null,null,0,0,{derived:1})}};}
+const ANCH_EQ=()=>({id:'ANCH',code:'ANCH',name:'삼척항 외항',tab:'P',area:'ship',icon:'anchor',spec:'입항 예정 선박 대기 (묘박지)',bar:'use',barLabel:'선석 사용률 (4개)',primary:'n',
+  params:{use:P('선석 사용률','%',0,null,null,0,0,{derived:1,min:0,max:100}),n:P('입항 예정','척',0,null,null,0,0,{derived:1}),next:P('다음 입항까지','시간',0,null,null,1,0,{derived:1})}});
+const DHP_EQ=()=>({id:'DHP',code:'DH-PORT',name:'동해항',tab:'P',area:'ship',icon:'ship',spec:'동해공장 항만 · 수출 클링커 선적 · 유연탄·Pet-coke 하역 (출하속보 기준)',bar:'soon',barLabel:'다음 입·출항 임박도 (7일 = 0%)',primary:'next',
+  params:{soon:P('일정 임박도','%',0,null,null,0,0,{derived:1,min:0,max:100}),next:P('다음 입·출항까지','일',0,null,null,0,0,{derived:1}),clk:P('동해 클링커 재고','t',0,null,null,0,0,{derived:1}),cem:P('동해 시멘트 재고','t',0,null,null,0,0,{derived:1})}});
+
 const EQ=[
  ...QRY_DEF.map(qryEq),...CR_DEF.map(crEq),...CC_DEF.map(ccEq),...OSP_DEF.map(ospEq),...PW_DEF.map(pwEq),...PB_DEF.map(pbEq),
  ...RM_DEF.map(rmEq),...RS_DEF.map(rsEq),...KILN_DEF.map(phEq),...KILN_DEF.map(kilnEq),...CS_DEF.map(csEq),...CM_DEF.map(cmEq),...SL_DEF.map(slEq),
+ ...PIER_DEF.map(pierEq),...BERTH_DEF.map(berthEq),ANCH_EQ(),DHP_EQ(),
  {id:'DSP',code:'DS-1',name:'출하장',area:'ship',tab:'C',major:1,icon:'truck',spec:'벌크 출하 레인 1 · 계량대 1',bar:'prog',barLabel:'금일 계획 대비',primary:'ship',anchor:[34,10,37],
   params:{prog:P('금일 계획 대비','%',62,null,null,0,0,{derived:1,min:0,max:100}),ship:P('금일 출하량','t',3240,null,null,0,0,{counter:1}),plan:P('금일 출하 계획','t',5200,null,null,0,0,{counter:1}),wait:P('진입·계량 차량','대',2,null,8,0,0,{counter:1})}},
  {id:'LAB',code:'QC-LAB',name:'품질관리실',area:'qc',major:1,icon:'flask',spec:'XRF · XRD · 자동 시료 이송',bar:'done',barLabel:'금일 분석 완료',primary:'tat',
@@ -1020,20 +1048,20 @@ function pushAlarm(e,k,p,sev,t=new Date(),ack=false){
   add('SL9','level',16.9,'warn',58,false);
   ALARMS.sort((a,b)=>b.t-a.t);
 })();
-const alarmActive=a=>pStatus(E[a.eq].params[a.k])!=='ok';
+const alarmActive=a=>a.until?Date.now()<a.until:pStatus(E[a.eq].params[a.k])!=='ok';
 
 /* =========================================================
    3D 공정 지도 (Three.js)
    ========================================================= */
 const PAL={
- light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5'},
- dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93'}
+ light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5',water:'#C3D7EE'},
+ dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93',water:'#14243A'}
 };
 let dark=false;
 const M={};
 let THREEOK=!!window.THREE;
 let renderer,scene,camera,hemi,sun,raycaster,pointer;
-const EQOBJ={}, ANCHOR={}, TRUCKS=[], FLOWS=[], SMOKE=[];
+const EQOBJ={}, ANCHOR={}, TRUCKS=[], FLOWS=[], SMOKE=[], SHIPS=[], LOADERS={}, PORTFX={};
 /* 광산 발파: 매 분 49Q·47Q·45Q 동시 발파 (시계 기준이라 모든 화면이 같은 때)
    매 분 0초부터 10초 카운트다운(운반 정지) → 10초 발파(섬광·비석·충격파·분진) → 19초까지 분진 확인 → 덤프트럭 운반 재개 */
 const BLAST={T:60,WARN:10,HOLD:19,ph:'',hold:false,tb:-1,cd:0};
@@ -1058,7 +1086,7 @@ function makeMats(){
   mk('ground','ground');mk('pad','pad');mk('road','road');mk('mark','mark');mk('grass','grass');mk('dirt','dirt');
   mk('wall','wall');mk('wall2','wall2');mk('accent','accent',{roughness:.6});mk('steel','steel',{metalness:.25,roughness:.55});mk('steelD','steelDark',{metalness:.25,roughness:.6});
   mk('conc','concrete');mk('lime','limestone');mk('rock','rock',{flatShading:true});mk('rock2','rock2',{flatShading:true});mk('meal','meal');mk('clk','clinker');mk('cem','cement');
-  mk('tree','tree',{flatShading:true});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');
+  mk('tree','tree',{flatShading:true});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');mk('water','water',{roughness:.3,metalness:.05});
   mk('hot','glow',{emissive:new THREE.Color('#FF3A0A'),emissiveIntensity:1.1,transparent:true,opacity:.5,depthWrite:false});
   mk('smoke','smoke',{transparent:true,opacity:.45,depthWrite:false});
   M.line=new THREE.LineBasicMaterial({color:PAL.light.accent,depthTest:false,transparent:true});M.line.userData.key='accent';
@@ -1113,7 +1141,7 @@ const PBOBJ={};
 function syncYards(){PB_DEF.forEach(d=>{const o=PBOBJ[d.id],e=E[d.id];if(!o)return;o.st.visible=e.mode==='stack';o.rc.visible=e.mode==='reclaim';
   const k=.3+.7*e.params.fill.v/100;o.pile.scale.y=k;o.pile.position.y=2.5*k;});}
 function buildPlant(){
-  ['shared','A','B','C'].forEach(k=>{const g=new THREE.Group();scene.add(g);DECO[k]=g;});
+  ['shared','A','B','C','P'].forEach(k=>{const g=new THREE.Group();scene.add(g);DECO[k]=g;});
   // 바닥 · 도로
   const g0=new THREE.Mesh(new THREE.PlaneGeometry(700,700),M.ground);g0.rotation.x=-Math.PI/2;g0.receiveShadow=true;scene.add(g0);
   flat(252,111.5,M.pad,20,-8.25,.01);   // 공장 부지 (x -106~146, z -64~47.5)
@@ -1240,6 +1268,29 @@ function buildPlant(){
    const ca=CS_DEF.filter(c=>c.tab==='A'),xa=ca[0].x+5.5,za=Math.min(...ca.map(c=>c.z)),zf=Math.max(...ca.map(c=>c.z))+5.5;
    conveyor([[xa,1.5,za],[xa,1.5,zf],[CM_DEF.find(d=>d.n==='6').x+4,hy,hz]],'clk',8,'C');}            // 3~5K 사일로 → 시멘트 밀 (2~6호 C/M)
   conveyor([[57,9,23],[55,19.4,30],[5,19.4,30]],'cem',12,'C');
+  // 14 삼척항: 바다 · 안벽 · 2부두(21·22)·3부두(31·32) · 부두 사일로 6기 · 선적기 · 외항 · 동해항 안내판
+  {const P_=DECO.P;
+   const wg=new THREE.PlaneGeometry(420,560,70,56).rotateX(-Math.PI/2);const water=new THREE.Mesh(wg,M.water);water.position.set(PORT.shore+210,.5,-10);water.receiveShadow=true;scene.add(water);
+   PORTFX.water=water;PORTFX.wy=Float32Array.from(wg.attributes.position.array);
+   flat(26,124,M.pad,159,-8,.012);                                                    // 항만 부지
+   box(P_,1.6,2.4,124,M.conc,PORT.shore-.8,-1.2,-8);                                 // 안벽
+   PORT.jets.forEach(j=>{box(P_,64,1.8,7,M.conc,PORT.shore+32,0,j.z);box(P_,64,.25,.25,M.steelD,PORT.shore+32,1.8,j.z-3.4);box(P_,64,.25,.25,M.steelD,PORT.shore+32,1.8,j.z+3.4);
+     conveyor([[163,3,j.z],[176,4.2,j.z],[232,4.2,j.z]],'cem',8,'P');});           // 부두 사일로 → 부두 벨트
+   conveyor([[57,19.4,33],[62,19.4,43],[152,19.4,43],[155.4,24.5,38]],'cem',14,'P');   // 구내 사일로 → 부두 사일로 (이송)
+   conveyor([[155.4,24.5,38],[155.4,24.5,PIER_DEF[0].z-3]],'cem',8,'P');
+   PIER_DEF.forEach(d=>{const g=grp(d.id);cyl(g,3.2,22,M.wall,160,0,d.z,28);cyl(g,3.26,.45,M.accent,160,13,d.z,28);cyl(g,.5,1.3,M.accent,160,22,d.z,20,3.2);});
+   BERTH_DEF.forEach(d=>{const g=grp(d.id),ez=d.jz+d.side*3.6;
+     for(let x=PORT.shore+8;x<PORT.shore+62;x+=6)box(g,1.2,1.4,.5,M.tire,x,.5,ez);              // 방충재
+     box(g,1.4,3.2,.6,M.accent,PORT.shore+4,1.8,d.jz+d.side*2.6);                            // 선석 번호판
+     const ld=new THREE.Group();ld.position.set(226,1.8,d.jz+d.side*1.2);g.add(ld);           // 선적기 (부두 위를 오감)
+     [-1.6,1.6].forEach(a=>box(ld,.6,8,.6,M.steelD,a,0,0));box(ld,4,1,1.4,M.accent,0,8,0);
+     const bm=box(ld,1.2,.9,9.6,M.steel,0,9,d.side*4.8);cyl(ld,.45,4,M.steelD,0,5.4,d.side*8,12);
+     const parts=[];for(let i=0;i<7;i++){const m=new THREE.Mesh(new THREE.BoxGeometry(.5,.5,.5),M.cem);m.visible=false;m.position.set(226,5,d.z);g.add(m);parts.push(m);}
+     LOADERS[d.id]={g:ld,parts,z:d.z};});
+   {const g=grp('ANCH');[[244,-64],[360,-64],[244,42],[360,42]].forEach(([x,z])=>{cyl(g,.9,2.2,M.ylw,x,0,z,12);cyl(g,.25,1.6,M.steelD,x,2.2,z,8);});}
+   {const g=grp('DHP');box(g,.4,6,.4,M.steelD,164,0,36);box(g,.4,6,.4,M.steelD,170,0,36);box(g,8,3.6,.4,M.accent,167,5,36);}   // 동해항 안내판 (누르면 동해항 정보)
+   for(let i=0;i<10;i++)SHIPS.push(shipMesh());
+  }
   // 울타리
   const fz=(x1,x2,z)=>{const L=x2-x1;box(scene,L,1.3,.14,M.fence,(x1+x2)/2,0,z);};
   const fx=(z1,z2,x)=>{box(scene,.14,1.3,z2-z1,M.fence,x,0,(z1+z2)/2);};
@@ -1248,11 +1299,109 @@ function buildPlant(){
   for(let x=-138;x<=150;x+=9)tree(x+((x*7)%3),59.5+((x*13)%2),1+((x*3)%3)*.08);
   for(let z=-60;z<=40;z+=9)tree(-112,z,1.05);
   for(let x=-100;x<=144;x+=10)tree(x,-70,.95);
-  for(let z=-60;z<=40;z+=11)tree(153,z,1);
   [[-26,40],[-6,45],[-56,16],[-64,22],[-84,12],[-50,12],[72,45.5],[86,45.5],[104,45.5],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
   // 굴뚝 연기
   // 앵커
   EQ.forEach(e=>{const b=new THREE.Box3().setFromObject(EQOBJ[e.id]);const c=b.getCenter(new THREE.Vector3());ANCHOR[e.id]=e.anchor?new THREE.Vector3(...e.anchor):new THREE.Vector3(c.x,b.max.y+1.5,c.z);EQOBJ[e.id].userData.box=b;});
+}
+
+/* 배: 선체(뱃머리 뾰족) · 해치 · 선실 · 굴뚝 — 길이는 선적량에 맞춰 늘임 */
+function shipMesh(){
+  const g=new THREE.Group(),L=48,B=10.5,H=4;
+  const sh=new THREE.Shape();sh.moveTo(-L/2,-B/2);sh.lineTo(L/2-B*.9,-B/2);sh.quadraticCurveTo(L/2,-B*.25,L/2,0);sh.quadraticCurveTo(L/2,B*.25,L/2-B*.9,B/2);sh.lineTo(-L/2,B/2);sh.lineTo(-L/2,-B/2);
+  const hull=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:H,bevelEnabled:false}).rotateX(-Math.PI/2),M.steelD);hull.position.y=-1.4;add(hull,g);
+  box(g,L*.9,.25,B*.94,M.steel,-1,2.6,0);
+  for(let i=0;i<5;i++)box(g,5.2,.7,B*.62,M.accent,-11+i*6.4,2.85,0);
+  box(g,6,4.6,B*.82,M.wall,-L/2+4.2,2.85,0);box(g,4,1.6,B*.98,M.wall2,-L/2+4.6,7.45,0);box(g,1.6,2.6,1.6,M.steelD,-L/2+1.6,7.45,0);
+  g.visible=false;scene.add(g);
+  return {g,key:null,x:0,z:0,h:0,path:[],fade:1,len:L};
+}
+const tday=s=>s?new Date(s):null;
+/* 지금 시각 기준 선박 상태 — 출하속보의 접안·착수·완료·출항 시각과 입항예정으로 판단 */
+function portPlan(now=new Date()){
+  const S=SOK,out=[];BERTH_DEF.forEach(d=>BERTH_ST[d.id]={ship:null});
+  if(!S)return out;
+  const bid=n=>{const d=BERTH_DEF.find(b=>b.n===n);return d?d.id:null;};
+  const etas=S.expected.filter(x=>x.port==='sc'&&x.eta).map(x=>({b:bid(x.berth),t:tday(x.eta)}));
+  S.vessels.filter(v=>v.port==='sc').forEach((v,i)=>{
+    const T=k=>tday(v.t&&v.t[k]),arr=T('접안'),st=T('착수'),dn=T('완료'),dnE=tday(v.doneEst),qty=v.qty||v.qtyPlan||null,b=bid(v.berth);
+    let dep=T('출항'),depEst=false;
+    if(!dep&&(dn||dnE)){const d0=dn||dnE,nx=etas.filter(x=>x.b===b&&x.t>d0).sort((a,c)=>a.t-c.t)[0];dep=nx?new Date(Math.max(+d0,nx.t-30*60e3)):new Date(+d0+12*36e5);depEst=true;}
+    let state,label,prog=null,loaded=null,th=v.th||null;
+    if(dep&&now>=dep){if(now-dep>30*60e3)return;state='depart';label=depEst?'출항 (추정)':'출항';}
+    else if(arr&&now<arr){state='anch';label='입항 대기';}
+    else if(dn&&now>=dn){state='done';label='선적 완료 · 출항 대기';prog=100;loaded=qty;}
+    else if(st&&now>=st){
+      if(!dn&&dnE&&now>=dnE){state='done';label='선적 완료 (추정)';prog=100;loaded=qty;}
+      else{state='load';label='선적 중';
+        if(!th&&v.load24!=null){const h24=(new Date(S.date+'T24:00')-st)/36e5;if(h24>.3)th=Math.round(v.load24/h24);}
+        loaded=th?(now-st)/36e5*th:v.load24;if(qty&&loaded!=null)loaded=Math.min(qty,loaded);prog=qty&&loaded!=null?loaded/qty*100:null;}}
+    else{state='berth';label='접안 · 선적 대기';}
+    out.push({key:'v'+i+v.name,src:'v',name:v.name,cargo:v.cargo,qty,state,label,berth:b,prog,loaded,th,dest:v.dest,note:v.note,arr,st,dn:dn||dnE,dnEst:!dn&&!!dnE,dep,depEst});
+  });
+  const busy=b=>out.some(o=>o.berth===b&&['berth','load','done','berthEst'].includes(o.state));
+  S.expected.filter(x=>x.port==='sc').slice().sort((a,b)=>String(a.eta).localeCompare(String(b.eta))).forEach((x,i)=>{
+    const eta=tday(x.eta),b=bid(x.berth);let state='anch',label='입항 예정';
+    if(eta&&now>=eta){if(b&&!busy(b)){state='berthEst';label='접안 (추정 · 새 속보 필요)';}else label='입항 대기 (선석 사용 중 · 추정)';}
+    out.push({key:'e'+i+x.name,src:'e',name:x.name,cargo:'',qty:null,state,label,berth:b,eta,note:x.note,shift:x.shift});
+  });
+  out.forEach(o=>{if(o.berth&&['berth','load','done','berthEst','depart'].includes(o.state)&&!(BERTH_ST[o.berth].ship&&BERTH_ST[o.berth].ship.state!=='depart'))BERTH_ST[o.berth].ship=o;});
+  return out;
+}
+/* 화면 반영: 선석·외항·동해항 값, 배 목표 위치 */
+let PORT_FIRST=true;
+function portUpdate(force){
+  const now=new Date();PORTV=portPlan(now);
+  BERTH_DEF.forEach(d=>{const e=E[d.id],b=BERTH_ST[d.id].ship,pp=e.params;
+    pp.prog.v=b&&b.prog!=null?clamp(b.prog,0,100):b&&b.state==='done'?100:0;pp.load.v=b&&b.loaded!=null?b.loaded:0;pp.th.v=b&&b.state==='load'&&b.th?b.th:0;});
+  const ex=PORTV.filter(o=>o.src==='e'&&o.state==='anch'&&o.eta),nx=ex.map(o=>o.eta).sort((a,b)=>a-b)[0];
+  const A=E.ANCH.params;A.use.v=BERTH_DEF.filter(d=>BERTH_ST[d.id].ship).length/BERTH_DEF.length*100;A.n.v=ex.length;A.next.v=nx?Math.max(0,(nx-now)/36e5):0;
+  const D=E.DHP.params,ev=dhEvents(),nd=ev.filter(x=>x.days>=0)[0];D.next.v=nd?nd.days:0;D.soon.v=nd?clamp((7-nd.days)/7*100,0,100):0;
+  D.clk.v=SOK&&SOK.stock.dhClk?SOK.stock.dhClk.sum||0:0;D.cem.v=SOK&&SOK.stock.dhCem?SOK.stock.dhCem.sum||0:0;
+  if(!THREEOK||!SHIPS.length)return;
+  const anch=[];let k=0;
+  const slots=PORTV.filter(o=>o.state!=='gone');
+  SHIPS.forEach(s=>{if(s.key&&!slots.some(o=>o.key===s.key)){s.key=null;s.g.visible=false;}});
+  slots.forEach(o=>{
+    let tgt;const bd=o.berth&&BERTH_DEF.find(d=>d.id===o.berth);
+    if(['berth','load','done','berthEst'].includes(o.state)&&bd)tgt=[PORT.shipX,bd.z,'b'];
+    else if(o.state==='depart'&&bd)tgt=[560,bd.z,'x'];
+    else{if(k>=8)return;tgt=[272+(k%2)*60,-50+Math.floor(k/2)*28,'a'];k++;}
+    let s=SHIPS.find(x=>x.key===o.key);
+    if(!s){s=SHIPS.find(x=>!x.key);if(!s)return;s.key=o.key;s.fade=1;
+      const L=o.qty?clamp(40+o.qty/1000*1.6,40,62):48;s.g.scale.set(L/48,1,1);s.len=L;
+      if(PORT_FIRST||force==='jump'){const st=o.state==='depart'?[PORT.shipX,bd?bd.z:0]:[tgt[0],tgt[1]];s.x=st[0];s.z=st[1];s.path=[];}
+      else{s.x=600;s.z=tgt[1];s.path=[];}}
+    s.o=o;s.g.userData.eq=tgt[2]==='a'?'ANCH':(o.berth||'ANCH');
+    const last=s.path.length?s.path[s.path.length-1]:[s.x,s.z];
+    if(Math.hypot(last[0]-tgt[0],last[1]-tgt[1])>.5){
+      if(tgt[2]==='b')s.path=[[252,tgt[1]],[tgt[0],tgt[1]]];
+      else if(tgt[2]==='x')s.path=[[252,s.z],[tgt[0],tgt[1]]];
+      else s.path=[[tgt[0],tgt[1]]];}
+  });
+  PORT_FIRST=false;
+}
+/* 동해항 일정 (입항·출항) — 오늘 기준 남은 날짜 */
+function dhEvents(){
+  if(!SOK)return [];const t0=new Date(todayStr()+'T00:00'),ev=[];
+  const push=(v,type,iso,day)=>{if(!iso)return;const d=new Date(iso.slice(0,10)+'T00:00');ev.push({name:v.name,cargo:v.cargo,qty:v.qty,berth:v.berth,dest:v.dest,type,iso,day,date:iso.slice(0,10),days:Math.round((d-t0)/864e5)});};
+  SOK.vessels.filter(v=>v.port==='dh').forEach(v=>{push(v,'입항',v.eta||(v.t&&v.t['접안']),v.etaDay);push(v,'출항',v.etd||(v.t&&v.t['출항']),v.etdDay);});
+  SOK.expected.filter(x=>x.port==='dh').forEach(x=>push({name:x.name,cargo:'',qty:null,berth:x.berth,dest:x.note},'입항',x.eta,false));
+  return ev.sort((a,b)=>a.iso.localeCompare(b.iso));
+}
+/* D-1 알림: 동해항 입항·출항 하루 전(그리고 당일)에 알람 목록 + 토스트 (토스트는 하루 한 번) */
+const PORT_NOTE=new Set();
+function portAlerts(){
+  let seen={};try{seen=JSON.parse(localStorage.getItem('b365-portnote')||'{}')||{};}catch(e){}
+  let ch=false;
+  dhEvents().filter(x=>x.days===1||x.days===0).forEach(x=>{
+    const key=`${x.name}|${x.type}|${x.date}`;if(PORT_NOTE.has(key))return;PORT_NOTE.add(key);
+    const dd=x.days===1?'D-1':'D-day',when=`${+x.date.slice(5,7)}/${+x.date.slice(8,10)}${x.day?'':' '+x.iso.slice(11,16)}`;
+    ALARMS.unshift({id:alarmSeq++,t:new Date(),eq:'DHP',k:'next',label:`${x.type} ${dd}`,val:`${x.name} · ${cargoKo(x.cargo)}${x.qty?' '+nf(x.qty)+' t':''}`,lim:`${when} ${x.type} 예정${x.berth?' · 선석 '+x.berth:''}${x.dest?' · '+x.dest:''}`,sev:'warn',ack:false,until:+new Date(x.date+'T23:59:59')});
+    ch=true;
+    const tk=todayStr();if(seen[key]!==tk){seen[key]=tk;const msg=`동해항 ${x.type} ${dd} · ${x.name} (${cargoKo(x.cargo)}) ${when}`;setTimeout(()=>toast(msg,'warn',12000),1500);}
+  });
+  if(ch){ALARMS.sort((a,b)=>b.t-a.t);updateBadges();try{localStorage.setItem('b365-portnote',JSON.stringify(seen));}catch(e){}}
 }
 
 /* 트럭 */
@@ -1348,12 +1497,12 @@ function stepTruck(t,dt){
 const cam={tx:0,tz:4,theta:.62,phi:.94,dist:190};
 const goal={...cam};
 let HOME={...cam};
-let curTab='all';try{const t=localStorage.getItem('b365-tab');if(t&&['all','A','B','C'].includes(t))curTab=t;}catch(e){}
+let curTab='all';try{const t=localStorage.getItem('b365-tab');if(t&&['all','A','B','C','P'].includes(t))curTab=t;}catch(e){}
 const inTab=(e,tab=curTab)=>tab==='all'||e.tab===tab;
 const truckInTab=t=>curTab==='all'||(curTab==='C'&&t.kind==='bct');
 function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
   let cx=20,cz=-2,size=224;
-  if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
+  if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)&&(curTab!=='all'||e.tab!=='P')).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
   const f=curTab==='all'?(m?1.3:1.08):(m?1.9:1.7);const d=clamp(size*f*Math.pow(Math.max(1,1.6/asp),.6),90,420);
   const rt=m?0:d*.14,bk=m?-d*.02:d*.04;
   return {tx:cx+Math.cos(th)*rt+Math.sin(th)*bk,tz:cz-Math.sin(th)*rt+Math.cos(th)*bk,theta:th,phi:.94,dist:d};}
@@ -1453,6 +1602,7 @@ function buildTags(){
   EQ.forEach(e=>{const b=document.createElement('button');b.type='button';b.className='tag'+(e.major?'':' mini');b.dataset.id=e.id;b.innerHTML=`<i></i><span>${e.name}</span><small></small>`;b.addEventListener('click',()=>select({type:'eq',id:e.id},{fly:true}));wrap.appendChild(b);TAG['eq'+e.id]=b;});
   {const c=document.createElement('div');c.id='blastCd';c.className='blastcd';c.setAttribute('role','status');c.setAttribute('aria-live','off');c.innerHTML='<b></b><span><em>광산 발파</em><small>49Q · 47Q · 45Q 동시</small></span>';c.dataset.hide='1';wrap.appendChild(c);}
   TRUCKS.forEach(t=>{const b=document.createElement('button');b.type='button';b.className='tag mini';b.innerHTML=`<span>${t.id}</span><small></small>`;b.addEventListener('click',()=>select({type:'truck',id:t.id}));wrap.appendChild(b);TAG['truck'+t.id]=b;});
+  SHIPS.forEach((s,i)=>{const b=document.createElement('button');b.type='button';b.className='tag mini shiptag';b.innerHTML='<span></span><small></small>';b.addEventListener('click',()=>{const id=s.g.userData.eq;if(id)select({type:'eq',id},{fly:true});});wrap.appendChild(b);TAG['ship'+i]=b;});
   updateTagClasses();
 }
 function updateTagClasses(){
@@ -1472,6 +1622,9 @@ function placeTags(){
     el.style.display='';el.style.transform=`translate(${((_v.x+1)/2*w).toFixed(1)}px,${((1-_v.y)/2*h).toFixed(1)}px) translate(-50%,-100%)`;};
   EQ.forEach(e=>put(TAG['eq'+e.id],ANCHOR[e.id]));
   TRUCKS.forEach(t=>{if(!t.g.visible){TAG['truck'+t.id].style.display='none';return;}put(TAG['truck'+t.id],new THREE.Vector3(t.x,5.6,t.z));});
+  SHIPS.forEach((s,i)=>{const b=TAG['ship'+i];if(!b)return;const show=s.key&&s.g.visible&&curTab==='P'&&(!isMobile()||s.o.state!=='anch');b.dataset.hide=show?'':'1';   // 휴대폰: 외항 대기 선박 이름표는 숨김
+    if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,nm=o.name,lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.src==='e'&&o.eta&&o.state==='anch'?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:o.label;
+      if(sp.textContent!==nm)sp.textContent=nm;if(sm.textContent!==lb)sm.textContent=lb;_v.set(s.x,9,s.z);put(b,_v);}else b.style.display='none';});
   const cd=$('#blastCd');if(cd){const show=BLAST.tb<1.5&&QRY_DEF.some(d=>EQOBJ[d.id]&&EQOBJ[d.id].visible),txt=BLAST.cd?String(BLAST.cd):'발파!';
     cd.dataset.hide=show?'':'1';
     if(BLAST.ph)QRY_DEF.forEach(d=>{const t=TAG['eq'+d.id],sm=t&&t.querySelector('small');if(sm&&sm.textContent!==BLAST.ph)sm.textContent=BLAST.ph;});
@@ -1528,6 +1681,20 @@ function frame(now){
       const dc=dark?'#7D7464':'#D6C9B1';
       F.dust.forEach(m=>{const u=m.userData,k=Math.min(1,tb/2.5),r=u.r*(.5+k*1.3);m.position.set(Math.cos(u.a)*r,-1.5+u.up*Math.min(tb,7)*1.4,Math.sin(u.a)*r);m.scale.setScalar(u.s*(.7+Math.min(tb,4)*.55));
         m.material.color.set(dc);m.material.opacity=(dark?.5:.62)*Math.min(1,tb*4)*Math.max(0,1-tb/9);});}});
+  if(PORTFX.water&&EQOBJ.ANCH){
+    if(!REDUCED&&(curTab==='all'||curTab==='P')){const a=PORTFX.water.geometry.attributes.position,o=PORTFX.wy,t=now/1000;for(let i=0;i<a.count;i++){const x=o[i*3],z=o[i*3+2];a.array[i*3+1]=.18*Math.sin(x*.09+t*1.1)+.12*Math.sin(z*.13-t*.8);}a.needsUpdate=true;}
+    const pv=curTab==='P'||curTab==='all';
+    SHIPS.forEach((s,i)=>{if(!s.key){s.g.visible=false;return;}
+      if(s.path.length&&!REDUCED){const [tx,tz]=s.path[0],dx=tx-s.x,dz=tz-s.z,d=Math.hypot(dx,dz),st=Math.min(d,dt*11);
+        if(d<.3){s.path.shift();}else{s.x+=dx/d*st;s.z+=dz/d*st;const h=Math.atan2(-dz,dx);let dr=h-s.h;while(dr>Math.PI)dr-=2*Math.PI;while(dr<-Math.PI)dr+=2*Math.PI;s.h+=dr*Math.min(1,dt*2.5);}}
+      else if(s.path.length){const [tx,tz]=s.path[s.path.length-1];s.x=tx;s.z=tz;s.path=[];}
+      if(s.o&&s.o.state==='depart'&&s.x>470){s.g.visible=false;return;}
+      s.g.visible=pv;s.g.position.set(s.x,REDUCED?0:.16*Math.sin(now/1300+i),s.z);s.g.rotation.set(REDUCED?0:.012*Math.sin(now/1700+i*2),s.h,REDUCED?0:.01*Math.sin(now/1100+i));});
+    BERTH_DEF.forEach((d,i)=>{const L=LOADERS[d.id];if(!L)return;const b=BERTH_ST[d.id]&&BERTH_ST[d.id].ship,ld=b&&b.state==='load'&&!REDUCED;
+      const sx=SHIPS.find(s=>s.o===b),there=sx&&!sx.path.length&&Math.abs(sx.x-PORT.shipX)<1;
+      L.g.position.x=ld&&there?PORT.shipX+12*Math.sin(now/9000+i):226;
+      L.parts.forEach((m,k)=>{m.visible=!!(ld&&there&&EQOBJ[d.id].visible);if(!m.visible)return;const f=((now/700)+k/L.parts.length)%1;m.position.set(L.g.position.x+(Math.random()-.5)*.6,7.2-f*4.6,d.z);});});
+  }
   SMOKE.forEach(s=>{const u=s.userData;s.visible=EQOBJ[u.kid].visible&&!isStopped(E[u.kid]);u.t=(u.t+dt*u.v)%1;const t=u.t,k=u.k;s.position.set(u.x+t*6*k,u.y+t*14*k,u.z-t*3*k);s.scale.setScalar(1+t*3.4*k);s.material.opacity=(dark?.32:.45)*u.o*(1-t);});
   if(bracket&&!REDUCED)M.line.opacity=.65+.35*Math.sin(now/260);
   renderer.render(scene,camera);
@@ -1563,6 +1730,30 @@ function supplyBlock(e){
   (e.tab?[e.tab]:['A','B']).forEach(L=>{h+=row(`OSP (${LINE_NM[L]})`,LINE_TXT[L],kind==='o'&&e.tab===L)+row('인출',OSP_DEF.find(o=>o.tab===L).pw.map(x=>x.slice(2)).join('·')+'호 P/W (Paddle Wheel)',kind==='p'&&e.tab===L)
     +row(`프리블렌딩 (${LINE_NM[L]})`,yd(L),kind==='y'&&e.tab===L)+row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M');});
   return `<div class="sect">원료 공급 흐름 <small>현장 제공 구성</small></div><dl class="kv">${h}</dl>`;
+}
+function portBlock(e){
+  const row=(k,v)=>`<div><dt>${k}</dt><dd style="white-space:normal;text-align:right;max-width:64%">${v}</dd></div>`,src=SOK?`출하속보 ${SOK.date}`:'출하속보 없음';
+  const tm=d=>d?`${md(d)} ${hhmm(d)}`:'—';
+  if(SLD[e.id]&&SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null)return `<div class="sect">출하속보 재고 <small>${src}</small></div><dl class="kv">${row('재고',nf(SOK.stock.sc[e.n])+' t')}${row('구내 사일로 합계',nf(SOK.stock.sc.sum||0)+' t')}</dl>`;
+  if(e.id.startsWith('PIER')){const q=QD&&QD.ssilo&&QD.ssilo[e.id];return `<div class="sect">부두 사일로 <small>${src}</small></div><dl class="kv">${row('재고',SOK&&SOK.stock.pier?nf(SOK.stock.pier[e.n]||0)+' t':'—')}${row('부두 6기 합계',SOK&&SOK.stock.pier?nf(SOK.stock.pier.sum||0)+' t':'—')}${row('용량',PIER_CAP?nf(PIER_CAP)+' t':'미확인 (알려 주시면 레벨로 표시)')}${q?row('최근 투입 (QMS)',`${q.mill?q.mill.slice(2)+'호 C/M · ':''}${esc(q.product||'')}`):''}</dl>`;}
+  if(e.berth){const b=BERTH_ST[e.id]&&BERTH_ST[e.id].ship;let h=`<div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
+    if(!b)h+=row('상태','공석');
+    else h+=row('선박',`<b>${esc(b.name)}</b> <span class="badge ${b.state==='load'?'s-act':b.state==='done'?'s-ok':'s-idle'}">${esc(b.label)}</span>`)+(b.cargo?row('화물',`${esc(cargoKo(b.cargo))} (${esc(b.cargo)})`):'')+row('선적량',b.qty?`${b.loaded!=null?nf(b.loaded)+' / ':''}${nf(b.qty)} t${b.src==='v'&&!SOK.vessels.find(v=>v.name===b.name&&v.qty)?' (계획)':''}`:'—')+(b.th?row('T/H',nf(b.th)+' t/h'+(b.state==='load'&&!SOK.vessels.find(v=>v.name===b.name&&v.th)?' (24시 선적량으로 추정)':'')):'')
+      +(b.src==='v'?row('접안 · 착수',`${tm(b.arr)} · ${tm(b.st)}`)+row('완료 · 출항',`${tm(b.dn)}${b.dnEst?' (추정)':''} · ${tm(b.dep)}${b.depEst?' (추정)':''}`)+row('양하지',esc([b.dest,b.note].filter(Boolean).join(' · '))||'—'):row('입항 예정',`${tm(b.eta)}${b.note?' · '+esc(b.note):''}`));
+    const nx=PORTV.filter(o=>o.src==='e'&&o.berth===e.id&&o!==b).slice(0,3);
+    h+=`</dl>${nx.length?`<div class="sect">다음 입항 예정</div><dl class="kv">${nx.map(o=>row(esc(o.name),`${tm(o.eta)}${o.note?' · '+esc(o.note):''}`)).join('')}</dl>`:''}`;
+    const dp=SOK?SOK.vessels.filter(v=>v.port==='sc'&&v.berth===e.berth&&v.t&&v.t['출항']&&new Date(v.t['출항'])<new Date()).slice(-2):[];
+    if(dp.length)h+=`<div class="sect">최근 출항</div><dl class="kv">${dp.map(v=>row(esc(v.name),`${tm(new Date(v.t['출항']))} · ${v.qty?nf(v.qty)+' t':''} → ${esc(v.dest||'')}`)).join('')}</dl>`;
+    return h;}
+  if(e.id==='ANCH'){const ex=PORTV.filter(o=>o.src==='e');return `<div class="sect">입항 예정 선박 <small>${src}</small></div><dl class="kv">${ex.length?ex.map(o=>row(`<b>${esc(o.name)}</b>`,`${tm(o.eta)} · ${o.berth?'#'+o.berth.slice(2):'선석 미정'}${o.shift?' (이동)':''}${o.note?' · '+esc(o.note):''}${o.state!=='anch'?` <span class="badge s-idle">${esc(o.label)}</span>`:''}`)).join(''):row('입항 예정','없음')}</dl>`;}
+  if(e.id==='DHP'){if(!SOK)return `<div class="note">출하속보(PDF)를 올리면 동해항 선박 일정이 나옵니다.</div>`;
+    const vs=SOK.vessels.filter(v=>v.port==='dh'),ev=dhEvents();
+    let h=`<div class="sect">동해항 선박 <small>${src}</small></div><dl class="kv">`+(vs.length?vs.map(v=>row(`<b>${esc(v.name)}</b>`,`${esc(cargoKo(v.cargo))}${v.qty?' '+nf(v.qty)+' t':''}${v.berth?' · 선석 '+v.berth:''}${v.dest?' · '+esc(v.dest):''}`)).join(''):row('선박','없음'))+'</dl>';
+    if(ev.length)h+=`<div class="sect">입·출항 일정</div><dl class="kv">${ev.map(x=>row(`${x.type} · ${esc(x.name)}`,`${+x.date.slice(5,7)}/${+x.date.slice(8,10)}${x.day?'':' '+x.iso.slice(11,16)} <span class="badge ${x.days<=1&&x.days>=0?'s-warn':'s-idle'}">${x.days>0?'D-'+x.days:x.days===0?'D-day':'지남'}</span>`)).join('')}</dl>`;
+    const ck=SOK.ship['C/K'],mv=(SOK.move||[]).find(m=>/동해/.test(m.name)&&/크링커|클링커/.test(m.name));
+    h+=`<div class="sect">동해공장 재고 · 이송</div><dl class="kv">${row('클링커 재고',SOK.stock.dhClk?nf(SOK.stock.dhClk.sum||0)+' t':'—')}${row('시멘트 재고',SOK.stock.dhCem?nf(SOK.stock.dhCem.sum||0)+' t':'—')}${ck&&ck.dhC!=null?row('수출 클링커 (C/K) 누계',nf(ck.dhC)+' t'):''}${mv&&mv.c!=null?row('동해 → 삼척 클링커 이송 누계',nf(mv.c)+' t'):''}</dl>`;
+    return h;}
+  return '';
 }
 function routeBlock(e){
   const nm=id=>E[id]?E[id].name:(id&&id.startsWith('PIER')?'부두 '+id.slice(4)+'호':id),row=(k,v)=>`<div><dt>${k}</dt><dd style="white-space:normal;text-align:right;max-width:60%">${v}</dd></div>`;
@@ -1636,7 +1827,7 @@ function renderDetail(){
     <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
     ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?`QMS 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
-    ${routeBlock(e)}${supplyBlock(e)}
+    ${routeBlock(e)}${supplyBlock(e)}${portBlock(e)}
     ${e.kiln?chemBlock(e.id):''}
     ${e.id==='LAB'?`<div class="sect">28일 강도 예측 <small>가상 모델</small></div><dl class="kv"><div><dt>28일 압축강도 (${cement().m28?'실측':'예측'})</dt><dd class="num">${cement().s28==null?'—':nf(cement().s28,1)}<small>MPa</small><span class="lim">KS L 5201 1종 42.5 이상</span></dd></div></dl>`:''}
     ${smp.length?`<div class="sect">관련 시료</div><dl class="kv">${smp.map(x=>`<div><dt>${x.id} · ${x.what}</dt><dd><span class="badge ${SMP_BADGE[x.st]}">${x.st}</span></dd></div>`).join('')}</dl>`:''}
@@ -1767,6 +1958,26 @@ function ksEval(prod,r=perRange()){
       fail:ks&&n?vs.filter(v=>!pass(v)).length:null,out:ih&&n?vs.filter(v=>!inr(v)).length:null};
   }).filter(x=>x.n||x.ks||x.ih);
 }
+function portKpis(){
+  const S=SOK,src=S?`출하속보 ${S.date.slice(5).replace('-','/')}`:'출하속보 없음',old=S?Math.round((new Date(todayStr())-new Date(S.date))/864e5):0,stale=old>2?` · ${old}일 지난 속보`:'';
+  const occ=BERTH_DEF.filter(d=>BERTH_ST[d.id]&&BERTH_ST[d.id].ship),ld=occ.filter(d=>BERTH_ST[d.id].ship.state==='load');
+  const ex=PORTV.filter(o=>o.src==='e'&&o.state==='anch'&&o.eta).sort((a,b)=>a.eta-b.eta),nx=ex[0];
+  const c1={key:'portB',ic:'ship',l:'삼척항 선석',v:S?String(occ.length):'—',u:'/ 4 접안',d:ld.length?`선적 중 ${ld.length}척`:'',dc:'up',
+    s:S?(nx?`다음 입항 ${esc(nx.name)} ${md(nx.eta)} ${hhmm(nx.eta)}${nx.berth?' #'+nx.berth.slice(2):''} · 대기 ${ex.length}척`:'입항 예정 없음')+stale:'데이터 창에서 출하속보(PDF)를 올려 주세요',
+    tip:`출하속보의 선박 표(접안·착수·완료·출항)와 입항예정 선박으로 지금 시각의 선석 상태를 계산합니다. 속보 이후 상황은 추정입니다. ${src}`};
+  const sea=S&&S.ship['해송']||{},c2={key:'portS',ic:'chart',l:'해송 출하 (삼척)',v:S&&sea.scD!=null?nf(sea.scD):'—',u:'t',d:S&&sea.scN?`${sea.scN}척`:'',dc:'up',
+    s:S?`${S.date.slice(5).replace('-','/')} 일계 · 누계 ${sea.scC!=null?nf(sea.scC)+' t':'—'} · 육송 ${S.ship['육송']&&S.ship['육송'].scD!=null?nf(S.ship['육송'].scD)+' t':'—'}`:'—',tip:`출하속보 ‘2. 출하’ 표의 해송 소계(삼척). ${src}`};
+  const st=S&&S.stock||{},c3={key:'portP',ic:'silo',l:'부두 사일로 재고',v:st.pier&&st.pier.sum!=null?nf(st.pier.sum):'—',u:'t',
+    s:S?`6기 · 구내 ${st.sc&&st.sc.sum!=null?nf(st.sc.sum)+' t':'—'} · 삼척 합계 ${st.total!=null?nf(st.total)+' t':'—'}`:'—',tip:`출하속보 ‘1. 재고’ 표의 삼척 부두 사일로 1~6호. ${src}`};
+  const dv=S?[...S.vessels.filter(v=>v.port==='dh'),...S.expected.filter(x=>x.port==='dh').map(x=>({name:x.name,cargo:'',qty:null,berth:x.berth,dest:x.note,eta:x.eta}))]:[];
+  const opts=dv.length?dv.map((v,i)=>[String(i),`${v.name}${v.cargo?' · '+cargoKo(v.cargo):''}`]):[['0','일정 없음']],val=kpick('portDH',opts,'0'),v=dv[+val];
+  const ev=v?dhEvents().filter(x=>x.name===v.name&&x.days>=0):[],e0=ev[0];
+  const c4={key:'portDH',ic:'anchor',l:'동해항',u:v&&v.qty?'t':'',sel:{opts,val,aria:'동해항 선박 선택'},
+    v:v?(v.qty?nf(v.qty):'—'):'—',d:e0?(e0.days>0?'D-'+e0.days:'D-day'):'',dc:e0&&e0.days<=1?'wn':'up',
+    s:v?`${cargoKo(v.cargo)}${e0?` · ${e0.type} ${+e0.date.slice(5,7)}/${+e0.date.slice(8,10)}`:''}${v.berth?' · 선석 '+v.berth:''}${v.dest?' · '+esc(v.dest):''}`:S?'동해항 선박 일정 없음':'출하속보 없음',
+    tip:`동해항 선박(수출 클링커·유연탄·Pet-coke 등). 입항일·출항일 하루 전에 알림이 뜹니다. 동해 클링커 재고 ${st.dhClk?nf(st.dhClk.sum||0):'—'} t · 시멘트 ${st.dhCem?nf(st.dhCem.sum||0):'—'} t. ${src}`};
+  return [c1,c2,c3,c4];
+}
 function shipCard(prod){
   const key='ship'+prod,r=perRange(),opts=SHIP_ITEMS.map(x=>[x[0],x[1]]),val=kpick(key,opts,'s28'),it=KS_ITEM[val],nm=SHIP_ITEMS.find(x=>x[0]===val)[1];
   const e=ksEval(prod,r).find(x=>x.it.f===val)||{it,n:0,ks:(CFG.ks[prod]||{})[val]||null};
@@ -1865,6 +2076,7 @@ function kpiCards(rep){
   const now=c=>Object.assign(c,{s:'현재 · '+c.s});
   if(!rep&&(curTab==='A'||curTab==='B')){const L=curTab,k=lineKpis(L);return [prodCard(L),now(k[1]),fcCard(L),now(k[3])];}
   if(!rep&&curTab==='C'){const k=cementKpis();return [now(k[0]),now(k[1]),k[2],k[3],k[4]];}
+  if(!rep&&curTab==='P')return portKpis();
   if(rep){REPF=true;try{return kpiHTML([prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')].map(c=>{delete c.sel;return c;}));}finally{REPF=false;}}
   return [prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')];
 }
@@ -2081,7 +2293,7 @@ function renderAlarms(){
 function updateBadges(){const n=ALARMS.filter(a=>!a.ack).length;$$('[data-alarm-badge]').forEach(b=>{b.textContent=n;b.hidden=!n;});$('#bellDot').hidden=!n;}
 
 /* 토스트 */
-function toast(msg,sev='ok'){const w=$('#toasts');const t=document.createElement('div');t.className='toast';t.innerHTML=`<i style="background:var(--${sev==='act'?'accent':sev})"></i>${esc(msg)}`;w.appendChild(t);while(w.children.length>3)w.firstChild.remove();setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),320);},3600);}
+function toast(msg,sev='ok',ms=3600){const w=$('#toasts');const t=document.createElement('div');t.className='toast';t.innerHTML=`<i style="background:var(--${sev==='act'?'accent':sev})"></i>${esc(msg)}`;w.appendChild(t);while(w.children.length>3)w.firstChild.remove();setTimeout(()=>{t.classList.add('out');setTimeout(()=>t.remove(),320);},ms);}
 
 /* =========================================================
    시뮬레이션 틱 (2초)
@@ -2117,6 +2329,7 @@ function tick(){
       const st=pStatus(p);if(RANK[st]>RANK[p.prev]){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]}`,st);}p.prev=st;});
   }
   const d=E.DSP.params;if(d.plan.v>0)d.prog.v=d.ship.v/d.plan.v*100;
+  portUpdate();portAlerts();
   renderAll();
 }
 function renderAll(){
@@ -2227,7 +2440,7 @@ function backToDefault(){const d=defaultQms();try{localStorage.removeItem('b365-
 async function serverInit(){
   if(location.protocol==='file:')return false;
   try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return true;}if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;}catch(e){return false;}
-  await loadMe();await pullCfg();await pullServer(true);setInterval(pollServer,20000);renderAll();return true;
+  await loadMe();await pullCfg();await pullServer(true);await pullSokbo(true);setInterval(pollServer,20000);renderAll();return true;
 }
 const ROLE_KO={admin:'관리자',editor:'편집',viewer:'뷰어'};
 function toLogin(){location.replace('login');}
@@ -2256,8 +2469,28 @@ async function pollServer(){
     if(SERVER.me&&SERVER.me.role==='admin')loadMe();
     checkPageVersion(s);
     if(s.cfg!==undefined&&s.cfg!==SERVER.cfg&&$('#cfgModal').hidden)await pullCfg();
-    if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}}
+    if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}
+    if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
+}
+/* ---------- 출하속보 (PDF → 삼척항·동해항·사일로 재고) ---------- */
+function defaultSokbo(){try{return JSON.parse($('#sokboDefault').textContent||'null');}catch(e){return null;}}
+function sokStock(){
+  if(!SOK)return;const S=SOK.stock||{};
+  SL_DEF.forEach(d=>{const v=S.sc&&S.sc[d.n];if(v==null)return;const e=E[d.id],p=e.params.level,lv=clamp(v/d.cap*100,0,100);p.v=p.base=p.target=lv;e.params.stock.v=v;
+    const st=pStatus(p);if(RANK[st]>0&&!ALARMS.some(a=>a.eq===e.id&&a.k==='level'&&!a.ack))pushAlarm(e,'level',p,st);p.prev=st;});   // 속보 재고로 바뀐 레벨: 알람 목록에만 (토스트 연속 표시 방지)
+  const mx=Math.max(1,...PIER_DEF.map(d=>(S.pier&&S.pier[d.n])||0));
+  PIER_DEF.forEach(d=>{const v=(S.pier&&S.pier[d.n])||0,pp=E[d.id].params;pp.stock.v=v;pp.rel.v=PIER_CAP?clamp(v/PIER_CAP*100,0,100):v/mx*100;});
+}
+function applySokbo(d,meta,o={}){
+  if(!d||d.kind!=='sokbo'||!/^\d{4}-\d\d-\d\d$/.test(d.date||''))return false;
+  SOK=d;SOKMETA=meta||{};sokStock();portUpdate(o.jump?'jump':undefined);portAlerts();if(!o.quiet)renderAll();return true;
+}
+function restoreSokbo(){try{const t=localStorage.getItem('b365-sokbo');if(!t)return false;const o=JSON.parse(t);return applySokbo(o.sokbo,o.meta);}catch(e){return false;}}
+async function pullSokbo(first){
+  try{const r=await fetch('api/sokbo',{cache:'no-store',credentials:'same-origin'});if(r.status===404||r.status===401)return;if(!r.ok)throw new Error();
+    const j=await r.json();if(applySokbo(j.sokbo,j.meta)){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${j.sokbo.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
+  catch(e){}
 }
 function restoreLocal(){try{const t=localStorage.getItem('b365-qms');if(!t)return false;const o=JSON.parse(t);if(o&&o.qms&&o.qms.v===QMS.VERSION){applyQms(o.qms,o.meta);return true;}}catch(e){}return false;}
 
@@ -2269,8 +2502,11 @@ async function handleFiles(list){
   const files=[...list];const name=files.map(f=>f.name).join(', ');
   PENDING={fileName:name,busy:true};openModal();
   try{
-    if(files.length!==1)throw new Error('QMS 통합 양식 엑셀 파일 1개를 올려 주세요.');
-    const f=files[0];if(!/\.xlsx$/i.test(f.name))throw new Error(/\.xls[mb]?$/i.test(f.name)?`${f.name}: 이 형식은 읽을 수 없습니다. “Excel 통합 문서(.xlsx)”로 다시 저장해 주세요.`:`${f.name}: 엑셀(.xlsx) 파일만 올릴 수 있습니다.`);
+    if(files.length!==1)throw new Error('QMS 통합 양식 엑셀(.xlsx) 또는 출하속보(PDF) 파일 1개를 올려 주세요.');
+    const f=files[0];
+    if(/\.pdf$/i.test(f.name)){if(f.size>10*1024*1024)throw new Error('PDF가 너무 큽니다 (최대 10MB).');const t0=performance.now();const r=await SOKBO.read(await f.arrayBuffer());
+      PENDING={kind:'sokbo',fileName:name,S:r.data,warn:r.warn||[],ms:Math.round(performance.now()-t0)};renderDataModal();return;}
+    if(!/\.xlsx$/i.test(f.name))throw new Error(/\.xls[mb]?$/i.test(f.name)?`${f.name}: 이 형식은 읽을 수 없습니다. “Excel 통합 문서(.xlsx)”로 다시 저장해 주세요.`:`${f.name}: QMS 엑셀(.xlsx) 또는 출하속보(PDF)만 올릴 수 있습니다.`);
     if(f.size>MAX_FILE)throw new Error('파일이 너무 큽니다 (최대 40MB).');
     const t0=performance.now();const sheets=await QMS.readXlsx(await f.arrayBuffer());const Q=QMS.build(sheets,{down:CFG.down});
     PENDING={fileName:name,Q,ms:Math.round(performance.now()-t0)};
@@ -2283,6 +2519,7 @@ function statHTML(){
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
   h+=`<div class="row"><span>화면 버전</span><b class="num">__B365_BUILD__</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
+  h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
   h+=`<div class="row"><span>공유 방식</span><b>${SERVER?(SERVER.ok===false?'팀 공유 서버 연결 끊김 · 재시도 중':'팀 공유 서버 연결됨 · 20초마다 확인')+(SERVER.watch?' · 공유 폴더 자동 읽기':''):'이 PC 브라우저에만 반영'}</b></div></div>`;
@@ -2293,11 +2530,24 @@ function renderDataModal(){
   const b=$('#dmBody');
   let h=statHTML();
   if(!PENDING){
-    h+=`<label class="drop" id="drop" tabindex="0">${ic('upload')}<b>QMS 통합 양식 엑셀(.xlsx)을 끌어다 놓으세요</b><small>또는 눌러서 파일 선택 · LIMS에서 받은 결과를 양식 시트에 붙여넣은 파일</small><input type="file" id="dmFile" accept=".xlsx" hidden></label>
+    h+=`<label class="drop" id="drop" tabindex="0">${ic('upload')}<b>QMS 엑셀(.xlsx) 또는 출하속보(PDF)를 끌어다 놓으세요</b><small>또는 눌러서 파일 선택 · QMS: LIMS 결과를 양식에 붙여넣은 파일 · 출하속보: 엑셀에서 PDF로 저장한 일일 속보</small><input type="file" id="dmFile" accept=".xlsx,.pdf" hidden></label>
     <div class="note">${ic('file','')} 양식: <a class="lnk" href="업로드양식.xlsx" download>업로드양식.xlsx</a> (화면 파일과 같은 폴더) · 원료·잔사·킬른(DCS)·클링커·클링커일일·시멘트(밀 운전 DCS)·시멘트밀·출하시멘트·인수검사 시트. 필요한 시트만 채워도 됩니다. 파일은 이 PC에서 읽고 ${SERVER?'팀 공유 서버에는 집계 결과만 저장합니다.':'외부로 보내지 않습니다.'}</div>`;
     if(!SERVER)h+=`<div class="note">팀이 같은 데이터를 보려면 사내 PC 한 대에서 <b>server.py</b>를 실행하고 그 주소(예: http://PC이름:8365)로 접속하세요.</div>`;
     if(SERVER&&!canUp())h+=`<div class="note">${ic('info','')} <b>뷰어 권한</b>은 보기만 할 수 있습니다. 데이터를 올리려면 관리자에게 <b>편집</b> 권한을 요청하세요.</div>`;
     if(!SERVER&&QMETA.source!=='embedded')h+=`<div class="acts"><button class="btn ghost" type="button" id="dmSim">내장 기본 데이터로 돌아가기</button></div>`;
+  }else if(PENDING.kind==='sokbo'){
+    const P=PENDING,S=P.S,st=S.stock||{},vs=S.vessels||[],ex=S.expected||[],sea=(S.ship||{})['해송']||{},land=(S.ship||{})['육송']||{};
+    const tt=k=>st[k]&&st[k].sum!=null?nf(st[k].sum)+' t':'없음';
+    h+=`<div class="sect">출하속보 읽기 결과 <small>${esc(P.fileName)}${P.ms?` · ${(P.ms/1000).toFixed(1)}초`:''}</small></div><div class="msgs">
+      <div class="msg ok">${ic('clock')}<span>속보 날짜 <b>${esc(S.date)}</b>${S.weather?' · '+esc(S.weather):''}${S.prod&&S.prod.clk!=null?` · 클링커 생산 ${nf(S.prod.clk)} t`:''}${S.prod&&S.prod.cemSC!=null?` · 시멘트 ${nf(S.prod.cemSC)} t`:''}</span></div>
+      <div class="msg ${st.sc?'ok':''}">${ic(st.sc?'check':'info')}<span>사일로 재고 · 삼척 구내 <b>${tt('sc')}</b> · 부두 <b>${tt('pier')}</b> · 동해 시멘트 ${tt('dhCem')} · 동해 클링커 ${tt('dhClk')}</span></div>
+      <div class="msg ${vs.length?'ok':''}">${ic(vs.length?'check':'info')}<span>선박 · 삼척항 <b>${vs.filter(v=>v.port==='sc').length}척</b> · 동해항 <b>${vs.filter(v=>v.port==='dh').length}척</b> · 입항 예정 <b>${ex.length}척</b></span></div>
+      <div class="msg ok">${ic('chart')}<span>출하 일계 · 해송 ${sea.scD!=null?nf(sea.scD)+' t ('+(sea.scN||0)+'척)':'-'} · 육송 ${land.scD!=null?nf(land.scD)+' t ('+(land.scN||0)+'대)':'-'}</span></div>
+      ${(P.warn||[]).map(x=>`<div class="msg">${ic('info')}<span>${esc(x)}</span></div>`).join('')}</div>`;
+    const can=canUp();
+    if(!can)h+=`<div class="msg err">${ic('alert')}<span>뷰어 권한은 팀에 공유할 수 없습니다. 관리자에게 편집 권한을 요청하세요.</span></div>`;
+    if(can&&SERVER)h+=`<div class="field"><label for="dmPw">업로드 확인 · 본인 비밀번호</label><input id="dmPw" type="password" autocomplete="current-password" maxlength="64"></div>`+(SERVER.needKey?`<div class="field"><label for="dmKey">서버 업로드 암호</label><input id="dmKey" type="password" maxlength="64"></div>`:'');
+    h+=`<div class="acts"><button class="btn ghost" type="button" id="dmCancel">다른 파일 고르기</button>${can?`<button class="btn" type="button" id="dmApply">${SERVER?'팀에 공유하고 적용':'이 화면에 적용'}</button>`:''}</div>`;
   }else if(PENDING.busy){
     h+=`<div class="sect">읽는 중 <small>${esc(PENDING.fileName)}</small></div><div class="note">큰 파일은 몇 초 걸립니다 (시트당 1만 행 이상).</div>`;
   }else{
@@ -2323,6 +2573,7 @@ function renderDataModal(){
   const ap=$('#dmApply');if(ap)ap.onclick=applyPending;
 }
 async function applyPending(){
+  if(PENDING&&PENDING.kind==='sokbo')return applySokboPending();
   const P=PENDING,btn=$('#dmApply');if(!P||!P.Q)return;btn.disabled=true;
   if(SERVER){
     const pw=$('#dmPw')?.value||'';if(!pw){btn.disabled=false;toast('업로드하려면 본인 비밀번호를 입력하세요','warn');$('#dmPw')?.focus();return;}
@@ -2338,6 +2589,21 @@ async function applyPending(){
     closeModal();toast('QMS 데이터를 화면에 적용했습니다','ok');
   }
 }
+async function applySokboPending(){
+  const P=PENDING,btn=$('#dmApply');if(!P||!P.S)return;btn.disabled=true;
+  if(SERVER){
+    const pw=$('#dmPw')?.value||'';if(!pw){btn.disabled=false;toast('업로드하려면 본인 비밀번호를 입력하세요','warn');$('#dmPw')?.focus();return;}
+    btn.textContent='올리는 중…';
+    try{const r=await fetch('api/sokbo',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Upload-Key':$('#dmKey')?.value||''},body:JSON.stringify({sokbo:P.S,password:pw,meta:{fileName:P.fileName}})});
+      const j=await r.json().catch(()=>({}));if(r.status===401&&j.login){toLogin();return;}if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));
+      SERVER.sokbo=j.meta.version;applySokbo(j.sokbo||P.S,j.meta);closeModal();toast(`출하속보 ${P.S.date}를 팀에 공유했습니다`,'ok');}
+    catch(e){btn.disabled=false;btn.textContent='팀에 공유하고 적용';toast(e.message==='Failed to fetch'?'팀 공유 서버에 연결할 수 없습니다':(e.message||'업로드하지 못했습니다'),'bad');}
+  }else{
+    const meta={fileName:P.fileName,uploadedBy:'이 PC',uploadedAt:new Date().toISOString(),source:'local'};
+    applySokbo(P.S,meta);try{localStorage.setItem('b365-sokbo',JSON.stringify({sokbo:P.S,meta}));}catch(e){}
+    closeModal();toast(`출하속보 ${P.S.date}를 화면에 적용했습니다`,'ok');
+  }
+}
 function setupData(){
   $('#dataBtn').onclick=openModal;
   $('#uOut').onclick=logout;
@@ -2347,7 +2613,8 @@ function setupData(){
   addEventListener('dragover',e=>{if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files'))e.preventDefault();});
   addEventListener('drop',e=>{if(e.dataTransfer&&e.dataTransfer.files.length){e.preventDefault();handleFiles(e.dataTransfer.files);}});
   applyQms(defaultQms(),DEFAULT_META,{quiet:true});
-  serverInit().then(ok=>{if(!ok&&restoreLocal())toast('이 PC에 올렸던 QMS 데이터를 불러왔습니다','act');});
+  applySokbo(defaultSokbo(),{source:'embedded',fileName:'내장 예시'},{quiet:true,jump:true});
+  serverInit().then(ok=>{if(!ok){if(restoreLocal())toast('이 PC에 올렸던 QMS 데이터를 불러왔습니다','act');restoreSokbo();}});
 }
 
 /* =========================================================

@@ -14,6 +14,8 @@ HERE = Path(__file__).resolve().parent
 CDN = '<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>'
 QMS_TAG = '<script src="qms.js"></script>'
 DEF_TAG = '<script id="qmsDefault" type="application/json">null</script>'
+SOK_TAG = '<script src="sokbo.js"></script>'
+SOK_DEF = '<script id="sokboDefault" type="application/json">null</script>'
 
 
 def safe(js: str) -> str:
@@ -23,13 +25,18 @@ def safe(js: str) -> str:
 src = (HERE / "src.html").read_text(encoding="utf-8")
 BUILD = (dt.datetime.now(dt.timezone(dt.timedelta(hours=9)))).strftime("%Y-%m-%d %H:%M")   # 한국 시각
 src = src.replace("__B365_BUILD__", BUILD).replace("<title>", f'<meta name="b365-build" content="{BUILD}">\n<title>', 1)
-for tag in (CDN, QMS_TAG, DEF_TAG):
+for tag in (CDN, QMS_TAG, DEF_TAG, SOK_TAG, SOK_DEF):
     assert tag in src, f"src.html 에서 {tag[:40]}… 를 찾지 못했습니다"
 qms = (HERE / "qms.js").read_text(encoding="utf-8")
 dflt = HERE / "qms_default.json"
 data = json.dumps(json.loads(dflt.read_text(encoding="utf-8")), ensure_ascii=False, separators=(",", ":")) if dflt.exists() else "null"
 body = (src.replace(QMS_TAG, "<script>\n" + safe(qms) + "\n</script>")
            .replace(DEF_TAG, '<script id="qmsDefault" type="application/json">' + data.replace("</", "<\\/") + "</script>"))
+sok = (HERE / "sokbo.js").read_text(encoding="utf-8")
+sdf = HERE / "sokbo_default.json"   # 내장 예시 출하속보 (PDF 업로드 전 화면)
+sdata = json.dumps(json.loads(sdf.read_text(encoding="utf-8")), ensure_ascii=False, separators=(",", ":")) if sdf.exists() else "null"
+body = (body.replace(SOK_TAG, "<script>\n" + safe(sok) + "\n</script>")
+            .replace(SOK_DEF, '<script id="sokboDefault" type="application/json">' + sdata.replace("</", "<\\/") + "</script>"))
 
 LOGO_IMG = '<span class="logo co"><img src="logo.png" alt="삼표시멘트"></span>'
 (HERE / "artifact.html").write_text(body.replace(LOGO_IMG, '<span class="logo" data-ic="cube"></span>'), encoding="utf-8")   # 미리보기에는 회사 로고 대신 기본 아이콘
