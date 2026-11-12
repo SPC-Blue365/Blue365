@@ -124,6 +124,13 @@ a{color:inherit;text-decoration:none}
 .tag i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
 .tag.s-warn i{background:var(--warn)} .tag.s-bad i{background:var(--bad)} .tag.s-none i,.tag.s-stop i{background:var(--fg3)}
 .tag small{font-weight:500;color:var(--fg3)}
+.blastcd{position:absolute;left:0;top:0;display:flex;align-items:center;gap:10px;padding:8px 16px 8px 8px;border-radius:999px;background:var(--card);color:var(--fg);box-shadow:0 6px 20px rgba(0,0,0,.14);pointer-events:none;white-space:nowrap}
+.blastcd b{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--warn);color:#fff;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;animation:cdpop .45s cubic-bezier(.2,.8,.2,1)}
+.blastcd.near b{background:var(--bad)}
+.blastcd.go b{width:auto;padding:0 12px;border-radius:999px;background:var(--bad);font-size:16px}
+.blastcd span{display:flex;flex-direction:column;line-height:1.25}.blastcd em{font-style:normal;font-weight:700;font-size:14px}.blastcd small{font-size:12px;color:var(--fg3)}
+@keyframes cdpop{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.blastcd b{animation:none}}
 .tag.sel{background:var(--accent);color:var(--on-accent);z-index:2}
 .tag.sel small{color:var(--on-accent);opacity:.85}
 .tag.sel i{background:var(--on-accent)}
@@ -1015,12 +1022,12 @@ const M={};
 let THREEOK=!!window.THREE;
 let renderer,scene,camera,hemi,sun,raycaster,pointer;
 const EQOBJ={}, ANCHOR={}, TRUCKS=[], FLOWS=[], SMOKE=[];
-/* 광산 발파: 매 분 한 번, 49Q → 47Q → 45Q 차례 (시계 기준이라 모든 화면이 같은 때 발파)
-   0~3초 발파 준비(운반 정지) · 3초 발파(섬광·비석·충격파·분진) · 12초까지 분진 확인 → 덤프트럭 운반 재개 */
-const BLAST={T:60,WARN:3,HOLD:12,q:null,ph:'',hold:false,tb:-1};
-let BLASTFX=null;
-function blastUpdate(now=Date.now()){const c=(now/1000)%BLAST.T;BLAST.q=QRY_DEF[Math.floor(now/1000/BLAST.T)%QRY_DEF.length].id;BLAST.tb=c-BLAST.WARN;
-  BLAST.hold=c<BLAST.HOLD;BLAST.ph=c<BLAST.WARN?'발파 준비':c<BLAST.WARN+4?'발파':c<BLAST.HOLD?'분진 확인':'';}
+/* 광산 발파: 매 분 49Q·47Q·45Q 동시 발파 (시계 기준이라 모든 화면이 같은 때)
+   매 분 0초부터 10초 카운트다운(운반 정지) → 10초 발파(섬광·비석·충격파·분진) → 19초까지 분진 확인 → 덤프트럭 운반 재개 */
+const BLAST={T:60,WARN:10,HOLD:19,ph:'',hold:false,tb:-1,cd:0};
+let BLASTFX=[];
+function blastUpdate(now=Date.now()){const c=(now/1000)%BLAST.T;BLAST.tb=c-BLAST.WARN;BLAST.cd=c<BLAST.WARN?Math.ceil(BLAST.WARN-c):0;
+  BLAST.hold=c<BLAST.HOLD;BLAST.ph=c<BLAST.WARN?`발파 ${BLAST.cd}초 전`:c<BLAST.WARN+4?'발파':c<BLAST.HOLD?'분진 확인':'';}
 const KILNS=[],DECO={};let bracket=null,rel=[];
 
 const BEACONS=[],PWW=[];
@@ -1107,17 +1114,17 @@ function buildPlant(){
   // 주차장
   for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-40+i*3.2,37.5,.07);
 
-  // 발파 효과 (광산 위치로 옮겨 가며 씀)
-  {const g=new THREE.Group();g.visible=false;scene.add(g);
+  // 발파 효과 (광산마다 한 벌, 같은 때 터짐)
+  QRY_DEF.forEach((qd,qi)=>{const g=new THREE.Group();g.visible=false;g.position.set(-84,5.5,qd.z-.5);scene.add(g);
    const flash=new THREE.Sprite(new THREE.SpriteMaterial({map:GLOWTEX,color:'#FFC46B',transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));flash.raycast=()=>{};g.add(flash);
    const light=new THREE.PointLight('#FFB347',0,60,2);light.position.y=3;g.add(light);
    const ring=new THREE.Mesh(new THREE.RingGeometry(.85,1.25,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:'#EADFCB',transparent:true,depthWrite:false}));ring.position.y=-5.3;ring.raycast=()=>{};g.add(ring);
    const deb=[],dust=[];
    for(let i=0;i<24;i++){const r=.6+((i*37)%10)/14,m=new THREE.Mesh(new THREE.BoxGeometry(r,r*.8,r*.9),i%2?M.rock2:M.rock);m.raycast=()=>{};
-     const a=i*2.39996,sp=3.5+((i*53)%10)*.6,vy=9+((i*71)%10)*1.1;m.userData={vx:Math.cos(a)*sp,vz:Math.sin(a)*sp,vy,tl:(vy+Math.sqrt(vy*vy+4*9*5.1))/18,rx:1+(i%5),ry:2+(i%3)};g.add(m);deb.push(m);}
+     const a=i*2.39996+qi*1.3,sp=3.5+((i*53)%10)*.6,vy=9+((i*71)%10)*1.1;m.userData={vx:Math.cos(a)*sp,vz:Math.sin(a)*sp,vy,tl:(vy+Math.sqrt(vy*vy+4*9*5.1))/18,rx:1+(i%5),ry:2+(i%3)};g.add(m);deb.push(m);}
    for(let i=0;i<14;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(1,12,10),M.smoke.clone());m.material.userData={};m.raycast=()=>{};
-     m.userData={a:i*2.39996,r:1+(i%4)*.8,up:.35+((i*29)%10)*.09,s:.9+(i%3)*.35};g.add(m);dust.push(m);}
-   BLASTFX={g,flash,light,ring,deb,dust,q:null};}
+     m.userData={a:i*2.39996+qi*.9,r:1+(i%4)*.8,up:.35+((i*29)%10)*.09,s:.9+(i%3)*.35};g.add(m);dust.push(m);}
+   BLASTFX.push({g,flash,light,ring,deb,dust,q:qd.id});});
   // 01 석회석 광산 49Q·47Q·45Q
   QRY_DEF.forEach(d=>{const g=grp(d.id),cx=-83;[[14,12],[10,9],[6,6]].forEach(([w,dd],i)=>box(g,w,2.5,dd,i%2?M.rock2:M.rock,cx-i*1.1,i*2.5,d.z-i*.5));
     box(g,2.4,1.3,3,M.ylw,-75.8,0,d.z);box(g,2,1.5,1.9,M.ylw,-75.8,1.3,d.z-.4);const arm=box(g,.45,.45,3.8,M.ylw,-75.8,2.4,d.z+1.9);arm.rotation.x=.35;});
@@ -1428,6 +1435,7 @@ const TAG={};
 function buildTags(){
   const wrap=$('#tags');
   EQ.forEach(e=>{const b=document.createElement('button');b.type='button';b.className='tag'+(e.major?'':' mini');b.dataset.id=e.id;b.innerHTML=`<i></i><span>${e.name}</span><small></small>`;b.addEventListener('click',()=>select({type:'eq',id:e.id},{fly:true}));wrap.appendChild(b);TAG['eq'+e.id]=b;});
+  {const c=document.createElement('div');c.id='blastCd';c.className='blastcd';c.setAttribute('role','status');c.setAttribute('aria-live','off');c.innerHTML='<b></b><span><em>광산 발파</em><small>49Q · 47Q · 45Q 동시</small></span>';c.dataset.hide='1';wrap.appendChild(c);}
   TRUCKS.forEach(t=>{const b=document.createElement('button');b.type='button';b.className='tag mini';b.innerHTML=`<span>${t.id}</span><small></small>`;b.addEventListener('click',()=>select({type:'truck',id:t.id}));wrap.appendChild(b);TAG['truck'+t.id]=b;});
   updateTagClasses();
 }
@@ -1435,7 +1443,7 @@ function updateTagClasses(){
   const m=isMobile();
   EQ.forEach(e=>{const b=TAG['eq'+e.id];if(!b)return;const s=eqStatus(e),on=sel&&sel.type==='eq'&&sel.id===e.id;
     b.className='tag s-'+s+(on?' sel':'')+(e.major?'':' mini');b.querySelector('small').textContent=on?(e.code+' · '+(s==='ok'?'정상 운전':ST[s])):(RANK[s]>0||s==='stop'?ST[s]:'');
-    const bl=e.id===BLAST.q&&BLAST.ph;if(bl)b.querySelector('small').textContent=BLAST.ph;
+    const bl=e.area==='raw'&&e.icon==='mountain'&&BLAST.ph;if(bl)b.querySelector('small').textContent=BLAST.ph;
     const show=inTab(e)&&(on||bl||RANK[s]>0||(curTab==='all'?e.major&&(!m||e.kiln):(!m||e.major||e.kref)));b.dataset.hide=show?'':'1';});
   TRUCKS.forEach(t=>{const b=TAG['truck'+t.id];if(!b)return;const on=sel&&sel.type==='truck'&&sel.id===t.id;const hv=hovered==='truck'+t.id;
     b.className='tag mini'+(on?' sel':'');b.querySelector('small').textContent=t.state;b.dataset.hide=truckInTab(t)&&(on||hv||(!m&&t.kind==='bct'&&t.state==='적재중'))?'':'1';});
@@ -1448,7 +1456,14 @@ function placeTags(){
     el.style.display='';el.style.transform=`translate(${((_v.x+1)/2*w).toFixed(1)}px,${((1-_v.y)/2*h).toFixed(1)}px) translate(-50%,-100%)`;};
   EQ.forEach(e=>put(TAG['eq'+e.id],ANCHOR[e.id]));
   TRUCKS.forEach(t=>{if(!t.g.visible){TAG['truck'+t.id].style.display='none';return;}put(TAG['truck'+t.id],new THREE.Vector3(t.x,5.6,t.z));});
+  const cd=$('#blastCd');if(cd){const show=BLAST.tb<1.5&&QRY_DEF.some(d=>EQOBJ[d.id]&&EQOBJ[d.id].visible),txt=BLAST.cd?String(BLAST.cd):'발파!';
+    cd.dataset.hide=show?'':'1';
+    if(BLAST.ph)QRY_DEF.forEach(d=>{const t=TAG['eq'+d.id],sm=t&&t.querySelector('small');if(sm&&sm.textContent!==BLAST.ph)sm.textContent=BLAST.ph;});
+    if(show&&cd.dataset.v!==txt){cd.dataset.v=txt;const b=cd.querySelector('b');b.textContent=txt;cd.classList.toggle('go',!BLAST.cd);cd.classList.toggle('near',BLAST.cd>0&&BLAST.cd<=3);
+      if(!REDUCED){b.style.animation='none';void b.offsetWidth;b.style.animation='';}}
+    if(show){_bcv.set(-84,27,QRY_DEF.reduce((a,d)=>a+d.z,0)/QRY_DEF.length);put(cd,_bcv);}else cd.style.display='none';}
 }
+const _bcv=typeof THREE!=='undefined'?new THREE.Vector3():null;
 
 function initScene(){
   const st=$('#stage');
@@ -1489,14 +1504,14 @@ function frame(now){
   BEACONS.forEach((b,i)=>{const on=!isStopped(E[b.kid]);const ph=REDUCED?1:((now/1000)%1<.5?1:0);   // 가동 중: 1초 주기로 깜빡임 (전 호기 같은 박자)
     b.lm.color.set(on?'#FF5A50':'#8B939E');b.lm.emissiveIntensity=on?(ph?2.1:.08):0;b.sp.visible=on&&!!ph;b.sp.material.opacity=dark?.95:.8;});
   PWW.forEach(w=>{if(!REDUCED&&EQOBJ[w.id].visible)w.wheel.rotation.y+=dt*1.4*E[w.id].params.load.v/80;});
-  if(BLASTFX){const F=BLASTFX,tb=BLAST.tb,qo=EQOBJ[BLAST.q],on=!REDUCED&&tb>=0&&tb<9&&qo&&qo.visible;F.g.visible=on;
-    if(on){if(F.q!==BLAST.q){F.q=BLAST.q;F.g.position.set(-84,5.5,QRY_DEF.find(d=>d.id===BLAST.q).z-.5);}
+  BLASTFX.forEach(F=>{const tb=BLAST.tb,qo=EQOBJ[F.q],on=!REDUCED&&tb>=0&&tb<9&&qo&&qo.visible;F.g.visible=on;
+    if(on){
       F.flash.scale.setScalar(4+34*Math.min(1,tb/.25));F.flash.material.opacity=Math.max(0,1-tb/.7);F.light.intensity=Math.max(0,4*(1-tb/.6));
       F.ring.visible=tb<1.6;F.ring.scale.setScalar(1+tb*13);F.ring.material.opacity=.7*Math.max(0,1-tb/1.6);
       F.deb.forEach(m=>{const u=m.userData,t=Math.min(tb,u.tl);m.visible=tb<7.5;m.position.set(u.vx*t,u.vy*t-9*t*t,u.vz*t);if(tb<u.tl){m.rotation.x=tb*u.rx;m.rotation.y=tb*u.ry;}});
       const dc=dark?'#7D7464':'#D6C9B1';
       F.dust.forEach(m=>{const u=m.userData,k=Math.min(1,tb/2.5),r=u.r*(.5+k*1.3);m.position.set(Math.cos(u.a)*r,-1.5+u.up*Math.min(tb,7)*1.4,Math.sin(u.a)*r);m.scale.setScalar(u.s*(.7+Math.min(tb,4)*.55));
-        m.material.color.set(dc);m.material.opacity=(dark?.5:.62)*Math.min(1,tb*4)*Math.max(0,1-tb/9);});}}
+        m.material.color.set(dc);m.material.opacity=(dark?.5:.62)*Math.min(1,tb*4)*Math.max(0,1-tb/9);});}});
   SMOKE.forEach(s=>{const u=s.userData;s.visible=EQOBJ[u.kid].visible&&!isStopped(E[u.kid]);u.t=(u.t+dt*u.v)%1;const t=u.t,k=u.k;s.position.set(u.x+t*6*k,u.y+t*14*k,u.z-t*3*k);s.scale.setScalar(1+t*3.4*k);s.material.opacity=(dark?.32:.45)*u.o*(1-t);});
   if(bracket&&!REDUCED)M.line.opacity=.65+.35*Math.sin(now/260);
   renderer.render(scene,camera);
