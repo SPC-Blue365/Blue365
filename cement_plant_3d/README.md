@@ -31,6 +31,7 @@
 | `vendor/three.min.js` | three.js r149 (MIT, `vendor/three.LICENSE`) |
 
 ## 원료 공급 공정 (현장 제공 구성)
+- 3D 배치 순서: 화면 앞쪽부터 **3→4→5→6→7호**. OSP·P/W·프리블렌딩(Y1 앞)·원료밀·원료 사일로·예열기·킬른·쿨러·클링커 사일로가 같은 순서로 놓입니다(`src.html`의 `MZ`). 광산·크러셔·시멘트 밀·출하장 배치는 그대로입니다.
 석회석 광산 **49Q · 47Q · 45Q** → 크러셔 **G/C (Gyratory Crusher) · H/C (Hammer Crusher)** → **OSP**에서 라인 분리 → **P/W (Paddle Wheel)** 인출
 | 라인 | OSP | 인출 | 프리블렌딩 야드 | 원료밀 |
 |---|---|---|---|---|

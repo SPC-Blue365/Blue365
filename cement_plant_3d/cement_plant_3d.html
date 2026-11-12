@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-12 11:49">
+<meta name="b365-build" content="2026-11-12 12:14">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -542,7 +542,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-12 11:49</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-12 12:14</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1138,6 +1138,11 @@ const OSP_DEF=[{id:'OSPA',tab:'A',z:-38,pw:['PW1','PW2'],cap:60000,fill:58},{id:
 const PW_DEF=[{id:'PW1',n:'1',osp:'OSPA',tab:'A',dz:-2.7,rate:380},{id:'PW2',n:'2',osp:'OSPA',tab:'A',dz:2.7,rate:360},{id:'PW3',n:'3',osp:'OSPB',tab:'B',dz:-2.7,rate:720},{id:'PW4',n:'4',osp:'OSPB',tab:'B',dz:2.7,rate:700}];
 const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,cap:40000},{id:'PBA2',y:'Y2',tab:'A',z:-33,mode:'reclaim',fill:47,cap:40000},
   {id:'PBB1',y:'Y1',tab:'B',z:-8,mode:'reclaim',fill:36,cap:80000},{id:'PBB2',y:'Y2',tab:'B',z:2,mode:'stack',fill:71,cap:80000}];
+/* 공정 배치 순서: 화면 앞쪽부터 3→4→5→6→7호 (현장 요청 2026-11-12)
+   OSP·P/W·프리블렌딩·원료밀·원료 사일로·예열기·킬른·쿨러·클링커 사일로 구역의 z를 거울 배치 (-48~10.5 구간 그대로 사용)
+   광산·크러셔·시멘트 밀·출하 구역은 그대로 */
+const MZ=z=>-37.5-z;
+[OSP_DEF,PB_DEF,RM_DEF,RS_DEF,KILN_DEF,CS_DEF].forEach(a=>a.forEach(d=>{d.z=MZ(d.z);}));PW_DEF.forEach(d=>{d.dz=-d.dz;});
 const LINE_NM={A:'기존',B:'신설'},LINE_TXT={A:'3~5호 Line (기존)',B:'6~7호 Line (신설)'};
 const PW_FULL='Paddle Wheel';
 const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclaim:'Reclaiming'};
@@ -1479,7 +1484,7 @@ function buildPlant(){
      [-12,0,12].forEach(dx=>{const x=(x1+x2)/2+dx,yc=(yA+yB)/2-dx*(yA-yB)/L;box(g,2.2,yc-R-.3,big?5:4,M.conc,x,0,Z);});
      box(g,3,big?8:6,big?7:5.5,M.wall2,x2+1.5,0,Z);box(g,3.4,.4,big?7.4:5.9,M.accent,x2+1.5,big?8:6,Z);
      bld(g,12,5,big?8:6.5,78,Z);const ch=big?12:10;cyl(g,.75,ch,M.wall,81,5,Z,20,.9);cyl(g,.8,1,M.accent,81,5+ch-2.4,Z);   // 쿨러 배기 굴뚝
-     const sz=Z-(big?7:4.5);cyl(g,.8,big?40:32,M.wall,37,0,sz,20,1.1);cyl(g,.85,1.4,M.accent,37,(big?40:32)-3.5,sz);
+     const sz=Z-(big?6:4.5);   // 굴뚝은 킬른 뒤쪽(화면 반대편)cyl(g,.8,big?40:32,M.wall,37,0,sz,20,1.1);cyl(g,.85,1.4,M.accent,37,(big?40:32)-3.5,sz);
      const kl=new THREE.PointLight('#FF5A1F',0,7,2);kl.position.set(x2-8,.9,Z);g.add(kl);   // 주변을 붉게 비추는 열기
      KILNS.push({id:'K'+d.n,spin,hz,shm,kl});
      if(!REDUCED){for(let i=0;i<6;i++){const sm=new THREE.Mesh(new THREE.SphereGeometry(.8,10,8),M.smoke.clone());sm.material.userData={};sm.userData={t:i/6,x:37,z:sz,y:big?40:32,kid:'K'+d.n,k:1,o:1,v:.07};scene.add(sm);SMOKE.push(sm);}
@@ -1505,17 +1510,17 @@ function buildPlant(){
   // 컨베이어 + 물질 흐름
   CR_DEF.forEach(d=>conveyor([[-59,3,d.z],[-55.5,7.6,-22]],'lime',4,'shared'));
   OSP_DEF.forEach(o=>{const L=o.tab;
-    conveyor([[-54,8,-22],[-47.5,10.2,o.z+(L==='A'?2:-2)]],'lime',5,L);                       // 크러셔 → OSP
+    conveyor([[-54,8,-22],[-47.5,10.2,o.z+Math.sign(-22-o.z)*2]],'lime',5,L);                       // 크러셔 → OSP
     conveyor([[-36.3,1.2,o.z],[-33,6.6,o.z],[-8,6.6,o.z]],'lime',10,L);                       // P/W → 스태커 벨트
     conveyor([[-6.5,.8,o.z],[-1,8,o.z]],'lime',3,L);});                                       // 리클레이머 → R/M 분배
-  conveyor([[-1,8,-48],[-1,8,-20]],'lime',6,'A');
-  conveyor([[-1,8,-12],[-1,8,8]],'lime',5,'B');
+  conveyor([[-1,8,MZ(-48)],[-1,8,MZ(-20)]],'lime',6,'A');
+  conveyor([[-1,8,MZ(-12)],[-1,8,MZ(8)]],'lime',5,'B');
   RM_DEF.forEach(d=>{const r=RS_DEF.find(x=>x.id===d.to),big=d.tab==='B';conveyor([[big?9.5:8.5,big?11:9,d.z],[r.x,big?18.5:16.5,r.z]],'meal',3,d.tab);});
   RS_DEF.forEach(r=>{const k=KILN_DEF.find(d=>'K'+d.n===r.k),big=k.line==='B',W=big?9:7;conveyor([[r.x,big?18:16,r.z],[30-W/2,big?30:24,k.z]],'meal',3,r.tab);});
-  conveyor([[85,1.5,-47.5],[91.5,12,-47.5],[91.5,12,-24]],'clk',8,'A');
-  conveyor([[85,2,8],[90,15,8],[90,15,-5],[120,15,-5]],'clk',10,'B');
-  conveyor([[101,2,-20],[127,4,-20],[127,9,15],[57,9,15]],'clk',16,'C');
-  conveyor([[120,2,4.5],[127,5,9]],'clk',3,'C');
+  conveyor([[85,1.5,MZ(-47.5)],[91.5,12,MZ(-47.5)],[91.5,12,MZ(-24)]],'clk',8,'A');
+  conveyor([[85,2,MZ(8)],[90,15,MZ(8)],[90,15,MZ(-5)],[120,15,MZ(-5)]],'clk',10,'B');
+  conveyor([[101,2,MZ(-20)],[127,4,MZ(-20)],[127,9,15],[57,9,15]],'clk',16,'C');
+  conveyor([[120,2,-22.5],[127,4.5,-15]],'clk',3,'C');   // 6-7호 클링커 사일로 → 시멘트 밀 벨트
   conveyor([[57,9,23],[55,19.4,30],[5,19.4,30]],'cem',12,'C');
   // 울타리
   const fz=(x1,x2,z)=>{const L=x2-x1;box(scene,L,1.3,.14,M.fence,(x1+x2)/2,0,z);};
@@ -2537,7 +2542,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-12 11:49</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-12 12:14</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
@@ -2657,7 +2662,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-12 11:49';
+const BUILD='2026-11-12 12:14';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
