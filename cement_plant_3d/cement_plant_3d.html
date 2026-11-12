@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-12 13:11">
+<meta name="b365-build" content="2026-11-12 14:37">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -549,7 +549,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-12 13:11</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-12 14:37</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1140,11 +1140,17 @@ const CS_DEF=[{id:'CS2',code:'CS-2',n:'2',tab:'A',x:97,z:-44,cap:15000},{id:'CS4
    → 인출 P/W (기존 1·2호 / 신설 3·4호) → 프리블렌딩 야드 기존 Y1·Y2 / 신설 Y1·Y2 (한 야드 적재 Stacking, 다른 야드 사용 Reclaiming) → R/M
    광산→크러셔 운반 배정·용량·저장량은 가상값 */
 const QRY_DEF=[{id:'Q49',n:'49Q',z:-39,cao:50.6,mgo:1.4,cr:'CRG'},{id:'Q47',n:'47Q',z:-22,cao:49.8,mgo:1.8,cr:'CRH'},{id:'Q45',n:'45Q',z:-5,cao:48.9,mgo:2.2,cr:'CRH'}];
-const CR_DEF=[{id:'CRG',n:'G/C',full:'Gyratory Crusher',z:-31,cap:1400,v:0},{id:'CRH',n:'H/C',full:'Hammer Crusher',z:-13,cap:1000,v:1}];
-const OSP_DEF=[{id:'OSPA',tab:'A',z:-38,pw:['PW1','PW2'],cap:60000,fill:58},{id:'OSPB',tab:'B',z:-3,pw:['PW3','PW4'],cap:100000,fill:66}];
-const PW_DEF=[{id:'PW1',n:'1',osp:'OSPA',tab:'A',dz:-2.7,rate:380},{id:'PW2',n:'2',osp:'OSPA',tab:'A',dz:2.7,rate:360},{id:'PW3',n:'3',osp:'OSPB',tab:'B',dz:-2.7,rate:720},{id:'PW4',n:'4',osp:'OSPB',tab:'B',dz:2.7,rate:700}];
-const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,cap:40000},{id:'PBA2',y:'Y2',tab:'A',z:-33,mode:'reclaim',fill:47,cap:40000},
-  {id:'PBB1',y:'Y1',tab:'B',z:-8,mode:'reclaim',fill:36,cap:80000},{id:'PBB2',y:'Y2',tab:'B',z:2,mode:'stack',fill:71,cap:80000}];
+/* 원료 설비 용량 — 현장 제공 (2026-11-12): G/C(1차) 1,500 t/h → C/C(2차) 2기 각 1,000 t/h, H/C(단독) 1,500 t/h,
+   광산~프리블렌딩 이송 벨트 1,400 t/h, OSP 각 40,000 t, P/W 각 1,500 t/h,
+   프리블렌딩 기존 설계 35,000 t(운영 37,000 t) · 신설 설계 40,000 t(운영 50,000 t). 처리량·부하 등 운전값은 가상 */
+const BELT_RAW=1400;
+const CR_DEF=[{id:'CRG',n:'G/C',full:'Gyratory Crusher',stage:'1차 파쇄',z:-31,cap:1500,feed:1150,load:77,v:0},{id:'CRH',n:'H/C',full:'Hammer Crusher',stage:'단독 파쇄',z:-13,cap:1500,feed:1200,load:80,v:1}];
+const CC_DEF=[{id:'CRC1',n:'1',z:-40.5,cap:1000,feed:575,load:58},{id:'CRC2',n:'2',z:-46.5,cap:1000,feed:575,load:57}];   // C/C 2차 크러셔 (G/C 후단)
+const OSP_DEF=[{id:'OSPA',tab:'A',z:-38,pw:['PW1','PW2'],cap:40000,fill:58,inflow:1050},{id:'OSPB',tab:'B',z:-3,pw:['PW3','PW4'],cap:40000,fill:66,inflow:1300}];
+const PW_CAP=1500;
+const PW_DEF=[{id:'PW1',n:'1',osp:'OSPA',tab:'A',dz:-2.7,rate:520},{id:'PW2',n:'2',osp:'OSPA',tab:'A',dz:2.7,rate:500},{id:'PW3',n:'3',osp:'OSPB',tab:'B',dz:-2.7,rate:640},{id:'PW4',n:'4',osp:'OSPB',tab:'B',dz:2.7,rate:620}];
+const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,design:35000,cap:37000},{id:'PBA2',y:'Y2',tab:'A',z:-33,mode:'reclaim',fill:47,design:35000,cap:37000},
+  {id:'PBB1',y:'Y1',tab:'B',z:-8,mode:'reclaim',fill:36,design:40000,cap:50000},{id:'PBB2',y:'Y2',tab:'B',z:2,mode:'stack',fill:71,design:40000,cap:50000}];
 /* 공정 배치 순서: 화면 앞쪽부터 3→4→5→6→7호 (현장 요청 2026-11-12)
    OSP·P/W·프리블렌딩·원료밀·원료 사일로·예열기·킬른·쿨러·클링커 사일로 구역의 z를 거울 배치 (-48~10.5 구간 그대로 사용)
    광산·크러셔·시멘트 밀·출하 구역은 그대로 */
@@ -1153,7 +1159,7 @@ const MZ=z=>-37.5-z;
 const LINE_NM={A:'기존',B:'신설'},LINE_TXT={A:'3~5호 Line (기존)',B:'6~7호 Line (신설)'};
 const PW_FULL='Paddle Wheel';
 const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclaim:'Reclaiming'};
-const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
+const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...CC_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
 const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
 const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C3종',altNote:'6호 C/M S/C3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
@@ -1218,22 +1224,26 @@ function qryEq(d,i){
    params:{rate:P('가동률','%',[86,81,74][i],null,null,0,.6,{min:0,max:100}),out:P('채광량','t/h',[520,430,380][i],250,null,0,8),cao:P('석회석 CaO 품위','%',d.cao,46.5,null,1,.08),mgo:P('석회석 MgO','%',d.mgo,null,3.0,2,.03)}};
 }
 function crEq(d,i){
-  return {id:d.id,code:'CR-'+d.n[0],n:d.n,name:d.n+' 크러셔',area:'raw',major:1,icon:'box',spec:`${d.full} · 석회석 파쇄 · 설계 ${nf(d.cap)} t/h (가상) · OSP 기존·신설 공급`,bar:'load',barLabel:'부하',primary:'load',
-   params:{load:P('부하','%',[78,72][i],null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',Math.round(d.cap*.8),Math.round(d.cap*.55),null,0,d.cap*.01),size:P('출구 입도 (P90)','mm',[62,48][i],null,80,0,1),cur:P('모터 전류','A',[312,238][i],null,[380,300][i],0,4)}};
+  return {id:d.id,code:'CR-'+d.n[0],n:d.n,name:d.n+' 크러셔',area:'raw',major:1,icon:'box',spec:`${d.full} · ${d.stage} · 설계 ${nf(d.cap)} t/h${d.id==='CRG'?' → C/C 2기(2차)':''} · OSP 기존·신설 공급`,bar:'load',barLabel:'부하',primary:'load',cap:d.cap,
+   params:{load:P('부하','%',d.load,null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',d.feed,Math.round(d.cap*.55),d.cap,0,d.cap*.01),size:P('출구 입도 (P90)','mm',[62,48][i],null,80,0,1),cur:P('모터 전류','A',[312,238][i],null,[380,300][i],0,4)}};
+}
+function ccEq(d,i){
+  return {id:d.id,code:'CR-C'+d.n,n:d.n,name:`C/C ${d.n}호`,area:'raw',icon:'box',spec:`C/C · 2차 파쇄 (G/C 후단) · 설계 ${nf(d.cap)} t/h`,bar:'load',barLabel:'부하',primary:'load',cap:d.cap,
+   params:{load:P('부하','%',d.load,null,95,0,1.2,{min:0,max:100}),feed:P('처리량','t/h',d.feed,Math.round(d.cap*.3),d.cap,0,d.cap*.01),size:P('출구 입도 (P90)','mm',[34,36][i],null,50,0,.8)}};
 }
 function ospEq(d,i){
-  return {id:d.id,code:'OSP-'+d.tab,n:LINE_NM[d.tab],name:`OSP (${LINE_NM[d.tab]})`,tab:d.tab,area:'raw',major:1,icon:'layers',spec:`${LINE_TXT[d.tab]} · 파쇄 석회석 저장 · 인출 P/W ${d.pw.map(x=>x.slice(2)).join('·')}호 · 용량 ${nf(d.cap)} t (가상)`,bar:'fill',barLabel:'저장률',primary:'fill',cap:d.cap,
-   params:{fill:P('저장률','%',d.fill,20,95,0,.25,{min:0,max:100}),stock:P('저장량','t',d.cap*d.fill/100,null,null,0,0,{derived:1}),inflow:P('입고량 (크러셔)','t/h',d.tab==='A'?760:1180,null,null,0,12),out:P('인출량 (P/W 합계)','t/h',0,null,null,0,0,{derived:1})}};
+  return {id:d.id,code:'OSP-'+d.tab,n:LINE_NM[d.tab],name:`OSP (${LINE_NM[d.tab]})`,tab:d.tab,area:'raw',major:1,icon:'layers',spec:`${LINE_TXT[d.tab]} · 파쇄 석회석 저장 · 인출 P/W ${d.pw.map(x=>x.slice(2)).join('·')}호 · 설계 ${nf(d.cap)} t · 입고 벨트 ${nf(BELT_RAW)} t/h`,bar:'fill',barLabel:'저장률',primary:'fill',cap:d.cap,
+   params:{fill:P('저장률','%',d.fill,20,95,0,.25,{min:0,max:100}),stock:P('저장량','t',d.cap*d.fill/100,null,null,0,0,{derived:1}),inflow:P('입고량 (크러셔)','t/h',d.inflow,null,BELT_RAW,0,12),out:P('인출량 (P/W 합계)','t/h',0,null,null,0,0,{derived:1})}};
 }
 function pwEq(d,i){
-  return {id:d.id,code:'PW-'+d.n,n:d.n,name:`P/W ${d.n}호`,tab:d.tab,area:'raw',icon:'gauge',osp:d.osp,spec:`Paddle Wheel · OSP (${LINE_NM[d.tab]}) 인출 → ${LINE_NM[d.tab]} 프리블렌딩 야드`,bar:'load',barLabel:'부하',primary:'rate',
-   params:{load:P('부하','%',[74,70,78,76][i],null,95,0,.8,{min:0,max:100}),rate:P('인출량','t/h',d.rate,Math.round(d.rate*.6),null,0,d.rate*.012)}};
+  return {id:d.id,code:'PW-'+d.n,n:d.n,name:`P/W ${d.n}호`,tab:d.tab,area:'raw',icon:'gauge',osp:d.osp,spec:`Paddle Wheel · 설계 ${nf(PW_CAP)} t/h · OSP (${LINE_NM[d.tab]}) 인출 → ${LINE_NM[d.tab]} 프리블렌딩 야드`,bar:'load',barLabel:'부하',primary:'rate',cap:PW_CAP,
+   params:{load:P('부하','%',Math.round(d.rate/PW_CAP*100),null,95,0,.8,{min:0,max:100}),rate:P('인출량','t/h',d.rate,Math.round(d.rate*.6),PW_CAP,0,d.rate*.012)}};
 }
 function pbEq(d,i){
   const base=`${LINE_NM[d.tab]} 프리블렌딩 ${d.y}`;
-  const e={id:d.id,code:`PB-${d.tab}-${d.y}`,n:d.y,base,tab:d.tab,area:'raw',icon:'layers',mode:d.mode,cap:d.cap,bar:'fill',barLabel:'저장률',primary:'cao',
-   spec:`${LINE_TXT[d.tab]} · 셰브론 적재 · 용량 ${nf(d.cap)} t (가상)`,
-   params:{fill:P('저장률','%',d.fill,null,null,0,0,{counter:1,min:0,max:100}),stock:P('파일 재고','t',d.cap*d.fill/100,null,null,0,0,{counter:1}),rate:P('처리량 (적재·인출)','t/h',d.tab==='A'?720:1400,null,null,0,10),
+  const e={id:d.id,code:`PB-${d.tab}-${d.y}`,n:d.y,base,tab:d.tab,area:'raw',icon:'layers',mode:d.mode,cap:d.cap,design:d.design,bar:'fill',barLabel:'저장률 (운영 용량 기준)',primary:'cao',
+   spec:`${LINE_TXT[d.tab]} · 셰브론 적재 · 설계 ${nf(d.design)} t · 운영 ${nf(d.cap)} t (설계 대비 ${nf(d.cap/d.design*100,0)}%)`,
+   params:{fill:P('저장률','%',d.fill,null,null,0,0,{counter:1,min:0,max:100}),stock:P('파일 재고','t',d.cap*d.fill/100,null,null,0,0,{counter:1}),rate:P('처리량 (적재·인출)','t/h',d.tab==='A'?1020:1260,null,BELT_RAW,0,10),
     cao:P('파일 CaO','%',[49.7,49.4,49.9,49.5][i],46.5,null,1,.05),sd:P('CaO 표준편차 (파일)','%',[.34,.28,.31,.36][i],null,.5,2,.012)}};
   Object.defineProperty(e,'name',{get(){return `${this.base} · ${MODE_NM[this.mode]}`;},enumerable:true});
   Object.defineProperty(e,'major',{get(){return this.mode==='reclaim';},enumerable:true});
@@ -1264,7 +1274,7 @@ function slEq(d,i){
 }
 
 const EQ=[
- ...QRY_DEF.map(qryEq),...CR_DEF.map(crEq),...OSP_DEF.map(ospEq),...PW_DEF.map(pwEq),...PB_DEF.map(pbEq),
+ ...QRY_DEF.map(qryEq),...CR_DEF.map(crEq),...CC_DEF.map(ccEq),...OSP_DEF.map(ospEq),...PW_DEF.map(pwEq),...PB_DEF.map(pbEq),
  ...RM_DEF.map(rmEq),...RS_DEF.map(rsEq),...KILN_DEF.map(phEq),...KILN_DEF.map(kilnEq),...CS_DEF.map(csEq),...CM_DEF.map(cmEq),...SL_DEF.map(slEq),
  {id:'DSP',code:'DS-1',name:'출하장',area:'ship',tab:'C',major:1,icon:'truck',spec:'벌크 출하 레인 1 · 계량대 1',bar:'prog',barLabel:'금일 계획 대비',primary:'ship',anchor:[34,10,37],
   params:{prog:P('금일 계획 대비','%',62,null,null,0,0,{derived:1,min:0,max:100}),ship:P('금일 출하량','t',3240,null,null,0,0,{counter:1}),plan:P('금일 출하 계획','t',5200,null,null,0,0,{counter:1}),wait:P('진입·계량 차량','대',2,null,8,0,0,{counter:1})}},
@@ -1461,6 +1471,7 @@ function buildPlant(){
     box(g,2.4,1.3,3,M.ylw,-75.8,0,d.z);box(g,2,1.5,1.9,M.ylw,-75.8,1.3,d.z-.4);const arm=box(g,.45,.45,3.8,M.ylw,-75.8,2.4,d.z+1.9);arm.rotation.x=.35;});
   // 02 크러셔 G/C · H/C
   CR_DEF.forEach(d=>{const g=grp(d.id);bld(g,8,7,8,-63,d.z);const h=new THREE.Mesh(new THREE.CylinderGeometry(2.6,1,2.6,4,1),M.steel);h.rotation.y=Math.PI/4;h.position.set(-68.4,5,d.z);add(h,g);box(g,1.6,3.6,1.6,M.steelD,-68.4,0,d.z);});
+  CC_DEF.forEach(d=>{const g=grp(d.id);bld(g,6,5,5,-63,d.z);const h=new THREE.Mesh(new THREE.CylinderGeometry(1.7,.8,2,16),M.steel);h.position.set(-63,6,d.z);add(h,g);});   // C/C 2차 크러셔
   box(DECO.shared,3,8,3,M.steel,-54,0,-22);box(DECO.shared,3.4,.5,3.4,M.accent,-54,8,-22);
   // 03 OSP 기존·신설 · 인출 P/W
   OSP_DEF.forEach(d=>{const g=grp(d.id);const c=new THREE.Mesh(new THREE.ConeGeometry(6.8,8.5,32),M.lime);c.position.set(-46,4.25,d.z);add(c,g);cyl(g,7.2,.5,M.conc,-46,0,d.z,32);});
@@ -1533,7 +1544,9 @@ function buildPlant(){
   // 사무동 (선택 불가)
   bld(scene,10,8,8,-34,26);
   // 컨베이어 + 물질 흐름
-  CR_DEF.forEach(d=>conveyor([[-59,3,d.z],[-55.5,7.6,-22]],'lime',4,'shared'));
+  conveyor([[-59,3,-13],[-55.5,7.6,-22]],'lime',4,'shared');                                     // H/C (단독) → 분배
+  conveyor([[-60.5,7.6,-35],[-60.5,7.6,Math.min(...CC_DEF.map(d=>d.z))-1]],'lime',5,'shared');     // G/C (1차) → C/C 2기
+  conveyor([[-58.5,1.2,Math.min(...CC_DEF.map(d=>d.z))],[-58.5,1.2,-38],[-55.5,7.6,-23]],'lime',6,'shared');   // C/C (2차) → 분배
   OSP_DEF.forEach(o=>{const L=o.tab;
     conveyor([[-54,8,-22],[-47.5,10.2,o.z+Math.sign(-22-o.z)*2]],'lime',5,L);                       // 크러셔 → OSP
     conveyor([[-36.3,1.2,o.z],[-33,6.6,o.z],[-8,6.6,o.z]],'lime',10,L);                       // P/W → 스태커 벨트
@@ -1748,7 +1761,8 @@ function relatedIds(id){
   if(OSP_DEF.some(o=>o.id===id)){const o=OSP_DEF.find(x=>x.id===id);return [...o.pw,...PB_DEF.filter(d=>d.tab===o.tab).map(d=>d.id)];}
   if(e.mode)return e.mode==='reclaim'?RM_DEF.filter(d=>d.tab===e.tab&&!d.stop).map(d=>d.id):OSP_DEF.find(o=>o.tab===e.tab).pw;
   if(id[0]==='Q'&&QRY_DEF.some(d=>d.id===id))return [QRY_DEF.find(d=>d.id===id).cr];
-  if(CR_DEF.some(d=>d.id===id))return [...QRY_DEF.filter(d=>d.cr===id).map(d=>d.id),'OSPA','OSPB'];
+  if(CR_DEF.some(d=>d.id===id))return [...QRY_DEF.filter(d=>d.cr===id).map(d=>d.id),...(id==='CRG'?CC_DEF.map(d=>d.id):['OSPA','OSPB'])];
+  if(CC_DEF.some(d=>d.id===id))return ['CRG','OSPA','OSPB'];
   return [];
 }
 function setBracket(){
@@ -1874,7 +1888,7 @@ function supplyBlock(e){
   const yd=L=>PB_DEF.filter(d=>d.tab===L).map(d=>`${d.y} <span class="badge ${E[d.id].mode==='reclaim'?'s-ok':'s-act'}">${MODE_NM[E[d.id].mode]}</span>`).join(' ');
   let h=e.mode?row('현재 운용',`<span class="badge ${e.mode==='reclaim'?'s-ok':'s-act'}">${MODE_NM[e.mode]} (${MODE_EN[e.mode]})</span> ${e.mode==='reclaim'?'→ R/M 공급 중':'← P/W 인출분 적재 중'}`):'';
   if(kind==='p')h+=row('인출 대상',E[e.osp].name);
-  h+=row('석회석 광산',QRY_DEF.map(d=>d.n).join(' · '),kind==='q')+row('크러셔','G/C (Gyratory) · H/C (Hammer)',kind==='c');
+  h+=row('석회석 광산',QRY_DEF.map(d=>d.n).join(' · '),kind==='q')+row('크러셔',`G/C 1차 ${nf(1500)} t/h → C/C 1·2호 2차 각 ${nf(1000)} t/h · H/C 단독 ${nf(1500)} t/h`,kind==='c')+row('이송 벨트',`광산 → OSP → 프리블렌딩 ${nf(BELT_RAW)} t/h`);
   (e.tab?[e.tab]:['A','B']).forEach(L=>{h+=row(`OSP (${LINE_NM[L]})`,LINE_TXT[L],kind==='o'&&e.tab===L)+row('인출',OSP_DEF.find(o=>o.tab===L).pw.map(x=>x.slice(2)).join('·')+'호 P/W (Paddle Wheel)',kind==='p'&&e.tab===L)
     +row(`프리블렌딩 (${LINE_NM[L]})`,yd(L),kind==='y'&&e.tab===L)+row('원료밀',RM_DEF.filter(d=>d.tab===L).map(d=>d.n).join('·')+'호 R/M');});
   return `<div class="sect">원료 공급 흐름 <small>현장 제공 구성</small></div><dl class="kv">${h}</dl>`;
@@ -2595,7 +2609,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-12 13:11</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-12 14:37</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
@@ -2715,7 +2729,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-12 13:11';
+const BUILD='2026-11-12 14:37';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
