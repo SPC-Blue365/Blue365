@@ -231,6 +231,23 @@ def settings_clean(c) -> dict:
                 if lo is not None and hi is not None and lo > hi:
                     raise ValueError(f"{pr} {it} 사내 기준의 하한이 상한보다 큽니다")
                 out["inh"][pr][it] = {"lo": lo, "hi": hi}
+    # 킬른 정지·보수 기간
+    dn = c.get("down")
+    if dn is not None:
+        if not isinstance(dn, list) or len(dn) > 40:
+            raise ValueError("정지·보수 기간 형식이 올바르지 않습니다")
+        out["down"] = []
+        for x in dn:
+            if not isinstance(x, dict) or not re.fullmatch(r"K[3-7]", str(x.get("k", ""))):
+                raise ValueError("정지·보수 기간의 호기가 올바르지 않습니다")
+            f, t = str(x.get("from") or ""), str(x.get("to") or "")
+            for d in (f, t):
+                if d and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):
+                    raise ValueError("정지·보수 기간의 날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)")
+            if f and t and f > t:
+                raise ValueError("정지·보수 기간의 시작일이 종료일보다 늦습니다")
+            out["down"].append({"k": x["k"], "from": f, "to": t, "kind": "repair" if x.get("kind") == "repair" else "stop",
+                                "note": re.sub(r"[<>&\"'`]", "", str(x.get("note") or ""))[:30]})
     return out
 
 

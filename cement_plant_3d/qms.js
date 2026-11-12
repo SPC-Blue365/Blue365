@@ -109,10 +109,20 @@
   const clkSilo = s => { const m = txt(s).replace(/\s/g, '').match(/^(\d)(?:-(\d))?호?$/); return m ? 'CS' + m[1] + (m[2] || '') : null; };
   const cemSilo = s => { const t = txt(s).replace(/\s/g, ''); let m; if ((m = t.match(/구내(\d+)호/))) return 'SL' + m[1]; if ((m = t.match(/부두(\d+)호/))) return 'PIER' + m[1]; if ((m = t.match(/^(\d+)호$/))) return 'SL' + m[1]; return null; };
   const rawSilo = s => { const m = txt(s).replace(/\s/g, '').match(/^([67])-([12])호?$/); return m ? 'RS' + m[1] + m[2] : null; };
+  /* 시멘트구분 → 품종 (내수 = 1종). 알 수 없으면 null → 품명으로 판단 */
+  function productByType(s) {
+    const t = txt(s).replace(/\s/g, '');
+    if (!t) return null;
+    if (t === '내수' || /^1종/.test(t)) return '1종';
+    if (/^3종$/.test(t)) return '3종';
+    if (/S\/?C|고로|슬래그/i.test(t)) return /3종/.test(t) ? 'S/C3종' : 'S/C2종';
+    if (/^2종$/.test(t)) return 'S/C2종';
+    return null;
+  }
   function product(s) {
     const t = txt(s).replace(/\s/g, '');
-    if (/고로|슬래그|S\/?C/i.test(t)) return /3종/.test(t) ? 'S/C 3종' : 'S/C 2종';
-    if (/^2종/.test(t)) return 'S/C 2종';
+    if (/고로|슬래그|S\/?C/i.test(t)) return /3종/.test(t) ? 'S/C3종' : 'S/C2종';
+    if (/^2종/.test(t)) return 'S/C2종';
     if (/3종/.test(t)) return '3종';
     if (/1종/.test(t)) return '1종';
     return t || null;
@@ -168,7 +178,7 @@
     const now = opt.now ? new Date(opt.now) : new Date();
     const maxDay = dayOf(new Date(now.getTime() + 864e5));
     const warn = [], counts = {}, recs = { raw: [], res: [], dcs: [], clk: [], xrd: [], cem: [], cemop: [], ship: [], acc: [] }, oddDates = [];
-    let future = 0, swapped = 0, noUnit = 0;
+    let future = 0, swapped = 0, noUnit = 0, badCode = 0;
     for (const [name, rows] of Object.entries(sheets || {})) {
       if (!Array.isArray(rows)) continue;
       let hr = -1, kind = null, hdr = null;
@@ -196,13 +206,13 @@
           for (const [f, i] of cols) o[f] = f === 'fst' ? hmMin(row[i]) : ana(row[i]);
           recs.ship.push(o); n++; continue;
         }
-        const unit = unitOf(row[cUnit]); if (!unit) { noUnit++; continue; }
+        const unit = unitOf(row[cUnit]); if (!unit) { if (/^SA1KL\d$/i.test(txt(row[cUnit]))) badCode++; else noUnit++; continue; }   // SA1KL3·SA1KL6 = 입력 오류 코드
         o.unit = unit; if (cName >= 0) o.grade = txt(row[cName]); if (cCtype >= 0) o.ctype = txt(row[cCtype]);
         if (kind === 'cemop') { for (const [f, i] of cols) o[f] = num(row[i]); recs.cemop.push(o); n++; continue; }   // 운전값: 0은 실제 값(정지)
         for (const [f, i] of cols) o[f] = kind === 'dcs' ? num(row[i]) : ana(row[i]);
         if (kind === 'cem') {   // LIMS 내려받기에서 Blaine·45㎛ 값이 서로 바뀌어 들어오는 경우 자동 보정
           if (o.blaine != null && o.r45 != null && o.blaine < 100 && o.r45 > 1000) { const t = o.blaine; o.blaine = o.r45; o.r45 = t; swapped++; }
-          o.product = product(row[cName]); o.silo = cemSilo(row[cSs]); o.siloRaw = txt(row[cSs]);
+          o.product = productByType(o.ctype) || product(row[cName]); o.silo = cemSilo(row[cSs]); o.siloRaw = txt(row[cSs]);   // 시멘트구분 우선
           if (o.feed != null || o.temp != null) recs.cemop.push({ day: o.day, ts: o.ts, unit: o.unit, feed: o.feed, temp: o.temp });   // 예전 양식(시멘트 시트에 투입량·원료온도)
         }
         if (kind === 'raw') { fill(o, modules(o), has); o.feed = /요입/.test(txt(row[cPos])) || unit[0] === 'K'; o.rsilo = rawSilo(row[cRsil]); }
@@ -218,6 +228,7 @@
     if (future) warn.push(`미래 날짜(${maxDay} 이후) ${future}행은 날짜 오류로 보고 제외했습니다.`);
     if (oddDates.length) warn.push(`앞뒤 행과 동떨어진 날짜 ${oddDates.length}건 — 확인해 주세요: ${oddDates.slice(0, 6).join(', ')}${oddDates.length > 6 ? ' 외' : ''}`);
     if (swapped) warn.push(`시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 ${swapped}행을 자동으로 바로잡았습니다.`);
+    if (badCode) warn.push(`입력 오류 공정구분(SA1KL…) ${badCode}행은 제외했습니다.`);
     if (noUnit) warn.push(`공정구분(호기·밀)을 알 수 없는 ${noUnit}행은 건너뛰었습니다.`);
 
     const all = [...recs.raw, ...recs.clk, ...recs.cem, ...recs.res, ...recs.xrd, ...recs.dcs, ...recs.ship];

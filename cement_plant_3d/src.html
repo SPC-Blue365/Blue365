@@ -181,6 +181,7 @@ a{color:inherit;text-decoration:none}
 .cftbl input[type=text]{width:84px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 8px;text-align:right}
 .cftbl input[type=text]:focus{border-color:var(--accent);outline:none}
 .cftbl input:disabled{opacity:.6}
+.cftbl input[type=date],.cftbl select{height:32px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 6px}
 .cftbl input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
 @media (max-width:760px){.cfgrid{grid-template-columns:1fr}#cfgBtn{display:none}}
 .prange{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2)}
@@ -267,7 +268,7 @@ a{color:inherit;text-decoration:none}
 .kv dt i.s-warn{background:var(--warn)} .kv dt i.s-bad{background:var(--bad)}
 .sect{font-size:12px;font-weight:700;color:var(--fg2);display:flex;justify-content:space-between;align-items:center}
 .sect small{font-weight:500;color:var(--fg3)}
-.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .chip{background:var(--preview);border-radius:12px;padding:8px 8px 7px;text-align:center}
 .chip small{display:block;font-size:11px;color:var(--fg3)}
 .chip b{font-size:14px}
@@ -704,8 +705,8 @@ function paintIcons(root=document){$$('[data-ic]',root).forEach(el=>{if(el.datas
    ========================================================= */
 const ST={ok:'정상',warn:'주의',bad:'이탈',none:'데이터 없음',stop:'가동 중단'};
 const RANK={none:-1,stop:-1,ok:0,warn:1,bad:2};
-/* 가동 중단: 가상 모드는 KILN_DEF.stop, 업로드 모드는 원료 투입량 ≤ 1 t/h (값이 없으면 KILN_DEF.stop) */
-function isStopped(e){if(!e)return false;if(e.kref)return isStopped(E[e.kref]);if(!e.kiln){if(!e.params.load||e.stop===undefined)return false;const l=e.params.load;if(l.has)return l.v<=5;return !!e.stop;}const f=e.params.feed;if(f.has)return f.v<=1;return !!e.stop;}
+/* 가동 중단: 킬른은 DCS 원료 투입량 ≤ 1 t/h, DCS가 없으면 관리기준 설정의 정지·보수 기간(오늘 기준) */
+function isStopped(e){if(!e)return false;if(e.kref)return isStopped(E[e.kref]);if(!e.kiln){if(!e.params.load||e.stop===undefined)return false;const l=e.params.load;if(l.has)return l.v<=5;return !!e.stop;}const f=e.params.feed;if(f.has)return f.v<=1;return !!downOn(e.id,todayStr());}
 function P(label,unit,v,lo,hi,dp,noise,o={}){return Object.assign({label,unit,v,base:v,target:v,lo,hi,dp,noise,hist:[]},o);}
 /* 분석 항목: 값은 QMS 데이터에서만 옵니다 (없으면 '—') */
 const QA=(label,unit,dp,src,fld,o={})=>P(label,unit,0,null,null,dp,0,Object.assign({ana:1,src,fld,spc:1},o));
@@ -728,7 +729,10 @@ let FCAO_WARN_RATE=10;
 let FCAO_TARGET=1.2,FCAO_TOL=0.5,FCAO_LIM=[0.7,1.7];
 /* 관리기준: 설정 화면(톱니 아이콘)에서 바꿉니다. 팀 공유 서버는 data/settings.json, 파일을 직접 열면 이 PC에 저장.
    ks = KS L 5201 기준값 (ok=1: KS 원문과 대조 확인, 0: 추정 → 화면에 * 표시) / inh = 사내 관리 범위 (예시값) */
-const CFG_DEFAULT={v:1,
+/* 킬른 정지·보수 기간 — 확인된 기간(2026-11): 3호 장기 정지, 4호 2026-07-24~ 정지(마지막 시료 7/23), 5호 2026-07-04~09-10 보수(시료 공백)
+   kind: stop = 가동 중단(가동률·설계 대비 계산에서 뺌) / repair = 보수(정지 시간으로 셈) */
+const DOWN_DEFAULT=[{k:'K3',from:'',to:'',kind:'stop',note:'장기 가동 중단'},{k:'K4',from:'2026-07-24',to:'',kind:'stop',note:'가동 중단'},{k:'K5',from:'2026-07-04',to:'2026-09-10',kind:'repair',note:'정기 보수'}];
+const CFG_DEFAULT={v:1,down:DOWN_DEFAULT,
   fcao:{target:1.2,tol:0.5,warnRate:10},
   ks:{'1종':{blaine:{v:2800,ok:1},ist:{v:60,ok:0},fst:{v:600,ok:0},s3:{v:12.5,ok:0},s7:{v:22.5,ok:1},s28:{v:42.5,ok:1},MgO:{v:5.0,ok:1},SO3:{v:3.5,ok:1},LOI:{v:3.0,ok:0}},
       '3종':{blaine:{v:3300,ok:0},ist:{v:45,ok:0},fst:{v:600,ok:0},s1:{v:10.0,ok:0},s3:{v:20.0,ok:0},s7:{v:32.5,ok:0},s28:{v:47.5,ok:0},MgO:{v:5.0,ok:0},SO3:{v:4.5,ok:0},LOI:{v:3.0,ok:0}}},
@@ -748,10 +752,16 @@ function cleanCfg(c){
   KS_PRODS.forEach(pr=>{const k=(c.ks||{})[pr],h=(c.inh||{})[pr];
     if(k&&typeof k==='object'){o.ks[pr]={};KS_ITEMS.forEach(it=>{const x=k[it.f];if(x&&typeof x==='object'){const v=numOr(x.v,null,0,1e6);if(v!=null)o.ks[pr][it.f]={v,ok:x.ok?1:0};}});}
     if(h&&typeof h==='object'){o.inh[pr]={};KS_ITEMS.forEach(it=>{const x=h[it.f];if(x&&typeof x==='object'){const lo=numOr(x.lo,null,0,1e6),hi=numOr(x.hi,null,0,1e6);if(lo!=null||hi!=null)o.inh[pr][it.f]={lo,hi};}});}});
+  if(Array.isArray(c.down)){const ok=x=>x===''||/^\d{4}-\d{2}-\d{2}$/.test(x);
+    o.down=c.down.filter(x=>x&&/^K[3-7]$/.test(x.k)).map(x=>({k:x.k,from:String(x.from||''),to:String(x.to||''),kind:x.kind==='repair'?'repair':'stop',note:String(x.note||'').replace(/[<>&"'`]/g,'').slice(0,30)}))
+      .filter(x=>ok(x.from)&&ok(x.to)&&(!x.from||!x.to||x.from<=x.to)).slice(0,40);}
   if(c.by)o.by=String(c.by).slice(0,60);if(c.at)o.at=String(c.at).slice(0,30);
   return o;
 }
 const fcaoTxt=()=>`${nf(FCAO_TARGET,1)} ± ${nf(FCAO_TOL,1)}% (${nf(FCAO_LIM[0],2)}~${nf(FCAO_LIM[1],2)}%)`;
+/* 그 날 그 호기가 정지·보수 중이면 'stop'·'repair', 아니면 null */
+function downOn(id,day){for(const x of (CFG.down||[]))if(x.k===id&&(!x.from||day>=x.from)&&(!x.to||day<=x.to))return x.kind;return null;}
+const downTxt=x=>`${x.from?`${+x.from.slice(5,7)}/${+x.from.slice(8)}`:''}${x.from&&x.from.slice(0,4)!==todayStr().slice(0,4)?`(${x.from.slice(2,4)})`:''}~${x.to?`${+x.to.slice(5,7)}/${+x.to.slice(8)}`:''}`;
 function applyCfg(c,o={}){
   CFG=cleanCfg(c);FCAO_TARGET=CFG.fcao.target;FCAO_TOL=CFG.fcao.tol;FCAO_WARN_RATE=CFG.fcao.warnRate;
   FCAO_LIM=[+(FCAO_TARGET-FCAO_TOL).toFixed(2),+(FCAO_TARGET+FCAO_TOL).toFixed(2)];
@@ -769,7 +779,7 @@ const TAB=Object.fromEntries(TABS.map(t=>[t.id,t]));
 const AREAS=[{id:'raw',name:'원료'},{id:'burn',name:'소성'},{id:'grind',name:'분쇄'},{id:'ship',name:'출하'},{id:'qc',name:'품질'}];
 const AREA=Object.fromEntries(AREAS.map(a=>[a.id,a]));
 /* 원료밀(R/M) · 원료 사일로 · 클링커 사일로 · 시멘트 밀(C/M) · 시멘트 사일로 */
-const RM_DEF=[{id:'RM3',code:'RM-3',n:'3',tab:'A',cap:200,z:-46,to:'RS3',stop:1},{id:'RM4',code:'RM-4',n:'4',tab:'A',cap:200,z:-38,to:'RS4'},{id:'RM5',code:'RM-5',n:'5',tab:'A',cap:210,z:-30,to:'RS5'},{id:'RM51',code:'RM-5-1',n:'5-1',tab:'A',cap:150,z:-22,to:'RS5'},{id:'RM6',code:'RM-6',n:'6',tab:'B',cap:520,z:-9,to:'RS62'},{id:'RM7',code:'RM-7',n:'7',tab:'B',cap:520,z:5,to:'RS72'}];
+const RM_DEF=[{id:'RM3',code:'RM-3',n:'3',tab:'A',cap:200,z:-46,to:'RS3',stop:1},{id:'RM4',code:'RM-4',n:'4',tab:'A',cap:200,z:-38,to:'RS4',stop:1},{id:'RM5',code:'RM-5',n:'5',tab:'A',cap:210,z:-30,to:'RS5'},{id:'RM51',code:'RM-5-1',n:'5-1',tab:'A',cap:150,z:-22,to:'RS5'},{id:'RM6',code:'RM-6',n:'6',tab:'B',cap:520,z:-9,to:'RS62'},{id:'RM7',code:'RM-7',n:'7',tab:'B',cap:520,z:5,to:'RS72'}];
 const RS_DEF=[{id:'RS3',code:'RS-3',n:'3',tab:'A',x:18,z:-44,k:'K3',cap:3000},{id:'RS4',code:'RS-4',n:'4',tab:'A',x:18,z:-35,k:'K4',cap:3000},{id:'RS5',code:'RS-5',n:'5',tab:'A',x:18,z:-26,k:'K5',cap:3000},
   {id:'RS61',code:'RS-6-1',n:'6-1',tab:'B',x:14,z:-11,k:'K6',cap:8000},{id:'RS62',code:'RS-6-2',n:'6-2',tab:'B',x:20,z:-11,k:'K6',cap:8000},{id:'RS71',code:'RS-7-1',n:'7-1',tab:'B',x:14,z:3,k:'K7',cap:8000},{id:'RS72',code:'RS-7-2',n:'7-2',tab:'B',x:20,z:3,k:'K7',cap:8000}];
 const CS_DEF=[{id:'CS2',code:'CS-2',n:'2',tab:'A',x:97,z:-44,cap:15000},{id:'CS4',code:'CS-4',n:'4',tab:'A',x:97,z:-35,cap:15000},{id:'CS5',code:'CS-5',n:'5',tab:'A',x:97,z:-26,cap:15000},
@@ -790,7 +800,7 @@ const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclai
 const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
 const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
-const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C 2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C 3종',altNote:'6호 C/M S/C 3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
+const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C3종',altNote:'6호 C/M S/C3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
 SL_DEF.forEach((d,i)=>d.x=8+i*5.2);
 const SLD=Object.fromEntries(SL_DEF.map(d=>[d.id,d]));
 /* 시멘트 밀 투입·출하 경로 (현장 제공 정보). main=주력 품종 */
@@ -799,16 +809,16 @@ const ROUTE={
   CM3:{clk:'all',prods:[{p:'1종',silos:['SL5','SL6','SL7','SL8','SL9'],main:1},{p:'3종',silos:['SL9']}]},
   CM4:{clk:'all',prods:[{p:'1종',silos:['SL5','SL6','SL7','SL8','SL9'],main:1},{p:'3종',silos:['SL9']}]},
   CM5:{clk:'all',prods:[{p:'3종',silos:['SL1'],main:1},{p:'1종',silos:['SL2']}]},
-  CM6:{clk:'all',prods:[{p:'1종',silos:['SL8','SL11'],main:1},{p:'S/C 2종',silos:['SL10']},{p:'S/C 3종',silos:['SL11'],idle:'현재 생산 계획 없음'}]},
+  CM6:{clk:'all',prods:[{p:'1종',silos:['SL8','SL11'],main:1},{p:'S/C2종',silos:['SL10']},{p:'S/C3종',silos:['SL11'],idle:'현재 생산 계획 없음'}]},
   CM7:{clk:'B',prods:[{p:'1종',silos:['SL5','SL6','SL7'],main:1}]}
 };
 /* 현재 운전 상태 (가상 예시) */
-const CUR={CM2:{prod:'1종',silo:'SL6',clk:'CS5'},CM3:{prod:'1종',silo:'SL7',clk:'CS62'},CM4:{prod:'1종',silo:'SL5',clk:'CS4'},CM5:{prod:'3종',silo:'SL1',clk:'CS66'},CM6:{prod:'S/C 2종',silo:'SL10',clk:'CS63'},CM7:{prod:'1종',silo:'SL5',clk:'CS61'}};
+const CUR={CM2:{prod:'1종',silo:'SL6',clk:'CS5'},CM3:{prod:'1종',silo:'SL7',clk:'CS62'},CM4:{prod:'1종',silo:'SL5',clk:'CS4'},CM5:{prod:'3종',silo:'SL1',clk:'CS66'},CM6:{prod:'S/C2종',silo:'SL10',clk:'CS63'},CM7:{prod:'1종',silo:'SL5',clk:'CS61'}};
 const CUR0=JSON.parse(JSON.stringify(CUR));
 const clkSources=m=>ROUTE[m].clk==='all'?[...CS_A,...CS_B]:CS_B;
 const millsForSilo=sid=>Object.keys(ROUTE).filter(m=>ROUTE[m].prods.some(x=>x.silos.includes(sid)));
-const PROD_NAME={'1종':'1종 보통 포틀랜드','3종':'3종 조강 포틀랜드','S/C 2종':'슬래그 시멘트 2종','S/C 3종':'슬래그 시멘트 3종'};
-const BLAINE_LIM={'1종':[3200,3500,3350],'3종':[4300,4700,4500],'S/C 2종':[3800,4200,4000],'S/C 3종':[3900,4300,4100]};
+const PROD_NAME={'1종':'1종 보통 포틀랜드','3종':'3종 조강 포틀랜드','S/C2종':'슬래그 시멘트 2종','S/C3종':'슬래그 시멘트 3종'};
+const BLAINE_LIM={'1종':[3200,3500,3350],'3종':[4300,4700,4500],'S/C2종':[3800,4200,4000],'S/C3종':[3900,4300,4100]};
 
 function kilnEq(d,i){
   const v=[.4,-.3,0,.2,-.5][i],sc=d.cap/5000,feed=Math.round(d.cap*CLK_FACTOR/24*.995),R=2.2*Math.sqrt(d.cap/5000);
@@ -1514,7 +1524,8 @@ function chemBlock(id){
    <div class="chip s-${st(c.lsf,0,0,'LSF')}" data-tip="LSF = CaO / (2.8·SiO₂ + 1.18·Al₂O₃ + 0.65·Fe₂O₃) × 100 · 색은 최근 90일 평균±3σ 기준"><small>LSF</small><b class="num">${nf(c.lsf,1)}</b></div>
    <div class="chip s-${st(c.sm,0,0,'SM')}" data-tip="SM = SiO₂ / (Al₂O₃ + Fe₂O₃)"><small>SM</small><b class="num">${nf(c.sm,2)}</b></div>
    <div class="chip s-${st(c.im,0,0,'IM')}" data-tip="IM = Al₂O₃ / Fe₂O₃"><small>IM</small><b class="num">${nf(c.im,2)}</b></div>
-   <div class="chip" data-tip="C₃S = 4.071CaO − 7.600SiO₂ − 6.718Al₂O₃ − 1.430Fe₂O₃ (LIMS와 같은 식, SO₃·f-CaO 보정 없음). f-CaO를 뺀 mC₃S ${c.mc3s!=null?nf(c.mc3s,1):'—'}"><small>C₃S</small><b class="num">${nf(c.c3s,1)}</b></div>
+   <div class="chip" data-tip="C₃S = 4.071CaO − 7.600SiO₂ − 6.718Al₂O₃ − 1.430Fe₂O₃ (LIMS와 같은 식, SO₃·f-CaO 보정 없음)"><small>C₃S</small><b class="num">${nf(c.c3s,1)}</b></div>
+   <div class="chip" data-tip="mC₃S = C₃S − 4.071×f-CaO (f-CaO 보정, LIMS와 같은 식)"><small>mC₃S</small><b class="num">${c.mc3s!=null?nf(c.mc3s,1):'—'}</b></div>
    <div class="chip" data-tip="C₂S = 2.867SiO₂ − 0.7544C₃S (LSF가 높아 음수가 되면 0)"><small>C₂S</small><b class="num">${nf(c.c2s,1)}</b></div>
    <div class="chip"><small>C₃A</small><b class="num">${nf(c.c3a,1)}</b></div>
    <div class="chip"><small>C₄AF</small><b class="num">${nf(c.c4af,1)}</b></div>
@@ -1683,8 +1694,8 @@ function shipCard(prod){
 /* =========================================================
    지도 카드 공통 기간: 일 평균 / 월 평균 / 년 평균 (기본: 당월)
    ========================================================= */
-const ymd=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-const todayStr=()=>ymd(new Date());
+function ymd(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}   // 함수 선언: 초기화 중(가동 상태 판단)에도 쓰임
+function todayStr(){return ymd(new Date());}
 const PER={g:'m',a:todayStr(),from:null,to:null,follow:true};   // follow: 현재 기간(오늘·당월·올해)을 보는 중이면 날짜가 바뀔 때 따라감
 const PER_NM={d:'일 평균',m:'월 평균',y:'년 평균',r:'기간 평균'},PER_NOW={d:'오늘',m:'당월',y:'올해'};
 function perRange(g=PER.g,a=PER.a){const y=+a.slice(0,4),m=+a.slice(5,7);
@@ -1704,15 +1715,17 @@ const hsh=str=>{let h=2166136261;for(let i=0;i<str.length;i++)h=Math.imul(h^str.
 function kilnDay(id,day){
   const e=E[id],kd=KILN_DEF.find(d=>'K'+d.n===id);
   const s=QD&&QD.streams['dcs:'+id],fi=s?s.df.indexOf('feed'):-1;
-  if(fi>=0){const row=s.d.find(r=>r[0]===day);if(row&&row[2+fi]!=null){const f=row[2+fi];return {tpd:f>1?f*24/CLK_FACTOR:0,hrs:f>1?24:0,src:'DCS'};}}
-  if(day===todayStr())return {tpd:kilnTpd(id),hrs:isStopped(e)?0:24,src:'가상'};
-  if(kd.stop)return {tpd:0,hrs:0,src:'가상'};
+  const dk=downOn(id,day),cal=dk==='stop'?0:24;   // 가동 중단 기간은 달력시간에서 뺌, 보수는 정지 시간으로 셈
+  if(fi>=0){const row=s.d.find(r=>r[0]===day);if(row&&row[2+fi]!=null){const f=row[2+fi];return {tpd:f>1?f*24/CLK_FACTOR:0,hrs:f>1?24:0,cal,dk,src:'DCS'};}}
+  if(dk)return {tpd:0,hrs:0,cal,dk,src:'가상'};
+  if(day===todayStr())return {tpd:kilnTpd(id),hrs:isStopped(e)?0:24,cal,src:'가상'};
   const down=hsh(id+day+'d')<.025?24*(.25+hsh(id+day+'h')*.6):0,hrs=24-down;
-  return {tpd:kd.cap*(.975+hsh(id+day+'t')*.035)*hrs/24,hrs,src:'가상'};
+  return {tpd:kd.cap*(.975+hsh(id+day+'t')*.035)*hrs/24,hrs,cal,src:'가상'};
 }
 function kilnPer(id,r){const ds=perDays(r);if(!ds.length)return null;const xs=ds.map(d=>kilnDay(id,d));
   const hasD=xs.some(x=>x.src==='DCS'),use=hasD?xs.filter(x=>x.src==='DCS'):xs;
-  return {tpd:use.reduce((a,x)=>a+x.tpd,0)/use.length,hrs:use.reduce((a,x)=>a+x.hrs,0),days:use.length,src:hasD?'DCS':'가상'};}
+  return {tpd:use.reduce((a,x)=>a+x.tpd,0)/use.length,hrs:use.reduce((a,x)=>a+x.hrs,0),days:use.length,cal:use.reduce((a,x)=>a+x.cal,0),act:use.filter(x=>x.cal>0).length,
+    stopD:use.filter(x=>x.dk==='stop').length,repD:use.filter(x=>x.dk==='repair').length,src:hasD?'DCS':'가상'};}
 /* QMS 일평균의 기간 평균 */
 function streamPer(key,f,r){const s=QD&&QD.streams[key];if(!s)return null;const fi=s.df.indexOf(f);if(fi<0)return null;
   const v=s.d.filter(x=>x[0]>=r.from&&x[0]<=r.to&&x[2+fi]!=null).map(x=>[x[0],x[2+fi]]);if(!v.length)return null;
@@ -1731,21 +1744,22 @@ function prodCard(L){
   const ps=ids.map(id=>[id,kilnPer(id,r)]).filter(x=>x[1]);
   const c={key,ic:'factory',l:'클링커 생산',vt:prodSrc(ids,r)==='가상',sel:{opts,val,aria:'클링커 생산 호기 선택'},u:'t/d'};
   if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
-  const tpd=ps.reduce((a,x)=>a+x[1].tpd,0),run=ps.filter(x=>x[1].hrs>0),des=run.reduce((a,x)=>a+E[x[0]].cap,0),src=ps.some(x=>x[1].src==='DCS')?'DCS':'가상';
+  const tpd=ps.reduce((a,x)=>a+x[1].tpd,0),des=ps.reduce((a,x)=>a+E[x[0]].cap*x[1].act/x[1].days,0),src=ps.some(x=>x[1].src==='DCS')?'DCS':'가상';
   if(!des)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · 설계 ${nf(ps.reduce((a,x)=>a+E[x[0]].cap,0))} t/d`,tip:'기간 내 가동 기록이 없습니다.'});
   return Object.assign(c,{v:nf(tpd),d:`${tpd>=des?'▲':'▼'} ${nf(Math.abs(tpd/des*100-100),1)}%`,dc:tpd>=des?'up':'dn',
-    s:`${perTxt(r)} 일평균 · 설계 ${nf(des)} t/d 대비${src==='DCS'?' · DCS':''}`,tip:`${PER_NM[PER.g]}: 기간 내 하루 생산량의 평균. 하루 생산 = 원료 투입량 × 24 ÷ 환산계수 ${CLK_FACTOR}. 설계 대비는 기간 중 가동한 호기의 설계용량 합. ${src==='DCS'?'DCS 일평균 기준':'설비값 가상'}`});
+    s:`${perTxt(r)} 일평균 · 설계 ${nf(des)} t/d 대비${src==='DCS'?' · DCS':''}`,tip:`${PER_NM[PER.g]}: 기간 내 하루 생산량의 평균. 하루 생산 = 원료 투입량 × 24 ÷ 환산계수 ${CLK_FACTOR}. 설계 대비는 가동 중단 기간을 뺀 설계용량(보수 기간은 포함). 정지·보수 기간은 관리기준 설정에서 바꿉니다. ${src==='DCS'?'DCS 일평균 기준':'설비값 가상'}`});
 }
 /* 카드: 킬른 가동률 */
 function runCard(){
   const key='run',r=perRange(),opts=kilnOpts(''),val=kpick(key,opts,'all');
-  const ids=val==='all'?kilnEqs().filter(e=>!KILN_DEF.find(d=>'K'+d.n===e.id).stop).map(e=>e.id):[val];
+  const ids=val==='all'?kilnEqs().map(e=>e.id):[val];
   const ps=ids.map(id=>kilnPer(id,r)).filter(Boolean),c={key,ic:'flame',l:'킬른 가동률',vt:prodSrc(ids,r)==='가상',sel:{opts,val,aria:'킬른 가동률 호기 선택'},u:'%'};
   if(!ps.length)return Object.assign(c,{v:'—',s:`${perTxt(r)} · 미래 기간`,tip:'아직 오지 않은 기간입니다.'});
-  const hrs=ps.reduce((a,x)=>a+x.hrs,0),cal=ps.reduce((a,x)=>a+x.days*24,0),rate=hrs/cal*100,down=cal-hrs,src=ps.some(x=>x.src==='DCS')?'DCS':'가상';
+  const hrs=ps.reduce((a,x)=>a+x.hrs,0),cal=ps.reduce((a,x)=>a+x.cal,0),rate=cal?hrs/cal*100:0,down=cal-hrs,rep=ps.reduce((a,x)=>a+x.repD,0)*24,src=ps.some(x=>x.src==='DCS')?'DCS':'가상';
+  if(!cal)return Object.assign(c,{v:'—',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · 기간 내내 가동 중단`,tip:'관리기준 설정의 정지 기간에 들어 있습니다.'});
   if(val!=='all'&&!hrs)return Object.assign(c,{v:'0',d:'가동 중단',dc:'nt',s:`${perTxt(r)} · ${src}`,tip:`${E[val].kiln}호 킬른은 기간 내 가동 기록이 없습니다.`});
-  const sn=val==='all'?KILN_DEF.filter(d=>d.stop).map(d=>d.n+'호').join('·'):'';
-  return Object.assign(c,{v:nf(rate,1),s:`${perTxt(r)} · 정지 ${nf(down,0)}시간${sn?` · ${sn} 제외`:''}${src==='DCS'?' · DCS':''}`,tip:`(달력시간 − 정지시간) ÷ 달력시간. ${src==='DCS'?'DCS 원료 투입량 > 1 t/h인 날을 가동으로 봄':'설비값 가상'}${sn?` · 장기 가동 중단 ${sn}은 공장 평균에서 제외`:''}`});
+  const sn=ids.map((id,i)=>[id,ps[i]]).filter(x=>x[1]&&x[1].stopD).map(x=>E[x[0]].kiln+'호').join('·');
+  return Object.assign(c,{v:nf(rate,1),s:`${perTxt(r)} · 정지 ${nf(down,0)}시간${rep?`(보수 ${nf(rep,0)})`:''}${sn?` · ${sn} 중단 기간 제외`:''}${src==='DCS'?' · DCS':''}`,tip:`(달력시간 − 정지시간) ÷ 달력시간. ${src==='DCS'?'DCS 원료 투입량 > 1 t/h인 날을 가동으로 봄':'설비값 가상'}${rep?` · 보수 ${nf(rep,0)}시간은 정지 시간에 포함`:''}${sn?` · 가동 중단 기간(${sn})은 달력시간에서 뺌`:''}${''?` · 장기 가동 중단 ${sn}은 공장 평균에서 제외`:''}`});
 }
 /* 카드: f-CaO (기간 평균, 사내 관리기준 대비) */
 function fcCard(L){
@@ -1888,7 +1902,7 @@ function renderReport(force){
   const low=SL_DEF.filter(d=>!d.fa).map(d=>E[d.id]).filter(e=>!off(e.params.level)&&RANK[pStatus(e.params.level)]>0);
   const open=ALARMS.filter(a=>!a.ack||alarmActive(a)).slice(0,3);
   const now=new Date(),wd='일월화수목금토'[now.getDay()];
-  const prods=['1종','3종','S/C 2종'],lots=(()=>{const [a,b]=qWindow();return shipLots(shipSel).filter(x=>a&&x.day>=a&&x.day<=b);})();
+  const prods=['1종','3종','S/C2종'],lots=(()=>{const [a,b]=qWindow();return shipLots(shipSel).filter(x=>a&&x.day>=a&&x.day<=b);})();
   const lastBy=prods.map(p=>{const l=shipLots(p);return [p,l[l.length-1],[...l].reverse().find(x=>x.s28!=null)];});
   $('#report').innerHTML=`
   <div class="banner">${ic('info')}분석값은 QMS 데이터입니다.<span>${esc(QMETA.fileName||'내장 기본 데이터')} · 기간 ${QD&&QD.from?QD.from:'-'} ~ ${QD&&QD.to?QD.to:'-'}${QMETA.uploadedBy?` · ${esc(QMETA.uploadedBy)} ${QMETA.uploadedAt?stamp(new Date(QMETA.uploadedAt)):''} 올림`:''}. 생산량·운전값·레벨·차량은 가상이고, 사내 관리기준은 예시값입니다.</span></div>
@@ -1927,10 +1941,10 @@ function renderReport(force){
   $$('.krw').forEach(r=>{const go=()=>{location.hash='#map';setTimeout(()=>select({type:'eq',id:r.dataset.kiln||r.dataset.goto},{fly:true}),40);};r.onclick=go;r.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();go();}};});
 }
 function moduleTable(){
-  return `<div class="tbl"><table class="ks"><thead><tr><th>호기</th><th class="r">LSF</th><th class="r">SM</th><th class="r">IM</th><th class="r">C₃S</th><th class="r">요입 LSF</th></tr></thead><tbody>${kilnEqs().map(e=>{
+  return `<div class="tbl"><table class="ks"><thead><tr><th>호기</th><th class="r">LSF</th><th class="r">SM</th><th class="r">IM</th><th class="r">C₃S</th><th class="r">mC₃S</th><th class="r">요입 LSF</th></tr></thead><tbody>${kilnEqs().map(e=>{
     const avg=f=>winAvg('clk:'+e.id,f),fl=winAvg('feed:'+e.id,'LSF');
     const L=avg('LSF'),q=x=>x==null?'—':x;
-    return `<tr><td><b>${e.kiln}호</b>${isStopped(e)?' <small style="color:var(--fg3)">정지</small>':''}</td><td class="r num">${q(L==null?null:nf(L,1))}</td><td class="r num">${q(avg('SM')==null?null:nf(avg('SM'),2))}</td><td class="r num">${q(avg('IM')==null?null:nf(avg('IM'),2))}</td><td class="r num">${q(avg('C3S')==null?null:nf(avg('C3S'),1))}</td><td class="r num">${q(fl==null?null:nf(fl,1))}</td></tr>`;}).join('')}</tbody></table></div>`;
+    return `<tr><td><b>${e.kiln}호</b>${isStopped(e)?' <small style="color:var(--fg3)">정지</small>':''}</td><td class="r num">${q(L==null?null:nf(L,1))}</td><td class="r num">${q(avg('SM')==null?null:nf(avg('SM'),2))}</td><td class="r num">${q(avg('IM')==null?null:nf(avg('IM'),2))}</td><td class="r num">${q(avg('C3S')==null?null:nf(avg('C3S'),1))}</td><td class="r num">${q(avg('mC3S')==null?null:nf(avg('mC3S'),1))}</td><td class="r num">${q(fl==null?null:nf(fl,1))}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 function acceptTable(){
   const a=(QD&&QD.accept)||[];if(!a.length)return '<div class="note">인수검사 데이터가 없습니다.</div>';
@@ -1945,12 +1959,12 @@ function millTable(){
 }
 function kilnTable(){
   const cls=p=>{const s=pStatus(p);return off(p)||s==='ok'?'':'st-'+s;};
-  return `<div class="tbl"><table class="ks"><thead><tr><th>호기</th><th>상태</th><th>클링커 생산 (가상)</th><th class="r">소성대 온도</th><th class="r">입구 CO</th><th class="r">f-CaO (QMS)</th><th class="r">LSF</th><th class="r">C₃S</th><th class="r">최근 시료</th><th></th></tr></thead><tbody>${kilnEqs().map(e=>{
+  return `<div class="tbl"><table class="ks"><thead><tr><th>호기</th><th>상태</th><th>클링커 생산 (가상)</th><th class="r">소성대 온도</th><th class="r">입구 CO</th><th class="r">f-CaO (QMS)</th><th class="r">LSF</th><th class="r">C₃S</th><th class="r">mC₃S</th><th class="r">최근 시료</th><th></th></tr></thead><tbody>${kilnEqs().map(e=>{
     const s=eqStatus(e),p=e.params,t=kilnTpd(e.id),hasC=!isStopped(e)&&p.cao.has,c=chem(e.id);
     return `<tr class="krw" data-kiln="${e.id}" tabindex="0"><td><b>${e.kiln}호</b> <small style="color:var(--fg3)">${nf(e.cap)} t/d</small></td><td><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span></td>
      <td style="min-width:150px"><div class="hb"><div class="hl"><span class="num">${s==='stop'?'가동 중단':nf(t)+' t/d'}</span><span class="num">${s==='stop'?'':nf(t/e.cap*100,0)+'%'}</span></div><div class="bar"><i class="s-act" style="width:${s==='stop'?0:clamp(t/e.cap*100,0,100)}%"></i></div></div></td>
      <td class="r num ${cls(p.bzt)}">${fv(p.bzt)} ℃</td><td class="r num ${cls(p.co)}">${fv(p.co)} ppm</td><td class="r num ${cls(p.fcao)}">${fv(p.fcao,2)}%</td>
-     <td class="r num">${hasC?nf(c.lsf,1):'—'}</td><td class="r num">${hasC?nf(c.c3s,1):'—'}</td><td class="r">${p.fcao.has?stamp(p.fcao.time):p.fcao.lastTs?`<small style="color:var(--warn)">${md(tsDate(p.fcao.lastTs))}</small>`:'—'}</td><td>${ic('chevR')}</td></tr>`;}).join('')}</tbody></table></div>`;
+     <td class="r num">${hasC?nf(c.lsf,1):'—'}</td><td class="r num">${hasC?nf(c.c3s,1):'—'}</td><td class="r num">${hasC&&c.mc3s!=null?nf(c.mc3s,1):'—'}</td><td class="r">${p.fcao.has?stamp(p.fcao.time):p.fcao.lastTs?`<small style="color:var(--warn)">${md(tsDate(p.fcao.lastTs))}</small>`:'—'}</td><td>${ic('chevR')}</td></tr>`;}).join('')}</tbody></table></div>`;
 }
 
 /* =========================================================
@@ -2345,7 +2359,7 @@ function reportData(){
   const r=perRange(),t=todayStr(),to=r.to>t?t:r.to;let cards;
   REPF=true;try{cards=[prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')];}finally{REPF=false;}
   const kilns=kilnEqs().map(e=>{const kp=kilnPer(e.id,r),fc=streamPer('clk:'+e.id,'fcao',r),av=f=>{const x=streamPer('clk:'+e.id,f,r);return x?x.avg:null;},fl=streamPer('feed:'+e.id,'LSF',r);
-    return {e,st:eqStatus(e),kp,fc,out:fc?fc.vals.filter(y=>y[1]<FCAO_LIM[0]||y[1]>FCAO_LIM[1]).length:null,LSF:av('LSF'),SM:av('SM'),IM:av('IM'),C3S:av('C3S'),feedLSF:fl?fl.avg:null};});
+    return {e,st:eqStatus(e),kp,fc,out:fc?fc.vals.filter(y=>y[1]<FCAO_LIM[0]||y[1]>FCAO_LIM[1]).length:null,LSF:av('LSF'),SM:av('SM'),IM:av('IM'),C3S:av('C3S'),mC3S:av('mC3S'),feedLSF:fl?fl.avg:null};});
   const ks={};KS_PRODS.forEach(p=>ks[p]=ksEval(p,r));
   return {r,from:r.from,to,days:perDays(r),cards,kilns,prod:prodSeries(),ks,head:repHeadline(),made:new Date(),
     src:`${QMETA.fileName||'내장 기본 데이터'} (QMS 데이터 ${QD&&QD.from?QD.from:'-'} ~ ${QD&&QD.to?QD.to:'-'})`,virt:prodSrc(KILN_IDS,r)==='가상'};
@@ -2439,11 +2453,11 @@ async function buildPptx(D){
   // 3. 호기별 현황
   {const S=mkSlide(),run=D.kilns.filter(k=>k.st!=='stop'),bad=D.kilns.filter(k=>k.st==='bad');
    pptFrame(S,D,3,`킬른 5기 중 <em>${run.length}기 가동</em>,`,bad.length?`현재 <em>${bad.map(k=>k.e.kiln+'호').join('·')}</em> 관리기준 이탈`:'현재 가동 호기 <em>이탈 없음</em>');
-   const q=(v,dp)=>v==null?'—':nf(v,dp),rows=[['호기','설계 (t/d)','현재 상태','생산 일평균 (t/d)','설계 대비','가동률','f-CaO 평균','기준 이탈','LSF','SM','IM','C₃S']];
+   const q=(v,dp)=>v==null?'—':nf(v,dp),rows=[['호기','설계 (t/d)','현재 상태','생산 일평균 (t/d)','설계 대비','가동률','f-CaO 평균','기준 이탈','LSF','SM','IM','C₃S','mC₃S']];
    D.kilns.forEach(k=>{const kp=k.kp,ran=kp&&kp.hrs>0;rows.push([{t:k.e.kiln+'호',b:1},nf(k.e.cap),{t:stTxt(k.st),c:k.st==='bad'?C.bad:k.st==='warn'?C.warn:k.st==='stop'?C.fg3:C.ok,b:1,al:'ctr'},ran?nf(kp.tpd):'—',ran?nf(kp.tpd/k.e.cap*100,1)+'%':'—',kp?nf(kp.hrs/(kp.days*24)*100,1)+'%':'—',
-     k.fc?{t:nf(k.fc.avg,2)+'%',c:k.fc.avg<FCAO_LIM[0]||k.fc.avg>FCAO_LIM[1]?C.bad:C.fg,b:1}:'—',k.fc?`${k.out}/${k.fc.n}일`:'—',q(k.LSF,1),q(k.SM,2),q(k.IM,2),q(k.C3S,1)]);});
-   S.box(PM,2.05,CW,3.2);S.table(PM+.2,2.2,CW-.4,[.8,1,1.2,1.5,1.05,.95,1.15,1.15,.8,.8,.8,.8],rows,{rowH:.47,sz:12});
-   S.text(PM+.2,5.42,CW-.4,1.4,[[['02',{b:1,c:C.accent}],['  읽는 법',{b:1,c:C.fg}]],`현재 상태는 지금 시점, 나머지는 선택 기간(${period}) 기준입니다. 생산 일평균 = 원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'가상':'DCS'}). 가동률 = (달력시간 − 정지시간) ÷ 달력시간.`,`f-CaO·LSF·SM·IM·C₃S는 QMS 클링커 XRF 일평균의 기간 평균입니다. 기준 이탈은 일평균이 사내 관리기준 ${fcaoTxt()}를 벗어난 날 수입니다.`],{sz:10.5,c:C.fg2,sp:120000,gap:3});
+     k.fc?{t:nf(k.fc.avg,2)+'%',c:k.fc.avg<FCAO_LIM[0]||k.fc.avg>FCAO_LIM[1]?C.bad:C.fg,b:1}:'—',k.fc?`${k.out}/${k.fc.n}일`:'—',q(k.LSF,1),q(k.SM,2),q(k.IM,2),q(k.C3S,1),q(k.mC3S,1)]);});
+   S.box(PM,2.05,CW,3.2);S.table(PM+.2,2.2,CW-.4,[.75,.95,1.15,1.45,1,.9,1.1,1.05,.75,.7,.7,.75,.8],rows,{rowH:.47,sz:11.5});
+   S.text(PM+.2,5.42,CW-.4,1.4,[[['02',{b:1,c:C.accent}],['  읽는 법',{b:1,c:C.fg}]],`현재 상태는 지금 시점, 나머지는 선택 기간(${period}) 기준입니다. 생산 일평균 = 원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'가상':'DCS'}). 가동률 = (달력시간 − 정지시간) ÷ 달력시간.`,`f-CaO·LSF·SM·IM·C₃S·mC₃S(=C₃S − 4.071×f-CaO)는 QMS 클링커(LIMS) 일평균의 기간 평균입니다. 기준 이탈은 일평균이 사내 관리기준 ${fcaoTxt()}를 벗어난 날 수입니다.`],{sz:10.5,c:C.fg2,sp:120000,gap:3});
    slides.push(S);}
   // 4. 생산 추이
   {const S=mkSlide(),c=D.cards[0];pptFrame(S,D,4,`클링커 생산은 일평균 <em>${plain(c.v)} t/d</em>,`,c.d?`가동 호기 설계 대비 <em>${plain(c.d)}</em>${D.virt?' (가상값)':''}`:'설계 대비 자료 없음');
@@ -2528,8 +2542,8 @@ function buildXlsx(D){
     ...D.cards.map(c=>{const v=plain(c.v),num=Number(v.replace(/,/g,''));return [c.l,v!=='—'&&isFinite(num)&&!/:/.test(v)?num:v,c.u,[c.vt?'가상':'',plain(c.d||'')].filter(Boolean).join(' · '),plain(c.s)];}),
     [],[{v:'핵심 내용',s:XL.T}],...repInsights(D).map(t=>[{v:t,s:XL.W}])]});
   // 2. 호기별
-  S.push({name:'호기별',cols:[8,11,12,15,11,10,11,10,12,10,10,8,8,8,10],freeze:4,rows:[...top('호기별 현황'),H(['호기','설계 t/d','현재 상태','생산 일평균 t/d','설계 대비 %','가동률 %','정지 시간','생산 출처','f-CaO 평균 %','f-CaO 최고 %','기준 이탈 일','시료 일수','LSF','SM','IM','C3S','요입 LSF']),
-    ...D.kilns.map(k=>{const kp=k.kp,ran=kp&&kp.hrs>0;return [k.e.kiln+'호',n0(k.e.cap),stTxt(k.st),ran?n0(kp.tpd):null,ran?n1(kp.tpd/k.e.cap*100):null,kp?n1(kp.hrs/(kp.days*24)*100):null,kp?n0(kp.days*24-kp.hrs):null,kp?kp.src:'',k.fc?n2(k.fc.avg):null,k.fc?n2(k.fc.max):null,k.out,k.fc?k.fc.n:null,n1(k.LSF),n2(k.SM),n2(k.IM),n1(k.C3S),n1(k.feedLSF)];})]});
+  S.push({name:'호기별',cols:[8,11,12,15,11,10,11,10,12,10,10,8,8,8,8,8,10],freeze:4,rows:[...top('호기별 현황'),H(['호기','설계 t/d','현재 상태','생산 일평균 t/d','설계 대비 %','가동률 %','정지 시간','생산 출처','f-CaO 평균 %','f-CaO 최고 %','기준 이탈 일','시료 일수','LSF','SM','IM','C3S','mC3S','요입 LSF']),
+    ...D.kilns.map(k=>{const kp=k.kp,ran=kp&&kp.hrs>0;return [k.e.kiln+'호',n0(k.e.cap),stTxt(k.st),ran?n0(kp.tpd):null,ran?n1(kp.tpd/k.e.cap*100):null,kp?n1(kp.hrs/(kp.days*24)*100):null,kp?n0(kp.days*24-kp.hrs):null,kp?kp.src:'',k.fc?n2(k.fc.avg):null,k.fc?n2(k.fc.max):null,k.out,k.fc?k.fc.n:null,n1(k.LSF),n2(k.SM),n2(k.IM),n1(k.C3S),n1(k.mC3S),n1(k.feedLSF)];})]});
   // 3. 일별 (생산·f-CaO)
   {const ks=kilnEqs(),fc=Object.fromEntries(ks.map(e=>{const x=streamPer('clk:'+e.id,'fcao',D.r);return [e.id,x?Object.fromEntries(x.vals):{}];}));
    S.push({name:'일별',cols:[12,...ks.map(()=>11),12,10,...ks.map(()=>11)],freeze:4,rows:[...top('일별 클링커 생산(t/d)과 f-CaO 일평균(%)'),H(['날짜',...ks.map(e=>`${e.kiln}호 생산`),'생산 합계','출처',...ks.map(e=>`${e.kiln}호 f-CaO`)]),
@@ -2546,7 +2560,7 @@ function buildXlsx(D){
   // 6. 기준·근거
   S.push({name:'기준·근거',cols:[26,100],rows:[[{v:'기준과 근거',s:XL.T}],[],H(['구분','내용']),
     ['분석 기간',period],['자료',D.src],['f-CaO 사내 관리기준',`${fcaoTxt()} · 일평균 이탈 비율 ${FCAO_WARN_RATE}% 초과 시 주의`],['관리기준 변경 이력',CFG.at?`${CFG.by||''} ${String(CFG.at).replace('T',' ').slice(0,16)}`:'기본값(예시)'],
-    ['클링커 생산',`원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'DCS 데이터가 없어 가상값':'DCS 일평균'})`],['킬른 가동률','(달력시간 − 정지시간) ÷ 달력시간'],
+    ['클링커 생산',`원료 투입량 × 24 ÷ ${CLK_FACTOR} (${D.virt?'DCS 데이터가 없어 가상값':'DCS 일평균'})`],['킬른 가동률','(달력시간 − 정지시간) ÷ 달력시간. 가동 중단 기간은 달력시간에서 빼고, 보수 기간은 정지 시간으로 셈'],['정지·보수 기간',(CFG.down||[]).map(x=>`${x.k.slice(1)}호 ${x.kind==='stop'?'가동 중단':'보수'} ${x.from||'처음'}~${x.to||'현재'}`).join(' / ')||'없음'],
     ['모듈 계산식','LSF = CaO/(2.8SiO2+1.18Al2O3+0.65Fe2O3)×100, SM = SiO2/(Al2O3+Fe2O3), IM = Al2O3/Fe2O3, C3S는 LIMS 계산값 (Bogue 4.071CaO−7.600SiO2−6.718Al2O3−1.430Fe2O3, SO3·f-CaO 보정 없음)'],
     ['기간 평균','QMS 일평균의 기간 평균 (출하 시멘트는 로트 평균, 채취일 기준)'],['KS 판정','로트마다 판정. ‘추정’ 기준은 KS L 5201 원문과 대조하지 않은 값이므로 확정 판정이 아님'],
     ['주의',`${D.virt?'생산량·가동률은 가상값입니다. ':''}사내 기준은 예시값일 수 있습니다. 분석 시트의 0·빈칸은 미시험(결과 안 나옴), 음수는 무효로 봅니다.`]]});
@@ -2582,6 +2596,14 @@ function renderCfg(){
   $('#cfBody').innerHTML=`<div class="banner">${ic('info')}${ed?(SERVER?'기준을 바꾸면 모든 접속자 화면에 20초 안에 반영됩니다.':'기준은 이 PC의 브라우저에 저장됩니다.'):'보기 전용입니다.'}<span>${ed?'KS 값은 KS L 5201 원문과 대조한 뒤 ‘확인’에 표시하세요. 표시하지 않은 값은 화면에 * (추정)로 나옵니다.':'관리자만 바꿀 수 있습니다.'}${CFG.at?` 마지막 변경: ${esc(CFG.by||'')} ${esc(String(CFG.at).replace('T',' ').slice(0,16))}`:' 지금은 기본값(예시)입니다.'}</span></div>
    <div class="sect">클링커 f-CaO 사내 관리기준</div>
    <div class="cfgrid"><div class="field"><label for="cfT">목표 (%)</label><input id="cfT" inputmode="decimal" value="${CFG.fcao.target}"${dis}></div><div class="field"><label for="cfTol">허용폭 ± (%)</label><input id="cfTol" inputmode="decimal" value="${CFG.fcao.tol}"${dis}></div><div class="field"><label for="cfW">‘주의’로 보는 이탈 비율 (%)</label><input id="cfW" inputmode="decimal" value="${CFG.fcao.warnRate}"${dis}></div></div>
+   <div class="sect">킬른 정지·보수 기간 <small>DCS가 없을 때 가동률·생산 계산과 현재 가동 상태에 씀</small></div>
+   <div class="tbl"><table class="cftbl"><thead><tr><th>호기</th><th>시작일</th><th>종료일</th><th>구분</th><th>메모</th><th></th></tr></thead><tbody>${(CFG.down||[]).map((x,i)=>`<tr data-dn="${i}">
+     <td><select data-dk aria-label="호기"${dis}>${KILN_DEF.map(d=>`<option value="K${d.n}"${x.k==='K'+d.n?' selected':''}>${d.n}호</option>`).join('')}</select></td>
+     <td><input type="date" data-df value="${x.from}" aria-label="시작일"${dis}></td><td><input type="date" data-dt value="${x.to}" aria-label="종료일 (빈칸 = 지금까지)"${dis}></td>
+     <td><select data-dkind aria-label="구분"${dis}><option value="stop"${x.kind==='stop'?' selected':''}>가동 중단</option><option value="repair"${x.kind==='repair'?' selected':''}>보수</option></select></td>
+     <td><input type="text" data-dnote value="${esc(x.note||'')}" maxlength="30" aria-label="메모" style="width:120px;text-align:left"${dis}></td><td>${ed?`<button type="button" class="pbtn" data-ddel="${i}" aria-label="이 기간 삭제">${ic('x')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>
+   ${ed?'<div class="acts" style="justify-content:flex-start"><button class="btn ghost" type="button" id="cfDownAdd">+ 기간 추가</button></div>':''}
+   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지. ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
    <div class="sect">출하 시멘트 기준 <span class="seg" role="tablist" aria-label="품종">${KS_PRODS.map(p=>`<button type="button" role="tab" data-cfp="${p}" class="${cfgProd===p?'on':''}">${p}</button>`).join('')}</span></div>
    <div class="tbl"><table class="cftbl"><thead><tr><th>항목</th><th>단위</th><th>KS 기준값</th><th>방향</th><th>확인</th><th>사내 하한</th><th>사내 상한</th></tr></thead><tbody>${KS_ITEMS.map(it=>{const k=K[it.f]||{},h=I[it.f]||{};
      return `<tr><td>${it.n}</td><td><small>${it.u}</small></td><td><input type="text" data-cf="ks.${it.f}" value="${cfIn(it,k.v)}" aria-label="${it.n} KS 기준값"${dis}></td><td><small>${it.dir==='ge'?'이상':'이하'}</small></td><td><input type="checkbox" data-cf="ok.${it.f}" aria-label="${it.n} KS 원문 확인"${k.ok?' checked':''}${dis}></td>
@@ -2589,6 +2611,9 @@ function renderCfg(){
    <div class="note">빈칸은 ‘기준 없음’입니다. 응결 종결은 시:분(예: 10:00)으로 적습니다. KS 판정은 로트마다 하고, 사내 기준은 범위를 벗어난 로트 수를 셉니다.</div>
    <div class="acts">${ed?'<button class="btn ghost" type="button" id="cfReset">기본값으로</button>':''}<button class="btn ghost" type="button" id="cfCancel">닫기</button>${ed?'<button class="btn" type="submit">저장</button>':''}</div>`;
   paintIcons($('#cfBody'));
+  const reDraft=f=>{const d=readCfg(true);if(!d)return;f(d);CFG_DRAFT=d;const keep=CFG;CFG=CFG_DRAFT;renderCfg();CFG=keep;};
+  const da=$('#cfDownAdd');if(da)da.onclick=()=>reDraft(d=>d.down.push({k:'K4',from:todayStr(),to:'',kind:'repair',note:''}));
+  $$('[data-ddel]').forEach(b=>b.onclick=()=>reDraft(d=>d.down.splice(+b.dataset.ddel,1)));
   $$('[data-cfp]').forEach(b=>b.onclick=()=>{const d=readCfg(true);if(d)CFG_DRAFT=d;else return;cfgProd=b.dataset.cfp;const keep=CFG;CFG=CFG_DRAFT;renderCfg();CFG=keep;});
   $('#cfCancel').onclick=closeCfg;const rs=$('#cfReset');if(rs)rs.onclick=()=>{const keep=CFG;CFG=cleanCfg(null);CFG_DRAFT=CFG;renderCfg();CFG=keep;toast('기본값을 불러왔습니다. 저장을 눌러야 적용됩니다','act');};
 }
@@ -2602,6 +2627,8 @@ function readCfg(quiet){
     if([v,lo,hi].some(x=>x!==null&&isNaN(x))||(lo!=null&&hi!=null&&lo>hi)){bad.push(it.n);return;}
     if(v!=null)K[it.f]={v,ok:g('ok').checked?1:0};if(lo!=null||hi!=null)I[it.f]={lo,hi};});
   if(bad.length){toast(`값을 확인해 주세요: ${bad.slice(0,3).join(', ')}`,'warn');return null;}
+  base.down=$$('#cfBody [data-dn]').map(tr=>({k:tr.querySelector('[data-dk]').value,from:tr.querySelector('[data-df]').value,to:tr.querySelector('[data-dt]').value,kind:tr.querySelector('[data-dkind]').value,note:tr.querySelector('[data-dnote]').value.trim()}));
+  const badD=base.down.findIndex(x=>x.from&&x.to&&x.from>x.to);if(badD>=0){toast(`정지·보수 기간 ${badD+1}번째 줄: 시작일이 종료일보다 늦습니다`,'warn');return null;}
   base.ks[cfgProd]=K;base.inh[cfgProd]=I;return base;
 }
 function openCfg(){CFG_DRAFT=null;$('#cfgModal').hidden=false;renderCfg();}
