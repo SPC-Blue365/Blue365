@@ -831,7 +831,8 @@ const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclai
 const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...CC_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
 const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
-const SL_DEF=[{id:'SL1',n:'1',prod:'3종'},{id:'SL2',n:'2',prod:'1종'},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1},{id:'SL5',n:'5',prod:'1종'},{id:'SL6',n:'6',prod:'1종'},{id:'SL7',n:'7',prod:'1종'},{id:'SL8',n:'8',prod:'1종'},{id:'SL9',n:'9',prod:'1종',alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C2종'},{id:'SL11',n:'11',prod:'1종',alt:'S/C3종',altNote:'6호 C/M S/C3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
+/* 시멘트 사일로 용량 — 현장 제공 (2026-11-12) */
+const SL_DEF=[{id:'SL1',n:'1',prod:'3종',cap:4000},{id:'SL2',n:'2',prod:'1종',cap:4000},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1,cap:10000},{id:'SL5',n:'5',prod:'1종',cap:8500},{id:'SL6',n:'6',prod:'1종',cap:8500},{id:'SL7',n:'7',prod:'1종',cap:8500},{id:'SL8',n:'8',prod:'1종',cap:8500},{id:'SL9',n:'9',prod:'1종',cap:8500,alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C2종',cap:8500},{id:'SL11',n:'11',cap:9000,prod:'1종',alt:'S/C3종',altNote:'6호 C/M S/C3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
 SL_DEF.forEach((d,i)=>d.x=8+i*5.2);
 const SLD=Object.fromEntries(SL_DEF.map(d=>[d.id,d]));
 /* 시멘트 밀 투입·출하 경로 (현장 제공 정보). main=주력 품종 */
@@ -937,9 +938,9 @@ function cmEq(d,i){
 }
 function slEq(d,i){
   const lv=[55,38,58,72,61,44,66,16.6,49,33][i];
-  return {id:d.id,code:'SL-'+d.n,n:d.n,name:d.fa?d.n+'호 사일로 (F/A)':d.n+'호 시멘트 사일로',tab:'C',area:'ship',icon:'silo',fa:d.fa,prod:d.prod,
-   spec:d.fa?'플라이애시(F/A) 저장 · 시멘트 밀 혼합재 투입':`${PROD_NAME[d.prod]||d.prod} 저장${d.alt?` (${d.altNote} ${d.alt})`:''} · 용량 6,000 t (가상)`,bar:'level',barLabel:'레벨',primary:'level',
-   params:{level:P('레벨','%',lv,15,95,lv<20?1:0,lv<20?.12:.4,{min:0,max:100}),stock:P('저장량','t',Math.round(60*lv),null,null,0,10)}};
+  return {id:d.id,code:'SL-'+d.n,n:d.n,name:d.fa?d.n+'호 사일로 (F/A)':d.n+'호 시멘트 사일로',tab:'C',area:'ship',icon:'silo',fa:d.fa,prod:d.prod,cap:d.cap,
+   spec:(d.fa?'플라이애시(F/A) 저장 · 시멘트 밀 혼합재 투입':`${PROD_NAME[d.prod]||d.prod} 저장${d.alt?` (${d.altNote} ${d.alt})`:''}`)+` · 용량 ${nf(d.cap)} t`,bar:'level',barLabel:'레벨',primary:'level',
+   params:{level:P('레벨','%',lv,15,95,lv<20?1:0,lv<20?.12:.4,{min:0,max:100}),stock:P('저장량','t',Math.round(d.cap*lv/100),null,null,0,0,{derived:1})}};
 }
 
 const EQ=[
@@ -1203,7 +1204,7 @@ function buildPlant(){
     const m=new THREE.Mesh(new THREE.CylinderGeometry(1.8,1.8,8,24).rotateZ(Math.PI/2),M.steel);m.position.set(d.x,2.8,31);add(m,g);
     [d.x-3.6,d.x+3.6].forEach(x=>box(g,1,1.2,2.6,M.conc,x,0,31));box(g,1.8,1.8,1.8,M.accent,d.x+5.2,0,31);});
   // 11 시멘트 사일로 (1·2·5~11호) · 4호 F/A 사일로
-  SL_DEF.forEach(d=>{const g=grp(d.id);cyl(g,2.2,18,d.fa?M.wall2:M.wall,d.x,0,30);cyl(g,2.26,.4,d.fa?M.steelD:M.accent,d.x,12,30);cyl(g,.45,1.2,d.fa?M.steelD:M.accent,d.x,18,30,20,2.2);});
+  SL_DEF.forEach(d=>{const g=grp(d.id),r=2.2*Math.sqrt(d.cap/8500);cyl(g,r,18,d.fa?M.wall2:M.wall,d.x,0,30);cyl(g,r+.06,.4,d.fa?M.steelD:M.accent,d.x,12,30);cyl(g,.45,1.2,d.fa?M.steelD:M.accent,d.x,18,30,20,r);});   // 높이 같음, 지름 ∝ √용량
   box(DECO.C,50,.5,4.6,M.steel,31.4,18.6,30);
   // 12 출하장
   {const g=grp('DSP');for(let x=6;x<=60;x+=9)[34.4,39.6].forEach(z=>box(g,.45,6.5,.45,M.steelD,x,0,z));
@@ -2086,6 +2087,7 @@ function toast(msg,sev='ok'){const w=$('#toasts');const t=document.createElement
    ========================================================= */
 let evTimer=0;
 function stepSupply(){
+  SL_DEF.forEach(d=>{const e=E[d.id];e.params.stock.v=Math.round(d.cap*e.params.level.v/100);});   // 시멘트 사일로 저장량 = 용량 × 레벨
   OSP_DEF.forEach(o=>{const e=E[o.id];e.params.out.v=o.pw.reduce((a,p)=>a+E[p].params.rate.v,0);e.params.stock.v=e.cap*e.params.fill.v/100;});
   ['A','B'].forEach(L=>{const ys=PB_DEF.filter(d=>d.tab===L).map(d=>E[d.id]);
     ys.forEach(e=>{const f=e.params.fill,r=e.mode==='stack'?(f.v<100?.11:0):-.15;f.v=clamp(f.v+r*(.8+Math.random()*.4),0,100);e.params.stock.v=e.cap*f.v/100;});
