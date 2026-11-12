@@ -1007,7 +1007,7 @@ const alarmActive=a=>pStatus(E[a.eq].params[a.k])!=='ok';
    3D 공정 지도 (Three.js)
    ========================================================= */
 const PAL={
- light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#E3D7C3',rock:'#D9CFBF',rock2:'#CBBFAC',meal:'#D9CDB6',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#DED3C1',glass:'#A9CAF5'},
+ light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5'},
  dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93'}
 };
 let dark=false;
@@ -1134,7 +1134,7 @@ function buildPlant(){
     PWW.push({id:d.id,wheel:wh});});
   // 04 프리블렌딩 야드 (기존 Y1·Y2 / 신설 Y1·Y2): 적재 = 스태커, 사용 = 브리지 리클레이머
   PB_DEF.forEach(d=>{const g=grp(d.id),cz=OSP_DEF.find(o=>o.tab===d.tab).z,side=Math.sign(d.z-cz);
-    flat(26,8.4,M.pad,-19,d.z,.06);
+    flat(26,8.4,M.conc,-19,d.z,.06);
     const pile=new THREE.Mesh(new THREE.ConeGeometry(3.8,5,24),M.lime);pile.scale.set(3,1,1);pile.position.set(-19,2.5,d.z);add(pile,g);
     const st=new THREE.Group();g.add(st);box(st,.8,6.6,.8,M.steelD,0,0,cz+side*.9);const bm=box(st,.7,.7,Math.abs(d.z-cz)+1.4,M.accent,0,6.2,(cz+d.z)/2+side*.4);bm.rotation.x=-side*.18;
     const rc=new THREE.Group();g.add(rc);[d.z-4.6,d.z+4.6].forEach(z=>box(rc,.8,6.2,1.2,M.steelD,0,0,z));box(rc,1.4,1.1,10.4,M.accent,0,6.2,d.z);const hr=box(rc,.25,4.6,8,M.steel,.9,1.4,d.z);hr.rotation.x=0;
