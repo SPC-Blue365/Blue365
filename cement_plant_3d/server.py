@@ -237,9 +237,12 @@ def settings_clean(c) -> dict:
         if not isinstance(dn, list) or len(dn) > 40:
             raise ValueError("정지·보수 기간 형식이 올바르지 않습니다")
         out["down"] = []
+        rev = c.get("downRev")
+        if isinstance(rev, int) and not isinstance(rev, bool) and 0 <= rev <= 1000:
+            out["downRev"] = rev
         for x in dn:
-            if not isinstance(x, dict) or not re.fullmatch(r"K[3-7]", str(x.get("k", ""))):
-                raise ValueError("정지·보수 기간의 호기가 올바르지 않습니다")
+            if not isinstance(x, dict) or not re.fullmatch(r"K[3-7]|RM(?:3|4|5|51|6|7)", str(x.get("k", ""))):
+                raise ValueError("정지·보수 기간의 설비(킬른·원료밀)가 올바르지 않습니다")
             f, t = str(x.get("from") or ""), str(x.get("to") or "")
             for d in (f, t):
                 if d and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):

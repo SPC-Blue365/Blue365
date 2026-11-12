@@ -706,7 +706,7 @@ function paintIcons(root=document){$$('[data-ic]',root).forEach(el=>{if(el.datas
 const ST={ok:'정상',warn:'주의',bad:'이탈',none:'데이터 없음',stop:'가동 중단'};
 const RANK={none:-1,stop:-1,ok:0,warn:1,bad:2};
 /* 가동 중단: 킬른은 DCS 원료 투입량 ≤ 1 t/h, DCS가 없으면 관리기준 설정의 정지·보수 기간(오늘 기준) */
-function isStopped(e){if(!e)return false;if(e.kref)return isStopped(E[e.kref]);if(!e.kiln){if(!e.params.load||e.stop===undefined)return false;const l=e.params.load;if(l.has)return l.v<=5;return !!e.stop;}const f=e.params.feed;if(f.has)return f.v<=1;return !!downOn(e.id,todayStr());}
+function isStopped(e){if(!e)return false;if(e.kref)return isStopped(E[e.kref]);if(!e.kiln){if(e.id&&e.id[0]==='R'&&downOn(e.id,todayStr())==='stop')return true;if(!e.params.load||e.stop===undefined)return false;const l=e.params.load;if(l.has)return l.v<=5;return !!e.stop;}const f=e.params.feed;if(f.has)return f.v<=1;return !!downOn(e.id,todayStr());}
 function P(label,unit,v,lo,hi,dp,noise,o={}){return Object.assign({label,unit,v,base:v,target:v,lo,hi,dp,noise,hist:[]},o);}
 /* 분석 항목: 값은 QMS 데이터에서만 옵니다 (없으면 '—') */
 const QA=(label,unit,dp,src,fld,o={})=>P(label,unit,0,null,null,dp,0,Object.assign({ana:1,src,fld,spc:1},o));
@@ -729,10 +729,18 @@ let FCAO_WARN_RATE=10;
 let FCAO_TARGET=1.2,FCAO_TOL=0.5,FCAO_LIM=[0.7,1.7];
 /* 관리기준: 설정 화면(톱니 아이콘)에서 바꿉니다. 팀 공유 서버는 data/settings.json, 파일을 직접 열면 이 PC에 저장.
    ks = KS L 5201 기준값 (ok=1: KS 원문과 대조 확인, 0: 추정 → 화면에 * 표시) / inh = 사내 관리 범위 (예시값) */
-/* 킬른 정지·보수 기간 — 확인된 기간(2026-11): 3호 장기 정지, 4호 2026-07-24~ 정지(마지막 시료 7/23), 5호 2026-07-04~09-10 보수(시료 공백)
-   kind: stop = 가동 중단(가동률·설계 대비 계산에서 뺌) / repair = 보수(정지 시간으로 셈) */
-const DOWN_DEFAULT=[{k:'K3',from:'',to:'',kind:'stop',note:'장기 가동 중단'},{k:'K4',from:'2026-07-24',to:'',kind:'stop',note:'가동 중단'},{k:'K5',from:'2026-07-04',to:'2026-09-10',kind:'repair',note:'정기 보수'}];
-const CFG_DEFAULT={v:1,down:DOWN_DEFAULT,
+/* 킬른·원료밀 정지·보수 기간 — 현장 확인(2026-11-12). 날짜는 시료가 끊긴 다음 날 ~ 다시 나온 전날
+   3호 라인 장기 정지(3K·3R/M 시료는 입력 오류), 4호 2025-04-05~12-13 중단·2026-07-24~ 중단, 5호 2026-02-18~03-10 보수·2026-07-04~09-10 보수,
+   5R/M 2025-06-07~06-27·2025-09-08~10-02 정지
+   kind: stop = 가동 중단(가동률·설계 대비 계산에서 빼고, 이 기간에 들어온 분석 시료는 업로드 때 입력 오류로 제외) / repair = 보수(정지 시간으로 셈)
+   DOWN_REV: 기본 기간을 늘릴 때 올림 → 예전에 저장한 설정에도 없는 기본 기간을 덧붙임 */
+const DOWN_REV=2;
+const DOWN_DEFAULT=[{k:'K3',from:'',to:'',kind:'stop',note:'장기 가동 중단'},{k:'RM3',from:'',to:'',kind:'stop',note:'3호 라인 중단'},
+  {k:'K4',from:'2025-04-05',to:'2025-12-13',kind:'stop',note:'가동 중단'},{k:'K4',from:'2026-07-24',to:'',kind:'stop',note:'가동 중단'},
+  {k:'K5',from:'2026-02-18',to:'2026-03-10',kind:'repair',note:'보수'},{k:'K5',from:'2026-07-04',to:'2026-09-10',kind:'repair',note:'정기 보수'},
+  {k:'RM5',from:'2025-06-07',to:'2025-06-27',kind:'stop',note:'원료밀 정지'},{k:'RM5',from:'2025-09-08',to:'2025-10-02',kind:'stop',note:'원료밀 정지'}];
+const DOWN_UNITS=[['K3','3호 킬른'],['K4','4호 킬른'],['K5','5호 킬른'],['K6','6호 킬른'],['K7','7호 킬른'],['RM3','3호 R/M'],['RM4','4호 R/M'],['RM5','5호 R/M'],['RM51','5-1호 R/M'],['RM6','6호 R/M'],['RM7','7호 R/M']];
+const CFG_DEFAULT={v:1,downRev:DOWN_REV,down:DOWN_DEFAULT,
   fcao:{target:1.2,tol:0.5,warnRate:10},
   ks:{'1종':{blaine:{v:2800,ok:1},ist:{v:60,ok:0},fst:{v:600,ok:0},s3:{v:12.5,ok:0},s7:{v:22.5,ok:1},s28:{v:42.5,ok:1},MgO:{v:5.0,ok:1},SO3:{v:3.5,ok:1},LOI:{v:3.0,ok:0}},
       '3종':{blaine:{v:3300,ok:0},ist:{v:45,ok:0},fst:{v:600,ok:0},s1:{v:10.0,ok:0},s3:{v:20.0,ok:0},s7:{v:32.5,ok:0},s28:{v:47.5,ok:0},MgO:{v:5.0,ok:0},SO3:{v:4.5,ok:0},LOI:{v:3.0,ok:0}}},
@@ -753,8 +761,9 @@ function cleanCfg(c){
     if(k&&typeof k==='object'){o.ks[pr]={};KS_ITEMS.forEach(it=>{const x=k[it.f];if(x&&typeof x==='object'){const v=numOr(x.v,null,0,1e6);if(v!=null)o.ks[pr][it.f]={v,ok:x.ok?1:0};}});}
     if(h&&typeof h==='object'){o.inh[pr]={};KS_ITEMS.forEach(it=>{const x=h[it.f];if(x&&typeof x==='object'){const lo=numOr(x.lo,null,0,1e6),hi=numOr(x.hi,null,0,1e6);if(lo!=null||hi!=null)o.inh[pr][it.f]={lo,hi};}});}});
   if(Array.isArray(c.down)){const ok=x=>x===''||/^\d{4}-\d{2}-\d{2}$/.test(x);
-    o.down=c.down.filter(x=>x&&/^K[3-7]$/.test(x.k)).map(x=>({k:x.k,from:String(x.from||''),to:String(x.to||''),kind:x.kind==='repair'?'repair':'stop',note:String(x.note||'').replace(/[<>&"'`]/g,'').slice(0,30)}))
-      .filter(x=>ok(x.from)&&ok(x.to)&&(!x.from||!x.to||x.from<=x.to)).slice(0,40);}
+    o.down=c.down.filter(x=>x&&/^(K[3-7]|RM(3|4|5|51|6|7))$/.test(x.k)).map(x=>({k:x.k,from:String(x.from||''),to:String(x.to||''),kind:x.kind==='repair'?'repair':'stop',note:String(x.note||'').replace(/[<>&"'`]/g,'').slice(0,30)}))
+      .filter(x=>ok(x.from)&&ok(x.to)&&(!x.from||!x.to||x.from<=x.to)).slice(0,40);
+    if(!(c.downRev>=DOWN_REV))DOWN_DEFAULT.forEach(d=>{if(!o.down.some(x=>x.k===d.k&&x.from===d.from&&x.to===d.to)&&o.down.length<40)o.down.push({...d});});}   // 예전 설정에 새 기본 기간 덧붙임
   if(c.by)o.by=String(c.by).slice(0,60);if(c.at)o.at=String(c.at).slice(0,30);
   return o;
 }
@@ -2156,7 +2165,7 @@ async function logout(){try{await fetch('api/logout',{method:'POST',credentials:
 async function pullServer(first){
   try{const r=await fetch('api/dataset',{cache:'no-store',credentials:'same-origin'});if(r.status===404)return;if(r.status===401){toLogin();return;}if(!r.ok)throw new Error();
     const ds=await r.json(),m=ds.meta||{};let Q=ds.qms;
-    if(!Q&&ds.sheets)Q=QMS.build(ds.sheets);          // 공유 폴더 자동 읽기: 원본 시트를 이 화면에서 집계
+    if(!Q&&ds.sheets)Q=QMS.build(ds.sheets,{down:CFG.down});          // 공유 폴더 자동 읽기: 원본 시트를 이 화면에서 집계
     if(!Q||!Q.streams)throw new Error();
     applyQms(Q,m);SERVER.loaded=m.version;
     if(!first)toast(`팀 데이터가 새로 반영되었습니다 · ${m.uploadedBy||''} ${m.uploadedAt?stamp(new Date(m.uploadedAt)):''}`,'ok');}
@@ -2183,7 +2192,7 @@ async function handleFiles(list){
     if(files.length!==1)throw new Error('QMS 통합 양식 엑셀 파일 1개를 올려 주세요.');
     const f=files[0];if(!/\.xlsx$/i.test(f.name))throw new Error(/\.xls[mb]?$/i.test(f.name)?`${f.name}: 이 형식은 읽을 수 없습니다. “Excel 통합 문서(.xlsx)”로 다시 저장해 주세요.`:`${f.name}: 엑셀(.xlsx) 파일만 올릴 수 있습니다.`);
     if(f.size>MAX_FILE)throw new Error('파일이 너무 큽니다 (최대 40MB).');
-    const t0=performance.now();const sheets=await QMS.readXlsx(await f.arrayBuffer());const Q=QMS.build(sheets);
+    const t0=performance.now();const sheets=await QMS.readXlsx(await f.arrayBuffer());const Q=QMS.build(sheets,{down:CFG.down});
     PENDING={fileName:name,Q,ms:Math.round(performance.now()-t0)};
     if(!Q.total)PENDING.err=['QMS 양식에 맞는 시트를 찾지 못했습니다. 3행 머리글(채취일·공정구분 등)을 확인해 주세요.'];
   }catch(e){PENDING={fileName:name,err:[e.message||'파일을 읽지 못했습니다.']};}
@@ -2596,9 +2605,9 @@ function renderCfg(){
   $('#cfBody').innerHTML=`<div class="banner">${ic('info')}${ed?(SERVER?'기준을 바꾸면 모든 접속자 화면에 20초 안에 반영됩니다.':'기준은 이 PC의 브라우저에 저장됩니다.'):'보기 전용입니다.'}<span>${ed?'KS 값은 KS L 5201 원문과 대조한 뒤 ‘확인’에 표시하세요. 표시하지 않은 값은 화면에 * (추정)로 나옵니다.':'관리자만 바꿀 수 있습니다.'}${CFG.at?` 마지막 변경: ${esc(CFG.by||'')} ${esc(String(CFG.at).replace('T',' ').slice(0,16))}`:' 지금은 기본값(예시)입니다.'}</span></div>
    <div class="sect">클링커 f-CaO 사내 관리기준</div>
    <div class="cfgrid"><div class="field"><label for="cfT">목표 (%)</label><input id="cfT" inputmode="decimal" value="${CFG.fcao.target}"${dis}></div><div class="field"><label for="cfTol">허용폭 ± (%)</label><input id="cfTol" inputmode="decimal" value="${CFG.fcao.tol}"${dis}></div><div class="field"><label for="cfW">‘주의’로 보는 이탈 비율 (%)</label><input id="cfW" inputmode="decimal" value="${CFG.fcao.warnRate}"${dis}></div></div>
-   <div class="sect">킬른 정지·보수 기간 <small>DCS가 없을 때 가동률·생산 계산과 현재 가동 상태에 씀</small></div>
-   <div class="tbl"><table class="cftbl"><thead><tr><th>호기</th><th>시작일</th><th>종료일</th><th>구분</th><th>메모</th><th></th></tr></thead><tbody>${(CFG.down||[]).map((x,i)=>`<tr data-dn="${i}">
-     <td><select data-dk aria-label="호기"${dis}>${KILN_DEF.map(d=>`<option value="K${d.n}"${x.k==='K'+d.n?' selected':''}>${d.n}호</option>`).join('')}</select></td>
+   <div class="sect">킬른·원료밀 정지·보수 기간 <small>DCS가 없을 때 가동률·생산 계산과 현재 가동 상태에 씀 · ‘가동 중단’ 기간의 분석 시료는 업로드할 때 입력 오류로 제외</small></div>
+   <div class="tbl"><table class="cftbl"><thead><tr><th>설비</th><th>시작일</th><th>종료일</th><th>구분</th><th>메모</th><th></th></tr></thead><tbody>${(CFG.down||[]).map((x,i)=>`<tr data-dn="${i}">
+     <td><select data-dk aria-label="설비"${dis}>${DOWN_UNITS.map(([v,t])=>`<option value="${v}"${x.k===v?' selected':''}>${t}</option>`).join('')}</select></td>
      <td><input type="date" data-df value="${x.from}" aria-label="시작일"${dis}></td><td><input type="date" data-dt value="${x.to}" aria-label="종료일 (빈칸 = 지금까지)"${dis}></td>
      <td><select data-dkind aria-label="구분"${dis}><option value="stop"${x.kind==='stop'?' selected':''}>가동 중단</option><option value="repair"${x.kind==='repair'?' selected':''}>보수</option></select></td>
      <td><input type="text" data-dnote value="${esc(x.note||'')}" maxlength="30" aria-label="메모" style="width:120px;text-align:left"${dis}></td><td>${ed?`<button type="button" class="pbtn" data-ddel="${i}" aria-label="이 기간 삭제">${ic('x')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>

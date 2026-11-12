@@ -179,6 +179,10 @@
     const maxDay = dayOf(new Date(now.getTime() + 864e5));
     const warn = [], counts = {}, recs = { raw: [], res: [], dcs: [], clk: [], xrd: [], cem: [], cemop: [], ship: [], acc: [] }, oddDates = [];
     let future = 0, swapped = 0, noUnit = 0, badCode = 0;
+    // 가동 중단 기간(관리기준 설정)에 들어온 분석 시료 = 입력 오류 → 제외 (운전값 DCS는 그대로)
+    const downs = (Array.isArray(opt.down) ? opt.down : []).filter(x => x && x.kind === 'stop' && typeof x.k === 'string');
+    const stopOn = (u, d) => downs.some(x => x.k === u && (!x.from || d >= x.from) && (!x.to || d <= x.to));
+    const inStop = {}, inStopRows = [];
     for (const [name, rows] of Object.entries(sheets || {})) {
       if (!Array.isArray(rows)) continue;
       let hr = -1, kind = null, hdr = null;
@@ -207,6 +211,7 @@
           recs.ship.push(o); n++; continue;
         }
         const unit = unitOf(row[cUnit]); if (!unit) { if (/^SA1KL\d$/i.test(txt(row[cUnit]))) badCode++; else noUnit++; continue; }   // SA1KL3·SA1KL6 = 입력 오류 코드
+        if (kind !== 'dcs' && kind !== 'cemop' && stopOn(unit, day)) { inStop[unit] = (inStop[unit] || 0) + 1; inStopRows.push(`${name} ${r + 1}행(${day})`); continue; }
         o.unit = unit; if (cName >= 0) o.grade = txt(row[cName]); if (cCtype >= 0) o.ctype = txt(row[cCtype]);
         if (kind === 'cemop') { for (const [f, i] of cols) o[f] = num(row[i]); recs.cemop.push(o); n++; continue; }   // 운전값: 0은 실제 값(정지)
         for (const [f, i] of cols) o[f] = kind === 'dcs' ? num(row[i]) : ana(row[i]);
@@ -229,6 +234,10 @@
     if (oddDates.length) warn.push(`앞뒤 행과 동떨어진 날짜 ${oddDates.length}건 — 확인해 주세요: ${oddDates.slice(0, 6).join(', ')}${oddDates.length > 6 ? ' 외' : ''}`);
     if (swapped) warn.push(`시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 ${swapped}행을 자동으로 바로잡았습니다.`);
     if (badCode) warn.push(`입력 오류 공정구분(SA1KL…) ${badCode}행은 제외했습니다.`);
+    if (inStopRows.length) {
+      const nm = u => u[0] === 'K' ? `${u.slice(1)}호 킬른` : u.startsWith('RM') ? `${u.slice(2).replace(/^(\d)1$/, '$1-1')}호 R/M` : `${u.slice(2)}호 C/M`;
+      warn.push(`가동 중단 기간에 들어온 분석 시료 ${inStopRows.length}행(${Object.entries(inStop).map(([u, c]) => nm(u) + ' ' + c).join(' · ')})은 입력 오류로 보고 제외했습니다: ${inStopRows.slice(0, 6).join(', ')}${inStopRows.length > 6 ? ' 외' : ''}`);
+    }
     if (noUnit) warn.push(`공정구분(호기·밀)을 알 수 없는 ${noUnit}행은 건너뛰었습니다.`);
 
     const all = [...recs.raw, ...recs.clk, ...recs.cem, ...recs.res, ...recs.xrd, ...recs.dcs, ...recs.ship];
