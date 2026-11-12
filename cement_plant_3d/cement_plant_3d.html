@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-12 13:02">
+<meta name="b365-build" content="2026-11-12 13:11">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -549,7 +549,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-12 13:02</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-12 13:11</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1389,7 +1389,7 @@ function applyScenePalette(){
   Object.values(M).forEach(m=>{if(m.userData.key)m.color.set(pal[m.userData.key]);});
   renderer.setClearColor(pal.bg,1);
   scene.fog.color.set(pal.bg);
-  hemi.intensity=dark?.55:.78; sun.intensity=dark?.55:.72;
+  hemi.intensity=dark?.55:.66; sun.intensity=dark?.55:.62;   // 밝은 화면 조명 약 15% 낮춤 (흰 바탕 눈부심)
   hemi.color.set(dark?'#B9C6DA':'#FFFFFF'); hemi.groundColor.set(dark?'#1A1F27':'#C9D3E0');
 }
 
@@ -1804,8 +1804,8 @@ function initScene(){
   st.appendChild(renderer.domElement);
   scene=new THREE.Scene();scene.fog=new THREE.Fog('#F2F4F6',320,640);
   camera=new THREE.PerspectiveCamera(32,1,1,1600);
-  hemi=new THREE.HemisphereLight('#FFFFFF','#C9D3E0',.78);scene.add(hemi);
-  sun=new THREE.DirectionalLight('#FFFFFF',.72);sun.position.set(-70,130,60);sun.castShadow=true;
+  hemi=new THREE.HemisphereLight('#FFFFFF','#C9D3E0',.66);scene.add(hemi);
+  sun=new THREE.DirectionalLight('#FFFFFF',.62);sun.position.set(-70,130,60);sun.castShadow=true;
   sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-150,right:150,top:125,bottom:-125,near:10,far:420});sun.shadow.bias=-.0006;sun.shadow.normalBias=.05;scene.add(sun);
   raycaster=new THREE.Raycaster();pointer=new THREE.Vector2();
   makeMats();buildPlant();buildTrucks();applyScenePalette();applyTabVis();
@@ -2595,7 +2595,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-12 13:02</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-12 13:11</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
@@ -2715,7 +2715,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-12 13:02';
+const BUILD='2026-11-12 13:11';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}

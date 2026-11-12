@@ -1058,7 +1058,7 @@ function applyScenePalette(){
   Object.values(M).forEach(m=>{if(m.userData.key)m.color.set(pal[m.userData.key]);});
   renderer.setClearColor(pal.bg,1);
   scene.fog.color.set(pal.bg);
-  hemi.intensity=dark?.55:.78; sun.intensity=dark?.55:.72;
+  hemi.intensity=dark?.55:.66; sun.intensity=dark?.55:.62;   // 밝은 화면 조명 약 15% 낮춤 (흰 바탕 눈부심)
   hemi.color.set(dark?'#B9C6DA':'#FFFFFF'); hemi.groundColor.set(dark?'#1A1F27':'#C9D3E0');
 }
 
@@ -1473,8 +1473,8 @@ function initScene(){
   st.appendChild(renderer.domElement);
   scene=new THREE.Scene();scene.fog=new THREE.Fog('#F2F4F6',320,640);
   camera=new THREE.PerspectiveCamera(32,1,1,1600);
-  hemi=new THREE.HemisphereLight('#FFFFFF','#C9D3E0',.78);scene.add(hemi);
-  sun=new THREE.DirectionalLight('#FFFFFF',.72);sun.position.set(-70,130,60);sun.castShadow=true;
+  hemi=new THREE.HemisphereLight('#FFFFFF','#C9D3E0',.66);scene.add(hemi);
+  sun=new THREE.DirectionalLight('#FFFFFF',.62);sun.position.set(-70,130,60);sun.castShadow=true;
   sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-150,right:150,top:125,bottom:-125,near:10,far:420});sun.shadow.bias=-.0006;sun.shadow.normalBias=.05;scene.add(sun);
   raycaster=new THREE.Raycaster();pointer=new THREE.Vector2();
   makeMats();buildPlant();buildTrucks();applyScenePalette();applyTabVis();
