@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-13 09:31">
+<meta name="b365-build" content="2026-11-13 09:39">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -549,7 +549,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:31</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:39</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1977,6 +1977,19 @@ function shipMesh(){
   return {g,key:null,x:0,z:0,h:0,path:[],fade:1,len:L};
 }
 const tday=s=>s?new Date(s):null;
+/* 선박 시멘트 품종 — 출하속보 표기로 판단: B/K = 1종 벌크, 3종B/K = 3종, S/C·2종S/C = 슬래그.
+   입항 예정은 비고(양하지)의 ‘3종’·‘2종SC’ 등으로, 표기가 없으면 1종으로 추정(*). 32번 선석은 1종만 선적하므로 1종 */
+const cemOf=t=>/3종/.test(t)?'3종':/S\/?C|슬래그/i.test(t)?'슬래그':/B\/K|벌크|1종/.test(t)?'1종':null;
+function shipType(o){
+  if(!o)return {t:'',est:false};
+  if(o.src==='v'){const t=cemOf(o.cargo||'')||cemOf(o.note||'');return t?{t,est:false}:{t:'1종',est:true};}
+  const parts=String(o.note||'').split(/[&,]/).map(x=>x.trim()).filter(Boolean);
+  const ts=[...new Set(parts.map(x=>cemOf(x)||(/\d/.test(x)?'1종':null)).filter(Boolean))].sort();
+  if(ts.length)return {t:ts.join('·'),est:false};
+  const bd=BERTH_DEF.find(d=>d.id===o.berth);if(bd&&bd.prods.length===1)return {t:PROD_PORT[bd.prods[0]],est:false};
+  return {t:'1종',est:true};
+}
+const shipTypeTxt=o=>{const k=shipType(o);return k.t?k.t+(k.est?'*':''):'';};
 /* 지금 시각 기준 선박 상태 — 출하속보의 접안·착수·완료·출항 시각과 입항예정으로 판단 */
 function portPlan(now=new Date()){
   const S=SOK,out=[];BERTH_DEF.forEach(d=>BERTH_ST[d.id]={ship:null});
@@ -2297,7 +2310,7 @@ function placeTags(){
   EQ.forEach(e=>put(TAG['eq'+e.id],ANCHOR[e.id]));
   TRUCKS.forEach(t=>{if(!t.g.visible){TAG['truck'+t.id].style.display='none';return;}put(TAG['truck'+t.id],new THREE.Vector3(t.x,5.6,t.z));});
   SHIPS.forEach((s,i)=>{const b=TAG['ship'+i];if(!b)return;const show=s.key&&s.g.visible&&curTab==='P'&&(!isMobile()||s.o.state!=='anch');b.dataset.hide=show?'':'1';   // 휴대폰: 외항 대기 선박 이름표는 숨김
-    if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,nm=o.name,lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.src==='e'&&o.eta&&o.state==='anch'?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:o.label;
+    if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,ty=shipTypeTxt(o),nm=ty?`${o.name} · ${ty}`:o.name,lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.src==='e'&&o.eta&&o.state==='anch'?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:o.label;
       if(sp.textContent!==nm)sp.textContent=nm;if(sm.textContent!==lb)sm.textContent=lb;_v.set(s.x,9,s.z);put(b,_v);}else b.style.display='none';});
   const cd=$('#blastCd');if(cd){const show=BLAST.tb<1.5&&QRY_DEF.some(d=>EQOBJ[d.id]&&EQOBJ[d.id].visible),txt=BLAST.cd?String(BLAST.cd):'발파!';
     cd.dataset.hide=show?'':'1';
@@ -2415,14 +2428,14 @@ function portBlock(e){
   if(e.berth){const b=BERTH_ST[e.id]&&BERTH_ST[e.id].ship,bd=BERTH_DEF.find(d=>d.id===e.id);
     let h=`<div class="sect">선석 설비 <small>현장 제공</small></div><dl class="kv">${row('선적 능력',nf(bd.cap)+' t/h')}${row('선적 품종',bd.prods.map(x=>PROD_PORT[x]).join(' · '))}${row('연결 부두 사일로',bd.silos.map(n=>n+'호').join(' · '))}${(bd.direct||[]).map(x=>row(`${PROD_PORT[x.prod]} 직투`,`구내 ${E[x.id].n}호 사일로 → 선석 (부두 사일로 거치지 않음)`)).join('')}</dl><div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
     if(!b)h+=row('상태','공석');
-    else h+=row('선박',`<b>${esc(b.name)}</b> <span class="badge ${b.state==='load'?'s-act':b.state==='done'?'s-ok':'s-idle'}">${esc(b.label)}</span>`)+(b.cargo?row('화물',`${esc(cargoKo(b.cargo))} (${esc(b.cargo)})`):'')+row('선적량',b.qty?`${b.loaded!=null?nf(b.loaded)+' / ':''}${nf(b.qty)} t${b.src==='v'&&!SOK.vessels.find(v=>v.name===b.name&&v.qty)?' (계획)':''}`:'—')+(b.th?row('T/H',nf(b.th)+` / ${nf(bd.cap)} t/h`+(b.state==='load'&&!SOK.vessels.find(v=>v.name===b.name&&v.th)?' (24시 선적량으로 추정)':'')):'')
+    else h+=row('선박',`<b>${esc(b.name)}</b> <span class="badge ${b.state==='load'?'s-act':b.state==='done'?'s-ok':'s-idle'}">${esc(b.label)}</span>`)+row('시멘트 품종',`${esc(shipTypeTxt(b))}${shipType(b).est?' <small style="color:var(--fg3)">* 속보에 품종 표기가 없어 추정</small>':''}`)+(b.cargo?row('화물',`${esc(cargoKo(b.cargo))} (${esc(b.cargo)})`):'')+row('선적량',b.qty?`${b.loaded!=null?nf(b.loaded)+' / ':''}${nf(b.qty)} t${b.src==='v'&&!SOK.vessels.find(v=>v.name===b.name&&v.qty)?' (계획)':''}`:'—')+(b.th?row('T/H',nf(b.th)+` / ${nf(bd.cap)} t/h`+(b.state==='load'&&!SOK.vessels.find(v=>v.name===b.name&&v.th)?' (24시 선적량으로 추정)':'')):'')
       +(b.src==='v'?row('접안 · 착수',`${tm(b.arr)} · ${tm(b.st)}`)+row('완료 · 출항',`${tm(b.dn)}${b.dnEst?' (추정)':''} · ${tm(b.dep)}${b.depEst?' (추정)':''}`)+row('양하지',esc([b.dest,b.note].filter(Boolean).join(' · '))||'—'):row('입항 예정',`${tm(b.eta)}${b.note?' · '+esc(b.note):''}`));
     const nx=PORTV.filter(o=>o.src==='e'&&o.berth===e.id&&o!==b).slice(0,3);
     h+=`</dl>${nx.length?`<div class="sect">다음 입항 예정</div><dl class="kv">${nx.map(o=>row(esc(o.name),`${tm(o.eta)}${o.note?' · '+esc(o.note):''}`)).join('')}</dl>`:''}`;
     const dp=SOK?SOK.vessels.filter(v=>v.port==='sc'&&v.berth===e.berth&&v.t&&v.t['출항']&&new Date(v.t['출항'])<new Date()).slice(-2):[];
     if(dp.length)h+=`<div class="sect">최근 출항</div><dl class="kv">${dp.map(v=>row(esc(v.name),`${tm(new Date(v.t['출항']))} · ${v.qty?nf(v.qty)+' t':''} → ${esc(v.dest||'')}`)).join('')}</dl>`;
     return h;}
-  if(e.id==='ANCH'){const ex=PORTV.filter(o=>o.src==='e');return `<div class="sect">입항 예정 선박 <small>${src}</small></div><dl class="kv">${ex.length?ex.map(o=>row(`<b>${esc(o.name)}</b>`,`${tm(o.eta)} · ${o.berth?'#'+o.berth.slice(2):'선석 미정'}${o.shift?' (이동)':''}${o.note?' · '+esc(o.note):''}${o.state!=='anch'?` <span class="badge s-idle">${esc(o.label)}</span>`:''}`)).join(''):row('입항 예정','없음')}</dl>`;}
+  if(e.id==='ANCH'){const ex=PORTV.filter(o=>o.src==='e');return `<div class="sect">입항 예정 선박 <small>${src} · * 품종 추정</small></div><dl class="kv">${ex.length?ex.map(o=>row(`<b>${esc(o.name)}</b> · ${esc(shipTypeTxt(o))}`,`${tm(o.eta)} · ${o.berth?'#'+o.berth.slice(2):'선석 미정'}${o.shift?' (이동)':''}${o.note?' · '+esc(o.note):''}${o.state!=='anch'?` <span class="badge s-idle">${esc(o.label)}</span>`:''}`)).join(''):row('입항 예정','없음')}</dl>`;}
   if(e.id==='DHP'){if(!SOK)return `<div class="note">출하속보(PDF)를 올리면 동해항 선박 일정이 나옵니다.</div>`;
     const vs=SOK.vessels.filter(v=>v.port==='dh'),ev=dhEvents();
     let h=`<div class="sect">동해항 선박 <small>${src}</small></div><dl class="kv">`+(vs.length?vs.map(v=>row(`<b>${esc(v.name)}</b>`,`${esc(cargoKo(v.cargo))}${v.qty?' '+nf(v.qty)+' t':''}${v.berth?' · 선석 '+v.berth:''}${v.dest?' · '+esc(v.dest):''}`)).join(''):row('선박','없음'))+'</dl>';
@@ -3195,7 +3208,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:31</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:39</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
@@ -3350,7 +3363,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-13 09:31';
+const BUILD='2026-11-13 09:39';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
