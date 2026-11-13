@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-13 09:06">
+<meta name="b365-build" content="2026-11-13 09:15">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -549,7 +549,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:06</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:15</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1601,7 +1601,7 @@ function slEq(d,i){
    ========================================================= */
 const PORT={shore:172,shipX:206,jets:[{id:'J2',z:14,b:[21,22]},{id:'J3',z:-28,b:[31,32]}]};
 const PROD_PORT={'1종':'1종','3종':'3종','S/C':'슬래그 시멘트'};
-const BERTH_DEF=[{id:'BT22',n:22,jz:14,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[3,4,5,6]},
+const BERTH_DEF=[{id:'BT22',n:22,jz:14,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[3,4,5,6],direct:[{id:'SL9',prod:'3종'}]},   // 22번 3종은 구내 9호에서 직투 (부두 1호 3종은 22번 불가)
   {id:'BT31',n:31,jz:-28,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[1,2,3,5,6]},
   {id:'BT32',n:32,jz:-28,side:-1,cap:1000,prods:['1종'],silos:[5,6]}];
 BERTH_DEF.forEach(d=>d.z=d.jz+d.side*9.2);
@@ -1609,6 +1609,7 @@ let SOK=null,SOKMETA={},PORTV=[];const BERTH_ST={};   // 출하속보 · 선박 
 /* 부두 사일로 — 현장 제공 2026-11-13: 1호 3종 4,000 t · 2호 슬래그 4,000 t · 3~6호 1종 각 6,000 t */
 const PIER_DEF=[[1,'3종',4000],[2,'S/C',4000],[3,'1종',6000],[4,'1종',6000],[5,'1종',6000],[6,'1종',6000]].map(([n,prod,cap],i)=>({id:'PIER'+n,n:String(n),prod,cap,z:-36+i*12}));
 const pierBerths=n=>BERTH_DEF.filter(b=>b.silos.includes(+n));
+const directBerths=id=>BERTH_DEF.filter(b=>(b.direct||[]).some(x=>x.id===id));
 const CARGO_KO={'B/K':'벌크 시멘트','C/K':'클링커','C/P':'시멘트 포장','P/Cokes':'Pet-coke','P/Coke':'Pet-coke','P-Cokes':'Pet-coke','유연탄':'유연탄','S/C':'슬래그 시멘트'};
 const cargoKo=c=>CARGO_KO[c]||c||'—';
 function pierEq(d){return {id:d.id,code:'PS-'+d.n,n:d.n,name:`부두 ${d.n}호 사일로`,tab:'P',area:'ship',icon:'silo',cap:d.cap,prod:d.prod,
@@ -1771,6 +1772,8 @@ function bld(p,w,h,d,x,z){
 }
 function tree(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(s);cyl(g,.25,1.6,M.trunk,0,0,0,6);const t=new THREE.Mesh(new THREE.IcosahedronGeometry(1.7,0),M.tree);t.position.y=2.9;t.scale.y=1.15;add(t,g);scene.add(g);}
 
+/* 벨트 기둥을 세우지 않는 곳: 출하 트럭 길(x≈8·60), 앞 도로 */
+const postBlocked=(x,z)=>((Math.abs(x-8)<4||Math.abs(x-60)<4)&&z>33&&z<57)||(z>46.5&&z<57.5);
 function conveyor(pts,matKey,n,tab='shared'){
   const par=DECO[tab],V=pts.map(p=>new THREE.Vector3(p[0],p[1],p[2])), X=new THREE.Vector3(1,0,0);
   const segs=[];let tot=0;
@@ -1779,7 +1782,7 @@ function conveyor(pts,matKey,n,tab='shared'){
     const m=new THREE.Mesh(new THREE.BoxGeometry(L,.6,1.4),M.steel);
     m.position.copy(a).add(b).multiplyScalar(.5);m.quaternion.setFromUnitVectors(X,dir);add(m,par);
     const k=Math.floor(L/7);
-    for(let s=1;s<=k;s++){const q=a.clone().lerp(b,s/(k+1));if(q.y>1.2){const h=q.y-.3;box(par,.35,h,.35,M.steelD,q.x,0,q.z);}}
+    for(let s=1;s<=k;s++){const q=a.clone().lerp(b,s/(k+1));if(q.y>1.2&&!postBlocked(q.x,q.z)){const h=q.y-.3;box(par,.35,h,.35,M.steelD,q.x,0,q.z);}}
     segs.push(L);tot+=L;
   }
   const parts=[];
@@ -1932,6 +1935,8 @@ function buildPlant(){
      conveyor([[x,5,j.z],[176,4.2,j.z],[232,4.2,j.z]],'cem',8,'P');});           // 부두 사일로 → 부두 벨트 → 선적기
    conveyor([[57,19.4,33],[62,19.4,43],[152,19.4,43],[155.4,24.5,38]],'cem',14,'P');   // 구내 사일로 → 부두 사일로 (이송)
    conveyor([[155.4,24.5,38],[155.4,24.5,PIER_DEF[0].z-3]],'cem',8,'P');
+   BERTH_DEF.forEach(b=>(b.direct||[]).forEach(x=>{const sd=SLD[x.id];if(!sd)return;   // 구내 사일로 → 선석 직투
+     conveyor([[sd.x,13,32.6],[sd.x+3,16,45.5],[150,16,45.5],[171,9,38],[171,6,b.jz+1.6],[178,4.6,b.jz+1.6]],'cem',12,'P');}));
    PIER_DEF.forEach(d=>{const g=grp(d.id),r=3.4*Math.sqrt(d.cap/6000);cyl(g,r,22,M.wall,160,0,d.z,28);cyl(g,r+.06,.45,M.accent,160,13,d.z,28);cyl(g,.5,1.3,M.accent,160,22,d.z,20,r);});
    BERTH_DEF.forEach(d=>{const g=grp(d.id),ez=d.jz+d.side*3.6;
      for(let x=PORT.shore+8;x<PORT.shore+62;x+=6)box(g,1.2,1.4,.5,M.tire,x,.5,ez);              // 방충재
@@ -2238,9 +2243,9 @@ function makeBracket(b,mat=M.line){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));const l=new THREE.LineSegments(g,mat);l.renderOrder=999;return l;}
 function relatedIds(id){
   const e=E[id];if(!e)return [];
-  {const bd=BERTH_DEF.find(d=>d.id===id);if(bd)return bd.silos.map(n=>'PIER'+n);const pd=PIER_DEF.find(d=>d.id===id);if(pd)return pierBerths(pd.n).map(b=>b.id);}
+  {const bd=BERTH_DEF.find(d=>d.id===id);if(bd)return [...bd.silos.map(n=>'PIER'+n),...(bd.direct||[]).map(x=>x.id)];const pd=PIER_DEF.find(d=>d.id===id);if(pd)return pierBerths(pd.n).map(b=>b.id);}
   if(ROUTE[id]){const c=CUR[id];return c?[c.silo,c.clk].filter(Boolean):[];}
-  if(SLD[id])return SLD[id].fa?millEqs().map(m=>m.id):millsForSilo(id);
+  if(SLD[id])return SLD[id].fa?millEqs().map(m=>m.id):[...millsForSilo(id),...directBerths(id).map(b=>b.id)];
   if(e.kiln)return ['PH'+e.kiln,...RS_DEF.filter(r=>r.k===id).map(r=>r.id)];
   if(e.kref)return [e.kref];
   const rs=RS_DEF.find(r=>r.id===id);if(rs)return [rs.k,...RM_DEF.filter(m=>m.to===id).map(m=>m.id)];
@@ -2402,10 +2407,12 @@ function supplyBlock(e){
 function portBlock(e){
   const row=(k,v)=>`<div><dt>${k}</dt><dd style="white-space:normal;text-align:right;max-width:64%">${v}</dd></div>`,src=SOK?`출하속보 ${SOK.date}`:'출하속보 없음';
   const tm=d=>d?`${md(d)} ${hhmm(d)}`:'—';
-  if(SLD[e.id]&&SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null)return `<div class="sect">출하속보 재고 <small>${src}</small></div><dl class="kv">${row('재고',nf(SOK.stock.sc[e.n])+' t')}${row('구내 사일로 합계',nf(SOK.stock.sc.sum||0)+' t')}</dl>`;
+  const dir=SLD[e.id]?directBerths(e.id):[],dirH=dir.length?`<div class="sect">삼척항 직투</div><dl class="kv">${dir.map(b=>row(`${b.n}번 선석`,`${b.direct.filter(x=>x.id===e.id).map(x=>PROD_PORT[x.prod]).join('·')} 직접 선적 · ${nf(b.cap)} t/h`)).join('')}</dl>`:'';
+  if(SLD[e.id]&&!(SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null))return dirH;
+  if(SLD[e.id]&&SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null)return dirH+`<div class="sect">출하속보 재고 <small>${src}</small></div><dl class="kv">${row('재고',nf(SOK.stock.sc[e.n])+' t')}${row('구내 사일로 합계',nf(SOK.stock.sc.sum||0)+' t')}</dl>`;
   if(e.id.startsWith('PIER')){const q=QD&&QD.ssilo&&QD.ssilo[e.id];return `<div class="sect">부두 사일로 <small>${src}</small></div><dl class="kv">${row('재고',SOK&&SOK.stock.pier?nf(SOK.stock.pier[e.n]||0)+' t':'—')}${row('저장 품종',PROD_PORT[e.prod])}${row('용량',nf(e.cap)+' t')}${row('연결 선석',pierBerths(e.n).map(b=>`#${b.n} (${b.prods.map(x=>PROD_PORT[x]).join('·')})`).join(', ')||'—')}${row('부두 6기 합계',SOK&&SOK.stock.pier?nf(SOK.stock.pier.sum||0)+' t / '+nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))+' t':'—')}${q?row('최근 투입 (QMS)',`${q.mill?q.mill.slice(2)+'호 C/M · ':''}${esc(q.product||'')}`):''}</dl>`;}
   if(e.berth){const b=BERTH_ST[e.id]&&BERTH_ST[e.id].ship,bd=BERTH_DEF.find(d=>d.id===e.id);
-    let h=`<div class="sect">선석 설비 <small>현장 제공</small></div><dl class="kv">${row('선적 능력',nf(bd.cap)+' t/h')}${row('선적 품종',bd.prods.map(x=>PROD_PORT[x]).join(' · '))}${row('연결 부두 사일로',bd.silos.map(n=>n+'호').join(' · '))}</dl><div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
+    let h=`<div class="sect">선석 설비 <small>현장 제공</small></div><dl class="kv">${row('선적 능력',nf(bd.cap)+' t/h')}${row('선적 품종',bd.prods.map(x=>PROD_PORT[x]).join(' · '))}${row('연결 부두 사일로',bd.silos.map(n=>n+'호').join(' · '))}${(bd.direct||[]).map(x=>row(`${PROD_PORT[x.prod]} 직투`,`구내 ${E[x.id].n}호 사일로 → 선석 (부두 사일로 거치지 않음)`)).join('')}</dl><div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
     if(!b)h+=row('상태','공석');
     else h+=row('선박',`<b>${esc(b.name)}</b> <span class="badge ${b.state==='load'?'s-act':b.state==='done'?'s-ok':'s-idle'}">${esc(b.label)}</span>`)+(b.cargo?row('화물',`${esc(cargoKo(b.cargo))} (${esc(b.cargo)})`):'')+row('선적량',b.qty?`${b.loaded!=null?nf(b.loaded)+' / ':''}${nf(b.qty)} t${b.src==='v'&&!SOK.vessels.find(v=>v.name===b.name&&v.qty)?' (계획)':''}`:'—')+(b.th?row('T/H',nf(b.th)+` / ${nf(bd.cap)} t/h`+(b.state==='load'&&!SOK.vessels.find(v=>v.name===b.name&&v.th)?' (24시 선적량으로 추정)':'')):'')
       +(b.src==='v'?row('접안 · 착수',`${tm(b.arr)} · ${tm(b.st)}`)+row('완료 · 출항',`${tm(b.dn)}${b.dnEst?' (추정)':''} · ${tm(b.dep)}${b.depEst?' (추정)':''}`)+row('양하지',esc([b.dest,b.note].filter(Boolean).join(' · '))||'—'):row('입항 예정',`${tm(b.eta)}${b.note?' · '+esc(b.note):''}`));
@@ -3186,7 +3193,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:06</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:15</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
@@ -3337,7 +3344,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-13 09:06';
+const BUILD='2026-11-13 09:15';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
