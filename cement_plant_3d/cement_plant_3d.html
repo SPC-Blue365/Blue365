@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-13 09:47">
+<meta name="b365-build" content="2026-11-13 09:55">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -132,6 +132,8 @@ a{color:inherit;text-decoration:none}
 .tag i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:none}
 .tag.s-warn i{background:var(--warn)} .tag.s-bad i{background:var(--bad)} .tag.s-none i,.tag.s-stop i{background:var(--fg3)}
 .tag small{font-weight:500;color:var(--fg3)}
+@media (min-width:761px){.views.nopanels #lot,.views.nopanels #list{display:none!important}}
+.ctrls #panTgl[aria-pressed="true"]{color:var(--accent)}
 .blastcd{position:absolute;left:0;top:0;display:flex;align-items:center;gap:10px;padding:8px 16px 8px 8px;border-radius:999px;background:var(--card);color:var(--fg);box-shadow:0 6px 20px rgba(0,0,0,.14);pointer-events:none;white-space:nowrap}
 .blastcd b{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--warn);color:#fff;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;animation:cdpop .45s cubic-bezier(.2,.8,.2,1)}
 .blastcd.near b{background:var(--bad)}
@@ -147,6 +149,7 @@ a{color:inherit;text-decoration:none}
 .kpis{position:absolute;left:16px;top:16px;display:grid;grid-template-columns:repeat(4,minmax(0,212px));gap:12px;width:calc(100% - 470px);z-index:5}
 .views.nodetail .kpis{width:calc(100% - 100px)}
 .kpis{display:flex;overflow-x:auto;scrollbar-width:none}
+@media (min-width:761px){.kpis{flex-wrap:wrap;overflow:visible}}
 .pbar{position:relative;flex:none;display:flex;align-items:center;gap:8px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:6px;max-width:calc(100% - 32px)}
 .pbar .seg button{padding:6px 10px}
 .pnav{display:flex;align-items:center;gap:2px}
@@ -549,7 +552,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:47</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:55</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -591,6 +594,8 @@ table.ks td.r,table.ks th.r{text-align:right}
           <button type="button" data-cam="rr" aria-label="오른쪽으로 회전" data-ic="rotR"></button>
           <hr>
           <button type="button" data-cam="home" aria-label="전체 보기" data-ic="home"></button>
+          <hr>
+          <button type="button" id="panTgl" aria-label="아래 카드 숨기기" data-tip="로트 추적 · 설비·시료·출하 목록 숨기기" aria-pressed="false" data-ic="eyeOff"></button>
         </div>
         <aside class="panel detail" id="detail" aria-live="polite"></aside>
         <div class="panel lot" id="lot"></div>
@@ -1334,6 +1339,8 @@ const ICON={
   target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   chevR:'<path d="M9 6l6 6-6 6"/>', chevL:'<path d="M15 6l-6 6 6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
   truck:'<path d="M2 6h12v10H2zM14 9h4l3 3v4h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:'<path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6C3.6 8.5 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
   ship:'<path d="M3 15l2.2 5h13.6L21 15z"/><path d="M6 15V9h12v6M10 9V5h4v4"/>',
   anchor:'<circle cx="12" cy="5" r="2"/><path d="M12 7v14M7 10h10M4 13a8 8 0 0 0 16 0"/>',
   flask:'<path d="M9 3h6M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2h12.4a1.5 1.5 0 0 0 1.3-2L14 9V3"/><path d="M7 15h10"/>',
@@ -1978,20 +1985,14 @@ function shipMesh(){
 }
 const tday=s=>s?new Date(s):null;
 /* 선박 시멘트 품종 — 속보의 화물 B/K는 ‘벌크’라 품종을 알 수 없음. 입항 예정 배는 입항해야 알 수 있어 표시하지 않음.
-   접안·선적 배: ① 속보 비고(양하지)에 3종·SC 등 표기 ② 한 품종만 싣는 선석(32번 = 1종) ③ QMS 출하시멘트 로트 비고에 선박명이 있는 최근 로트(접안 10일 전~) */
+   접안·선적 배: ① 속보 비고(양하지)에 3종·SC 등 표기 ② 한 품종만 싣는 선석(32번 = 1종). 그 밖에는 표시하지 않음
+   (QMS 출하시멘트 비고의 선박명은 채취일에 출항한 배 이름 — 당일 출항선 샘플을 품종별로 혼합한 시료라 선박별 품종 근거로 쓰지 않음) */
 const cemOf=t=>/3종/.test(t)?'3종':/S\/?C|슬래그/i.test(t)?'슬래그':/1종/.test(t)?'1종':null;
-const PROD_SHORT={'1종':'1종','3종':'3종','S/C2종':'슬래그','S/C3종':'슬래그'};
-function qmsShipType(o){
-  if(!QD||!QD.ship||!o.name)return null;const nm=o.name.replace(/\s/g,''),base=nm.replace(/호$/,'');
-  const t1=o.arr||o.st,from=t1?ymd(new Date(+t1-10*864e5)):null,to=o.dep?ymd(o.dep):todayStr();if(!from)return null;
-  let best=null;for(const r of QD.ship.rows){if(r[0]<from||r[0]>to)continue;const ns=String(r[4]||'').split(/[,\s/.·]+/).map(x=>x.replace(/호$/,''));if(ns.includes(base)&&(!best||r[0]>best[0]))best=r;}
-  return best&&PROD_SHORT[best[2]]?{t:PROD_SHORT[best[2]],src:`QMS 출하 로트 ${best[1]} (${best[0].slice(5).replace('-','/')}) 비고 기준`}:null;
-}
 function shipType(o){
   if(!o||o.src!=='v')return null;
   const t=cemOf(o.note||'')||cemOf(o.dest||'');if(t)return {t,src:'출하속보 비고'};
   const bd=BERTH_DEF.find(d=>d.id===o.berth);if(bd&&bd.prods.length===1)return {t:PROD_PORT[bd.prods[0]],src:`${bd.n}번 선석은 ${PROD_PORT[bd.prods[0]]}만 선적`};
-  return qmsShipType(o);
+  return null;
 }
 const shipTypeTxt=o=>{const k=shipType(o);return k?k.t:'';};
 /* 지금 시각 기준 선박 상태 — 출하속보의 접안·착수·완료·출항 시각과 입항예정으로 판단 */
@@ -2239,6 +2240,8 @@ function setupControls(){
   st.addEventListener('pointerup',up);st.addEventListener('pointercancel',up);
   st.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(e.deltaY*.0012));hideHint();},{passive:false});
   st.addEventListener('keydown',e=>{const k=e.key;if(k==='ArrowLeft')panBy(40,0);else if(k==='ArrowRight')panBy(-40,0);else if(k==='ArrowUp')panBy(0,40);else if(k==='ArrowDown')panBy(0,-40);else if(k==='+'||k==='=')zoomBy(.8);else if(k==='-')zoomBy(1.25);else if(k==='Escape')select(null);else return;e.preventDefault();});
+  {const t=$('#panTgl'),set=on=>{$('#views').classList.toggle('nopanels',on);t.setAttribute('aria-pressed',on);t.setAttribute('aria-label',on?'아래 카드 보이기':'아래 카드 숨기기');t.dataset.tip=on?'로트 추적 · 설비·시료·출하 목록 보이기':'로트 추적 · 설비·시료·출하 목록 숨기기';t.innerHTML=ic(on?'eye':'eyeOff');try{localStorage.setItem('b365-nopanels',on?'1':'');}catch(e){}};
+   let on=false;try{on=localStorage.getItem('b365-nopanels')==='1';}catch(e){}set(on);t.onclick=()=>{set(!$('#views').classList.contains('nopanels'));};}
   $$('[data-cam]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.cam;
     if(a==='in')zoomBy(.75);if(a==='out')zoomBy(1.33);if(a==='rl')goal.theta+=Math.PI/4;if(a==='rr')goal.theta-=Math.PI/4;if(a==='home'){Object.assign(goal,homeView());}
     if(REDUCED)Object.assign(cam,goal);}));
@@ -2652,6 +2655,37 @@ function ksEval(prod,r=perRange()){
       fail:ks&&n?vs.filter(v=>!pass(v)).length:null,out:ih&&n?vs.filter(v=>!inr(v)).length:null};
   }).filter(x=>x.n||x.ks||x.ih);
 }
+const LOADING_CARGO=/B\/K|C\/K|C\/P|시멘트|클링커/i;   // 선적 화물 (나머지 유연탄·Pet-coke·석고·슬래그 등은 하역)
+function scShipCard(){
+  const S=SOK,src=S?`출하속보 ${S.date.slice(5).replace('-','/')}`:'출하속보 없음';
+  const act=PORTV.filter(o=>['load','done','berth','berthEst'].includes(o.state)).sort((a,b)=>({load:0,done:1,berth:2,berthEst:3}[a.state]-{load:0,done:1,berth:2,berthEst:3}[b.state]));
+  const ex=PORTV.filter(o=>o.src==='e'&&o.state==='anch'&&o.eta).sort((a,b)=>a.eta-b.eta),nx=ex[0];
+  const opts=act.length?act.map(o=>[o.key,`${o.name}${o.berth?' #'+o.berth.slice(2):''}`]):[['none','접안 선박 없음']],val=kpick('portSC',opts,opts[0][0]),o=act.find(x=>x.key===val);
+  const base={key:'portSC',ic:'ship',l:'삼척항',sel:{opts,val,aria:'삼척항 선박 선택'},tip:`삼척항 선석(22·31·32)에서 선적 중·선적 완료·접안한 선박. 속보 이후 상황은 추정. ${src}`};
+  if(!S)return Object.assign(base,{v:'—',u:'',s:'데이터 창에서 출하속보(PDF)를 올려 주세요'});
+  if(!o)return Object.assign(base,{v:'0',u:'척 선적 중',s:nx?`다음 입항 ${esc(nx.name)} ${md(nx.eta)} ${hhmm(nx.eta)}${nx.berth?' #'+nx.berth.slice(2):''}`:'입항 예정 없음'});
+  const ty=shipTypeTxt(o),bn=o.berth?'#'+o.berth.slice(2):'';
+  if(o.state==='load')return Object.assign(base,{v:o.prog!=null?nf(o.prog,0):'—',u:'% 선적',d:'선적 중',dc:'up',s:[bn,ty,o.loaded!=null&&o.qty?`${nf(o.loaded)} / ${nf(o.qty)} t`:o.qty?nf(o.qty)+' t':'',o.th?nf(o.th)+' t/h':''].filter(Boolean).join(' · ')});
+  if(o.state==='done')return Object.assign(base,{v:o.qty?nf(o.qty):'—',u:'t',d:'선적 완료',dc:'up',s:[bn,ty,o.dep?`출항 ${md(o.dep)} ${hhmm(o.dep)}${o.depEst?' (추정)':''}`:'출항 대기'].filter(Boolean).join(' · ')});
+  return Object.assign(base,{v:'—',u:'',d:o.state==='berthEst'?'접안 (추정)':'접안',dc:'wn',s:[bn,ty,o.arr?`접안 ${md(o.arr)} ${hhmm(o.arr)}`:o.eta?`입항 예정 ${md(o.eta)} ${hhmm(o.eta)}`:'',o.note?esc(o.note):''].filter(Boolean).join(' · ')});
+}
+function dhShipCard(){
+  const S=SOK,st=S&&S.stock||{},src=S?`출하속보 ${S.date.slice(5).replace('-','/')}`:'출하속보 없음',now=new Date();
+  const T=x=>x?new Date(x):null;
+  const dv=S?[...S.vessels.filter(v=>v.port==='dh').map(v=>({...v,arr:T(v.t&&v.t['접안']),dep:T((v.t&&v.t['출항'])||v.etd),eta:T(v.eta)})),
+              ...S.expected.filter(x=>x.port==='dh').map(x=>({name:x.name,cargo:'',qty:null,berth:x.berth,dest:x.note,eta:T(x.eta)}))]:[];
+  dv.forEach(v=>{const ld=LOADING_CARGO.test(v.cargo||'');v.work=ld?'선적':'하역';
+    v.st=v.arr&&now>=v.arr&&!(v.dep&&now>=v.dep)?`${v.work} 중`:v.dep&&now>=v.dep?'출항':v.eta?'입항 예정':'일정 미정';});
+  dv.sort((a,b)=>(/중$/.test(b.st)-/중$/.test(a.st))||((a.eta||a.arr||0)-(b.eta||b.arr||0)));
+  const opts=dv.length?dv.map((v,i)=>[String(i)+v.name,`${v.name} · ${cargoKo(v.cargo)} ${v.st}`]):[['none','선박 일정 없음']],val=kpick('portDH2',opts,opts[0][0]),v=dv.find((x,i)=>String(i)+x.name===val);
+  const base={key:'portDH2',ic:'anchor',l:'동해항',sel:{opts,val,aria:'동해항 선박 선택'},
+    tip:`동해항 선박 — 수출 클링커(C/K)는 선적, 유연탄·Pet-coke 등은 하역. 입항·출항 하루 전과 당일에 알림. 동해 클링커 재고 ${st.dhClk?nf(st.dhClk.sum||0):'—'} t · 시멘트 ${st.dhCem?nf(st.dhCem.sum||0):'—'} t. ${src}`};
+  if(!S)return Object.assign(base,{v:'—',u:'',s:'출하속보 없음'});
+  if(!v)return Object.assign(base,{v:'0',u:'척',s:`선적·하역 중인 선박 없음 · 클링커 재고 ${st.dhClk?nf(st.dhClk.sum||0)+' t':'—'}`});
+  const ev=dhEvents().filter(x=>x.name===v.name&&x.days>=0)[0],dd=ev?(ev.days>0?'D-'+ev.days:'D-day'):'';
+  return Object.assign(base,{v:v.qty?nf(v.qty):'—',u:v.qty?'t':'',d:/중$/.test(v.st)?v.st:dd||v.st,dc:/중$/.test(v.st)?'up':ev&&ev.days<=1?'wn':'up',
+    s:[cargoKo(v.cargo),/중$/.test(v.st)&&v.arr?`접안 ${md(v.arr)} ${hhmm(v.arr)}`:ev?`${ev.type} ${+ev.date.slice(5,7)}/${+ev.date.slice(8,10)}`:'',v.berth?'선석 '+v.berth:'',v.dest?esc(v.dest):''].filter(Boolean).join(' · ')});
+}
 function portKpis(){
   const S=SOK,src=S?`출하속보 ${S.date.slice(5).replace('-','/')}`:'출하속보 없음',old=S?Math.round((new Date(todayStr())-new Date(S.date))/864e5):0,stale=old>2?` · ${old}일 지난 속보`:'';
   const occ=BERTH_DEF.filter(d=>BERTH_ST[d.id]&&BERTH_ST[d.id].ship),ld=occ.filter(d=>BERTH_ST[d.id].ship.state==='load');
@@ -2670,13 +2704,14 @@ function portKpis(){
     v:v?(v.qty?nf(v.qty):'—'):'—',d:e0?(e0.days>0?'D-'+e0.days:'D-day'):'',dc:e0&&e0.days<=1?'wn':'up',
     s:v?`${cargoKo(v.cargo)}${e0?` · ${e0.type} ${+e0.date.slice(5,7)}/${+e0.date.slice(8,10)}`:''}${v.berth?' · 선석 '+v.berth:''}${v.dest?' · '+esc(v.dest):''}`:S?'동해항 선박 일정 없음':'출하속보 없음',
     tip:`동해항 선박(수출 클링커·유연탄·Pet-coke 등). 입항일·출항일 하루 전(과 당일)에 알림이 뜹니다. 출항 예정은 속보에 나오면 자동 반영. 동해 클링커 재고 ${st.dhClk?nf(st.dhClk.sum||0):'—'} t · 시멘트 ${st.dhCem?nf(st.dhCem.sum||0):'—'} t. ${src}`};
-  return [c1,c2,c3,c4];
+  return [c1,scShipCard(),c2,c3,dhShipCard()];
 }
-function shipCard(prod){
-  const key='ship'+prod,r=perRange(),opts=SHIP_ITEMS.map(x=>[x[0],x[1]]),val=kpick(key,opts,'s28'),it=KS_ITEM[val],nm=SHIP_ITEMS.find(x=>x[0]===val)[1];
+const SLAG_ITEMS=[['s3','3일 강도','MPa',1],['s28','28일 강도','MPa',1],['fst','응결 종결','시:분',0],['Cl','Cl','ppm',0],['SO3','SO₃','%',2],['MgO','MgO','%',2]];
+function shipCard(prod,items=SHIP_ITEMS,nmP=prod){
+  const key='ship'+prod,r=perRange(),opts=items.map(x=>[x[0],x[1]]),val=kpick(key,opts,items[0][0]==='s3'?'s3':'s28'),it=KS_ITEM[val],nm=items.find(x=>x[0]===val)[1];
   const e=ksEval(prod,r).find(x=>x.it.f===val)||{it,n:0,ks:(CFG.ks[prod]||{})[val]||null};
-  const limTxt=e.ks?`KS L 5201 ${prod} ${ksTxt(it,e.ks).replace(' *','')}${e.ks.ok?'':' (추정 · KS 원문 확인 필요)'}`:'KS 기준 미등록';
-  const base={key,ic:val[0]==='s'?'chart':'flask',l:`${prod} 출하`,u:it.u,sel:{opts,val,aria:`${prod} 출하 시험 항목`}};
+  const limTxt=e.ks?`KS L 5201 ${prod} ${ksTxt(it,e.ks).replace(' *','')}${e.ks.ok?'':' (추정 · KS 원문 확인 필요)'}`:'KS 기준 미등록'+(prod==='S/C2종'?' (슬래그 시멘트 KS L 5210 값을 알려 주시면 넣겠습니다)':'');
+  const base={key,ic:val[0]==='s'?'chart':'flask',l:`${nmP} 출하`,u:it.u,sel:{opts,val,aria:`${nmP} 출하 시험 항목`}};
   if(!e.n)return Object.assign(base,{v:'—',s:noData(r,nm)+(val==='s28'?' · 28일 강도는 채취 28일 뒤 발표':''),tip:`QMS 출하시멘트(${prod}) 시트의 ${nm}. ${limTxt}`});
   const ok=e.ks?e.fail===0:null;
   return Object.assign(base,{v:fmtIt(it,e.avg),d:ok==null?'':ok?'KS 적합'+(e.ks.ok?'':'*'):e.ks.ok?`KS 미달 ${e.fail}건`:`추정 기준 밖 ${e.fail}건*`,dc:ok?'up':e.ks&&e.ks.ok?'dn':'wn',
@@ -2772,7 +2807,7 @@ function kpiCards(rep){
   if(!rep&&curTab==='C'){const k=cementKpis();return [now(k[0]),now(k[1]),k[2],k[3],k[4]];}
   if(!rep&&curTab==='P')return portKpis();
   if(rep){REPF=true;try{return kpiHTML([prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')].map(c=>{delete c.sel;return c;}));}finally{REPF=false;}}
-  return [prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종')];
+  return [prodCard(''),runCard(),fcCard(''),shipCard('1종'),shipCard('3종'),shipCard('S/C2종',SLAG_ITEMS,'슬래그'),scShipCard(),dhShipCard()];
 }
 
 /* 킬른 호기 메뉴 */
@@ -3212,7 +3247,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:47</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:55</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
@@ -3367,7 +3402,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-13 09:47';
+const BUILD='2026-11-13 09:55';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
