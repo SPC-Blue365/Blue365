@@ -954,7 +954,7 @@ function slEq(d,i){
    ========================================================= */
 const PORT={shore:172,shipX:206,jets:[{id:'J2',z:14,b:[21,22]},{id:'J3',z:-28,b:[31,32]}]};
 const PROD_PORT={'1종':'1종','3종':'3종','S/C':'슬래그 시멘트'};
-const BERTH_DEF=[{id:'BT22',n:22,jz:14,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[3,4,5,6],direct:[{id:'SL9',prod:'3종'}]},   // 22번 3종은 구내 9호에서 직투 (부두 1호 3종은 22번 불가)
+const BERTH_DEF=[{id:'BT22',n:22,jz:14,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[3,4,5,6],direct:[{id:'SL9',prod:'3종'},{id:'SL10',prod:'S/C'}]},   // 22번: 3종은 구내 9호, 슬래그는 구내 10호에서 직투 (부두 1·2호는 22번 불가)
   {id:'BT31',n:31,jz:-28,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[1,2,3,5,6]},
   {id:'BT32',n:32,jz:-28,side:-1,cap:1000,prods:['1종'],silos:[5,6]}];
 BERTH_DEF.forEach(d=>d.z=d.jz+d.side*9.2);
@@ -1288,8 +1288,9 @@ function buildPlant(){
      conveyor([[x,5,j.z],[176,4.2,j.z],[232,4.2,j.z]],'cem',8,'P');});           // 부두 사일로 → 부두 벨트 → 선적기
    conveyor([[57,19.4,33],[62,19.4,43],[152,19.4,43],[155.4,24.5,38]],'cem',14,'P');   // 구내 사일로 → 부두 사일로 (이송)
    conveyor([[155.4,24.5,38],[155.4,24.5,PIER_DEF[0].z-3]],'cem',8,'P');
-   BERTH_DEF.forEach(b=>(b.direct||[]).forEach(x=>{const sd=SLD[x.id];if(!sd)return;   // 구내 사일로 → 선석 직투
-     conveyor([[sd.x,13,32.6],[sd.x+3,16,45.5],[150,16,45.5],[171,9,38],[171,6,b.jz+1.6],[178,4.6,b.jz+1.6]],'cem',12,'P');}));
+   BERTH_DEF.forEach(b=>{const ds=(b.direct||[]).map(x=>SLD[x.id]).filter(Boolean);if(!ds.length)return;   // 구내 사일로 → 선석 직투 (한 벨트로 모음)
+     const x0=Math.min(...ds.map(d=>d.x))+3;ds.forEach(d=>conveyor([[d.x,13,32.6],[d.x+3,16,45.5]],'cem',2,'P'));
+     conveyor([[x0,16,45.5],[150,16,45.5],[171,9,38],[171,6,b.jz+1.6],[178,4.6,b.jz+1.6]],'cem',12,'P');});
    PIER_DEF.forEach(d=>{const g=grp(d.id),r=3.4*Math.sqrt(d.cap/6000);cyl(g,r,22,M.wall,160,0,d.z,28);cyl(g,r+.06,.45,M.accent,160,13,d.z,28);cyl(g,.5,1.3,M.accent,160,22,d.z,20,r);});
    BERTH_DEF.forEach(d=>{const g=grp(d.id),ez=d.jz+d.side*3.6;
      for(let x=PORT.shore+8;x<PORT.shore+62;x+=6)box(g,1.2,1.4,.5,M.tire,x,.5,ez);              // 방충재
@@ -2465,10 +2466,11 @@ function defaultQms(){try{return JSON.parse($('#qmsDefault').textContent||'null'
 const DEFAULT_META={fileName:'Blue365_QMS.xlsx (내장 기본 데이터)',source:'embedded'};
 function backToDefault(){const d=defaultQms();try{localStorage.removeItem('b365-qms');}catch(e){}applyQms(d,DEFAULT_META);toast('내장 기본 데이터로 돌아왔습니다','act');}
 
-/* ---------- 팀 공유 서버 (server.py) ---------- */
+/* ---------- 팀 공유 서버 (server.py) ---------- 
+   SERVER.sokboApi: 예전 server.py 에는 출하속보 주소(api/sokbo)가 없음 → 업데이트 안내 */
 async function serverInit(){
   if(location.protocol==='file:')return false;
-  try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return true;}if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;}catch(e){return false;}
+  try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return true;}if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;SERVER.sokboApi='sokbo' in s;}catch(e){return false;}
   await loadMe();await pullCfg();await pullServer(true);await pullSokbo(true);setInterval(pollServer,20000);renderAll();return true;
 }
 const ROLE_KO={admin:'관리자',editor:'편집',viewer:'뷰어'};
@@ -2506,7 +2508,7 @@ async function pollServer(){
 function defaultSokbo(){try{return JSON.parse($('#sokboDefault').textContent||'null');}catch(e){return null;}}
 function sokStock(){
   if(!SOK)return;const S=SOK.stock||{};
-  SL_DEF.forEach(d=>{const v=S.sc&&S.sc[d.n];if(v==null)return;const e=E[d.id],p=e.params.level,lv=clamp(v/d.cap*100,0,100);p.v=p.base=p.target=lv;e.params.stock.v=v;
+  SL_DEF.forEach(d=>{const v=S.sc&&S.sc[d.n];if(v==null)return;const e=E[d.id],p=e.params.level,lv=clamp(v/d.cap*100,0,100);p.v=p.base=p.target=lv;p.noise=0;p.hist=p.hist.map(()=>lv);e.params.stock.v=v;
     const st=pStatus(p);if(RANK[st]>0&&!ALARMS.some(a=>a.eq===e.id&&a.k==='level'&&!a.ack))pushAlarm(e,'level',p,st);p.prev=st;});   // 속보 재고로 바뀐 레벨: 알람 목록에만 (토스트 연속 표시 방지)
   const mx=Math.max(1,...PIER_DEF.map(d=>(S.pier&&S.pier[d.n])||0));
   PIER_DEF.forEach(d=>{const v=(S.pier&&S.pier[d.n])||0,pp=E[d.id].params;pp.stock.v=v;pp.level.v=clamp(v/d.cap*100,0,100);pp.level.prev=pStatus(pp.level);});
@@ -2573,10 +2575,11 @@ function renderDataModal(){
       <div class="msg ${vs.length?'ok':''}">${ic(vs.length?'check':'info')}<span>선박 · 삼척항 <b>${vs.filter(v=>v.port==='sc').length}척</b> · 동해항 <b>${vs.filter(v=>v.port==='dh').length}척</b> · 입항 예정 <b>${ex.length}척</b></span></div>
       <div class="msg ok">${ic('chart')}<span>출하 일계 · 해송 ${sea.scD!=null?nf(sea.scD)+' t ('+(sea.scN||0)+'척)':'-'} · 육송 ${land.scD!=null?nf(land.scD)+' t ('+(land.scN||0)+'대)':'-'}</span></div>
       ${(P.warn||[]).map(x=>`<div class="msg">${ic('info')}<span>${esc(x)}</span></div>`).join('')}</div>`;
-    const can=canUp();
-    if(!can)h+=`<div class="msg err">${ic('alert')}<span>뷰어 권한은 팀에 공유할 수 없습니다. 관리자에게 편집 권한을 요청하세요.</span></div>`;
+    const old=SERVER&&!SERVER.sokboApi,can=canUp()&&!old;
+    if(old)h+=`<div class="msg err">${ic('alert')}<span><b>팀 서버(server.py)가 예전 버전</b>이라 출하속보를 받을 수 없습니다. 서버 PC에서 server.py를 새 파일로 바꾸고 서버를 다시 켜 주세요. 그 전까지는 아래 ‘이 화면에만 적용’으로 볼 수 있습니다(공유되지 않음).</span></div>`;
+    else if(!canUp())h+=`<div class="msg err">${ic('alert')}<span>뷰어 권한은 팀에 공유할 수 없습니다. 관리자에게 편집 권한을 요청하세요.</span></div>`;
     if(can&&SERVER)h+=`<div class="field"><label for="dmPw">업로드 확인 · 본인 비밀번호</label><input id="dmPw" type="password" autocomplete="current-password" maxlength="64"></div>`+(SERVER.needKey?`<div class="field"><label for="dmKey">서버 업로드 암호</label><input id="dmKey" type="password" maxlength="64"></div>`:'');
-    h+=`<div class="acts"><button class="btn ghost" type="button" id="dmCancel">다른 파일 고르기</button>${can?`<button class="btn" type="button" id="dmApply">${SERVER?'팀에 공유하고 적용':'이 화면에 적용'}</button>`:''}</div>`;
+    h+=`<div class="acts"><button class="btn ghost" type="button" id="dmCancel">다른 파일 고르기</button>${old?`<button class="btn" type="button" id="dmLocal">이 화면에만 적용</button>`:can?`<button class="btn" type="button" id="dmApply">${SERVER?'팀에 공유하고 적용':'이 화면에 적용'}</button>`:''}</div>`;
   }else if(PENDING.busy){
     h+=`<div class="sect">읽는 중 <small>${esc(PENDING.fileName)}</small></div><div class="note">큰 파일은 몇 초 걸립니다 (시트당 1만 행 이상).</div>`;
   }else{
@@ -2600,6 +2603,7 @@ function renderDataModal(){
   const sim=$('#dmSim');if(sim)sim.onclick=()=>{backToDefault();renderDataModal();};
   const cc=$('#dmCancel');if(cc)cc.onclick=()=>{PENDING=null;renderDataModal();};
   const ap=$('#dmApply');if(ap)ap.onclick=applyPending;
+  const lo=$('#dmLocal');if(lo)lo.onclick=()=>{const P=PENDING;if(!P||!P.S)return;applySokbo(P.S,{fileName:P.fileName,uploadedBy:'이 화면만 (공유 안 됨)',source:'local'});closeModal();toast(`출하속보 ${P.S.date}를 이 화면에만 적용했습니다 · 서버 업데이트 후 다시 올려 주세요`,'warn',8000);};
 }
 async function applyPending(){
   if(PENDING&&PENDING.kind==='sokbo')return applySokboPending();
@@ -2624,7 +2628,9 @@ async function applySokboPending(){
     const pw=$('#dmPw')?.value||'';if(!pw){btn.disabled=false;toast('업로드하려면 본인 비밀번호를 입력하세요','warn');$('#dmPw')?.focus();return;}
     btn.textContent='올리는 중…';
     try{const r=await fetch('api/sokbo',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Upload-Key':$('#dmKey')?.value||''},body:JSON.stringify({sokbo:P.S,password:pw,meta:{fileName:P.fileName}})});
-      const j=await r.json().catch(()=>({}));if(r.status===401&&j.login){toLogin();return;}if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));
+      const j=await r.json().catch(()=>({}));if(r.status===401&&j.login){toLogin();return;}
+      if(r.status===404){SERVER.sokboApi=false;renderDataModal();throw new Error('팀 서버(server.py)가 예전 버전입니다. 새 server.py로 바꾸고 서버를 다시 켜 주세요');}
+      if(!r.ok)throw new Error(j.error||('서버 오류 ('+r.status+')'));
       SERVER.sokbo=j.meta.version;applySokbo(j.sokbo||P.S,j.meta);closeModal();toast(`출하속보 ${P.S.date}를 팀에 공유했습니다`,'ok');}
     catch(e){btn.disabled=false;btn.textContent='팀에 공유하고 적용';toast(e.message==='Failed to fetch'?'팀 공유 서버에 연결할 수 없습니다':(e.message||'업로드하지 못했습니다'),'bad');}
   }else{
