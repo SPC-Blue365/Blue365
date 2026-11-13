@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-13 08:33">
+<meta name="b365-build" content="2026-11-13 09:06">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -549,7 +549,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 08:33</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:06</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1597,23 +1597,27 @@ function slEq(d,i){
 
 /* =========================================================
    항만: 삼척항(공장 동쪽 바다, 3D) · 동해항(카드) — 출하속보(PDF)로 갱신
-   선석 21·22(2부두)·31·32(3부두): 출하속보에 나온 번호 기준. 실제 배치는 추정
+   선석 22 (단독) · 31·32 (한 부두 양쪽, 가까이) — 현장 제공 2026-11-13. 21번 선석은 제외. 부두 모양·거리는 추정
    ========================================================= */
 const PORT={shore:172,shipX:206,jets:[{id:'J2',z:14,b:[21,22]},{id:'J3',z:-28,b:[31,32]}]};
-const BERTH_DEF=[{id:'BT21',n:21,jz:14,side:1},{id:'BT22',n:22,jz:14,side:-1},{id:'BT31',n:31,jz:-28,side:1},{id:'BT32',n:32,jz:-28,side:-1}];
+const PROD_PORT={'1종':'1종','3종':'3종','S/C':'슬래그 시멘트'};
+const BERTH_DEF=[{id:'BT22',n:22,jz:14,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[3,4,5,6]},
+  {id:'BT31',n:31,jz:-28,side:1,cap:1000,prods:['1종','3종','S/C'],silos:[1,2,3,5,6]},
+  {id:'BT32',n:32,jz:-28,side:-1,cap:1000,prods:['1종'],silos:[5,6]}];
 BERTH_DEF.forEach(d=>d.z=d.jz+d.side*9.2);
-const PIER_CAP=null;   // 부두 사일로 용량 미확인 → 재고(t)만 표시
 let SOK=null,SOKMETA={},PORTV=[];const BERTH_ST={};   // 출하속보 · 선박 표시 계획 · 선석별 현재 선박
-const PIER_DEF=[1,2,3,4,5,6].map((n,i)=>({id:'PIER'+n,n:String(n),z:-36+i*12}));
+/* 부두 사일로 — 현장 제공 2026-11-13: 1호 3종 4,000 t · 2호 슬래그 4,000 t · 3~6호 1종 각 6,000 t */
+const PIER_DEF=[[1,'3종',4000],[2,'S/C',4000],[3,'1종',6000],[4,'1종',6000],[5,'1종',6000],[6,'1종',6000]].map(([n,prod,cap],i)=>({id:'PIER'+n,n:String(n),prod,cap,z:-36+i*12}));
+const pierBerths=n=>BERTH_DEF.filter(b=>b.silos.includes(+n));
 const CARGO_KO={'B/K':'벌크 시멘트','C/K':'클링커','C/P':'시멘트 포장','P/Cokes':'Pet-coke','P/Coke':'Pet-coke','P-Cokes':'Pet-coke','유연탄':'유연탄','S/C':'슬래그 시멘트'};
 const cargoKo=c=>CARGO_KO[c]||c||'—';
-function pierEq(d){return {id:d.id,code:'PS-'+d.n,n:d.n,name:`부두 ${d.n}호 사일로`,tab:'P',area:'ship',icon:'silo',cap:PIER_CAP,
-  spec:`삼척항 부두 사일로 · 선박 선적용 · ${PIER_CAP?'용량 '+nf(PIER_CAP)+' t':'용량 미확인'}`,bar:'rel',barLabel:PIER_CAP?'레벨':'재고 (부두 6기 중 최대 대비)',primary:'stock',
-  params:{stock:P('재고 (출하속보)','t',0,null,null,0,0,{derived:1}),rel:P(PIER_CAP?'레벨':'재고 비율','%',0,null,null,0,0,{derived:1,min:0,max:100})}};}
-function berthEq(d){return {id:d.id,code:'#'+d.n,n:String(d.n),name:`${d.n}번 선석`,tab:'P',area:'ship',icon:'ship',berth:d.n,
+function pierEq(d){return {id:d.id,code:'PS-'+d.n,n:d.n,name:`부두 ${d.n}호 사일로`,tab:'P',area:'ship',icon:'silo',cap:d.cap,prod:d.prod,
+  spec:`${PROD_PORT[d.prod]} · 용량 ${nf(d.cap)} t · 선석 ${pierBerths(d.n).map(b=>'#'+b.n).join('·')||'—'}`,bar:'level',barLabel:'레벨',primary:'stock',
+  params:{level:P('레벨','%',0,15,95,0,0,{derived:1,min:0,max:100}),stock:P('재고 (출하속보)','t',0,null,null,0,0,{derived:1})}};}
+function berthEq(d){return {id:d.id,code:'#'+d.n,n:String(d.n),name:`${d.n}번 선석`,tab:'P',area:'ship',icon:'ship',berth:d.n,cap:d.cap,
   get spec(){const b=BERTH_ST[d.id];return b&&b.ship?`삼척항 · ${b.ship.name} · ${b.ship.label}`:'삼척항 · 공석';},bar:'prog',barLabel:'선적률',primary:'load',
   params:{prog:P('선적률','%',0,null,null,0,0,{derived:1,min:0,max:100}),load:P('선적량','t',0,null,null,0,0,{derived:1}),th:P('선적 속도 (T/H)','t/h',0,null,null,0,0,{derived:1})}};}
-const ANCH_EQ=()=>({id:'ANCH',code:'ANCH',name:'삼척항 외항',tab:'P',area:'ship',icon:'anchor',spec:'입항 예정 선박 대기 (묘박지)',bar:'use',barLabel:'선석 사용률 (4개)',primary:'n',
+const ANCH_EQ=()=>({id:'ANCH',code:'ANCH',name:'삼척항 외항',tab:'P',area:'ship',icon:'anchor',spec:'입항 예정 선박 대기 (묘박지)',bar:'use',barLabel:`선석 사용률 (${BERTH_DEF.length}개)`,primary:'n',
   params:{use:P('선석 사용률','%',0,null,null,0,0,{derived:1,min:0,max:100}),n:P('입항 예정','척',0,null,null,0,0,{derived:1}),next:P('다음 입항까지','시간',0,null,null,1,0,{derived:1})}});
 const DHP_EQ=()=>({id:'DHP',code:'DH-PORT',name:'동해항',tab:'P',area:'ship',icon:'ship',spec:'동해공장 항만 · 수출 클링커 선적 · 유연탄·Pet-coke 하역 (출하속보 기준)',bar:'soon',barLabel:'다음 입·출항 임박도 (7일 = 0%)',primary:'next',
   params:{soon:P('일정 임박도','%',0,null,null,0,0,{derived:1,min:0,max:100}),next:P('다음 입·출항까지','일',0,null,null,0,0,{derived:1}),clk:P('동해 클링커 재고','t',0,null,null,0,0,{derived:1}),cem:P('동해 시멘트 재고','t',0,null,null,0,0,{derived:1})}});
@@ -1922,10 +1926,13 @@ function buildPlant(){
    flat(26,124,M.pad,159,-8,.012);                                                    // 항만 부지
    box(P_,1.6,2.4,124,M.conc,PORT.shore-.8,-1.2,-8);                                 // 안벽
    PORT.jets.forEach(j=>{box(P_,64,1.8,7,M.conc,PORT.shore+32,0,j.z);box(P_,64,.25,.25,M.steelD,PORT.shore+32,1.8,j.z-3.4);box(P_,64,.25,.25,M.steelD,PORT.shore+32,1.8,j.z+3.4);
-     conveyor([[163,3,j.z],[176,4.2,j.z],[232,4.2,j.z]],'cem',8,'P');});           // 부두 사일로 → 부두 벨트
+     const sz=[...new Set(BERTH_DEF.filter(b=>b.jz===j.z).flatMap(b=>b.silos))].map(n=>PIER_DEF[n-1].z),x=j.z>0?165.5:168.5;   // 이 부두에 연결된 사일로
+     const lo=Math.min(...sz),hi=Math.max(...sz);if(lo<j.z)conveyor([[x,5,lo],[x,5,j.z]],'cem',3,'P');if(hi>j.z)conveyor([[x,5,hi],[x,5,j.z]],'cem',3,'P');
+     sz.forEach(z=>conveyor([[163,7,z],[x,5.4,z]],'cem',1,'P'));
+     conveyor([[x,5,j.z],[176,4.2,j.z],[232,4.2,j.z]],'cem',8,'P');});           // 부두 사일로 → 부두 벨트 → 선적기
    conveyor([[57,19.4,33],[62,19.4,43],[152,19.4,43],[155.4,24.5,38]],'cem',14,'P');   // 구내 사일로 → 부두 사일로 (이송)
    conveyor([[155.4,24.5,38],[155.4,24.5,PIER_DEF[0].z-3]],'cem',8,'P');
-   PIER_DEF.forEach(d=>{const g=grp(d.id);cyl(g,3.2,22,M.wall,160,0,d.z,28);cyl(g,3.26,.45,M.accent,160,13,d.z,28);cyl(g,.5,1.3,M.accent,160,22,d.z,20,3.2);});
+   PIER_DEF.forEach(d=>{const g=grp(d.id),r=3.4*Math.sqrt(d.cap/6000);cyl(g,r,22,M.wall,160,0,d.z,28);cyl(g,r+.06,.45,M.accent,160,13,d.z,28);cyl(g,.5,1.3,M.accent,160,22,d.z,20,r);});
    BERTH_DEF.forEach(d=>{const g=grp(d.id),ez=d.jz+d.side*3.6;
      for(let x=PORT.shore+8;x<PORT.shore+62;x+=6)box(g,1.2,1.4,.5,M.tire,x,.5,ez);              // 방충재
      box(g,1.4,3.2,.6,M.accent,PORT.shore+4,1.8,d.jz+d.side*2.6);                            // 선석 번호판
@@ -2038,16 +2045,29 @@ function dhEvents(){
 }
 /* D-1 알림: 동해항 입항·출항 하루 전(그리고 당일)에 알람 목록 + 토스트 (토스트는 하루 한 번) */
 const PORT_NOTE=new Set();
+function scEvents(){   // 삼척항 입항 예정 (출하속보 ‘입항예정 선박’)
+  if(!SOK)return [];const t0=new Date(todayStr()+'T00:00');
+  return SOK.expected.filter(x=>x.port==='sc'&&x.eta).map(x=>{const d=new Date(x.eta.slice(0,10)+'T00:00');return {name:x.name,berth:x.berth,note:x.note,shift:x.shift,iso:x.eta,date:x.eta.slice(0,10),days:Math.round((d-t0)/864e5)};}).sort((a,b)=>a.iso.localeCompare(b.iso));
+}
 function portAlerts(){
   let seen={};try{seen=JSON.parse(localStorage.getItem('b365-portnote')||'{}')||{};}catch(e){}
-  let ch=false;
+  let ch=false;const tk=todayStr(),ddOf=d=>d===1?'D-1':'D-day',mdOf=x=>`${+x.date.slice(5,7)}/${+x.date.slice(8,10)}`;
+  // 동해항: 입항·출항 (출항은 속보에 ‘(11/25 출.예)’ 또는 출항 시각이 생기면 자동 적용)
   dhEvents().filter(x=>x.days===1||x.days===0).forEach(x=>{
-    const key=`${x.name}|${x.type}|${x.date}`;if(PORT_NOTE.has(key))return;PORT_NOTE.add(key);
-    const dd=x.days===1?'D-1':'D-day',when=`${+x.date.slice(5,7)}/${+x.date.slice(8,10)}${x.day?'':' '+x.iso.slice(11,16)}`;
+    const key=`DH|${x.name}|${x.type}|${x.date}`;if(PORT_NOTE.has(key))return;PORT_NOTE.add(key);
+    const dd=ddOf(x.days),when=`${mdOf(x)}${x.day?'':' '+x.iso.slice(11,16)}`;
     ALARMS.unshift({id:alarmSeq++,t:new Date(),eq:'DHP',k:'next',label:`${x.type} ${dd}`,val:`${x.name} · ${cargoKo(x.cargo)}${x.qty?' '+nf(x.qty)+' t':''}`,lim:`${when} ${x.type} 예정${x.berth?' · 선석 '+x.berth:''}${x.dest?' · '+x.dest:''}`,sev:'warn',ack:false,until:+new Date(x.date+'T23:59:59')});
     ch=true;
-    const tk=todayStr();if(seen[key]!==tk){seen[key]=tk;const msg=`동해항 ${x.type} ${dd} · ${x.name} (${cargoKo(x.cargo)}) ${when}`;setTimeout(()=>toast(msg,'warn',12000),1500);}
+    if(seen[key]!==tk){seen[key]=tk;const msg=`동해항 ${x.type} ${dd} · ${x.name} (${cargoKo(x.cargo)}) ${when}`;setTimeout(()=>toast(msg,'warn',12000),1500);}
   });
+  // 삼척항: 입항 예정 — 배마다 알람, 토스트는 날짜별로 묶어 한 번
+  const grp={};
+  scEvents().filter(x=>x.days===1||x.days===0).forEach(x=>{
+    const key=`SC|${x.name}|${x.iso}`;if(PORT_NOTE.has(key))return;PORT_NOTE.add(key);
+    ALARMS.unshift({id:alarmSeq++,t:new Date(),eq:'ANCH',k:'n',label:`입항 ${ddOf(x.days)}`,val:x.name,lim:`${mdOf(x)} ${x.iso.slice(11,16)} 입항 예정${x.berth?' · #'+x.berth:''}${x.shift?' (이동)':''}${x.note?' · '+x.note:''}`,sev:'warn',ack:false,until:+new Date(x.iso)+2*36e5});
+    ch=true;if(seen[key]!==tk){seen[key]=tk;(grp[x.date]=grp[x.date]||[]).push(x);}
+  });
+  Object.entries(grp).forEach(([d,xs],i)=>{const msg=`삼척항 ${ddOf(xs[0].days)} 입항 예정 ${xs.length}척 · `+xs.map(x=>`${x.name} ${x.iso.slice(11,16)}${x.berth?' #'+x.berth:''}`).join(', ');setTimeout(()=>toast(msg,'warn',12000),2200+i*600);});
   if(ch){ALARMS.sort((a,b)=>b.t-a.t);updateBadges();try{localStorage.setItem('b365-portnote',JSON.stringify(seen));}catch(e){}}
 }
 
@@ -2218,6 +2238,7 @@ function makeBracket(b,mat=M.line){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(v,3));const l=new THREE.LineSegments(g,mat);l.renderOrder=999;return l;}
 function relatedIds(id){
   const e=E[id];if(!e)return [];
+  {const bd=BERTH_DEF.find(d=>d.id===id);if(bd)return bd.silos.map(n=>'PIER'+n);const pd=PIER_DEF.find(d=>d.id===id);if(pd)return pierBerths(pd.n).map(b=>b.id);}
   if(ROUTE[id]){const c=CUR[id];return c?[c.silo,c.clk].filter(Boolean):[];}
   if(SLD[id])return SLD[id].fa?millEqs().map(m=>m.id):millsForSilo(id);
   if(e.kiln)return ['PH'+e.kiln,...RS_DEF.filter(r=>r.k===id).map(r=>r.id)];
@@ -2382,10 +2403,11 @@ function portBlock(e){
   const row=(k,v)=>`<div><dt>${k}</dt><dd style="white-space:normal;text-align:right;max-width:64%">${v}</dd></div>`,src=SOK?`출하속보 ${SOK.date}`:'출하속보 없음';
   const tm=d=>d?`${md(d)} ${hhmm(d)}`:'—';
   if(SLD[e.id]&&SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null)return `<div class="sect">출하속보 재고 <small>${src}</small></div><dl class="kv">${row('재고',nf(SOK.stock.sc[e.n])+' t')}${row('구내 사일로 합계',nf(SOK.stock.sc.sum||0)+' t')}</dl>`;
-  if(e.id.startsWith('PIER')){const q=QD&&QD.ssilo&&QD.ssilo[e.id];return `<div class="sect">부두 사일로 <small>${src}</small></div><dl class="kv">${row('재고',SOK&&SOK.stock.pier?nf(SOK.stock.pier[e.n]||0)+' t':'—')}${row('부두 6기 합계',SOK&&SOK.stock.pier?nf(SOK.stock.pier.sum||0)+' t':'—')}${row('용량',PIER_CAP?nf(PIER_CAP)+' t':'미확인 (알려 주시면 레벨로 표시)')}${q?row('최근 투입 (QMS)',`${q.mill?q.mill.slice(2)+'호 C/M · ':''}${esc(q.product||'')}`):''}</dl>`;}
-  if(e.berth){const b=BERTH_ST[e.id]&&BERTH_ST[e.id].ship;let h=`<div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
+  if(e.id.startsWith('PIER')){const q=QD&&QD.ssilo&&QD.ssilo[e.id];return `<div class="sect">부두 사일로 <small>${src}</small></div><dl class="kv">${row('재고',SOK&&SOK.stock.pier?nf(SOK.stock.pier[e.n]||0)+' t':'—')}${row('저장 품종',PROD_PORT[e.prod])}${row('용량',nf(e.cap)+' t')}${row('연결 선석',pierBerths(e.n).map(b=>`#${b.n} (${b.prods.map(x=>PROD_PORT[x]).join('·')})`).join(', ')||'—')}${row('부두 6기 합계',SOK&&SOK.stock.pier?nf(SOK.stock.pier.sum||0)+' t / '+nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))+' t':'—')}${q?row('최근 투입 (QMS)',`${q.mill?q.mill.slice(2)+'호 C/M · ':''}${esc(q.product||'')}`):''}</dl>`;}
+  if(e.berth){const b=BERTH_ST[e.id]&&BERTH_ST[e.id].ship,bd=BERTH_DEF.find(d=>d.id===e.id);
+    let h=`<div class="sect">선석 설비 <small>현장 제공</small></div><dl class="kv">${row('선적 능력',nf(bd.cap)+' t/h')}${row('선적 품종',bd.prods.map(x=>PROD_PORT[x]).join(' · '))}${row('연결 부두 사일로',bd.silos.map(n=>n+'호').join(' · '))}</dl><div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
     if(!b)h+=row('상태','공석');
-    else h+=row('선박',`<b>${esc(b.name)}</b> <span class="badge ${b.state==='load'?'s-act':b.state==='done'?'s-ok':'s-idle'}">${esc(b.label)}</span>`)+(b.cargo?row('화물',`${esc(cargoKo(b.cargo))} (${esc(b.cargo)})`):'')+row('선적량',b.qty?`${b.loaded!=null?nf(b.loaded)+' / ':''}${nf(b.qty)} t${b.src==='v'&&!SOK.vessels.find(v=>v.name===b.name&&v.qty)?' (계획)':''}`:'—')+(b.th?row('T/H',nf(b.th)+' t/h'+(b.state==='load'&&!SOK.vessels.find(v=>v.name===b.name&&v.th)?' (24시 선적량으로 추정)':'')):'')
+    else h+=row('선박',`<b>${esc(b.name)}</b> <span class="badge ${b.state==='load'?'s-act':b.state==='done'?'s-ok':'s-idle'}">${esc(b.label)}</span>`)+(b.cargo?row('화물',`${esc(cargoKo(b.cargo))} (${esc(b.cargo)})`):'')+row('선적량',b.qty?`${b.loaded!=null?nf(b.loaded)+' / ':''}${nf(b.qty)} t${b.src==='v'&&!SOK.vessels.find(v=>v.name===b.name&&v.qty)?' (계획)':''}`:'—')+(b.th?row('T/H',nf(b.th)+` / ${nf(bd.cap)} t/h`+(b.state==='load'&&!SOK.vessels.find(v=>v.name===b.name&&v.th)?' (24시 선적량으로 추정)':'')):'')
       +(b.src==='v'?row('접안 · 착수',`${tm(b.arr)} · ${tm(b.st)}`)+row('완료 · 출항',`${tm(b.dn)}${b.dnEst?' (추정)':''} · ${tm(b.dep)}${b.depEst?' (추정)':''}`)+row('양하지',esc([b.dest,b.note].filter(Boolean).join(' · '))||'—'):row('입항 예정',`${tm(b.eta)}${b.note?' · '+esc(b.note):''}`));
     const nx=PORTV.filter(o=>o.src==='e'&&o.berth===e.id&&o!==b).slice(0,3);
     h+=`</dl>${nx.length?`<div class="sect">다음 입항 예정</div><dl class="kv">${nx.map(o=>row(esc(o.name),`${tm(o.eta)}${o.note?' · '+esc(o.note):''}`)).join('')}</dl>`:''}`;
@@ -2609,20 +2631,20 @@ function portKpis(){
   const S=SOK,src=S?`출하속보 ${S.date.slice(5).replace('-','/')}`:'출하속보 없음',old=S?Math.round((new Date(todayStr())-new Date(S.date))/864e5):0,stale=old>2?` · ${old}일 지난 속보`:'';
   const occ=BERTH_DEF.filter(d=>BERTH_ST[d.id]&&BERTH_ST[d.id].ship),ld=occ.filter(d=>BERTH_ST[d.id].ship.state==='load');
   const ex=PORTV.filter(o=>o.src==='e'&&o.state==='anch'&&o.eta).sort((a,b)=>a.eta-b.eta),nx=ex[0];
-  const c1={key:'portB',ic:'ship',l:'삼척항 선석',v:S?String(occ.length):'—',u:'/ 4 접안',d:ld.length?`선적 중 ${ld.length}척`:'',dc:'up',
+  const c1={key:'portB',ic:'ship',l:'삼척항 선석',v:S?String(occ.length):'—',u:`/ ${BERTH_DEF.length} 접안`,d:ld.length?`선적 중 ${ld.length}척`:'',dc:'up',
     s:S?(nx?`다음 입항 ${esc(nx.name)} ${md(nx.eta)} ${hhmm(nx.eta)}${nx.berth?' #'+nx.berth.slice(2):''} · 대기 ${ex.length}척`:'입항 예정 없음')+stale:'데이터 창에서 출하속보(PDF)를 올려 주세요',
     tip:`출하속보의 선박 표(접안·착수·완료·출항)와 입항예정 선박으로 지금 시각의 선석 상태를 계산합니다. 속보 이후 상황은 추정입니다. ${src}`};
   const sea=S&&S.ship['해송']||{},c2={key:'portS',ic:'chart',l:'해송 출하 (삼척)',v:S&&sea.scD!=null?nf(sea.scD):'—',u:'t',d:S&&sea.scN?`${sea.scN}척`:'',dc:'up',
     s:S?`${S.date.slice(5).replace('-','/')} 일계 · 누계 ${sea.scC!=null?nf(sea.scC)+' t':'—'} · 육송 ${S.ship['육송']&&S.ship['육송'].scD!=null?nf(S.ship['육송'].scD)+' t':'—'}`:'—',tip:`출하속보 ‘2. 출하’ 표의 해송 소계(삼척). ${src}`};
   const st=S&&S.stock||{},c3={key:'portP',ic:'silo',l:'부두 사일로 재고',v:st.pier&&st.pier.sum!=null?nf(st.pier.sum):'—',u:'t',
-    s:S?`6기 · 구내 ${st.sc&&st.sc.sum!=null?nf(st.sc.sum)+' t':'—'} · 삼척 합계 ${st.total!=null?nf(st.total)+' t':'—'}`:'—',tip:`출하속보 ‘1. 재고’ 표의 삼척 부두 사일로 1~6호. ${src}`};
+    d:st.pier&&st.pier.sum!=null?nf(st.pier.sum/PIER_DEF.reduce((a,d)=>a+d.cap,0)*100,0)+'%':'',dc:'up',s:S?`6기 용량 ${nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))} t · 구내 ${st.sc&&st.sc.sum!=null?nf(st.sc.sum)+' t':'—'} · 삼척 합계 ${st.total!=null?nf(st.total)+' t':'—'}`:'—',tip:`출하속보 ‘1. 재고’ 표의 삼척 부두 사일로 1~6호. ${src}`};
   const dv=S?[...S.vessels.filter(v=>v.port==='dh'),...S.expected.filter(x=>x.port==='dh').map(x=>({name:x.name,cargo:'',qty:null,berth:x.berth,dest:x.note,eta:x.eta}))]:[];
   const opts=dv.length?dv.map((v,i)=>[String(i),`${v.name}${v.cargo?' · '+cargoKo(v.cargo):''}`]):[['0','일정 없음']],val=kpick('portDH',opts,'0'),v=dv[+val];
   const ev=v?dhEvents().filter(x=>x.name===v.name&&x.days>=0):[],e0=ev[0];
   const c4={key:'portDH',ic:'anchor',l:'동해항',u:v&&v.qty?'t':'',sel:{opts,val,aria:'동해항 선박 선택'},
     v:v?(v.qty?nf(v.qty):'—'):'—',d:e0?(e0.days>0?'D-'+e0.days:'D-day'):'',dc:e0&&e0.days<=1?'wn':'up',
     s:v?`${cargoKo(v.cargo)}${e0?` · ${e0.type} ${+e0.date.slice(5,7)}/${+e0.date.slice(8,10)}`:''}${v.berth?' · 선석 '+v.berth:''}${v.dest?' · '+esc(v.dest):''}`:S?'동해항 선박 일정 없음':'출하속보 없음',
-    tip:`동해항 선박(수출 클링커·유연탄·Pet-coke 등). 입항일·출항일 하루 전에 알림이 뜹니다. 동해 클링커 재고 ${st.dhClk?nf(st.dhClk.sum||0):'—'} t · 시멘트 ${st.dhCem?nf(st.dhCem.sum||0):'—'} t. ${src}`};
+    tip:`동해항 선박(수출 클링커·유연탄·Pet-coke 등). 입항일·출항일 하루 전(과 당일)에 알림이 뜹니다. 출항 예정은 속보에 나오면 자동 반영. 동해 클링커 재고 ${st.dhClk?nf(st.dhClk.sum||0):'—'} t · 시멘트 ${st.dhCem?nf(st.dhCem.sum||0):'—'} t. ${src}`};
   return [c1,c2,c3,c4];
 }
 function shipCard(prod){
@@ -3127,7 +3149,7 @@ function sokStock(){
   SL_DEF.forEach(d=>{const v=S.sc&&S.sc[d.n];if(v==null)return;const e=E[d.id],p=e.params.level,lv=clamp(v/d.cap*100,0,100);p.v=p.base=p.target=lv;e.params.stock.v=v;
     const st=pStatus(p);if(RANK[st]>0&&!ALARMS.some(a=>a.eq===e.id&&a.k==='level'&&!a.ack))pushAlarm(e,'level',p,st);p.prev=st;});   // 속보 재고로 바뀐 레벨: 알람 목록에만 (토스트 연속 표시 방지)
   const mx=Math.max(1,...PIER_DEF.map(d=>(S.pier&&S.pier[d.n])||0));
-  PIER_DEF.forEach(d=>{const v=(S.pier&&S.pier[d.n])||0,pp=E[d.id].params;pp.stock.v=v;pp.rel.v=PIER_CAP?clamp(v/PIER_CAP*100,0,100):v/mx*100;});
+  PIER_DEF.forEach(d=>{const v=(S.pier&&S.pier[d.n])||0,pp=E[d.id].params;pp.stock.v=v;pp.level.v=clamp(v/d.cap*100,0,100);pp.level.prev=pStatus(pp.level);});
 }
 function applySokbo(d,meta,o={}){
   if(!d||d.kind!=='sokbo'||!/^\d{4}-\d\d-\d\d$/.test(d.date||''))return false;
@@ -3164,7 +3186,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 08:33</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:06</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
@@ -3315,7 +3337,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-13 08:33';
+const BUILD='2026-11-13 09:06';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
