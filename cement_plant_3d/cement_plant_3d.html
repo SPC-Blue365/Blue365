@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-14 21:41">
+<meta name="b365-build" content="2026-11-14 21:53">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -559,7 +559,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-14 21:41</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-14 21:53</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -2225,8 +2225,9 @@ function renderTabs(){
 function applyCam(){const sp=Math.sin(cam.phi);camera.position.set(cam.tx+cam.dist*sp*Math.sin(cam.theta),cam.dist*Math.cos(cam.phi),cam.tz+cam.dist*sp*Math.cos(cam.theta));camera.lookAt(cam.tx,0,cam.tz);}
 function flyTo(x,z,d,theta){goal.tx=x;goal.tz=z;if(d)goal.dist=d;if(theta!=null)goal.theta=theta;if(REDUCED)Object.assign(cam,goal);}
 function panBy(dx,dy){const st=$('#stage');const scale=cam.dist*2*Math.tan(camera.fov*Math.PI/360)/st.clientHeight;const rx=Math.cos(cam.theta),rz=-Math.sin(cam.theta),fx=-Math.sin(cam.theta),fz=-Math.cos(cam.theta);const k=scale/Math.cos(cam.phi);
-  goal.tx=clamp(goal.tx-rx*dx*scale+fx*dy*k,-120,120);goal.tz=clamp(goal.tz-rz*dx*scale+fz*dy*k,-80,80);cam.tx=goal.tx;cam.tz=goal.tz;}
-function zoomBy(f){goal.dist=clamp(goal.dist*f,40,400);}
+  goal.tx=clamp(goal.tx-rx*dx*scale+fx*dy*k,-150,380);goal.tz=clamp(goal.tz-rz*dx*scale+fz*dy*k,-110,110);cam.tx=goal.tx;cam.tz=goal.tz;}
+/* 이동 범위: 동쪽 바다(삼척항 외항)까지, 안개는 멀리 외항 배까지 보이게 */
+function zoomBy(f){goal.dist=clamp(goal.dist*f,40,560);}
 
 function setupControls(){
   const st=$('#stage');const pts=new Map();let mode=null,moved=0,last=null,pinch=null;
@@ -2239,7 +2240,7 @@ function setupControls(){
     if(!pts.has(e.pointerId)){hover(e);return;}
     pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
     if(mode==='pinch'&&pts.size===2){const [a,b]=[...pts.values()];const d=Math.hypot(a.x-b.x,a.y-b.y),ang=Math.atan2(b.y-a.y,b.x-a.x),mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
-      goal.dist=clamp(goal.dist*pinch.d/d,40,400);cam.dist=goal.dist;goal.theta-=(ang-pinch.ang);cam.theta=goal.theta;panBy(mx-pinch.mx,my-pinch.my);pinch={d,ang,mx,my};moved+=10;return;}
+      goal.dist=clamp(goal.dist*pinch.d/d,40,560);cam.dist=goal.dist;goal.theta-=(ang-pinch.ang);cam.theta=goal.theta;panBy(mx-pinch.mx,my-pinch.my);pinch={d,ang,mx,my};moved+=10;return;}
     const dx=e.clientX-last.x,dy=e.clientY-last.y;last={x:e.clientX,y:e.clientY};moved+=Math.abs(dx)+Math.abs(dy);
     if(mode==='pan')panBy(dx,dy);
     else if(mode==='rot'){goal.theta-=dx*.006;goal.phi=clamp(goal.phi-dy*.004,.45,1.25);cam.theta=goal.theta;cam.phi=goal.phi;}
@@ -2329,7 +2330,7 @@ function placeTags(){
     el.style.display='';el.style.transform=`translate(${((_v.x+1)/2*w).toFixed(1)}px,${((1-_v.y)/2*h).toFixed(1)}px) translate(-50%,-100%)`;};
   EQ.forEach(e=>put(TAG['eq'+e.id],ANCHOR[e.id]));
   TRUCKS.forEach(t=>{if(!t.g.visible){TAG['truck'+t.id].style.display='none';return;}put(TAG['truck'+t.id],new THREE.Vector3(t.x,5.6,t.z));});
-  SHIPS.forEach((s,i)=>{const b=TAG['ship'+i];if(!b)return;const show=s.key&&s.g.visible&&curTab==='P'&&(!isMobile()||s.o.state!=='anch');b.dataset.hide=show?'':'1';   // 휴대폰: 외항 대기 선박 이름표는 숨김
+  SHIPS.forEach((s,i)=>{const b=TAG['ship'+i];if(!b)return;const show=s.key&&s.g.visible&&(curTab==='P'||curTab==='all')&&(!isMobile()||s.o.state!=='anch');b.dataset.hide=show?'':'1';   // 휴대폰: 외항 대기 선박 이름표는 숨김
     if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,ty=shipTypeTxt(o),nm=ty?`${o.name} · ${ty}`:o.name,lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.src==='e'&&o.eta&&o.state==='anch'?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:o.label;
       if(sp.textContent!==nm)sp.textContent=nm;if(sm.textContent!==lb)sm.textContent=lb;_v.set(s.x,9,s.z);put(b,_v);}else b.style.display='none';});
   const cd=$('#blastCd');if(cd){const show=BLAST.tb<1.5&&QRY_DEF.some(d=>EQOBJ[d.id]&&EQOBJ[d.id].visible),txt=BLAST.cd?String(BLAST.cd):'발파!';
@@ -2347,7 +2348,7 @@ function initScene(){
   if(!THREEOK||!renderer){THREEOK=false;st.innerHTML='<div class="nogl">이 브라우저에서는 3D 지도를 표시할 수 없습니다.<br>목록과 상세 패널은 그대로 사용할 수 있습니다.</div>';return;}
   renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   st.appendChild(renderer.domElement);
-  scene=new THREE.Scene();scene.fog=new THREE.Fog('#F2F4F6',320,640);
+  scene=new THREE.Scene();scene.fog=new THREE.Fog('#F2F4F6',460,1050);
   camera=new THREE.PerspectiveCamera(32,1,1,1600);
   hemi=new THREE.HemisphereLight('#FFFFFF','#C9D3E0',.66);scene.add(hemi);
   sun=new THREE.DirectionalLight('#FFFFFF',.62);sun.position.set(-70,130,60);sun.castShadow=true;
@@ -3229,7 +3230,7 @@ async function pollServer(){
     checkPageVersion(s);
     if(s.cfg!==undefined&&s.cfg!==SERVER.cfg&&$('#cfgModal').hidden)await pullCfg();
     if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}
-    SERVER.mail=s.mail;if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);}
+    SERVER.sokboWatch=s.sokboWatch;if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
 /* ---------- 출하속보 (PDF → 삼척항·동해항·사일로 재고) ---------- */
@@ -3249,8 +3250,8 @@ function restoreSokbo(){try{const t=localStorage.getItem('b365-sokbo');if(!t)ret
 async function pullSokbo(first){
   try{const r=await fetch('api/sokbo',{cache:'no-store',credentials:'same-origin'});if(r.status===404||r.status===401)return;if(!r.ok)throw new Error();
     const j=await r.json();let S=j.sokbo;
-    if(!S&&j.pdf){try{const b=atob(j.pdf),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);S=(await SOKBO.read(u)).data;}   // 메일로 받은 원본 PDF
-      catch(e){SERVER.sokbo=j.meta&&j.meta.version;toast(`메일로 받은 출하속보를 읽지 못했습니다 (${(j.meta&&j.meta.fileName)||'PDF'}): ${e.message||e}`,'warn',9000);return;}}
+    if(!S&&j.pdf){try{const b=atob(j.pdf),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);S=(await SOKBO.read(u)).data;}   // 자동으로 받은 원본 PDF (드라이브 폴더)
+      catch(e){SERVER.sokbo=j.meta&&j.meta.version;toast(`자동으로 받은 출하속보를 읽지 못했습니다 (${(j.meta&&j.meta.fileName)||'PDF'}): ${e.message||e}`,'warn',9000);return;}}
     if(applySokbo(S,j.meta)){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${S.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
   catch(e){}
 }
@@ -3279,9 +3280,9 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-14 21:41</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-14 21:53</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
-  const ml=SERVER&&SERVER.mail;if(ml&&ml.on)h+=`<div class="row"><span>메일 자동 읽기</span><b>${ml.every?Math.round(ml.every/60)+'분마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
+  const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>폴더 ‘${esc(ml.folder||'')}’ · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
@@ -3435,7 +3436,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-14 21:41';
+const BUILD='2026-11-14 21:53';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}

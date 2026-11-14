@@ -23,10 +23,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import email
-import imaplib
-from email.header import decode_header, make_header
-from email.utils import parsedate_to_datetime
 import datetime as dt
 import hashlib
 import hmac
@@ -236,7 +232,7 @@ def sokbo_store_pdf(pdf: bytes, meta: dict) -> dict | None:
     now = dt.datetime.now()
     m = {"version": now.strftime("%Y%m%d%H%M%S%f"), "uploadedAt": now.isoformat(timespec="seconds"), "sha256": h,
          "uploadedBy": str(meta.get("uploadedBy") or "자동"), "fileName": re.sub(r'[<>`\\/:*?"|]', "", str(meta.get("fileName") or ""))[:80],
-         "source": str(meta.get("source") or "mail"), "mailDate": str(meta.get("mailDate") or "")}
+         "source": str(meta.get("source") or "folder"), "srcDate": str(meta.get("srcDate") or "")}
     p = sokbo_path()
     with SETTINGS_LOCK:
         tmp = p.with_suffix(".tmp")
@@ -245,110 +241,42 @@ def sokbo_store_pdf(pdf: bytes, meta: dict) -> dict | None:
     return m
 
 
-# ---- Gmail 자동 읽기 (IMAP, 앱 비밀번호) ----
-MAIL = {"on": False, "every": 0, "last": None, "ok": None, "err": "", "got": None}
-MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+# ---- 출하속보 폴더 자동 읽기 (구글 드라이브 동기화 폴더 등) ----
+# Gmail → (Google Apps Script) → 구글 드라이브 폴더 → (서버 PC의 구글 드라이브 앱이 동기화) → 이 폴더의 최신 PDF를 반영
+SWATCH = {"on": False, "folder": "", "every": 0, "last": None, "ok": None, "err": "", "got": None}
 
 
-def mail_hdr(v) -> str:
-    try:
-        return str(make_header(decode_header(v or "")))
-    except Exception:
-        return str(v or "")
-
-
-def mail_pdfs(msg) -> list:
-    """메일의 PDF 첨부 [(파일 이름, 내용)]"""
-    out = []
-    for part in msg.walk():
-        if part.is_multipart():
-            continue
-        fn = mail_hdr(part.get_filename() or "")
-        if fn.lower().endswith(".pdf") or part.get_content_type() == "application/pdf":
-            data = part.get_payload(decode=True) or b""
-            if data[:5] == b"%PDF-":
-                out.append((fn or "출하속보.pdf", data))
-    return out
-
-
-def mail_check_once(user: str, pw: str, kws: list, sender: str, days: int, seen: set, factory=None) -> list:
-    """받은편지함에서 최근 days일 안의 새 출하속보 메일 → [(Message-ID, 제목, 메일 시각, [(파일, PDF)])] (오래된 것부터)"""
-    M = (factory or imaplib.IMAP4_SSL)("imap.gmail.com", 993)
-    try:
-        M.login(user, pw)
-        M.select("INBOX", readonly=True)
-        d = dt.date.today() - dt.timedelta(days=max(1, days))
-        typ, data = M.uid("SEARCH", None, "SINCE", f"{d.day:02d}-{MON[d.month - 1]}-{d.year}")
-        uids = (data[0] or b"").split() if typ == "OK" and data else []
-        if not uids:
-            return []
-        uids = uids[-300:]
-        typ, hd = M.uid("FETCH", b",".join(uids), "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM MESSAGE-ID DATE)])")
-        cand = []
-        for it in hd or []:
-            if not isinstance(it, tuple) or len(it) < 2:
-                continue
-            m = re.search(rb"UID (\d+)", it[0])
-            if not m:
-                continue
-            h = email.message_from_bytes(it[1])
-            subj, frm, mid = mail_hdr(h.get("Subject")), mail_hdr(h.get("From")), (h.get("Message-ID") or "").strip() or ("uid:" + m.group(1).decode())
-            s0 = re.sub(r"\s", "", subj)
-            if not any(k and k in s0 for k in kws) or (sender and sender.lower() not in frm.lower()) or mid in seen:
-                continue
-            try:
-                when = parsedate_to_datetime(h.get("Date")).astimezone().replace(tzinfo=None)
-            except Exception:
-                when = dt.datetime.now()
-            cand.append((when, m.group(1), mid, subj))
-        out = []
-        for when, uid, mid, subj in sorted(cand):
-            typ, full = M.uid("FETCH", uid, "(BODY.PEEK[])")
-            raw = next((x[1] for x in (full or []) if isinstance(x, tuple) and len(x) > 1), None)
-            if raw:
-                out.append((mid, subj, when, mail_pdfs(email.message_from_bytes(raw))))
-        return out
-    finally:
-        try:
-            M.logout()
-        except Exception:
-            pass
-
-
-def mail_loop(user: str, pw: str, kws: list, sender: str, days: int, every: int) -> None:
-    sp = STORE.dir / "mail_seen.json"
-    try:
-        seen = set(json.loads(sp.read_text("utf-8")))
-    except (OSError, ValueError):
-        seen = set()
-    MAIL.update(on=True, every=every)
+def sokbo_watch_loop(folder: Path, every: int) -> None:
+    SWATCH.update(on=True, folder=folder.name, every=every)
+    last = None
     while True:
         try:
-            found = mail_check_once(user, pw, kws, sender, days, seen)
-            for mid, subj, when, pdfs in found:
-                seen.add(mid)
-                if not pdfs:
-                    log(f"메일 출하속보: '{subj}'에 PDF 첨부가 없어 건너뜀")
-                    continue
-                cur, _ = sokbo_read()
-                at = (cur or {}).get("meta", {}).get("mailDate") or (cur or {}).get("meta", {}).get("uploadedAt") or ""
-                if at and when.isoformat(timespec="seconds") <= at[:19]:   # 이미 더 최신 속보가 있으면 덮어쓰지 않음
-                    continue
-                fn, pdf = max(pdfs, key=lambda x: len(x[1]))
-                m = sokbo_store_pdf(pdf, {"fileName": fn, "uploadedBy": "자동 (메일)", "source": "mail", "mailDate": when.isoformat(timespec="seconds")})
-                if m:
-                    MAIL["got"] = when.isoformat(timespec="minutes")
-                    log(f"메일 출하속보 반영: {fn} ({when:%m/%d %H:%M} 메일)")
-                    USERS.log("(자동)", "출하속보 메일 반영", fn, "-")
-            if found:
-                sp.write_text(json.dumps(sorted(seen)[-800:], ensure_ascii=False), "utf-8")
-            MAIL.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=True, err="")
-        except imaplib.IMAP4.error as e:
-            MAIL.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=False, err=("로그인 실패 — 계정·앱 비밀번호 확인" if "AUTH" in str(e).upper() else str(e))[:120])
-            log(f"메일 확인 오류: {MAIL['err']}")
-        except Exception as e:   # 네트워크 끊김 등: 다음 주기에 다시
-            MAIL.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=False, err=f"{type(e).__name__}: {e}"[:120])
-            log(f"메일 확인 오류: {MAIL['err']}")
+            files = [p for p in folder.glob("*.pdf") if not p.name.startswith(("~$", "."))]
+            if files:
+                newest = max(files, key=lambda p: p.stat().st_mtime)
+                st = newest.stat()
+                sig = (newest.name, st.st_mtime, st.st_size)
+                if sig != last:
+                    time.sleep(3)   # 동기화·저장이 끝날 때까지 잠시 대기
+                    st2 = newest.stat()
+                    if (st2.st_mtime, st2.st_size) == sig[1:]:
+                        last = sig
+                        when = dt.datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds")
+                        cur, _ = sokbo_read()
+                        cm = (cur or {}).get("meta", {})
+                        at = cm.get("srcDate") or cm.get("uploadedAt") or ""
+                        if not at or when > at[:19]:   # 이미 더 최신 속보(손으로 올린 것 포함)가 있으면 덮어쓰지 않음
+                            m = sokbo_store_pdf(newest.read_bytes(), {"fileName": newest.name, "uploadedBy": "자동 (드라이브 폴더)", "source": "folder", "srcDate": when})
+                            if m:
+                                SWATCH["got"] = when[:16]
+                                log(f"출하속보 폴더 반영: {newest.name}")
+                                USERS.log("(자동)", "출하속보 폴더 반영", newest.name, "-")
+            SWATCH.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=True, err="")
+        except PermissionError:
+            SWATCH.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=False, err="파일이 열려 있거나 동기화 중 — 다음 주기에 다시")
+        except Exception as e:
+            SWATCH.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=False, err=f"{type(e).__name__}: {e}"[:120])
+            log(f"출하속보 폴더 확인 오류: {SWATCH['err']}")
         time.sleep(every)
 
 
@@ -901,7 +829,7 @@ class Handler(BaseHTTPRequestHandler):
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
                                     "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1],
-                                    "mail": {k: MAIL[k] for k in ("on", "every", "last", "ok", "err", "got")}})
+                                    "sokboWatch": {k: SWATCH[k] for k in ("on", "folder", "every", "last", "ok", "err", "got")}})
         if path == "/api/settings":
             if not self._need("viewer"):
                 return
@@ -1230,12 +1158,8 @@ def main() -> None:
     ap.add_argument("--backup-keep", type=int, default=14, help="보관할 백업 개수 (기본 14일치)")
     ap.add_argument("--no-backup", action="store_true", help="자동 백업 끄기")
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="(선택) 업로드에 추가로 요구할 서버 공통 암호")
-    ap.add_argument("--mail", default="", help="출하속보 메일을 읽을 Gmail 주소 (앱 비밀번호는 환경 변수 B365_MAIL_PW 또는 --mail-pw-file)")
-    ap.add_argument("--mail-pw-file", default="", help="Gmail 앱 비밀번호를 적은 파일 (환경 변수 대신)")
-    ap.add_argument("--mail-subject", default="출하속보,出荷速報", help="메일 제목에 들어 있는 말 (쉼표로 여러 개, 기본: 출하속보,出荷速報)")
-    ap.add_argument("--mail-from", default="", help="(선택) 보낸 사람 주소·이름의 일부로 거르기")
-    ap.add_argument("--mail-interval", type=int, default=600, help="메일 확인 주기(초, 기본 600 = 10분, 최소 120)")
-    ap.add_argument("--mail-days", type=int, default=3, help="며칠 전 메일까지 볼지 (기본 3)")
+    ap.add_argument("--sokbo-watch", default="", help="출하속보 PDF가 들어오는 폴더 (예: 구글 드라이브 동기화 폴더 \"G:\\내 드라이브\\Blue365 출하속보\")")
+    ap.add_argument("--sokbo-interval", type=int, default=60, help="출하속보 폴더 확인 주기(초, 기본 60)")
     a = ap.parse_args()
 
     if not PAGE.exists():
@@ -1261,22 +1185,14 @@ def main() -> None:
         WATCH = str(folder)
         threading.Thread(target=watch_loop, args=(folder, max(10, a.interval)), daemon=True).start()
 
-    mail_txt = "사용 안 함"
-    if a.mail:
-        pw = os.environ.get("B365_MAIL_PW", "")
-        if a.mail_pw_file:
-            try:
-                pw = Path(a.mail_pw_file).read_text("utf-8").strip()
-            except OSError as e:
-                sys.exit(f"--mail-pw-file 을 읽지 못했습니다: {e}")
-        pw = pw.replace(" ", "")
-        if not pw:
-            sys.exit("Gmail 앱 비밀번호가 없습니다. 환경 변수 B365_MAIL_PW 를 설정하거나 --mail-pw-file 로 파일을 지정하세요.")
-        kws = [re.sub(r"\s", "", k) for k in a.mail_subject.split(",") if k.strip()]
-        every = max(120, a.mail_interval)
-        threading.Thread(target=mail_loop, args=(a.mail, pw, kws, a.mail_from, a.mail_days, every), daemon=True).start()
-        u, _, dom = a.mail.partition("@")
-        mail_txt = f"{u[:2]}***@{dom} · {every // 60}분마다 · 제목에 '{'·'.join(kws)}' + PDF 첨부"
+    sokbo_txt = "사용 안 함"
+    if a.sokbo_watch:
+        sf = Path(a.sokbo_watch)
+        if not sf.is_dir():
+            sys.exit(f"출하속보 폴더를 찾을 수 없습니다: {sf}  (구글 드라이브 앱이 켜져 있고 폴더가 동기화되었는지 확인하세요)")
+        every = max(15, a.sokbo_interval)
+        threading.Thread(target=sokbo_watch_loop, args=(sf, every), daemon=True).start()
+        sokbo_txt = f"{sf} · {every}초마다 최신 PDF"
 
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     global TEAM_URLS
@@ -1317,7 +1233,7 @@ def main() -> None:
     if BACKUP_DIR and not a.backup_dir:
         print("                ※ 같은 디스크입니다. PC 고장에 대비하려면 --backup-dir 로 다른 디스크·공유 폴더를 지정하세요.")
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
-    print(f"  메일 자동   : {mail_txt}")
+    print(f"  출하속보 폴더: {sokbo_txt}")
     print("  끝내려면 Ctrl+C")
     print("=" * 56, flush=True)
     try:
