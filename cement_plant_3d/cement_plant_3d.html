@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-13 09:55">
+<meta name="b365-build" content="2026-11-13 10:03">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -133,7 +133,14 @@ a{color:inherit;text-decoration:none}
 .tag.s-warn i{background:var(--warn)} .tag.s-bad i{background:var(--bad)} .tag.s-none i,.tag.s-stop i{background:var(--fg3)}
 .tag small{font-weight:500;color:var(--fg3)}
 @media (min-width:761px){.views.nopanels #lot,.views.nopanels #list{display:none!important}}
-.ctrls #panTgl[aria-pressed="true"]{color:var(--accent)}
+.ctrls #panTgl[aria-pressed="true"],.ctrls #cardTgl[aria-pressed="true"]{color:var(--accent)}
+.cardpick{position:absolute;right:52px;top:0;width:248px;background:var(--card);border-radius:20px;box-shadow:var(--shadow);padding:14px 12px 12px;z-index:9;transform-origin:top right;animation:cpIn .18s cubic-bezier(.2,.8,.2,1)}
+@keyframes cpIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.cardpick .cp-h{display:flex;align-items:baseline;justify-content:space-between;padding:0 6px 6px}.cardpick .cp-h b{font-size:15px}.cardpick .cp-h small{color:var(--fg3);font-size:12px}
+.cardpick label{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:10px;cursor:pointer;font-size:14px;color:var(--fg)}.cardpick label:hover{background:var(--preview)}
+.cardpick input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+.cardpick .cp-a{display:flex;gap:8px;margin-top:8px}.cardpick .cp-a button{flex:1;height:34px;border-radius:10px;font-size:13px;font-weight:600;background:var(--preview);color:var(--fg2)}.cardpick .cp-a button:hover{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.cardpick{animation:none}}
 .blastcd{position:absolute;left:0;top:0;display:flex;align-items:center;gap:10px;padding:8px 16px 8px 8px;border-radius:999px;background:var(--card);color:var(--fg);box-shadow:0 6px 20px rgba(0,0,0,.14);pointer-events:none;white-space:nowrap}
 .blastcd b{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--warn);color:#fff;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;animation:cdpop .45s cubic-bezier(.2,.8,.2,1)}
 .blastcd.near b{background:var(--bad)}
@@ -552,7 +559,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 09:55</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-13 10:03</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -596,6 +603,8 @@ table.ks td.r,table.ks th.r{text-align:right}
           <button type="button" data-cam="home" aria-label="전체 보기" data-ic="home"></button>
           <hr>
           <button type="button" id="panTgl" aria-label="아래 카드 숨기기" data-tip="로트 추적 · 설비·시료·출하 목록 숨기기" aria-pressed="false" data-ic="eyeOff"></button>
+          <button type="button" id="cardTgl" aria-label="지도 카드 고르기" data-tip="위쪽 카드 고르기 (탭마다)" aria-pressed="false" aria-haspopup="true" data-ic="grid"></button>
+          <div class="cardpick" id="cardPick" hidden role="dialog" aria-label="지도 카드 고르기"></div>
         </div>
         <aside class="panel detail" id="detail" aria-live="polite"></aside>
         <div class="panel lot" id="lot"></div>
@@ -1339,6 +1348,7 @@ const ICON={
   target:'<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   chevR:'<path d="M9 6l6 6-6 6"/>', chevL:'<path d="M15 6l-6 6 6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>', chevsL:'<path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"/>',
   truck:'<path d="M2 6h12v10H2zM14 9h4l3 3v4h-7z"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+  grid:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
   eyeOff:'<path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3 3.9M6.6 6.6C3.6 8.5 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
   ship:'<path d="M3 15l2.2 5h13.6L21 15z"/><path d="M6 15V9h12v6M10 9V5h4v4"/>',
@@ -2203,7 +2213,7 @@ function setTab(t,o={}){
   applyTabVis();
   if(!o.keepSel){if(sel&&((sel.type==='eq'&&!inTab(E[sel.id]))||(sel.type==='truck'&&!truckInTab(TRUCKS.find(x=>x.id===sel.id)||{kind:'bct'}))))select(null);
     if(THREEOK){Object.assign(goal,homeView());if(REDUCED)Object.assign(cam,goal);}}
-  setBracket();renderTabs();updateTagClasses();renderList();renderKpis($('#kpiMap'),kpiCards(false));renderAreas();
+  setBracket();renderTabs();updateTagClasses();renderList();renderKpis($('#kpiMap'),mapKpis());renderCardPick();renderAreas();
 }
 function tabBadge(t){const es=EQ.filter(e=>inTab(e,t));const bad=es.some(e=>eqStatus(e)==='bad'),n=es.filter(e=>RANK[eqStatus(e)]>0).length;return {n,bad,total:es.length};}
 function renderTabs(){
@@ -2240,6 +2250,9 @@ function setupControls(){
   st.addEventListener('pointerup',up);st.addEventListener('pointercancel',up);
   st.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(e.deltaY*.0012));hideHint();},{passive:false});
   st.addEventListener('keydown',e=>{const k=e.key;if(k==='ArrowLeft')panBy(40,0);else if(k==='ArrowRight')panBy(-40,0);else if(k==='ArrowUp')panBy(0,40);else if(k==='ArrowDown')panBy(0,-40);else if(k==='+'||k==='=')zoomBy(.8);else if(k==='-')zoomBy(1.25);else if(k==='Escape')select(null);else return;e.preventDefault();});
+  {const t=$('#cardTgl'),p=$('#cardPick');t.onclick=()=>{p.hidden=!p.hidden;t.setAttribute('aria-expanded',String(!p.hidden));renderCardPick();};
+   document.addEventListener('pointerdown',e=>{if(!p.hidden&&!e.target.closest('#cardPick,#cardTgl')){p.hidden=true;t.setAttribute('aria-expanded','false');}});
+   addEventListener('keydown',e=>{if(e.key==='Escape'&&!p.hidden){p.hidden=true;t.focus();}});updCardBtn();}
   {const t=$('#panTgl'),set=on=>{$('#views').classList.toggle('nopanels',on);t.setAttribute('aria-pressed',on);t.setAttribute('aria-label',on?'아래 카드 보이기':'아래 카드 숨기기');t.dataset.tip=on?'로트 추적 · 설비·시료·출하 목록 보이기':'로트 추적 · 설비·시료·출하 목록 숨기기';t.innerHTML=ic(on?'eye':'eyeOff');try{localStorage.setItem('b365-nopanels',on?'1':'');}catch(e){}};
    let on=false;try{on=localStorage.getItem('b365-nopanels')==='1';}catch(e){}set(on);t.onclick=()=>{set(!$('#views').classList.contains('nopanels'));};}
   $$('[data-cam]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.cam;
@@ -2637,7 +2650,7 @@ function renderKpis(el,k){
 /* 카드 드롭다운 선택 (호기 · 출하 시험 항목) — 이 PC에 기억 */
 let KSEL={};try{KSEL=JSON.parse(localStorage.getItem('b365-ksel')||'{}')||{};}catch(e){}
 function kselSave(k,v){KSEL[k]=v;try{localStorage.setItem('b365-ksel',JSON.stringify(KSEL));}catch(e){}}
-document.addEventListener('change',e=>{const sl=e.target.closest&&e.target.closest('select[data-ksel]');if(!sl)return;kselSave(sl.dataset.ksel,sl.value);renderKpis($('#kpiMap'),kpiCards(false));});
+document.addEventListener('change',e=>{const sl=e.target.closest&&e.target.closest('select[data-ksel]');if(!sl)return;kselSave(sl.dataset.ksel,sl.value);renderKpis($('#kpiMap'),mapKpis());});
 const kilnOpts=L=>[['all','전체'],...kilnEqs().filter(e=>!L||e.line===L).map(e=>[e.id,e.kiln+'호'+(isStopped(e)?' 정지':'')])];
 /* 출하 시멘트 카드 (1종·3종): 시험 항목 드롭다운 */
 const SHIP_ITEMS=[['s28','28일 강도','MPa',1],['s1','1일 강도','MPa',1],['fst','응결 종결','시:분',0],['Cl','Cl','ppm',0],['SO3','SO₃','%',2],['MgO','MgO','%',2]];
@@ -2707,6 +2720,22 @@ function portKpis(){
   return [c1,scShipCard(),c2,c3,dhShipCard()];
 }
 const SLAG_ITEMS=[['s3','3일 강도','MPa',1],['s28','28일 강도','MPa',1],['fst','응결 종결','시:분',0],['Cl','Cl','ppm',0],['SO3','SO₃','%',2],['MgO','MgO','%',2]];
+/* 지도 카드 고르기: 탭마다 보일 카드 (이 PC에 기억) */
+let CARD_HIDE={};try{CARD_HIDE=JSON.parse(localStorage.getItem('b365-cardhide')||'{}')||{};}catch(e){}
+const cardHidden=(tab,l)=>(CARD_HIDE[tab]||[]).includes(l);
+function mapKpis(){return kpiCards(false).filter(c=>!cardHidden(curTab,c.l));}
+function saveCardHide(){try{localStorage.setItem('b365-cardhide',JSON.stringify(CARD_HIDE));}catch(e){}}
+function updCardBtn(){const t=$('#cardTgl');if(t)t.setAttribute('aria-pressed',String((CARD_HIDE[curTab]||[]).length>0));}
+function renderCardPick(){
+  updCardBtn();const el=$('#cardPick');if(!el||el.hidden)return;
+  const all=kpiCards(false),hid=CARD_HIDE[curTab]||[];
+  el.innerHTML=`<div class="cp-h"><b>지도 카드 고르기</b><small>${esc(TAB[curTab].name)} · ${all.length-all.filter(c=>hid.includes(c.l)).length}/${all.length}</small></div>
+    <div class="cp-l">${all.map(c=>`<label><input type="checkbox" data-cp="${esc(c.l)}"${hid.includes(c.l)?'':' checked'}><span>${esc(c.l)}</span></label>`).join('')}</div>
+    <div class="cp-a"><button type="button" data-cpall="1">모두 보기</button><button type="button" data-cpall="0">모두 숨기기</button></div>`;
+  const apply=()=>{saveCardHide();renderKpis($('#kpiMap'),mapKpis());renderCardPick();};
+  el.querySelectorAll('[data-cp]').forEach(i=>i.onchange=()=>{const st=new Set(CARD_HIDE[curTab]||[]);i.checked?st.delete(i.dataset.cp):st.add(i.dataset.cp);CARD_HIDE[curTab]=[...st];apply();});
+  el.querySelectorAll('[data-cpall]').forEach(b=>b.onclick=()=>{CARD_HIDE[curTab]=b.dataset.cpall==='1'?[]:all.map(c=>c.l);apply();});
+}
 function shipCard(prod,items=SHIP_ITEMS,nmP=prod){
   const key='ship'+prod,r=perRange(),opts=items.map(x=>[x[0],x[1]]),val=kpick(key,opts,items[0][0]==='s3'?'s3':'s28'),it=KS_ITEM[val],nm=items.find(x=>x[0]===val)[1];
   const e=ksEval(prod,r).find(x=>x.it.f===val)||{it,n:0,ks:(CFG.ks[prod]||{})[val]||null};
@@ -3062,7 +3091,7 @@ function tick(){
   renderAll();
 }
 function renderAll(){
-  renderKpis($('#kpiMap'),kpiCards(false));
+  renderKpis($('#kpiMap'),mapKpis());
   renderAreas();renderKilnNav();renderTabs();updateTagClasses();
   if(sel)renderDetail();
   renderList();renderLot();updateBadges();
@@ -3247,7 +3276,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 09:55</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-13 10:03</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
@@ -3402,7 +3431,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-13 09:55';
+const BUILD='2026-11-13 10:03';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
@@ -3767,7 +3796,7 @@ function setPer(g,a,range){
   if(a)PER.a=a>todayStr()?todayStr():a;
   if(range){let [f,t]=range;if(f>t)[f,t]=[t,f];const td=todayStr();if(t>td)t=td;if(f>td)f=td;PER.from=f;PER.to=t;}
   PER.follow=PER.g!=='r'&&perIsNow();
-  renderPbar();renderKpis($('#kpiMap'),kpiCards(false));if(view==='report')renderReport(true);
+  renderPbar();renderKpis($('#kpiMap'),mapKpis());if(view==='report')renderReport(true);
 }
 function setupPeriod(){
   document.addEventListener('click',e=>{const el=e.target.closest&&e.target.closest('[data-pg],[data-pnav],[data-pnow],[data-phint]');if(!el)return;
