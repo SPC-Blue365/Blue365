@@ -2582,7 +2582,7 @@ async function pollServer(){
     checkPageVersion(s);
     if(s.cfg!==undefined&&s.cfg!==SERVER.cfg&&$('#cfgModal').hidden)await pullCfg();
     if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}
-    if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);}
+    SERVER.mail=s.mail;if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
 /* ---------- 출하속보 (PDF → 삼척항·동해항·사일로 재고) ---------- */
@@ -2601,7 +2601,10 @@ function applySokbo(d,meta,o={}){
 function restoreSokbo(){try{const t=localStorage.getItem('b365-sokbo');if(!t)return false;const o=JSON.parse(t);return applySokbo(o.sokbo,o.meta);}catch(e){return false;}}
 async function pullSokbo(first){
   try{const r=await fetch('api/sokbo',{cache:'no-store',credentials:'same-origin'});if(r.status===404||r.status===401)return;if(!r.ok)throw new Error();
-    const j=await r.json();if(applySokbo(j.sokbo,j.meta)){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${j.sokbo.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
+    const j=await r.json();let S=j.sokbo;
+    if(!S&&j.pdf){try{const b=atob(j.pdf),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);S=(await SOKBO.read(u)).data;}   // 메일로 받은 원본 PDF
+      catch(e){SERVER.sokbo=j.meta&&j.meta.version;toast(`메일로 받은 출하속보를 읽지 못했습니다 (${(j.meta&&j.meta.fileName)||'PDF'}): ${e.message||e}`,'warn',9000);return;}}
+    if(applySokbo(S,j.meta)){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${S.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
   catch(e){}
 }
 function restoreLocal(){try{const t=localStorage.getItem('b365-qms');if(!t)return false;const o=JSON.parse(t);if(o&&o.qms&&o.qms.v===QMS.VERSION){applyQms(o.qms,o.meta);return true;}}catch(e){}return false;}
@@ -2631,6 +2634,7 @@ function statHTML(){
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
   h+=`<div class="row"><span>화면 버전</span><b class="num">__B365_BUILD__</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
+  const ml=SERVER&&SERVER.mail;if(ml&&ml.on)h+=`<div class="row"><span>메일 자동 읽기</span><b>${ml.every?Math.round(ml.every/60)+'분마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
