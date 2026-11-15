@@ -7,7 +7,7 @@ rem  - 업로드: 편집 권한 + 본인 비밀번호 재확인 (기본). 공통
 rem  - 접속 대역 좁히기: --allow 192.168.10.0/24
 rem  - 자동 백업(하루 1회)을 다른 디스크·공유 폴더에: --backup-dir "\\서버\백업\Blue365"
 rem  - 공유 폴더 자동 읽기: --watch "\\서버\폴더"
-rem  - 출하속보 자동 읽기(구글 드라이브): 서버 PC의 구글 드라이브 앱에 'Blue365 출하속보' 폴더가 보이면
-rem      아래 줄 끝에  --sokbo-watch "G:\내 드라이브\Blue365 출하속보"  를 붙이세요. (드라이브 문자는 PC마다 다를 수 있음)
-python server.py --port 8365
+rem  - 출하속보 자동 읽기: --sokbo-watch auto = 구글 드라이브의 'Blue365 출하속보' 폴더를 자동으로 찾음
+rem      (폴더를 직접 지정하려면 auto 대신 "G:\내 드라이브\Blue365 출하속보" 처럼 큰따옴표로)
+python server.py --port 8365 --sokbo-watch auto
 pause

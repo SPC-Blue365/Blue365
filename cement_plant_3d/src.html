@@ -1556,7 +1556,7 @@ const inTab=(e,tab=curTab)=>tab==='all'||e.tab===tab;
 const truckInTab=t=>curTab==='all'||(curTab==='C'&&t.kind==='bct');
 function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
   let cx=20,cz=-2,size=224;
-  if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)&&(curTab!=='all'||e.tab!=='P')).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
+  if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)&&(curTab!=='all'||e.tab!=='P'||e.berth||e.id.startsWith('PIER'))).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
   const f=curTab==='all'?(m?1.3:1.08):(m?1.9:1.7);const d=clamp(size*f*Math.pow(Math.max(1,1.6/asp),.6),90,420);
   const rt=m?0:d*.14,bk=m?-d*.02:d*.04;
   return {tx:cx+Math.cos(th)*rt+Math.sin(th)*bk,tz:cz-Math.sin(th)*rt+Math.cos(th)*bk,theta:th,phi:.94,dist:d};}
@@ -2635,7 +2635,7 @@ function statHTML(){
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
   h+=`<div class="row"><span>화면 버전</span><b class="num">__B365_BUILD__</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
-  const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>폴더 ‘${esc(ml.folder||'')}’ · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
+  const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>${esc(ml.folder||'')} · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;

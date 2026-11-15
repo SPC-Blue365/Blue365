@@ -246,11 +246,47 @@ def sokbo_store_pdf(pdf: bytes, meta: dict) -> dict | None:
 SWATCH = {"on": False, "folder": "", "every": 0, "last": None, "ok": None, "err": "", "got": None}
 
 
-def sokbo_watch_loop(folder: Path, every: int) -> None:
-    SWATCH.update(on=True, folder=folder.name, every=every)
+SOKBO_DIR_NAME = "Blue365 출하속보"
+
+
+def drive_candidates() -> list:
+    """구글 드라이브(데스크톱) 앱이 보여 주는 ‘Blue365 출하속보’ 폴더 후보 (드라이브 문자·언어별)"""
+    subs = ("내 드라이브", "My Drive")
+    out = [Path(f"{c}:/") / s / SOKBO_DIR_NAME for c in "GHIJKLMNOPQRSTUVWXYZDEF" for s in subs]
+    home = Path.home()
+    out += [home / "Google Drive" / s / SOKBO_DIR_NAME for s in subs] + [home / "Google Drive" / SOKBO_DIR_NAME, home / "내 드라이브" / SOKBO_DIR_NAME, home / "My Drive" / SOKBO_DIR_NAME]
+    return out
+
+
+def find_sokbo_dir(spec: str):
+    """--sokbo-watch 값 → 실제 폴더 (auto 면 구글 드라이브 폴더를 찾아봄). 없으면 None"""
+    if spec.strip().lower() == "auto":
+        for p in drive_candidates():
+            try:
+                if p.is_dir():
+                    return p
+            except OSError:
+                pass
+        return None
+    p = Path(spec)
+    return p if p.is_dir() else None
+
+
+def sokbo_watch_loop(spec: str, every: int) -> None:
+    SWATCH.update(on=True, folder=SOKBO_DIR_NAME if spec.strip().lower() == "auto" else Path(spec).name, every=every)
     last = None
+    folder = None
     while True:
         try:
+            if folder is None or not folder.is_dir():   # 구글 드라이브 앱이 서버보다 늦게 켜져도 계속 찾아봄
+                folder = find_sokbo_dir(spec)
+                if folder is None:
+                    SWATCH.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=False,
+                                  err="폴더를 찾지 못함 — 구글 드라이브 앱 로그인·‘Blue365 출하속보’ 폴더 동기화 확인")
+                    time.sleep(every)
+                    continue
+                SWATCH["folder"] = str(folder)
+                log(f"출하속보 폴더: {folder}")
             files = [p for p in folder.glob("*.pdf") if not p.name.startswith(("~$", "."))]
             if files:
                 newest = max(files, key=lambda p: p.stat().st_mtime)
@@ -1158,7 +1194,7 @@ def main() -> None:
     ap.add_argument("--backup-keep", type=int, default=14, help="보관할 백업 개수 (기본 14일치)")
     ap.add_argument("--no-backup", action="store_true", help="자동 백업 끄기")
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="(선택) 업로드에 추가로 요구할 서버 공통 암호")
-    ap.add_argument("--sokbo-watch", default="", help="출하속보 PDF가 들어오는 폴더 (예: 구글 드라이브 동기화 폴더 \"G:\\내 드라이브\\Blue365 출하속보\")")
+    ap.add_argument("--sokbo-watch", default="", help="출하속보 PDF가 들어오는 폴더. auto = 구글 드라이브의 ‘Blue365 출하속보’ 폴더를 자동으로 찾음")
     ap.add_argument("--sokbo-interval", type=int, default=60, help="출하속보 폴더 확인 주기(초, 기본 60)")
     a = ap.parse_args()
 
@@ -1187,12 +1223,11 @@ def main() -> None:
 
     sokbo_txt = "사용 안 함"
     if a.sokbo_watch:
-        sf = Path(a.sokbo_watch)
-        if not sf.is_dir():
-            sys.exit(f"출하속보 폴더를 찾을 수 없습니다: {sf}  (구글 드라이브 앱이 켜져 있고 폴더가 동기화되었는지 확인하세요)")
         every = max(15, a.sokbo_interval)
-        threading.Thread(target=sokbo_watch_loop, args=(sf, every), daemon=True).start()
-        sokbo_txt = f"{sf} · {every}초마다 최신 PDF"
+        sf = find_sokbo_dir(a.sokbo_watch)
+        threading.Thread(target=sokbo_watch_loop, args=(a.sokbo_watch, every), daemon=True).start()
+        sokbo_txt = (f"{sf} · {every}초마다 최신 PDF" if sf else
+                     f"아직 폴더를 찾지 못함 ({'구글 드라이브의 ‘' + SOKBO_DIR_NAME + '’' if a.sokbo_watch.lower() == 'auto' else a.sokbo_watch}) — {every}초마다 다시 찾습니다")
 
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     global TEAM_URLS
