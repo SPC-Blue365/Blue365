@@ -198,8 +198,13 @@
       if (mo < 1) { mo += 12; y--; } if (mo > 12) { mo -= 12; y++; }
       return `${y}-${pad2(mo)}-${pad2(d)}T${pad2(hh)}:${pad2(mm)}`;
     };
-    const MARKS = /[◎○●◇◆☆★※]/g;
+    // ①②③… = 우선 순번 (현장 확인 2026-11-15). ◎ 등 다른 표시도 이름에서 떼어 둠
+    const MARKS = /[\u2460-\u2473\u2776-\u2793\u24F5-\u24FE◎○●◇◆☆★※]/g;
     const markOf = t => (String(t).match(MARKS) || []).join('');
+    const seqOf = mk => { for (const ch of String(mk || '')) { const c = ch.codePointAt(0);
+      if (c >= 0x2460 && c <= 0x2473) return c - 0x2460 + 1; if (c >= 0x2776 && c <= 0x277F) return c - 0x2776 + 1;
+      if (c >= 0x2780 && c <= 0x2789) return c - 0x2780 + 1; if (c >= 0x278A && c <= 0x2793) return c - 0x278A + 1;
+      if (c >= 0x24F5 && c <= 0x24FE) return c - 0x24F5 + 1; } return null; };
     const stripMark = t => String(t).replace(MARKS, ' ').replace(/\s+/g, ' ').trim();
     const out = { v: 1, kind: 'sokbo', date, weather, made: null, prod: {}, move: [], stock: {}, ship: {}, unload: {}, vessels: [], expected: [] };
     const mk = all.find(o => /^20\d\d-\d\d-\d\d$/.test(o.t.trim())); if (mk) out.made = mk.t.trim();
@@ -278,8 +283,8 @@
           // 예: "수성6호 14/23:00 #22 (평택/3종) ◎", "수성2호 15/12:00 S-#22 (인천)" — S-(이동)는 대·소문자, 끝의 ◎ 같은 표시는 mark 로 따로
           const mk = markOf(exp), e2 = stripMark(exp);
           const m = e2.match(/^(.+?)\s+(\d{1,2}\/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2})\s*(s\s*-)?\s*#?\s*(\d+)?\s*(?:\((.*)\))?\s*$/i);
-          if (m) out.expected.push({ port, name: m[1].trim(), eta: when(m[2], 12), berth: m[4] ? +m[4] : null, shift: !!m[3], note: (m[5] || '').trim(), mark: mk });
-          else out.expected.push({ port, name: e2, eta: null, berth: null, note: '', mark: mk });
+          if (m) out.expected.push({ port, name: m[1].trim(), eta: when(m[2], 12), berth: m[4] ? +m[4] : null, shift: !!m[3], note: (m[5] || '').trim(), mark: mk, seq: seqOf(mk) });
+          else out.expected.push({ port, name: e2, eta: null, berth: null, note: '', mark: mk, seq: seqOf(mk) });
         }
         if (!rest.length) continue;
         const v = { port, name: '', cargo: '', qty: null, t: {}, th: null, berth: null, load24: null, dest: '', note: '', eta: null };
@@ -288,7 +293,7 @@
           const t = stripMark(o.t);
           if (!t) continue;
           if (o.x < 90) { v.name += (v.name ? ' ' : '') + t; continue; }
-          if (o.x < 118) { v.cargo = t; continue; }
+          if (o.x < 118) { v.cargo = v.cargo && /^\(\d\)$/.test(v.cargo) ? v.cargo + t : t; continue; }   // "(2)" "B/K"가 따로 나뉘어도 "(2)B/K"로
           if (o.x < 150 && num(t) != null) { v.qty = num(t); continue; }
           const eta = t.match(/\((\d{1,2}\/\d{1,2})\s*입\.?\s*예\)/); if (eta) { v.eta = when(eta[1], 12); v.etaDay = true; continue; }
           const etd = t.match(/\((\d{1,2}\/\d{1,2})\s*출\.?\s*예\)/); if (etd) { v.etd = when(etd[1], 12); v.etdDay = true; continue; }
@@ -299,6 +304,7 @@
           if (o.x >= x24) { v.dest += (v.dest ? ' ' : '') + t; continue; }
         }
         if (!v.name) continue;
+        if (v.mark) v.seq = seqOf(v.mark);
         // 양하지 "부산/07시:6,500mt" · "거제[판매]" · "인천/미실적" · "(CANADA)"
         let d = v.dest.replace(/^\(|\)$/g, '');
         const tg = d.match(/\[([^\]]+)\]/); if (tg) { v.note = tg[1]; d = d.replace(tg[0], ''); }
