@@ -309,8 +309,13 @@
         let d = v.dest.replace(/^\(|\)$/g, '');
         const tg = d.match(/\[([^\]]+)\]/); if (tg) { v.note = tg[1]; d = d.replace(tg[0], ''); }
         const sl = d.split('/'); v.dest = sl[0].trim(); if (sl.length > 1) v.note = [v.note, sl.slice(1).join('/').trim()].filter(Boolean).join(' · ');
-        const tq = v.note.match(/([\d,]+)\s*mt/i); if (tq && v.qty == null) v.qtyPlan = num(tq[1]);
-        const th = v.note.match(/(\d{1,2})\s*시/); if (th && v.t['착수'] && !v.t['완료']) { const s0 = new Date(v.t['착수']); const e = new Date(s0); e.setHours(+th[1], 0, 0, 0); if (e <= s0) e.setDate(e.getDate() + 1); v.doneEst = `${e.getFullYear()}-${pad2(e.getMonth() + 1)}-${pad2(e.getDate())}T${pad2(e.getHours())}:00`; }
+        // 비고: "07시:700m/t선적중" = 07시 기준 선적량(진행 중) · "07시경 완료예정" = 완료 예정 시각 (현장 확인 2026-11-15)
+        const atH = h => { const s0 = new Date(v.t['착수']); const e = new Date(s0); e.setHours(h, 0, 0, 0); if (e <= s0) e.setDate(e.getDate() + 1); return `${e.getFullYear()}-${pad2(e.getMonth() + 1)}-${pad2(e.getDate())}T${pad2(e.getHours())}:00`; };
+        if (v.t['착수'] && !v.t['완료']) {
+          const pg = v.note.match(/(\d{1,2})\s*시\s*[:：]?\s*([\d,]+)\s*m\s*\/?\s*t/i);
+          if (pg) { v.progAt = atH(+pg[1]); v.progQty = num(pg[2]); }
+          const dn = v.note.match(/(\d{1,2})\s*시[^\d]*완료/); if (dn) v.doneEst = atH(+dn[1]);
+        }
         out.vessels.push(v);
       }
     } else warn.push('선박 표를 찾지 못했습니다.');
