@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-15 10:27">
+<meta name="b365-build" content="2026-11-15 11:03">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -559,7 +559,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-15 10:27</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-15 11:03</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1191,6 +1191,9 @@ table.ks td.r,table.ks th.r{text-align:right}
       if (mo < 1) { mo += 12; y--; } if (mo > 12) { mo -= 12; y++; }
       return `${y}-${pad2(mo)}-${pad2(d)}T${pad2(hh)}:${pad2(mm)}`;
     };
+    const MARKS = /[◎○●◇◆☆★※]/g;
+    const markOf = t => (String(t).match(MARKS) || []).join('');
+    const stripMark = t => String(t).replace(MARKS, ' ').replace(/\s+/g, ' ').trim();
     const out = { v: 1, kind: 'sokbo', date, weather, made: null, prod: {}, move: [], stock: {}, ship: {}, unload: {}, vessels: [], expected: [] };
     const mk = all.find(o => /^20\d\d-\d\d-\d\d$/.test(o.t.trim())); if (mk) out.made = mk.t.trim();
 
@@ -1265,14 +1268,18 @@ table.ks td.r,table.ks th.r{text-align:right}
         const exp = c.filter(o => o.x >= xExp).map(o => o.t.trim()).join(' ').trim();
         const rest = c.filter(o => o.x < xExp);
         if (exp) {
-          const m = exp.match(/^(.+?)\s+(\d{1,2}\/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2})\s*(s-)?#?\s*(\d+)?\s*(?:\((.*)\))?\s*$/);
-          if (m) out.expected.push({ port, name: m[1].trim(), eta: when(m[2], 12), berth: m[4] ? +m[4] : null, shift: !!m[3], note: (m[5] || '').trim() });
-          else out.expected.push({ port, name: exp, eta: null, berth: null, note: '' });
+          // 예: "수성6호 14/23:00 #22 (평택/3종) ◎", "수성2호 15/12:00 S-#22 (인천)" — S-(이동)는 대·소문자, 끝의 ◎ 같은 표시는 mark 로 따로
+          const mk = markOf(exp), e2 = stripMark(exp);
+          const m = e2.match(/^(.+?)\s+(\d{1,2}\/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2})\s*(s\s*-)?\s*#?\s*(\d+)?\s*(?:\((.*)\))?\s*$/i);
+          if (m) out.expected.push({ port, name: m[1].trim(), eta: when(m[2], 12), berth: m[4] ? +m[4] : null, shift: !!m[3], note: (m[5] || '').trim(), mark: mk });
+          else out.expected.push({ port, name: e2, eta: null, berth: null, note: '', mark: mk });
         }
         if (!rest.length) continue;
         const v = { port, name: '', cargo: '', qty: null, t: {}, th: null, berth: null, load24: null, dest: '', note: '', eta: null };
         for (const o of rest) {
-          const t = o.t.trim();
+          const mk = markOf(o.t); if (mk) v.mark = (v.mark || '') + mk;   // ◎ 같은 표시는 이름·양하지에서 떼어 mark 로
+          const t = stripMark(o.t);
+          if (!t) continue;
           if (o.x < 90) { v.name += (v.name ? ' ' : '') + t; continue; }
           if (o.x < 118) { v.cargo = t; continue; }
           if (o.x < 150 && num(t) != null) { v.qty = num(t); continue; }
@@ -1492,7 +1499,9 @@ const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,design:35000,
 /* 공정 배치 순서: 화면 앞쪽부터 3→4→5→6→7호 (현장 요청 2026-11-12)
    OSP·P/W·프리블렌딩·원료밀·원료 사일로·예열기·킬른·쿨러·클링커 사일로 구역의 z를 거울 배치 (-48~10.5 구간 그대로 사용)
    광산·크러셔·시멘트 밀·출하 구역은 그대로 */
-const MZ=z=>-37.5-z;
+/* 3~5K와 6-7K 라인 사이 여유 (현장 요청 2026-11-15): 6-7K 쪽(원래 z > -17) 설비를 LINE_GAP 만큼 더 안쪽으로 */
+const LINE_GAP=12;
+const MZ=z=>-37.5-z-(z>-17?LINE_GAP:0);
 [OSP_DEF,PB_DEF,RM_DEF,RS_DEF,KILN_DEF,CS_DEF].forEach(a=>a.forEach(d=>{d.z=MZ(d.z);}));PW_DEF.forEach(d=>{d.dz=-d.dz;});
 const LINE_NM={A:'기존',B:'신설'},LINE_TXT={A:'3~5호 Line (기존)',B:'6~7호 Line (신설)'};
 const PW_FULL='Paddle Wheel';
@@ -1815,13 +1824,13 @@ function buildPlant(){
   ['shared','A','B','C','P'].forEach(k=>{const g=new THREE.Group();scene.add(g);DECO[k]=g;});
   // 바닥 · 도로
   const g0=new THREE.Mesh(new THREE.PlaneGeometry(700,700),M.ground);g0.rotation.x=-Math.PI/2;g0.receiveShadow=true;scene.add(g0);
-  flat(252,111.5,M.pad,20,-8.25,.01);   // 공장 부지 (x -106~146, z -64~47.5)
+  flat(252,111.5+LINE_GAP,M.pad,20,-8.25-LINE_GAP/2,.01);   // 공장 부지 (x -106~146, z -64-LINE_GAP~47.5)
   flat(316,9,M.road,6,52,.04);
   for(let x=-150;x<162;x+=8)flat(3.6,.25,M.mark,x,52,.08);
   flat(316,.25,M.mark,6,47.9,.08);flat(316,.25,M.mark,6,56.1,.08);
   seg(-40,42,128,42,5,M.road);seg(8,37,8,48,5,M.road);seg(60,37,60,48,5,M.road);seg(8,37,60,37,5,M.road);
   seg(-72,-42,-72,-2,5,M.dirt,.045);QRY_DEF.forEach(d=>seg(-76,d.z,-72,d.z,4,M.dirt,.046));CR_DEF.forEach(d=>seg(-72,d.z,-68.5,d.z,4,M.dirt,.046));
-  [[-62,18,30,12],[-30,20,20,10],[-80,22,14,10],[95,-61,40,3],[-40,-61,40,3]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
+  [[-62,18,30,12],[-30,20,20,10],[-80,22,14,10],[95,-61-LINE_GAP,40,3],[-40,-61-LINE_GAP,40,3]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
   // 주차장
   for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-40+i*3.2,37.5,.07);
 
@@ -1971,11 +1980,11 @@ function buildPlant(){
   // 울타리
   const fz=(x1,x2,z)=>{const L=x2-x1;box(scene,L,1.3,.14,M.fence,(x1+x2)/2,0,z);};
   const fx=(z1,z2,x)=>{box(scene,.14,1.3,z2-z1,M.fence,x,0,(z1+z2)/2);};
-  fz(-106,146,-64);fz(-106,4.5,47.2);fz(11.5,56.5,47.2);fz(63.5,146,47.2);fx(-64,47.2,-106);fx(-64,47.2,146);
+  const fS=-64-LINE_GAP;fz(-106,146,fS);fz(-106,4.5,47.2);fz(11.5,56.5,47.2);fz(63.5,146,47.2);fx(fS,47.2,-106);fx(fS,47.2,146);
   // 나무
   for(let x=-138;x<=150;x+=9)tree(x+((x*7)%3),59.5+((x*13)%2),1+((x*3)%3)*.08);
-  for(let z=-60;z<=40;z+=9)tree(-112,z,1.05);
-  for(let x=-100;x<=144;x+=10)tree(x,-70,.95);
+  for(let z=-60-LINE_GAP;z<=40;z+=9)tree(-112,z,1.05);
+  for(let x=-100;x<=144;x+=10)tree(x,-70-LINE_GAP,.95);
   [[-26,40],[-6,45],[-56,16],[-64,22],[-84,12],[-50,12],[72,45.5],[86,45.5],[104,45.5],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
   // 굴뚝 연기
   // 앵커
@@ -2011,10 +2020,13 @@ function portPlan(now=new Date()){
   if(!S)return out;
   const bid=n=>{const d=BERTH_DEF.find(b=>b.n===n);return d?d.id:null;};
   const etas=S.expected.filter(x=>x.port==='sc'&&x.eta).map(x=>({b:bid(x.berth),t:tday(x.eta)}));
+  const arrs=S.vessels.filter(v=>v.port==='sc'&&v.t&&v.t['접안']).map(v=>({b:bid(v.berth),t:tday(v.t['접안'])}));   // 같은 선석 다음 배 접안 = 앞 배 출항 상한
   S.vessels.filter(v=>v.port==='sc').forEach((v,i)=>{
     const T=k=>tday(v.t&&v.t[k]),arr=T('접안'),st=T('착수'),dn=T('완료'),dnE=tday(v.doneEst),qty=v.qty||v.qtyPlan||null,b=bid(v.berth);
     let dep=T('출항'),depEst=false;
     if(!dep&&(dn||dnE)){const d0=dn||dnE,nx=etas.filter(x=>x.b===b&&x.t>d0).sort((a,c)=>a.t-c.t)[0];dep=nx?new Date(Math.max(+d0,nx.t-30*60e3)):new Date(+d0+12*36e5);depEst=true;}
+    if(!dep&&arr){const na=arrs.filter(x=>x.b===b&&x.t>arr).sort((a,c)=>a.t-c.t)[0];if(na){dep=new Date(+na.t-10*60e3);depEst=true;}}
+    else if(dep&&depEst&&arr){const na=arrs.filter(x=>x.b===b&&x.t>arr).sort((a,c)=>a.t-c.t)[0];if(na&&na.t<dep)dep=new Date(Math.max(+arr,+na.t-10*60e3));}
     let state,label,prog=null,loaded=null,th=v.th||null;
     if(dep&&now>=dep){if(now-dep>30*60e3)return;state='depart';label=depEst?'출항 (추정)':'출항';}
     else if(arr&&now<arr){state='anch';label='입항 대기';}
@@ -2025,13 +2037,13 @@ function portPlan(now=new Date()){
         if(!th&&v.load24!=null){const h24=(new Date(S.date+'T24:00')-st)/36e5;if(h24>.3)th=Math.round(v.load24/h24);}
         loaded=th?(now-st)/36e5*th:v.load24;if(qty&&loaded!=null)loaded=Math.min(qty,loaded);prog=qty&&loaded!=null?loaded/qty*100:null;}}
     else{state='berth';label='접안 · 선적 대기';}
-    out.push({key:'v'+i+v.name,src:'v',name:v.name,cargo:v.cargo,qty,state,label,berth:b,prog,loaded,th,dest:v.dest,note:v.note,arr,st,dn:dn||dnE,dnEst:!dn&&!!dnE,dep,depEst});
+    out.push({key:'v'+i+v.name,src:'v',name:v.name,mark:v.mark||'',cargo:v.cargo,qty,state,label,berth:b,prog,loaded,th,dest:v.dest,note:v.note,arr,st,dn:dn||dnE,dnEst:!dn&&!!dnE,dep,depEst});
   });
   const busy=b=>out.some(o=>o.berth===b&&['berth','load','done','berthEst'].includes(o.state));
   S.expected.filter(x=>x.port==='sc').slice().sort((a,b)=>String(a.eta).localeCompare(String(b.eta))).forEach((x,i)=>{
     const eta=tday(x.eta),b=bid(x.berth);let state='anch',label='입항 예정';
     if(eta&&now>=eta){if(b&&!busy(b)){state='berthEst';label='접안 (추정 · 새 속보 필요)';}else label='입항 대기 (선석 사용 중 · 추정)';}
-    out.push({key:'e'+i+x.name,src:'e',name:x.name,cargo:'',qty:null,state,label,berth:b,eta,note:x.note,shift:x.shift});
+    out.push({key:'e'+i+x.name,src:'e',name:x.name,mark:x.mark||'',cargo:'',qty:null,state,label,berth:b,eta,note:x.note,shift:x.shift});
   });
   out.forEach(o=>{if(o.berth&&['berth','load','done','berthEst','depart'].includes(o.state)&&!(BERTH_ST[o.berth].ship&&BERTH_ST[o.berth].ship.state!=='depart'))BERTH_ST[o.berth].ship=o;});
   return out;
@@ -2052,11 +2064,11 @@ function portUpdate(force){
   SHIPS.forEach(s=>{if(s.key&&!slots.some(o=>o.key===s.key)){s.key=null;s.g.visible=false;}});
   slots.forEach(o=>{
     let tgt;const bd=o.berth&&BERTH_DEF.find(d=>d.id===o.berth);
-    if(['berth','load','done','berthEst'].includes(o.state)&&bd)tgt=[PORT.shipX,bd.z,'b'];
+    if(['berth','load','done','berthEst'].includes(o.state)&&bd){const hold=BERTH_ST[bd.id].ship;tgt=[PORT.shipX,bd.z+(hold&&hold!==o?bd.side*11.5:0),'b'];}
     else if(o.state==='depart'&&bd)tgt=[560,bd.z,'x'];
     else{if(k>=8)return;tgt=[272+(k%2)*60,-50+Math.floor(k/2)*28,'a'];k++;}
     let s=SHIPS.find(x=>x.key===o.key);
-    if(!s){s=SHIPS.find(x=>!x.key);if(!s)return;s.key=o.key;s.fade=1;
+    if(!s){s=SHIPS.find(x=>!x.key);if(!s)return;s.key=o.key;s.fade=1;s.h=Math.PI;
       const L=o.qty?clamp(40+o.qty/1000*1.6,40,62):48;s.g.scale.set(L/48,1,1);s.len=L;
       if(PORT_FIRST||force==='jump'){const st=o.state==='depart'?[PORT.shipX,bd?bd.z:0]:[tgt[0],tgt[1]];s.x=st[0];s.z=st[1];s.path=[];}
       else{s.x=600;s.z=tgt[1];s.path=[];}}
@@ -2084,6 +2096,7 @@ function scEvents(){   // 삼척항 입항 예정 (출하속보 ‘입항예정 
   return SOK.expected.filter(x=>x.port==='sc'&&x.eta).map(x=>{const d=new Date(x.eta.slice(0,10)+'T00:00');return {name:x.name,berth:x.berth,note:x.note,shift:x.shift,iso:x.eta,date:x.eta.slice(0,10),days:Math.round((d-t0)/864e5)};}).sort((a,b)=>a.iso.localeCompare(b.iso));
 }
 function portAlerts(){
+  if(SOKMETA.source==='embedded')return;   // 내장 예시 속보(샘플)로는 입항·출항 알림을 내지 않음
   let seen={};try{seen=JSON.parse(localStorage.getItem('b365-portnote')||'{}')||{};}catch(e){}
   let ch=false;const tk=todayStr(),ddOf=d=>d===1?'D-1':'D-day',mdOf=x=>`${+x.date.slice(5,7)}/${+x.date.slice(8,10)}`;
   // 동해항: 입항·출항 (출항은 속보에 ‘(11/25 출.예)’ 또는 출항 시각이 생기면 자동 적용)
@@ -2204,7 +2217,7 @@ const truckInTab=t=>curTab==='all'||(curTab==='C'&&t.kind==='bct');
 function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
   let cx=20,cz=-2,size=224;
   if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)&&(curTab!=='all'||e.tab!=='P'||e.berth||e.id.startsWith('PIER'))).forEach(e=>b.union(EQOBJ[e.id].userData.box));const c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());cx=c.x;cz=c.z;size=Math.max(s.x,s.z*1.3,40);}
-  const f=curTab==='all'?(m?1.3:1.08):(m?1.9:1.7);const d=clamp(size*f*Math.pow(Math.max(1,1.6/asp),.6),90,420);
+  const f=curTab==='all'?(m?1.3:1.2):(m?1.9:1.7);const d=clamp(size*f*Math.pow(Math.max(1,1.6/asp),.6),90,420);
   const rt=m?0:d*.14,bk=m?-d*.02:d*.04;
   return {tx:cx+Math.cos(th)*rt+Math.sin(th)*bk,tz:cz-Math.sin(th)*rt+Math.cos(th)*bk,theta:th,phi:.94,dist:d};}
 function applyTabVis(){if(!THREEOK||!scene)return;EQ.forEach(e=>EQOBJ[e.id].visible=inTab(e));for(const k in DECO)DECO[k].visible=curTab==='all'||curTab===k;}
@@ -2327,12 +2340,24 @@ function placeTags(){
   const st=$('#stage');const w=st.clientWidth,h=st.clientHeight;
   const put=(el,vec)=>{if(!el)return;if(el.dataset.hide==='1'){el.style.display='none';return;}_v.copy(vec).project(camera);
     if(_v.z>1||_v.x<-1.1||_v.x>1.1||_v.y<-1.1||_v.y>1.1){el.style.display='none';return;}
-    el.style.display='';el.style.transform=`translate(${((_v.x+1)/2*w).toFixed(1)}px,${((1-_v.y)/2*h).toFixed(1)}px) translate(-50%,-100%)`;};
+    const px=(_v.x+1)/2*w,py=(1-_v.y)/2*h;el._xy=[px,py];
+    el.style.display='';el.style.transform=`translate(${px.toFixed(1)}px,${py.toFixed(1)}px) translate(-50%,-100%)`;};
   EQ.forEach(e=>put(TAG['eq'+e.id],ANCHOR[e.id]));
   TRUCKS.forEach(t=>{if(!t.g.visible){TAG['truck'+t.id].style.display='none';return;}put(TAG['truck'+t.id],new THREE.Vector3(t.x,5.6,t.z));});
+  const rects=[];
+  const rectOf=(el,x,y)=>{if(!el._w){el._w=el.offsetWidth;el._h=el.offsetHeight;}return {l:x-el._w/2,r:x+el._w/2,t:y-el._h,b:y};};
+  const hit=(a,c)=>a.l<c.r+4&&a.r>c.l-4&&a.t<c.b+3&&a.b>c.t-3;
+  const slot=(el,x,y)=>{const r0=rectOf(el,x,y),hh=r0.b-r0.t+4;let best=0;   // 겹치지 않는 자리: 그대로 → 위 → 아래 → …
+    for(const dy of [0,-hh,hh,-2*hh,2*hh,-3*hh]){const r={l:r0.l,r:r0.r,t:r0.t+dy,b:r0.b+dy};if(!rects.some(c=>hit(r,c))){best=dy;break;}}
+    rects.push({l:r0.l,r:r0.r,t:r0.t+best,b:r0.b+best});
+    if(best)el.style.transform=`translate(${x.toFixed(1)}px,${(y+best).toFixed(1)}px) translate(-50%,-100%)`;};
+  BERTH_DEF.forEach(d=>{const el=TAG['eq'+d.id];if(el&&el.style.display!=='none'&&el._xy)slot(el,el._xy[0],el._xy[1]);});   // 31·32번처럼 붙은 선석 이름표도 서로 비켜 놓기
+  const sh=[];
   SHIPS.forEach((s,i)=>{const b=TAG['ship'+i];if(!b)return;const show=s.key&&s.g.visible&&(curTab==='P'||curTab==='all')&&(!isMobile()||s.o.state!=='anch');b.dataset.hide=show?'':'1';   // 휴대폰: 외항 대기 선박 이름표는 숨김
-    if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,ty=shipTypeTxt(o),nm=ty?`${o.name} · ${ty}`:o.name,lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.src==='e'&&o.eta&&o.state==='anch'?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:o.label;
-      if(sp.textContent!==nm)sp.textContent=nm;if(sm.textContent!==lb)sm.textContent=lb;_v.set(s.x,9,s.z);put(b,_v);}else b.style.display='none';});
+    if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,ty=shipTypeTxt(o),nm=(o.mark?`${o.name} ${o.mark}`:o.name)+(ty?` · ${ty}`:''),lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.src==='e'&&o.eta&&o.state==='anch'?(o.eta>new Date()?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:`선석 대기 (추정) · 예정 ${md(o.eta)} ${hhmm(o.eta)}${o.berth?' · #'+o.berth.slice(2):''}`):o.label;
+      if(sp.textContent!==nm){sp.textContent=nm;b._w=0;}if(sm.textContent!==lb){sm.textContent=lb;b._w=0;}_v.set(s.x,9,s.z);put(b,_v);
+      if(b.style.display!=='none'&&b._xy)sh.push({b,x:b._xy[0],y:b._xy[1],p:['load','done','berth','berthEst'].includes(o.state)?0:1});}else b.style.display='none';});
+  sh.sort((a,c)=>a.p-c.p||a.y-c.y).forEach(t=>slot(t.b,t.x,t.y));   // 선석의 배 먼저, 그다음 화면 위쪽부터 자리 잡기
   const cd=$('#blastCd');if(cd){const show=BLAST.tb<1.5&&QRY_DEF.some(d=>EQOBJ[d.id]&&EQOBJ[d.id].visible),txt=BLAST.cd?String(BLAST.cd):'발파!';
     cd.dataset.hide=show?'':'1';
     if(BLAST.ph)QRY_DEF.forEach(d=>{const t=TAG['eq'+d.id],sm=t&&t.querySelector('small');if(sm&&sm.textContent!==BLAST.ph)sm.textContent=BLAST.ph;});
@@ -2396,6 +2421,7 @@ function frame(now){
       if(s.path.length&&!REDUCED){const [tx,tz]=s.path[0],dx=tx-s.x,dz=tz-s.z,d=Math.hypot(dx,dz),st=Math.min(d,dt*11);
         if(d<.3){s.path.shift();}else{s.x+=dx/d*st;s.z+=dz/d*st;const h=Math.atan2(-dz,dx);let dr=h-s.h;while(dr>Math.PI)dr-=2*Math.PI;while(dr<-Math.PI)dr+=2*Math.PI;s.h+=dr*Math.min(1,dt*2.5);}}
       else if(s.path.length){const [tx,tz]=s.path[s.path.length-1];s.x=tx;s.z=tz;s.path=[];}
+      if(!s.path.length&&!(s.o&&s.o.state==='depart')){let dr=Math.PI-s.h;while(dr>Math.PI)dr-=2*Math.PI;while(dr<-Math.PI)dr+=2*Math.PI;s.h=REDUCED?Math.PI:s.h+dr*Math.min(1,dt*1.2);}   // 멈춘 배는 모두 뱃머리를 육지 쪽으로 (자리 이동 때 생긴 비스듬한 각도 정리)
       if(s.o&&s.o.state==='depart'&&s.x>470){s.g.visible=false;return;}
       s.g.visible=pv;s.g.position.set(s.x,REDUCED?0:.16*Math.sin(now/1300+i),s.z);s.g.rotation.set(REDUCED?0:.012*Math.sin(now/1700+i*2),s.h,REDUCED?0:.01*Math.sin(now/1100+i));});
     BERTH_DEF.forEach((d,i)=>{const L=LOADERS[d.id];if(!L)return;const b=BERTH_ST[d.id]&&BERTH_ST[d.id].ship,ld=b&&b.state==='load'&&!REDUCED;
@@ -2412,7 +2438,7 @@ function frame(now){
 /* =========================================================
    선택 · 상세 패널
    ========================================================= */
-let sel=matchMedia('(max-width:760px)').matches?null:{type:'eq',id:'K5'};
+let sel=matchMedia('(max-width:760px)').matches||!['all','A',null].includes((()=>{try{return localStorage.getItem('b365-tab');}catch(e){return null;}})())?null:{type:'eq',id:'K5'};   // 처음 선택(5호 킬른)은 그 탭이 열릴 때만 — 삼척항 등 다른 탭에서 시작하면 선택 없이
 let tracked='BCT-21';
 function select(s,o={}){
   if(s&&s.type==='eq'&&E[s.id]&&!inTab(E[s.id])){sel=s;setTab(E[s.id].tab||'all',{keepSel:true});}
@@ -3246,13 +3272,13 @@ function applySokbo(d,meta,o={}){
   if(!d||d.kind!=='sokbo'||!/^\d{4}-\d\d-\d\d$/.test(d.date||''))return false;
   SOK=d;SOKMETA=meta||{};sokStock();portUpdate(o.jump?'jump':undefined);portAlerts();if(!o.quiet)renderAll();return true;
 }
-function restoreSokbo(){try{const t=localStorage.getItem('b365-sokbo');if(!t)return false;const o=JSON.parse(t);return applySokbo(o.sokbo,o.meta);}catch(e){return false;}}
+function restoreSokbo(){try{const t=localStorage.getItem('b365-sokbo');if(!t)return false;const o=JSON.parse(t);return applySokbo(o.sokbo,o.meta,{jump:true});}catch(e){return false;}}
 async function pullSokbo(first){
   try{const r=await fetch('api/sokbo',{cache:'no-store',credentials:'same-origin'});if(r.status===404||r.status===401)return;if(!r.ok)throw new Error();
     const j=await r.json();let S=j.sokbo;
     if(!S&&j.pdf){try{const b=atob(j.pdf),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);S=(await SOKBO.read(u)).data;}   // 자동으로 받은 원본 PDF (드라이브 폴더)
       catch(e){SERVER.sokbo=j.meta&&j.meta.version;toast(`자동으로 받은 출하속보를 읽지 못했습니다 (${(j.meta&&j.meta.fileName)||'PDF'}): ${e.message||e}`,'warn',9000);return;}}
-    if(applySokbo(S,j.meta)){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${S.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
+    if(applySokbo(S,j.meta,{jump:first})){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${S.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
   catch(e){}
 }
 function restoreLocal(){try{const t=localStorage.getItem('b365-qms');if(!t)return false;const o=JSON.parse(t);if(o&&o.qms&&o.qms.v===QMS.VERSION){applyQms(o.qms,o.meta);return true;}}catch(e){}return false;}
@@ -3280,7 +3306,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-15 10:27</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-15 11:03</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>${esc(ml.folder||'')} · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
@@ -3436,7 +3462,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-15 10:27';
+const BUILD='2026-11-15 11:03';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}

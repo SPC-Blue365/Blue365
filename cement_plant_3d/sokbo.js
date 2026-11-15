@@ -198,6 +198,9 @@
       if (mo < 1) { mo += 12; y--; } if (mo > 12) { mo -= 12; y++; }
       return `${y}-${pad2(mo)}-${pad2(d)}T${pad2(hh)}:${pad2(mm)}`;
     };
+    const MARKS = /[◎○●◇◆☆★※]/g;
+    const markOf = t => (String(t).match(MARKS) || []).join('');
+    const stripMark = t => String(t).replace(MARKS, ' ').replace(/\s+/g, ' ').trim();
     const out = { v: 1, kind: 'sokbo', date, weather, made: null, prod: {}, move: [], stock: {}, ship: {}, unload: {}, vessels: [], expected: [] };
     const mk = all.find(o => /^20\d\d-\d\d-\d\d$/.test(o.t.trim())); if (mk) out.made = mk.t.trim();
 
@@ -272,14 +275,18 @@
         const exp = c.filter(o => o.x >= xExp).map(o => o.t.trim()).join(' ').trim();
         const rest = c.filter(o => o.x < xExp);
         if (exp) {
-          const m = exp.match(/^(.+?)\s+(\d{1,2}\/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2})\s*(s-)?#?\s*(\d+)?\s*(?:\((.*)\))?\s*$/);
-          if (m) out.expected.push({ port, name: m[1].trim(), eta: when(m[2], 12), berth: m[4] ? +m[4] : null, shift: !!m[3], note: (m[5] || '').trim() });
-          else out.expected.push({ port, name: exp, eta: null, berth: null, note: '' });
+          // 예: "수성6호 14/23:00 #22 (평택/3종) ◎", "수성2호 15/12:00 S-#22 (인천)" — S-(이동)는 대·소문자, 끝의 ◎ 같은 표시는 mark 로 따로
+          const mk = markOf(exp), e2 = stripMark(exp);
+          const m = e2.match(/^(.+?)\s+(\d{1,2}\/\d{1,2}:\d{2}|\d{1,2}\/\d{1,2})\s*(s\s*-)?\s*#?\s*(\d+)?\s*(?:\((.*)\))?\s*$/i);
+          if (m) out.expected.push({ port, name: m[1].trim(), eta: when(m[2], 12), berth: m[4] ? +m[4] : null, shift: !!m[3], note: (m[5] || '').trim(), mark: mk });
+          else out.expected.push({ port, name: e2, eta: null, berth: null, note: '', mark: mk });
         }
         if (!rest.length) continue;
         const v = { port, name: '', cargo: '', qty: null, t: {}, th: null, berth: null, load24: null, dest: '', note: '', eta: null };
         for (const o of rest) {
-          const t = o.t.trim();
+          const mk = markOf(o.t); if (mk) v.mark = (v.mark || '') + mk;   // ◎ 같은 표시는 이름·양하지에서 떼어 mark 로
+          const t = stripMark(o.t);
+          if (!t) continue;
           if (o.x < 90) { v.name += (v.name ? ' ' : '') + t; continue; }
           if (o.x < 118) { v.cargo = t; continue; }
           if (o.x < 150 && num(t) != null) { v.qty = num(t); continue; }
