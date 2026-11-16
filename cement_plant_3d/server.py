@@ -431,6 +431,7 @@ class MMSClient:
         pw = self.c.get("password", "")
         if self.c.get("pwHash") == "md5":
             pw = hashlib.md5(pw.encode("utf-8")).hexdigest()
+        # pwHash "raw": 브라우저가 보내는 loginPwd 값을 그대로 저장해 둔 경우 — 변환 없이 보냄
         self.token = None
         j = self._post("/user/login", {"hasLogined": False, "loginName": self.c.get("user", ""), "loginPwd": pw, "defLanguage": 2})
         if not isinstance(j, dict) or str(j.get("errorCode", 0)) not in ("0", "None"):
@@ -631,22 +632,38 @@ def mms_setup() -> None:
     if not re.match(r"https?://", url):
         sys.exit("MMS 주소는 http:// 로 시작해야 합니다 (브라우저 주소창의 #/ 앞부분, 예: http://서버주소/mms-web).")
     user = input(f"MMS 아이디{' [' + old['user'] + ']' if old.get('user') else ''}: ").strip() or old.get("user", "")
-    pw = getpass.getpass("MMS 비밀번호 (화면에 보이지 않음): ")
+    print("  ※ 비밀번호는 입력해도 화면에 보이지 않습니다. 한/영 키가 ‘영문’인지 먼저 확인하세요.")
+    pw = getpass.getpass("MMS 비밀번호: ")
     if not user or not pw:
         sys.exit("아이디와 비밀번호가 필요합니다.")
-    c = {"url": url.rstrip("/"), "user": user, "password": pw, "pwHash": old.get("pwHash", "plain")}
-    print("로그인 시험 중…")
-    try:
-        MMSClient(c).login()
-    except MMSError as e:
-        print(f"  ✗ {e}")
-        if input("  MMS가 비밀번호를 MD5로 바꿔 보내는 방식일 수 있습니다. 그 방식으로 한 번 더 시험할까요? (y/N): ").strip().lower() != "y":
-            sys.exit("저장하지 않았습니다. 아이디·비밀번호를 확인한 뒤 다시 실행하세요.")
-        c["pwHash"] = "md5"
+    c = {"url": url.rstrip("/"), "user": user, "password": pw, "pwHash": "plain"}
+    tries = 0
+    while True:
+        tries += 1
+        print("로그인 시험 중…")
         try:
             MMSClient(c).login()
-        except MMSError as e2:
-            sys.exit(f"  ✗ {e2}\n저장하지 않았습니다.")
+            break
+        except MMSError as e:
+            print(f"  ✗ {e}")
+        if tries >= 3:
+            sys.exit("3번 실패해 멈춥니다 (계정 잠김 방지). 저장하지 않았습니다. 아래 확인 후 다시 실행하세요.\n"
+                     "  브라우저에서 MMS 로그인 → F12 Network → login → Payload의 loginPwd 값이\n"
+                     "  ① 입력한 비밀번호와 같은지 ② 32자리 영문·숫자인지(MD5) ③ 그 밖의 긴 문자열인지 확인")
+        print("  브라우저에서 F12 → Network → login 요청 → Payload 탭의 loginPwd 값을 보고 고르세요 (그 값은 채팅·메일로 보내지 마세요).")
+        print("   1) 비밀번호를 다시 입력 (오타·한/영)")
+        print("   2) loginPwd가 32자리 영문·숫자 → MD5 방식으로 시험")
+        print("   3) loginPwd가 그 밖의 긴 문자열 → 그 값을 그대로 붙여넣기 (서버가 같은 값을 보냄)")
+        print("   0) 끝내기")
+        ch = input(f"  선택 (남은 시도 {3 - tries}번): ").strip()
+        if ch == "1":
+            c.update(password=getpass.getpass("  MMS 비밀번호: "), pwHash="plain")
+        elif ch == "2":
+            c["pwHash"] = "md5"
+        elif ch == "3":
+            c.update(password=getpass.getpass("  loginPwd 값 붙여넣기 (보이지 않음, 마우스 오른쪽 클릭으로 붙여넣기): ").strip(), pwHash="raw")
+        else:
+            sys.exit("저장하지 않았습니다.")
     mms_cfg_write(c)
     prot = json.loads(mms_cfg_path().read_text(encoding="utf-8")).get("pwProt")
     print(f"  ✓ 로그인 성공 · 저장: {mms_cfg_path()}")
