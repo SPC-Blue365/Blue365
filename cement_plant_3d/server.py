@@ -341,6 +341,22 @@ class MMSError(Exception):
     pass
 
 
+class MMSAlready(MMSError):
+    pass
+
+
+class MMSKicked(MMSError):
+    pass
+
+
+def mms_already(j) -> bool:
+    """MMS 응답이 ‘이미 로그인된 계정 — 계속할까요?’인지 (현장 화면: ‘The account has been logged in, confirm to continue?’)"""
+    if not isinstance(j, dict) or str(j.get("errorCode", 0)) in ("0", "None"):
+        return False
+    m = str(j.get("msg") or "")
+    return bool(re.search(r"has been logged in|already logged|confirm to continue|이미.*로그인", m, re.I))
+
+
 def _dpapi(data: bytes, enc: bool):
     """Windows DPAPI: 이 PC·이 Windows 사용자만 풀 수 있게 암호화/복호화. Windows가 아니면 None"""
     if os.name != "nt":
@@ -427,13 +443,20 @@ class MMSClient:
         except ValueError:
             raise MMSError(f"MMS 응답이 JSON이 아닙니다 ({path}) — 로그인이 풀렸거나 주소가 다를 수 있습니다") from None
 
-    def login(self) -> None:
+    def login(self, force: bool = True) -> None:
+        """force: ‘이미 로그인된 계정’이면 브라우저의 ‘계속’처럼 hasLogined=true 로 다시 로그인 (다른 곳의 같은 계정 로그인이 끊길 수 있음)"""
         pw = self.c.get("password", "")
         if self.c.get("pwHash") == "md5":
             pw = hashlib.md5(pw.encode("utf-8")).hexdigest()
         # pwHash "raw": 브라우저가 보내는 loginPwd 값을 그대로 저장해 둔 경우 — 변환 없이 보냄
         self.token = None
-        j = self._post("/user/login", {"hasLogined": False, "loginName": self.c.get("user", ""), "loginPwd": pw, "defLanguage": 2})
+        body = {"hasLogined": False, "loginName": self.c.get("user", ""), "loginPwd": pw, "defLanguage": 2}
+        j = self._post("/user/login", body)
+        if mms_already(j):
+            if not force:
+                raise MMSAlready("이 MMS 계정이 이미 다른 곳(브라우저 등)에서 로그인되어 있습니다")
+            body["hasLogined"] = True
+            j = self._post("/user/login", body)
         if not isinstance(j, dict) or str(j.get("errorCode", 0)) not in ("0", "None"):
             raise MMSError(f"MMS 로그인 실패: {(j or {}).get('msg') or (j or {}).get('errorCode')}")
         tok = (j.get("data") or {}).get("token") if isinstance(j.get("data"), dict) else None
@@ -571,6 +594,16 @@ def mms_once(cl: MMSClient, items: list, fmt: str) -> dict:
 def mms_loop(map_path: Path, every: int) -> None:
     MMS.update(on=True, every=every, map=map_path.name)
     cl, items, mt = None, [], None
+    logins = []
+
+    def relogin(x: MMSClient) -> None:
+        """30분에 4번 넘게 다시 로그인해야 하면(같은 계정이 다른 곳에서도 로그인 중) 멈춤 → 15분 쉼"""
+        now = time.time()
+        logins[:] = [t for t in logins if now - t < 1800]
+        if len(logins) >= 4:
+            raise MMSKicked("같은 MMS 계정이 다른 곳(브라우저 등)에서도 로그인 중이라 서로 로그인을 끊고 있습니다 — 15분 쉬고 다시 시도. Blue365 전용 MMS 계정 권장")
+        x.login()
+        logins.append(now)
     while True:
         try:
             c = mms_cfg_read()
@@ -586,7 +619,7 @@ def mms_loop(map_path: Path, every: int) -> None:
                 raise MMSError("매칭표에 상태가 ‘매칭’인 줄이 없습니다")
             if cl is None:
                 cl = MMSClient(c)
-                cl.login()
+                relogin(cl)
             fmt = c.get("fmt")
             if fmt not in MMS_FORMATS:
                 fmt, res = mms_probe(cl, sorted({t for it in items for t in it[2]}))
@@ -596,8 +629,10 @@ def mms_loop(map_path: Path, every: int) -> None:
                 mms_cfg_write(c)
             try:
                 r = mms_once(cl, items, fmt)
+            except MMSKicked:
+                raise
             except MMSError:
-                cl.login()                                   # 세션이 끊겼으면 한 번 다시 로그인
+                relogin(cl)
                 r = mms_once(cl, items, fmt)
             if r["got"] == 0:
                 cl = None
@@ -605,6 +640,12 @@ def mms_loop(map_path: Path, every: int) -> None:
             now = dt.datetime.now().isoformat(timespec="seconds")
             MMSV.update(t=now, vals=r["vals"])
             MMS.update(ok=True, err="", last=now, fmt=fmt, tags=r["tags"], got=r["got"], items=r["items"], skip=len(items) - r["items"])
+        except MMSKicked as e:
+            log(f"MMS: {e}")
+            MMS.update(ok=False, err=str(e), last=dt.datetime.now().isoformat(timespec="seconds"))
+            cl = None
+            time.sleep(max(0, 900 - every))
+            logins.clear()
         except MMSError as e:
             if str(e) != MMS.get("err"):
                 log(f"MMS: {e}")
@@ -642,8 +683,20 @@ def mms_setup() -> None:
         tries += 1
         print("로그인 시험 중…")
         try:
-            MMSClient(c).login()
+            MMSClient(c).login(force=False)
             break
+        except MMSAlready:
+            print("  ✓ 아이디·비밀번호는 맞습니다. 다만 이 계정이 이미 다른 곳(브라우저 등)에서 로그인되어 있습니다.")
+            print("    계속하면 그쪽 MMS 로그인이 끊길 수 있습니다 (MMS는 한 계정 한 곳 로그인으로 보임).")
+            print("    ※ 서버가 30초마다 값을 읽으므로, 같은 계정을 브라우저에서도 쓰면 서로 로그인을 끊게 됩니다.")
+            print("      Blue365 전용(읽기 전용) MMS 계정을 전산팀에 요청하는 것을 권합니다.")
+            if input("    지금은 이 계정으로 계속할까요? (y/N): ").strip().lower() != "y":
+                sys.exit("저장하지 않았습니다.")
+            try:
+                MMSClient(c).login(force=True)
+                break
+            except MMSError as e:
+                print(f"  ✗ {e}")
         except MMSError as e:
             print(f"  ✗ {e}")
         if tries >= 3:
@@ -683,7 +736,7 @@ def mms_test(map_path: Path) -> None:
             sys.exit("  상태가 ‘매칭’인 줄이 없습니다.")
         cl = MMSClient(c)
         cl.login()
-        print("  ✓ 로그인")
+        print("  ✓ 로그인 (※ 같은 계정으로 브라우저에서 MMS를 보고 있었다면 그쪽 로그인이 끊길 수 있습니다)")
         tags = sorted({t for it in items for t in it[2]})
         fmt, res = mms_probe(cl, tags)
         for f, n in res.items():
