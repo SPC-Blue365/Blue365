@@ -167,3 +167,5 @@ cython_debug/
 cement_plant_3d/data/
 __pycache__/
 cement_plant_3d/artifact.html
+# MMS 매칭표(사내 태그 목록)는 저장소에 올리지 않음
+cement_plant_3d/MMS_*.xlsx

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-15 11:40">
+<meta name="b365-build" content="2026-11-16 14:50">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -559,7 +559,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-15 11:40</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-16 14:50</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -2550,7 +2550,7 @@ function sparkSVG(p){
 function kvRows(e){
   let g=null;
   return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);let h='';if(p.grp&&p.grp!==g){g=p.grp;h=`<div class="kvg">${g}</div>`;}
-    const src=p.ana?(p.has?`QMS ${stamp(p.time)}`:(p.lastTs?`최근 14일 시료 없음 · 마지막 ${stamp(tsDate(p.lastTs))}`:'QMS 시료 없음')):(p.has?`DCS ${stamp(p.time)}`:'');
+    const src=p.ana?(p.has?`QMS ${stamp(p.time)}`:(p.lastTs?`최근 14일 시료 없음 · 마지막 ${stamp(tsDate(p.lastTs))}`:'QMS 시료 없음')):(p.has?`${p.mms?'MMS 실측':'DCS'} ${stamp(p.time)}`:'');
     return h+`<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${fv(p)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null||src?`<span class="lim">${[p.lo!=null||p.hi!=null?limTxt(p):'',src].filter(Boolean).join(' · ')}</span>`:''}</dd></div>`;}).join('');
 }
 function chemBlock(id){
@@ -2584,7 +2584,7 @@ function renderDetail(){
      <div class="dp-act"><button type="button" data-act="fly" aria-label="이 설비로 이동" data-tip="이 설비로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
     <div class="dp-st"><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span><span>${head}</span></div>
     <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
-    ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?`QMS 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
+    ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?`${pp.mms?'MMS 실측':'QMS'} 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
     ${routeBlock(e)}${supplyBlock(e)}${portBlock(e)}
     ${e.kiln?chemBlock(e.id):''}
@@ -3216,7 +3216,7 @@ function applyQms(Q,meta,o={}){
   Q=cleanQ(Q);meta=cleanQ(meta||{});
   QD=Q;QMETA=meta||{};
   allParams().forEach(({e,k,p})=>{
-    if(!p.src)return;
+    if(!p.src||p.mms)return;
     if(p.ana){p.has=false;p.hist=[];p.times=[];p.lastTs=null;}
     const s=Q&&Q.streams[p.src];if(!s){if(!p.ana&&p.has){p.has=false;p.v=p.base0??p.v;}return;}
     const fi=s.f.indexOf(p.fld),mult=p.mult||1;
@@ -3250,7 +3250,7 @@ function backToDefault(){const d=defaultQms();try{localStorage.removeItem('b365-
 async function serverInit(){
   if(location.protocol==='file:')return false;
   try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return true;}if(!r.ok)return false;const s=await r.json();if(!s||s.app!=='blue365')return false;SERVER=s;SERVER.loaded=null;SERVER.sokboApi='sokbo' in s;}catch(e){return false;}
-  await loadMe();await pullCfg();await pullServer(true);await pullSokbo(true);setInterval(pollServer,20000);renderAll();return true;
+  await loadMe();await pullCfg();await pullServer(true);await pullSokbo(true);if(SERVER.mms&&SERVER.mms.t)await pullMms();setInterval(pollServer,20000);renderAll();return true;
 }
 const ROLE_KO={admin:'관리자',editor:'편집',viewer:'뷰어'};
 function toLogin(){location.replace('login');}
@@ -3280,7 +3280,8 @@ async function pollServer(){
     checkPageVersion(s);
     if(s.cfg!==undefined&&s.cfg!==SERVER.cfg&&$('#cfgModal').hidden)await pullCfg();
     if(s.version&&s.version!==SERVER.loaded){SERVER.version=s.version;await pullServer(false);}
-    SERVER.sokboWatch=s.sokboWatch;if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);}
+    SERVER.sokboWatch=s.sokboWatch;if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);
+    SERVER.mms=s.mms;if(s.mms&&s.mms.t&&s.mms.t!==SERVER.mmsT)await pullMms();}
   catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
 /* ---------- 출하속보 (PDF → 삼척항·동해항·사일로 재고) ---------- */
@@ -3297,6 +3298,19 @@ function applySokbo(d,meta,o={}){
   SOK=d;SOKMETA=meta||{};sokStock();portUpdate(o.jump?'jump':undefined);portAlerts();if(!o.quiet)renderAll();return true;
 }
 function restoreSokbo(){try{const t=localStorage.getItem('b365-sokbo');if(!t)return false;const o=JSON.parse(t);return applySokbo(o.sokbo,o.meta,{jump:true});}catch(e){return false;}}
+/* MMS 실측값: 서버가 매칭표(상태 ‘매칭’)대로 MMS에서 읽어 온 값. 그 항목만 가상값 대신 실측, 나머지는 그대로 */
+async function pullMms(){try{const r=await fetch('api/mms',{cache:'no-store',credentials:'same-origin'});if(!r.ok)return;applyMms(await r.json());}catch(e){}}
+function applyMms(j){
+  const t=j&&j.t?new Date(j.t):null,vals=(j&&j.vals)||{};if(!t||isNaN(t))return;
+  const fresh=SERVER.mmsT!==j.t;SERVER.mmsT=j.t;
+  allParams().forEach(({e,k,p})=>{if(p.ana)return;const v=vals[e.id]?Number(vals[e.id][k]):NaN;
+    if(!isFinite(v)){if(p.mms){p.mms=false;p.has=false;p.v=p.base=p.target=p.base0??p.v;}return;}
+    if(!p.mms){if(p.base0===undefined)p.base0=p.v;p.mms=true;p.hist=[v,v];p.times=[t,t];}
+    else if(fresh){p.hist.push(v);p.times.push(t);if(p.hist.length>90){p.hist.shift();p.times.shift();}}
+    p.has=true;p.v=p.base=p.target=v;p.time=t;
+    const st=pStatus(p);if(fresh&&RANK[st]>RANK[p.prev]){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]} (MMS)`,st);}p.prev=st;});
+  renderAll();
+}
 async function pullSokbo(first){
   try{const r=await fetch('api/sokbo',{cache:'no-store',credentials:'same-origin'});if(r.status===404||r.status===401)return;if(!r.ok)throw new Error();
     const j=await r.json();let S=j.sokbo;
@@ -3330,8 +3344,9 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-15 11:40</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-16 14:50</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
+  const mm=SERVER&&SERVER.mms;if(mm&&mm.on)h+=`<div class="row"><span>MMS 연결</span><b>${mm.ok===false?'<span style="color:var(--bad)">'+esc(mm.err||'오류')+'</span>':mm.ok?'정상':'첫 연결 대기'} · ${mm.every}초마다${mm.last?' · 확인 '+esc(mm.last.slice(5,16).replace('T',' ')):''}${mm.ok?` · 매칭 항목 ${mm.items}개 (태그 ${mm.got}/${mm.tags})`:''}${mm.skip?` · 값 없음 ${mm.skip}개`:''}</b></div>`;
   const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>${esc(ml.folder||'')} · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date)+' 실적'+(SOK.made&&SOK.made!==SOK.date?` (${esc(SOK.made.slice(5).replace('-','/'))} 발행)`:''):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
@@ -3486,7 +3501,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-15 11:40';
+const BUILD='2026-11-16 14:50';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}

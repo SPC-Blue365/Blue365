@@ -316,6 +316,378 @@ def sokbo_watch_loop(spec: str, every: int) -> None:
         time.sleep(every)
 
 
+# ---------------------------------------------------------------------------
+# MMS (Manufacturing Monitor) 읽기 전용 연결 — 현장 확인 2026-11-16
+#   로그인: POST {주소}/user/login {hasLogined, loginName, loginPwd, defLanguage} → data.token (+ JSESSIONID 쿠키)
+#   값    : POST {주소}/monitorTrend/getOpcTagValueInRedis (헤더 Token) — 보내는 형식은 시험(--mms-test)으로 찾아 저장
+#   아이디·비밀번호는 서버 PC의 data/mms.json 에만 저장 (Windows: 그 PC·그 사용자만 풀 수 있게 암호화)
+# ---------------------------------------------------------------------------
+MMS_DEFAULT_URL = ""   # 주소는 저장소에 두지 않음 — MMS설정.bat 에서 입력 (예: http://서버주소/mms-web)
+MMS_MAP_NAME = "MMS_매칭표.xlsx"
+MMS = {"on": False, "ok": None, "err": "", "last": None, "every": 0, "fmt": "", "tags": 0, "got": 0, "items": 0, "skip": 0, "map": ""}
+MMSV = {"t": None, "vals": {}}
+MMS_FORMATS = {
+    "list": lambda tags: tags,
+    "tagNames": lambda tags: {"tagNames": tags},
+    "tags": lambda tags: {"tags": tags},
+    "tagList": lambda tags: {"tagList": tags},
+    "tagNameList": lambda tags: {"tagNameList": tags},
+    "objs": lambda tags: [{"tagName": t} for t in tags],
+    "csv": lambda tags: {"tagNames": ",".join(tags)},
+}
+
+
+class MMSError(Exception):
+    pass
+
+
+def _dpapi(data: bytes, enc: bool):
+    """Windows DPAPI: 이 PC·이 Windows 사용자만 풀 수 있게 암호화/복호화. Windows가 아니면 None"""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes as w
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [("cbData", w.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+    buf = ctypes.create_string_buffer(data, len(data))
+    src = BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+    dst = BLOB()
+    c32 = ctypes.windll.crypt32
+    ok = (c32.CryptProtectData(ctypes.byref(src), "Blue365 MMS", None, None, None, 0, ctypes.byref(dst)) if enc
+          else c32.CryptUnprotectData(ctypes.byref(src), None, None, None, None, 0, ctypes.byref(dst)))
+    if not ok:
+        return None
+    out = ctypes.string_at(dst.pbData, dst.cbData)
+    ctypes.windll.kernel32.LocalFree(dst.pbData)
+    return out
+
+
+def mms_cfg_path() -> Path:
+    return STORE.dir / "mms.json"
+
+
+def mms_cfg_read() -> dict:
+    p = mms_cfg_path()
+    if not p.exists():
+        return {}
+    try:
+        c = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    raw = base64.b64decode(c.get("pw", "") or "")
+    if c.get("pwProt") == "dpapi":
+        dec = _dpapi(raw, False)
+        if dec is None:
+            raise MMSError("저장된 MMS 비밀번호를 풀 수 없습니다 (다른 PC·다른 Windows 사용자). --mms-setup 으로 다시 저장하세요")
+        raw = dec
+    c["password"] = raw.decode("utf-8")
+    return c
+
+
+def mms_cfg_write(c: dict) -> None:
+    c = dict(c)
+    pw = c.pop("password", "").encode("utf-8")
+    enc = _dpapi(pw, True)
+    c["pw"] = base64.b64encode(enc if enc is not None else pw).decode()
+    c["pwProt"] = "dpapi" if enc is not None else "none"
+    p = mms_cfg_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass
+
+
+class MMSClient:
+    def __init__(self, c: dict):
+        import http.cookiejar
+        import urllib.request
+        self.c, self.url = c, c.get("url", MMS_DEFAULT_URL).rstrip("/")
+        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        self.token = None
+
+    def _post(self, path: str, body):
+        import urllib.error
+        import urllib.request
+        h = {"Content-Type": "application/json;charset=UTF-8", "Accept": "*/*", "X-Requested-With": "XMLHttpRequest"}
+        if self.token:
+            h["Token"] = self.token
+        req = urllib.request.Request(self.url + path, data=json.dumps(body, ensure_ascii=False).encode("utf-8"), headers=h, method="POST")
+        try:
+            with self.op.open(req, timeout=15) as r:
+                txt = r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            raise MMSError(f"MMS 응답 오류 HTTP {e.code} ({path})") from None
+        except (urllib.error.URLError, OSError) as e:
+            raise MMSError(f"MMS에 접속하지 못했습니다: {getattr(e, 'reason', e)}") from None
+        try:
+            return json.loads(txt)
+        except ValueError:
+            raise MMSError(f"MMS 응답이 JSON이 아닙니다 ({path}) — 로그인이 풀렸거나 주소가 다를 수 있습니다") from None
+
+    def login(self) -> None:
+        pw = self.c.get("password", "")
+        if self.c.get("pwHash") == "md5":
+            pw = hashlib.md5(pw.encode("utf-8")).hexdigest()
+        self.token = None
+        j = self._post("/user/login", {"hasLogined": False, "loginName": self.c.get("user", ""), "loginPwd": pw, "defLanguage": 2})
+        if not isinstance(j, dict) or str(j.get("errorCode", 0)) not in ("0", "None"):
+            raise MMSError(f"MMS 로그인 실패: {(j or {}).get('msg') or (j or {}).get('errorCode')}")
+        tok = (j.get("data") or {}).get("token") if isinstance(j.get("data"), dict) else None
+        if not tok:
+            raise MMSError("MMS 로그인 응답에 token이 없습니다")
+        self.token = tok
+
+    def values(self, tags: list, fmt: str) -> dict:
+        out = {}
+        for i in range(0, len(tags), 200):
+            part = tags[i:i + 200]
+            out.update(mms_extract(self._post("/monitorTrend/getOpcTagValueInRedis", MMS_FORMATS[fmt](part)), part))
+        return out
+
+
+def _mnum(v):
+    if isinstance(v, bool):
+        return 1.0 if v else 0.0
+    if isinstance(v, (int, float)):
+        return float(v) if v == v else None
+    if isinstance(v, str):
+        try:
+            return float(v.replace(",", "").strip())
+        except ValueError:
+            return None
+    return None
+
+
+def mms_extract(j, tags: list) -> dict:
+    """응답 JSON 어디에 있든 ‘요청한 태그 → 숫자’를 찾아냄 ({태그: 값} 또는 [{tagName: 태그, value: 값}] 등)"""
+    want = {t: t for t in tags}
+    low = {t.lower(): t for t in tags}
+    out = {}
+
+    def key_of(s):
+        return want.get(s) or low.get(s.lower()) if isinstance(s, str) else None
+
+    def walk(x, depth=0):
+        if depth > 8:
+            return
+        if isinstance(x, dict):
+            for k, v in x.items():
+                t = key_of(k)
+                if t and _mnum(v) is not None:
+                    out[t] = _mnum(v)
+                elif t and isinstance(v, dict):
+                    for vk in ("value", "val", "v", "tagValue", "currentValue", "Value", "pv"):
+                        if _mnum(v.get(vk)) is not None:
+                            out[t] = _mnum(v.get(vk))
+                            break
+            name = next((key_of(v) for v in x.values() if key_of(v)), None)
+            if name:
+                for vk in ("value", "val", "v", "tagValue", "currentValue", "Value", "pv", "tagVal"):
+                    if vk in x and _mnum(x[vk]) is not None:
+                        out[name] = _mnum(x[vk])
+                        break
+            for v in x.values():
+                if isinstance(v, (dict, list)):
+                    walk(v, depth + 1)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v, depth + 1)
+    walk(j)
+    return out
+
+
+def mms_calc_fn(txt: str):
+    """매칭표 ‘계산’ 칸 → 여러 태그 값을 하나로"""
+    t = str(txt or "")
+    m = re.search(r"[×x\*]\s*([\d.]+)", t)
+    k = float(m.group(1)) if m else (10.197 if re.search(r"mbar\s*→\s*mmAq", t, re.I) else 1.0)
+    if "합계" in t or "sum" in t.lower():
+        f = sum
+    elif "평균" in t or "avg" in t.lower():
+        def f(v): return sum(v) / len(v)
+    elif "높은" in t or "최대" in t or "max" in t.lower():
+        f = max
+    elif "낮은" in t or "최소" in t or "min" in t.lower():
+        f = min
+    else:
+        def f(v): return v[0]
+    return lambda v: f(v) * k
+
+
+def mms_map_load(path: Path) -> list:
+    """매칭표 엑셀 → [(설비 ID, 항목 키, [태그...], 계산 함수, 계산 글)]. 상태가 ‘매칭’ 또는 ‘사용’인 줄만"""
+    sheets = read_xlsx(path.read_bytes())
+    rows = sheets.get("매칭표") or next(iter(sheets.values()), [])
+    hi = next((i for i, r in enumerate(rows[:20]) if r and "설비 ID" in [str(x or "").strip() for x in r]), None)
+    if hi is None:
+        raise MMSError(f"{path.name}: ‘설비 ID’ 머리글을 찾지 못했습니다")
+    H = {str(x or "").strip(): j for j, x in enumerate(rows[hi])}
+    need = ["설비 ID", "항목 키", "MMS 태그", "상태"]
+    if any(k not in H for k in need):
+        raise MMSError(f"{path.name}: 머리글 {', '.join(k for k in need if k not in H)} 이(가) 없습니다")
+    out = []
+    for r in rows[hi + 1:]:
+        g = lambda k: str(r[H[k]]).strip() if k in H and H[k] < len(r) and r[H[k]] is not None else ""
+        if g("상태") not in ("매칭", "사용"):
+            continue
+        tags = [t.strip() for t in re.split(r"[\n;]+", g("MMS 태그")) if t.strip()]
+        if g("설비 ID") and g("항목 키") and tags:
+            out.append((g("설비 ID"), g("항목 키"), tags, mms_calc_fn(g("계산")), g("계산")))
+    return out
+
+
+def mms_probe(cl: MMSClient, tags: list):
+    """보내는 형식을 하나씩 시험 → 값이 가장 많이 온 형식"""
+    best, res = None, {}
+    for f in MMS_FORMATS:
+        try:
+            v = cl.values(tags[:30], f)
+        except MMSError as e:
+            v = {}
+            res[f] = str(e)
+            continue
+        res[f] = len(v)
+        if v and (best is None or len(v) > res[best]):
+            best = f
+    return best, res
+
+
+def mms_once(cl: MMSClient, items: list, fmt: str) -> dict:
+    tags = sorted({t for it in items for t in it[2]})
+    vals = cl.values(tags, fmt)
+    out, n = {}, 0
+    for eid, key, ts, fn, _ in items:
+        got = [vals[t] for t in ts if t in vals]
+        if len(got) == len(ts):
+            out.setdefault(eid, {})[key] = round(fn(got), 4)
+            n += 1
+    return {"vals": out, "tags": len(tags), "got": len(vals), "items": n}
+
+
+def mms_loop(map_path: Path, every: int) -> None:
+    MMS.update(on=True, every=every, map=map_path.name)
+    cl, items, mt = None, [], None
+    while True:
+        try:
+            c = mms_cfg_read()
+            if not c:
+                raise MMSError("MMS 설정이 없습니다 — 서버 폴더에서 MMS설정.bat (python server.py --mms-setup) 실행")
+            if not map_path.exists():
+                raise MMSError(f"매칭표가 없습니다: {map_path}")
+            m = map_path.stat().st_mtime
+            if m != mt:
+                items, mt = mms_map_load(map_path), m
+                log(f"MMS 매칭표 읽음: {len(items)}개 항목 ({map_path.name})")
+            if not items:
+                raise MMSError("매칭표에 상태가 ‘매칭’인 줄이 없습니다")
+            if cl is None:
+                cl = MMSClient(c)
+                cl.login()
+            fmt = c.get("fmt")
+            if fmt not in MMS_FORMATS:
+                fmt, res = mms_probe(cl, sorted({t for it in items for t in it[2]}))
+                if not fmt:
+                    raise MMSError(f"값 요청 형식을 찾지 못했습니다 ({res}) — 화면 F12의 getOpcTagValueInRedis Payload 형식이 필요합니다")
+                c["fmt"] = fmt
+                mms_cfg_write(c)
+            try:
+                r = mms_once(cl, items, fmt)
+            except MMSError:
+                cl.login()                                   # 세션이 끊겼으면 한 번 다시 로그인
+                r = mms_once(cl, items, fmt)
+            if r["got"] == 0:
+                cl = None
+                raise MMSError("값이 하나도 오지 않았습니다 — 다음 주기에 다시 로그인합니다")
+            now = dt.datetime.now().isoformat(timespec="seconds")
+            MMSV.update(t=now, vals=r["vals"])
+            MMS.update(ok=True, err="", last=now, fmt=fmt, tags=r["tags"], got=r["got"], items=r["items"], skip=len(items) - r["items"])
+        except MMSError as e:
+            if str(e) != MMS.get("err"):
+                log(f"MMS: {e}")
+            MMS.update(ok=False, err=str(e), last=dt.datetime.now().isoformat(timespec="seconds"))
+        except Exception as e:  # noqa: BLE001 — 예상 못 한 오류도 서버는 계속
+            log(f"MMS 오류: {e!r}")
+            MMS.update(ok=False, err=f"예상 못 한 오류: {e!r}")
+            cl = None
+        time.sleep(every)
+
+
+def mms_setup() -> None:
+    import getpass
+    print("=" * 56)
+    print(" Blue365 · MMS 연결 설정 (읽기 전용)")
+    print("  아이디·비밀번호는 이 PC의 data/mms.json 에만 저장됩니다.")
+    print("  (Windows: 이 PC·이 Windows 사용자만 풀 수 있게 암호화)")
+    print("=" * 56)
+    old = {}
+    try:
+        old = mms_cfg_read()
+    except MMSError:
+        pass
+    url = input(f"MMS 주소 (예: http://서버주소/mms-web){' [' + old['url'] + ']' if old.get('url') else ''}: ").strip() or old.get("url", "")
+    if not re.match(r"https?://", url):
+        sys.exit("MMS 주소는 http:// 로 시작해야 합니다 (브라우저 주소창의 #/ 앞부분, 예: http://서버주소/mms-web).")
+    user = input(f"MMS 아이디{' [' + old['user'] + ']' if old.get('user') else ''}: ").strip() or old.get("user", "")
+    pw = getpass.getpass("MMS 비밀번호 (화면에 보이지 않음): ")
+    if not user or not pw:
+        sys.exit("아이디와 비밀번호가 필요합니다.")
+    c = {"url": url.rstrip("/"), "user": user, "password": pw, "pwHash": old.get("pwHash", "plain")}
+    print("로그인 시험 중…")
+    try:
+        MMSClient(c).login()
+    except MMSError as e:
+        print(f"  ✗ {e}")
+        if input("  MMS가 비밀번호를 MD5로 바꿔 보내는 방식일 수 있습니다. 그 방식으로 한 번 더 시험할까요? (y/N): ").strip().lower() != "y":
+            sys.exit("저장하지 않았습니다. 아이디·비밀번호를 확인한 뒤 다시 실행하세요.")
+        c["pwHash"] = "md5"
+        try:
+            MMSClient(c).login()
+        except MMSError as e2:
+            sys.exit(f"  ✗ {e2}\n저장하지 않았습니다.")
+    mms_cfg_write(c)
+    prot = json.loads(mms_cfg_path().read_text(encoding="utf-8")).get("pwProt")
+    print(f"  ✓ 로그인 성공 · 저장: {mms_cfg_path()}")
+    print("    비밀번호 보호: " + ("Windows 암호화 (이 PC·이 Windows 사용자만 풀 수 있음)" if prot == "dpapi" else "암호화 안 됨 — 이 폴더 접근 권한을 제한하세요"))
+    print("다음: MMS시험.bat (python server.py --mms-test) 로 값이 오는지 확인하세요.")
+
+
+def mms_test(map_path: Path) -> None:
+    print(f"MMS 시험 · 매칭표 {map_path}")
+    try:
+        c = mms_cfg_read()
+        if not c:
+            sys.exit("MMS 설정이 없습니다. 먼저 MMS설정.bat (python server.py --mms-setup)")
+        items = mms_map_load(map_path)
+        print(f"  매칭표: 상태 ‘매칭’ {len(items)}개 항목")
+        if not items:
+            sys.exit("  상태가 ‘매칭’인 줄이 없습니다.")
+        cl = MMSClient(c)
+        cl.login()
+        print("  ✓ 로그인")
+        tags = sorted({t for it in items for t in it[2]})
+        fmt, res = mms_probe(cl, tags)
+        for f, n in res.items():
+            print(f"    형식 {f:12s}: {n if isinstance(n, int) else '오류 — ' + n}")
+        if not fmt:
+            sys.exit("  ✗ 값이 오는 형식을 찾지 못했습니다. F12 → getOpcTagValueInRedis → Payload·Preview 형식을 알려 주세요.")
+        c["fmt"] = fmt
+        mms_cfg_write(c)
+        r = mms_once(cl, items, fmt)
+        print(f"  ✓ 형식 ‘{fmt}’ 저장 · 태그 {r['tags']}개 중 {r['got']}개 값 받음 · 화면 항목 {r['items']}/{len(items)}개")
+        for eid, kv in list(r["vals"].items())[:12]:
+            print("    " + eid + ": " + ", ".join(f"{k}={v:g}" for k, v in kv.items()))
+        miss = sorted(set(tags) - set(cl.values(tags, fmt)))
+        if miss:
+            print(f"  값이 안 온 태그 {len(miss)}개 (태그 이름 확인):")
+            for t in miss[:20]:
+                print("    - " + t)
+    except MMSError as e:
+        sys.exit(f"  ✗ {e}")
+
+
 def settings_path() -> Path:
     return STORE.dir / "settings.json"
 
@@ -865,7 +1237,8 @@ class Handler(BaseHTTPRequestHandler):
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
                                     "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1],
-                                    "sokboWatch": {k: SWATCH[k] for k in ("on", "folder", "every", "last", "ok", "err", "got")}})
+                                    "sokboWatch": {k: SWATCH[k] for k in ("on", "folder", "every", "last", "ok", "err", "got")},
+                                    "mms": dict(MMS, t=MMSV["t"]) if MMS["on"] else None})
         if path == "/api/settings":
             if not self._need("viewer"):
                 return
@@ -876,6 +1249,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             d, _ = sokbo_read()
             return self._send(200, d) if d else self._send(404, {"error": "아직 올라온 출하속보가 없습니다"})
+        if path == "/api/mms":
+            if not self._need("viewer"):
+                return
+            return self._send(200, {"t": MMSV["t"], "vals": MMSV["vals"], "ok": MMS["ok"], "err": MMS["err"]})
         if path == "/api/dataset":
             if not self._need("viewer"):
                 return
@@ -1196,6 +1573,11 @@ def main() -> None:
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="(선택) 업로드에 추가로 요구할 서버 공통 암호")
     ap.add_argument("--sokbo-watch", default="", help="출하속보 PDF가 들어오는 폴더. auto = 구글 드라이브의 ‘Blue365 출하속보’ 폴더를 자동으로 찾음")
     ap.add_argument("--sokbo-interval", type=int, default=60, help="출하속보 폴더 확인 주기(초, 기본 60)")
+    ap.add_argument("--mms", action="store_true", help="MMS(Manufacturing Monitor)에서 매칭표의 설비 값을 읽기 전용으로 가져옴")
+    ap.add_argument("--mms-every", type=int, default=30, help="MMS 값 읽는 주기(초, 기본 30, 최소 10)")
+    ap.add_argument("--mms-map", default=str(ROOT / MMS_MAP_NAME), help=f"매칭표 엑셀 (기본: 서버 폴더의 {MMS_MAP_NAME})")
+    ap.add_argument("--mms-setup", action="store_true", help="MMS 주소·아이디·비밀번호 저장 (로그인 시험 후 저장)")
+    ap.add_argument("--mms-test", action="store_true", help="MMS 로그인·값 요청 형식 시험 (서버는 켜지 않음)")
     a = ap.parse_args()
 
     if not PAGE.exists():
@@ -1203,6 +1585,10 @@ def main() -> None:
     HISTORY_MB = max(50, a.history_mb)
     STORE = Store(Path(a.data))
     USERS = Users(STORE.dir)
+    if a.mms_setup:
+        return mms_setup()
+    if a.mms_test:
+        return mms_test(Path(a.mms_map))
     SESS_FILE = STORE.dir / "sessions.json"
     sess_load()
     BACKUP_KEEP = max(1, a.backup_keep)
@@ -1228,6 +1614,13 @@ def main() -> None:
         threading.Thread(target=sokbo_watch_loop, args=(a.sokbo_watch, every), daemon=True).start()
         sokbo_txt = (f"{sf} · {every}초마다 최신 PDF" if sf else
                      f"아직 폴더를 찾지 못함 ({'구글 드라이브의 ‘' + SOKBO_DIR_NAME + '’' if a.sokbo_watch.lower() == 'auto' else a.sokbo_watch}) — {every}초마다 다시 찾습니다")
+
+    mms_txt = "사용 안 함"
+    if a.mms:
+        every = max(10, a.mms_every)
+        threading.Thread(target=mms_loop, args=(Path(a.mms_map), every), daemon=True).start()
+        mms_txt = (f"{every}초마다 · 매칭표 {Path(a.mms_map).name}" + ("" if Path(a.mms_map).exists() else " (파일 없음!)")
+                   + ("" if mms_cfg_path().exists() else "  ※ 아직 설정 안 됨: MMS설정.bat 먼저 실행"))
 
     srv = ThreadingHTTPServer((a.host, a.port), Handler)
     global TEAM_URLS
@@ -1269,6 +1662,7 @@ def main() -> None:
         print("                ※ 같은 디스크입니다. PC 고장에 대비하려면 --backup-dir 로 다른 디스크·공유 폴더를 지정하세요.")
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
     print(f"  출하속보 폴더: {sokbo_txt}")
+    print(f"  MMS 연결    : {mms_txt}")
     print("  끝내려면 Ctrl+C")
     print("=" * 56, flush=True)
     try:
