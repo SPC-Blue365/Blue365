@@ -906,12 +906,14 @@ function kilnEq(d,i){
 function phEq(d,i){
   const v=[.4,-.3,0,.2,-.5][i],H=d.line==='B'?30:24;
   return {id:'PH'+d.n,code:'PH-'+d.n,n:String(d.n),name:d.n+'호 P/H',kref:'K'+d.n,tab:d.line,area:'burn',icon:'flame',spec:'예열기 · 5단 사이클론 · 하소로',bar:'calc',barLabel:'킬른 입구 하소율',primary:'c1',anchor:[30,H+3,d.z],
-   params:{calc:P('킬른 입구 하소율','%',93.5+v,90,97,1,.25,{min:0,max:100}),c1:P('C1 출구 가스 온도','℃',318+v*8,null,345,0,2,{ev:1}),pc:P('하소로 출구 온도','℃',878+v*4,860,900,0,2.5,{src:'dcs:K'+d.n,fld:'pc'}),press:P('C1 출구 정압','mmAq',-520+v*10,null,null,0,6)}};
+   params:{calc:P('킬른 입구 하소율','%',93.5+v,90,97,1,.25,{min:0,max:100}),c1:P('C1 출구 가스 온도','℃',318+v*8,null,345,0,2,{ev:1}),pc:P('하소로 출구 온도','℃',878+v*4,860,900,0,2.5,{src:'dcs:K'+d.n,fld:'pc'}),press:P('C1 출구 정압','mmAq',-520+v*10,null,null,0,6),
+    ...(d.line==='B'?{idf:P('IDF 출구 정압','mbar',-15+v*2,null,null,1,.3)}:{})}};   /* 6·7호: MMS에 있는 항목 (관리기준은 현장 값 받으면 설정) */
 }
 function rmEq(d,i){
   const v=[.1,-.2,.3,0,-.1,.2][i];
   return {id:d.id,code:d.code,n:d.n,name:d.n+'호 R/M',stop:!!d.stop,tab:d.tab,area:'raw',icon:'gauge',spec:`원료밀 · 설계 ${d.cap} t/h (가상)`,bar:'load',barLabel:'부하',primary:'lsf',
-   params:{load:P('부하','%',86+v*6,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',Math.round(d.cap*.9),Math.round(d.cap*.8),null,0,d.cap*.01),lsf:QA('원료 LSF','',1,'raw:'+d.id,'LSF'),sm:QA('원료 SM','',2,'raw:'+d.id,'SM'),im:QA('원료 IM','',2,'raw:'+d.id,'IM'),mgo:QA('원료 MgO','%',2,'raw:'+d.id,'MgO'),r90:QA('90 µm 잔사','%',1,'res:'+d.id,'r90'),r200:QA('200 µm 잔사','%',1,'res:'+d.id,'r200')}};
+   params:{load:P('부하','%',86+v*6,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',Math.round(d.cap*.9),Math.round(d.cap*.8),null,0,d.cap*.01),lsf:QA('원료 LSF','',1,'raw:'+d.id,'LSF'),sm:QA('원료 SM','',2,'raw:'+d.id,'SM'),im:QA('원료 IM','',2,'raw:'+d.id,'IM'),mgo:QA('원료 MgO','%',2,'raw:'+d.id,'MgO'),r90:QA('90 µm 잔사','%',1,'res:'+d.id,'r90'),r200:QA('200 µm 잔사','%',1,'res:'+d.id,'r200'),
+    ...(d.tab==='B'?{cur:P('주모터 전류','A',180+v*10,null,null,0,2),dp:P('밀 차압 ΔP','mbar',67+v*3,null,null,1,.4),vib:P('밀 진동','mm/s',1.9+v*.1,null,null,2,.04),tin:P('밀 입구 가스 온도','℃',293+v*5,null,null,0,1.5),tout:P('밀 출구 가스 온도','℃',100+v*3,null,null,0,.6)}:{})}};   /* 6·7호 R/M: MMS에 있는 항목 (관리기준은 현장 값 받으면 설정) */
 }
 function qryEq(d,i){
   return {id:d.id,code:'QRY-'+d.n.slice(0,2),n:d.n,name:d.n+' 광산',area:'raw',major:1,icon:'mountain',spec:`석회석 광산 · 벤치 채광 · ${d.cr==='CRG'?'G/C':'H/C'} 크러셔로 운반 (배정 가상)`,bar:'rate',barLabel:'가동률',primary:'cao',

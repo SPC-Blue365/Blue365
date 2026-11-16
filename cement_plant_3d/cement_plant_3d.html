@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-16 14:50">
+<meta name="b365-build" content="2026-11-16 16:17">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -559,7 +559,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-16 14:50</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-16 16:17</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1571,12 +1571,14 @@ function kilnEq(d,i){
 function phEq(d,i){
   const v=[.4,-.3,0,.2,-.5][i],H=d.line==='B'?30:24;
   return {id:'PH'+d.n,code:'PH-'+d.n,n:String(d.n),name:d.n+'호 P/H',kref:'K'+d.n,tab:d.line,area:'burn',icon:'flame',spec:'예열기 · 5단 사이클론 · 하소로',bar:'calc',barLabel:'킬른 입구 하소율',primary:'c1',anchor:[30,H+3,d.z],
-   params:{calc:P('킬른 입구 하소율','%',93.5+v,90,97,1,.25,{min:0,max:100}),c1:P('C1 출구 가스 온도','℃',318+v*8,null,345,0,2,{ev:1}),pc:P('하소로 출구 온도','℃',878+v*4,860,900,0,2.5,{src:'dcs:K'+d.n,fld:'pc'}),press:P('C1 출구 정압','mmAq',-520+v*10,null,null,0,6)}};
+   params:{calc:P('킬른 입구 하소율','%',93.5+v,90,97,1,.25,{min:0,max:100}),c1:P('C1 출구 가스 온도','℃',318+v*8,null,345,0,2,{ev:1}),pc:P('하소로 출구 온도','℃',878+v*4,860,900,0,2.5,{src:'dcs:K'+d.n,fld:'pc'}),press:P('C1 출구 정압','mmAq',-520+v*10,null,null,0,6),
+    ...(d.line==='B'?{idf:P('IDF 출구 정압','mbar',-15+v*2,null,null,1,.3)}:{})}};   /* 6·7호: MMS에 있는 항목 (관리기준은 현장 값 받으면 설정) */
 }
 function rmEq(d,i){
   const v=[.1,-.2,.3,0,-.1,.2][i];
   return {id:d.id,code:d.code,n:d.n,name:d.n+'호 R/M',stop:!!d.stop,tab:d.tab,area:'raw',icon:'gauge',spec:`원료밀 · 설계 ${d.cap} t/h (가상)`,bar:'load',barLabel:'부하',primary:'lsf',
-   params:{load:P('부하','%',86+v*6,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',Math.round(d.cap*.9),Math.round(d.cap*.8),null,0,d.cap*.01),lsf:QA('원료 LSF','',1,'raw:'+d.id,'LSF'),sm:QA('원료 SM','',2,'raw:'+d.id,'SM'),im:QA('원료 IM','',2,'raw:'+d.id,'IM'),mgo:QA('원료 MgO','%',2,'raw:'+d.id,'MgO'),r90:QA('90 µm 잔사','%',1,'res:'+d.id,'r90'),r200:QA('200 µm 잔사','%',1,'res:'+d.id,'r200')}};
+   params:{load:P('부하','%',86+v*6,null,98,0,.8,{min:0,max:100}),prod:P('생산량','t/h',Math.round(d.cap*.9),Math.round(d.cap*.8),null,0,d.cap*.01),lsf:QA('원료 LSF','',1,'raw:'+d.id,'LSF'),sm:QA('원료 SM','',2,'raw:'+d.id,'SM'),im:QA('원료 IM','',2,'raw:'+d.id,'IM'),mgo:QA('원료 MgO','%',2,'raw:'+d.id,'MgO'),r90:QA('90 µm 잔사','%',1,'res:'+d.id,'r90'),r200:QA('200 µm 잔사','%',1,'res:'+d.id,'r200'),
+    ...(d.tab==='B'?{cur:P('주모터 전류','A',180+v*10,null,null,0,2),dp:P('밀 차압 ΔP','mbar',67+v*3,null,null,1,.4),vib:P('밀 진동','mm/s',1.9+v*.1,null,null,2,.04),tin:P('밀 입구 가스 온도','℃',293+v*5,null,null,0,1.5),tout:P('밀 출구 가스 온도','℃',100+v*3,null,null,0,.6)}:{})}};   /* 6·7호 R/M: MMS에 있는 항목 (관리기준은 현장 값 받으면 설정) */
 }
 function qryEq(d,i){
   return {id:d.id,code:'QRY-'+d.n.slice(0,2),n:d.n,name:d.n+' 광산',area:'raw',major:1,icon:'mountain',spec:`석회석 광산 · 벤치 채광 · ${d.cr==='CRG'?'G/C':'H/C'} 크러셔로 운반 (배정 가상)`,bar:'rate',barLabel:'가동률',primary:'cao',
@@ -3344,7 +3346,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-16 14:50</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-16 16:17</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   const mm=SERVER&&SERVER.mms;if(mm&&mm.on)h+=`<div class="row"><span>MMS 연결</span><b>${mm.ok===false?'<span style="color:var(--bad)">'+esc(mm.err||'오류')+'</span>':mm.ok?'정상':'첫 연결 대기'} · ${mm.every}초마다${mm.last?' · 확인 '+esc(mm.last.slice(5,16).replace('T',' ')):''}${mm.ok?` · 매칭 항목 ${mm.items}개 (태그 ${mm.got}/${mm.tags})`:''}${mm.skip?` · 값 없음 ${mm.skip}개`:''}</b></div>`;
   const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>${esc(ml.folder||'')} · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
@@ -3501,7 +3503,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-16 14:50';
+const BUILD='2026-11-16 16:17';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
