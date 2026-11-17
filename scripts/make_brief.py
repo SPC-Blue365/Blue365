@@ -31,7 +31,7 @@ from src.matching import pipeline as P2                        # noqa: E402
 from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE         # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                         # noqa: E402
-from src.visualization.portalstyle import STYLE, foot, hero, nav  # noqa: E402
+from src.visualization.qmsstyle import DOC_STYLE as STYLE, foot, hero, nav  # noqa: E402
 
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
 E = html.escape

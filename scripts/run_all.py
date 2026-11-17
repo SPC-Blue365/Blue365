@@ -30,7 +30,7 @@ STEPS = [
     ("매칭 통합셋 생성", "build_matched_dataset"),
     ("예측 모델 학습·저장", "train_and_save"),
     ("모니터 상태 산출", "monitor"),
-    ("운영 대시보드", "make_dashboard"),
+    ("운영 현황판", "make_dashboard"),
     ("현황 브리프", "make_brief"),
     ("배합 처방서", "make_prescription"),
     ("임원 계획서", "make_plan"),

@@ -30,7 +30,7 @@ from src.matching.inventory import zone_inventory                   # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources         # noqa: E402
 from src.matching import piles                                    # noqa: E402
 from src.optimization.prescribe import prescribe, zone_balance_health  # noqa: E402
-from src.visualization.portalstyle import STYLE, foot, hero, nav                        # noqa: E402
+from src.visualization.qmsstyle import DOC_STYLE as STYLE, foot, hero, nav                        # noqa: E402
 
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
 E = html.escape
@@ -191,23 +191,27 @@ def build() -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>배합 처방서</title>
 <style>{STYLE}
-.pcard {{ background:var(--surface); border:1px solid var(--rule); border-radius:3px;
-          padding:20px; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:12px;
+/* QMS 카드 — 흰 카드(둥근 20px), 테두리 없이 그림자만 */
+.pcard {{ background:var(--surface); border-radius:var(--r-card); padding:20px 22px;
+          box-shadow:var(--shadow); display:flex; flex-direction:column; gap:12px;
           overflow-x:auto; }}
 .phead {{ display:flex; align-items:center; justify-content:space-between; gap:12px;
           flex-wrap:wrap; }}
-.pline {{ font-size:13px; font-weight:700; letter-spacing:.1em; color:var(--muted); }}
-.ptag {{ font-size:12px; font-weight:700; padding:4px 11px; border-radius:99px;
-         border:1px solid currentColor; white-space:nowrap; }}
-.ptag.good {{ color:var(--good); }} .ptag.warn {{ color:var(--warn); }}
-.ptag.bad {{ color:var(--bad); }}
-.psent {{ font-size:19px; line-height:1.6; font-weight:600; margin:0; text-wrap:balance; }}
+.pline {{ font-size:13px; font-weight:800; color:var(--faint); }}
+/* 판정 칩 — 레퍼런스 상태 칩처럼 점 + 글자(색만으로 구분하지 않는다) */
+.ptag {{ display:inline-flex; align-items:center; gap:5px; height:26px; padding:0 11px;
+         border-radius:999px; font-size:12.5px; font-weight:700; white-space:nowrap; color:var(--ink2); }}
+.ptag::before {{ content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }}
+.ptag.good {{ background:var(--ok-bg); color:var(--ok-ink); }}
+.ptag.warn {{ background:var(--warn-bg); color:var(--warn-ink); }}
+.ptag.bad {{ background:var(--bad-bg); color:var(--bad-ink); }}
+.psent {{ font-size:20px; line-height:1.55; font-weight:800; letter-spacing:-.02em; margin:0; text-wrap:balance; }}
 .pmeta {{ font-size:13px; color:var(--muted); margin:0; }}
 .pmeta b {{ color:var(--ink); }}
-.sub {{ font-size:11.5px; color:var(--muted); font-weight:400; }}
-.verdict {{ border:1px solid var(--rule); border-left:3px solid var(--bad);
-            background:var(--surface); border-radius:3px; padding:16px 18px; }}
-.verdict h3 {{ margin:0 0 8px; font-size:16px; color:var(--bad); }}
+.sub {{ font-size:13px; color:var(--muted); font-weight:500; }}
+/* 경고 판정 — 레퍼런스의 붉은 안내 배너 모양 */
+.verdict {{ background:var(--bad-bg); border-radius:var(--r-well); padding:16px 18px; }}
+.verdict h3 {{ margin:0 0 8px; font-size:16px; font-weight:800; color:var(--bad-ink); }}
 .verdict p {{ margin:0 0 8px; font-size:15px; }}
 .verdict p:last-child {{ margin-bottom:0; }}
 </style></head><body>

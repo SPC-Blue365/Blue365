@@ -1634,10 +1634,11 @@ def test_yard_analyzer_dropout_is_removed_but_row_kept():
 
 # ── 단일 파일 통합본 (2026-10-21) ───────────────────────────────────────────
 def test_bundle_strips_inner_nav_and_packs_every_menu_item():
-    """허브는 **메뉴에 있는 문서를 빠짐없이** 담고, 안쪽 상단 바는 걷어낸다.
+    """허브는 **메뉴에 있는 문서를 빠짐없이** 담고, 안쪽 메뉴는 감춘다.
 
     낱개 파일로 받으면 상대경로 링크가 먹통이라(2026-10-21 지적) 한 파일 안에 품어야 한다.
-    안쪽 상단 바를 그대로 두면 메뉴가 두 줄로 보이고, 그 링크는 어차피 동작하지 않는다.
+    안쪽 메뉴를 그대로 두면 메뉴가 두 벌로 보이고, 그 링크는 어차피 동작하지 않는다.
+    QMS 통일(2026-11-17) 이후엔 도려내지 않고 `<html class="embedded">` 로 감춘다.
     """
     import base64
     import gzip
@@ -1645,7 +1646,7 @@ def test_bundle_strips_inner_nav_and_packs_every_menu_item():
     import re
 
     from scripts import make_bundle
-    from src.visualization.portalstyle import NAV_ARCHIVE, NAV_ITEMS
+    from src.visualization.qmsstyle import NAV_ARCHIVE, NAV_ITEMS
 
     html = make_bundle.build()
     m = re.search(r'<script id="docs" type="application/json">(.*?)</script>', html, re.S)
@@ -1655,8 +1656,8 @@ def test_bundle_strips_inner_nav_and_packs_every_menu_item():
     for name, fname, _ in (*NAV_ITEMS, *NAV_ARCHIVE):
         assert fname in docs, f"{name}({fname}) 이 빠졌다 — 메뉴를 눌러도 열리지 않는다"
         inner = gzip.decompress(base64.b64decode(docs[fname])).decode("utf-8")
-        assert '<div class="nav"><div class="nav-in">' not in inner, \
-            f"{fname}: 안쪽 상단 바가 남아 있다"
+        assert re.search(r'<html\b[^>]*class="[^"]*\bembedded\b', inner), \
+            f"{fname}: 안쪽 메뉴를 감추는 embedded 표시가 없다 — 메뉴가 두 벌로 보인다"
         assert len(inner) > 1000, f"{fname}: 내용이 비었다"
     # 메뉴 버튼이 담긴 문서를 가리키는지
     for _, fname, _ in (*NAV_ITEMS, *NAV_ARCHIVE):
@@ -1673,4 +1674,72 @@ def test_bundle_has_no_dead_relative_links():
     head = html[:html.index("<div id=\"stage\">")]
     assert not re.search(r'<a [^>]*href="[a-z_]+\.html"', head), \
         "허브 상단 바에 상대경로 링크가 남아 있다"
-    assert html.count('class="navbtn') >= 6
+    # 왼쪽 메뉴 6 + 휴대폰 탭바 6 — 모두 안쪽 문서를 바꾸는 버튼이어야 한다
+    assert len(re.findall(r'<button [^>]*data-doc="[a-z_]+\.html"', head)) >= 12
+
+
+# ── QMS 스타일 통일 (2026-11-17) ─────────────────────────────────────────────
+def test_doc_style_excludes_colliding_reference_app_sections():
+    """문서용 CSS 에 레퍼런스 **앱 구획**이 섞이면 안 된다.
+
+    레퍼런스(QMS)는 `.note`·`.kv`·`.ok/.warn/.bad` 를 문서와 **다른 뜻**으로 정의한다.
+    대시보드에서 `.bad` 가 숫자 뒤에 칩 배경을 깔았던 사고(§6-0-30)가 문서 5종에서
+    되풀이되지 않게 막는다.
+    """
+    from src.visualization import qmsstyle as Q
+
+    for sec in ("카드", "상태 칩", "목록·표", "빈 화면", "모달", "직접 입력"):
+        assert Q._S[sec] not in Q.DOC_STYLE, f"레퍼런스 앱 구획 '{sec}' 이 문서 CSS 에 섞였다"
+    # 틀은 실려야 한다
+    for sec in ("앱 틀", "화면 머리", "하단 탭바"):
+        assert Q._S[sec] in Q.DOC_STYLE, f"레퍼런스 틀 구획 '{sec}' 이 빠졌다"
+    # 대시보드는 레퍼런스 전체를 그대로 싣는다
+    assert Q._REF in Q.STYLE
+
+
+def test_every_document_menu_marks_itself_and_links_the_rest():
+    """모든 문서는 같은 왼쪽 메뉴를 쓰고, 자기 자신은 표시만·나머지는 실제 링크다."""
+    import re
+
+    from src.visualization import qmsstyle as Q
+
+    items = (*Q.NAV_ITEMS, *Q.NAV_ARCHIVE)
+    assert len(items) == 6, "휴대폰 탭바는 레퍼런스대로 6칸이다 — 문서 수가 바뀌면 탭바도 손볼 것"
+    for label, fname, _ in items:
+        h = Q.nav(active=label)
+        side = h[h.index('id="docnav"'):h.index("</nav>", h.index('id="docnav"'))]
+        assert side.count('aria-current="page"') == 1, f"{label}: 현재 항목 표시가 하나가 아니다"
+        assert f'href="{fname}"' not in side, f"{label}: 자기 자신으로 가는 링크(눌러도 제자리)가 있다"
+        others = [f for _, f, _ in items if f != fname]
+        for f in others:
+            assert f'href="{f}"' in side, f"{label}: {f} 로 가는 링크가 없다"
+        # 틀 균형 — nav() 가 연 .shell/.mainc 를 foot() 이 닫는다
+        page = h + Q.hero("e", "t", "l") + '<div class="wrap">x</div>' + Q.foot("f")
+        assert page.count("<div") == page.count("</div>"), f"{label}: 틀이 열리고 닫히는 짝이 안 맞는다"
+        assert re.search(r'<nav class="tabbar"', h), "휴대폰 탭바가 없다"
+
+
+def test_document_generators_open_and_close_the_shell():
+    """문서 생성기는 nav() 와 foot() 을 **둘 다** 불러야 한다(틀을 열고 닫는 짝)."""
+    import pathlib
+
+    for f in ("scripts/make_brief.py", "scripts/make_prescription.py", "scripts/make_plan.py",
+              "scripts/make_dashboard.py", "src/visualization/figures.py"):
+        t = pathlib.Path(f).read_text(encoding="utf-8")
+        assert "portalstyle" not in t.replace("portalstyle.py", ""), f"{f}: 옛 포털 스타일을 아직 쓴다"
+        n_nav = len(__import__("re").findall(r"\{(?:portal_)?nav\(", t)) + t.count("portal_nav}")
+        n_foot = t.count("{foot(") + t.count("{portal_foot}")
+        assert n_nav >= 1 and n_foot >= 1, f"{f}: nav()/foot() 짝이 없다(nav {n_nav}, foot {n_foot})"
+
+
+def test_no_standalone_mini_class_in_documents():
+    """`.mini` 는 레퍼런스에서 **접힌 메뉴**(.shell.mini)다 — 문서 부품 이름으로 쓰면
+    메뉴를 접는 순간 화면 전체가 그 상자 모양이 된다(2026-11-17 발견, 계획서)."""
+    import pathlib
+    import re
+
+    for f in ("scripts/make_brief.py", "scripts/make_prescription.py", "scripts/make_plan.py",
+              "src/visualization/figures.py"):
+        t = pathlib.Path(f).read_text(encoding="utf-8")
+        assert not re.search(r'class="(?:[^"]*\s)?mini(?:\s[^"]*)?"', t), f"{f}: class=\"mini\" 사용"
+        assert not re.search(r"(?m)^\s*\.mini\s*\{", t), f"{f}: .mini 규칙 정의"

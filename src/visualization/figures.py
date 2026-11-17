@@ -7,9 +7,28 @@ from __future__ import annotations
 
 import numpy as np
 import plotly.graph_objects as go
+import plotly.io as pio
 
 TARGET = 44.6
-GREEN, BLUE, RED, ORANGE = "#2ca02c", "#1f77b4", "#d62728", "#ff7f0e"
+# 계열색 — 시멘트 품질관리 시스템(QMS) 팔레트(--s1·--s2·--s3·--s8)에 맞춘다(§6-0-31).
+GREEN, BLUE, RED, ORANGE = "#1baf7a", "#2a78d6", "#e34948", "#eb6834"
+
+# ⭐️ QMS 기본 템플릿 — 글꼴(PC 기본 글꼴)·계열색·눈금선을 레퍼런스에 맞춘다.
+#    개별 그림이 색을 직접 주면 그쪽이 우선한다(목표선 빨강 같은 **의미색**은 그대로 남는다).
+_QMS_FONT = ('"Pretendard","Pretendard Variable","Malgun Gothic","맑은 고딕",'
+             '"Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif')
+_QMS_LINE = "#e5e8eb"
+pio.templates["qms"] = go.layout.Template(layout=dict(
+    font=dict(family=_QMS_FONT, color="#333d4b"),
+    colorway=["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+    paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+    title=dict(font=dict(size=15, color="#191f28")),
+    xaxis=dict(gridcolor=_QMS_LINE, linecolor=_QMS_LINE, zerolinecolor=_QMS_LINE),
+    yaxis=dict(gridcolor=_QMS_LINE, linecolor=_QMS_LINE, zerolinecolor=_QMS_LINE),
+    hoverlabel=dict(bgcolor="#ffffff", bordercolor=_QMS_LINE,
+                    font=dict(family=_QMS_FONT, color="#191f28")),
+))
+pio.templates.default = "plotly_white+qms"
 
 
 # 날짜축 포맷 (확대 수준별): 시 단위 → 일 단위 → 월 단위 (예: 2026/07/24)
@@ -916,10 +935,10 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
         chk = " checked" if i == 0 else ""
         radios.append(f'<input class="tabsel" type="radio" name="tabs" id="t{i}"{chk}>')
         nav.append(f'<label class="tabbtn" for="t{i}" tabindex="0">{tab["name"]}</label>')
-        # 활성 탭은 밑줄로 표시한다 (첨부 스타일의 관제 대시보드 관례)
+        # 활성 탭은 QMS 칩처럼 연한 파랑 채움 + 파란 테두리로 표시한다
         rules.append(f"#t{i}:checked~.wrap #tab{i}{{display:block}}"
                      f"#t{i}:checked~nav.tabnav label[for=t{i}]"
-                     f"{{color:var(--ink);border-bottom-color:var(--accent);font-weight:700}}")
+                     f"{{background:var(--primary-soft);border-color:var(--primary);color:var(--primary-ink)}}")
         body = []
         for heading, obj in tab["sections"]:
             if heading:
@@ -928,7 +947,7 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
         panels.append(f'<div class="tabpanel" id="tab{i}">{"".join(body)}</div>')
     tabcss = "".join(rules)
 
-    from src.visualization.portalstyle import STYLE, foot, hero, nav as portal_nav_fn
+    from src.visualization.qmsstyle import DOC_STYLE as STYLE, foot, hero, nav as portal_nav_fn
     portal_nav = portal_nav_fn(active="통합 리포트")
     portal_hero = hero(
         eyebrow="석회석 광산 → OSP → 야드 · 근거 전체",
@@ -942,86 +961,82 @@ def assemble_tabbed_html(title: str, tabs: list[dict], date_range: tuple | None 
     daterow = ""
     if date_range:
         daterow = (
-            '<div class="daterow">📅 기간 직접설정: '
+            '<div class="daterow"><div class="wrap dr">기간 (년-월-일) '
             f'<input type="date" id="drS" value="{dmin}" min="{dmin}" max="{dmax}"> ~ '
             f'<input type="date" id="drE" value="{dmax}" min="{dmin}" max="{dmax}"> '
             '<button onclick="applyRange()">적용</button>'
             '<button class="ghost" onclick="resetRange()">전체</button>'
-            '<span class="hint">모든 시간축 차트가 선택 기간으로 확대됩니다</span></div>'
+            '<span class="hint">모든 시간축 차트가 선택 기간으로 확대됩니다</span></div></div>'
         )
 
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
 <style>{STYLE}
-.mono,.kpi .v,td.n{{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}}
-/* 탭 줄 — 포털의 밑줄형 탭과 같은 모양 */
-/* ⚠️ 반드시 .tabnav 로 한정한다 — 맨 선택자 `nav` 는 상단 포털 바(.nav-menu)까지 잡는다. */
-nav.tabnav{{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);
-padding:0 12px;display:flex;flex-wrap:wrap;gap:2px;z-index:9}}
-.tabbtn{{display:inline-flex;align-items:center;gap:7px;border:0;border-bottom:2px solid transparent;
-background:none;color:var(--ink-3);padding:12px 15px 10px;cursor:pointer;font-size:14px;
-font-weight:500;user-select:none;line-height:1.2}}
-.tabbtn:hover{{color:var(--ink);background:var(--surface-2)}}
-.daterow{{background:var(--surface);padding:9px 14px;display:flex;flex-wrap:wrap;align-items:center;gap:7px;
-font-size:12.5px;border-bottom:1px solid var(--line);color:var(--ink-2)}}
-.daterow input[type=date]{{padding:4px 8px;border:1px solid var(--line-2);border-radius:6px;
-font-size:12.5px;font-family:'IBM Plex Mono',monospace;background:var(--surface);color:var(--ink)}}
-.daterow button{{background:var(--accent);color:#fff;border:none;padding:5px 13px;border-radius:6px;
-cursor:pointer;font-weight:600;font-size:12.5px}}
-.daterow button.ghost{{background:var(--surface);color:var(--accent);border:1px solid var(--line-2)}}
-.daterow .hint{{color:var(--ink-3);font-size:11.5px;margin-left:6px}}
-.wrap{{max-width:1080px;margin:0 auto;padding:20px 16px 48px}}
+.mono,.kpi .v,td.n{{font-variant-numeric:tabular-nums}}
+/* 탭 줄 — QMS 칩 줄(선택지가 5개를 넘으면 레퍼런스는 세그먼트 대신 칩을 쓴다) */
+/* ⚠️ 반드시 .tabnav 로 한정한다 — 맨 선택자 `nav` 는 왼쪽 메뉴·탭바까지 잡는다. */
+/* 머리 줄(.top, 60px)이 위에 붙어 있으므로 그 아래에 붙는다 */
+nav.tabnav{{position:sticky;top:60px;z-index:9;background:color-mix(in srgb,var(--bg) 86%,transparent);
+backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px)}}
+html.embedded nav.tabnav{{top:0}}
+nav.tabnav .tabin{{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;padding-block:10px}}
+.tabbtn{{display:inline-flex;align-items:center;gap:4px;height:36px;padding:0 15px;border:1px solid var(--line);
+background:var(--surface);color:var(--ink2);border-radius:999px;cursor:pointer;font-size:14px;font-weight:600;
+white-space:nowrap;user-select:none;transition:background .2s,border-color .2s}}
+.tabbtn:hover{{border-color:var(--primary)}}
+.daterow .dr{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-block:4px 6px;
+font-size:13px;font-weight:600;color:var(--muted)}}
+.daterow input[type=date]{{font:inherit;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:12px;
+font-variant-numeric:tabular-nums;background:var(--surface);color:var(--ink)}}
+.daterow input[type=date]:focus{{outline:none;border-color:var(--primary);box-shadow:var(--glow)}}
+.daterow button{{height:36px;background:var(--primary);color:var(--on-primary);border:0;padding:0 15px;border-radius:12px;
+cursor:pointer;font-weight:700;font-size:13.5px}}
+.daterow button.ghost{{background:var(--surface);color:var(--ink2);border:1px solid var(--line)}}
+.daterow .hint{{margin:0 0 0 4px;font-weight:500}}
 .tabpanel{{display:none}}
 .tabsel{{position:absolute;opacity:0;width:0;height:0;pointer-events:none}}
-.tabbtn:focus-visible,.tabsel:focus-visible+nav.tabnav .tabbtn{{outline:2px solid var(--accent);outline-offset:-2px}}
+.tabbtn:focus-visible,.tabsel:focus-visible+nav.tabnav .tabbtn{{outline:2px solid var(--primary);outline-offset:2px}}
 {tabcss}
-h2{{color:var(--ink);margin:30px 0 4px;font-size:15px;font-weight:600;letter-spacing:-.01em;
-padding-left:11px;border-left:3px solid var(--accent)}}
-table{{border-collapse:collapse;width:100%;margin:10px 0;font-size:12.5px;background:var(--surface);
-border:1px solid var(--line);border-radius:8px;overflow:hidden}}
-th,td{{border-bottom:1px solid var(--grid);padding:8px 10px;text-align:center;color:var(--ink-2)}}
-th{{background:var(--surface-2);color:var(--ink-3);font-size:10.5px;letter-spacing:.06em;
-text-transform:uppercase;font-weight:600}}
-tr:last-child td{{border-bottom:none}}
-.ok{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--good);
-padding:11px 15px;margin:12px 0;border-radius:var(--radius);font-size:13px}}
-.note{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);
-padding:11px 15px;margin:12px 0;border-radius:var(--radius);font-size:13px}}
-.cap{{color:var(--ink-2);font-size:12.5px;margin:4px 0 12px;background:var(--surface);
-border:1px solid var(--line);border-left:3px solid var(--accent-2);padding:10px 14px;
-border-radius:var(--radius);line-height:1.65}}
-.exec{{border:1px solid var(--line);border-radius:var(--radius);padding:4px 18px 16px;
-margin:8px 0 20px;background:var(--surface);box-shadow:var(--shadow)}}
-.tolbar{{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:12px 0;padding:10px 14px;
-background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);font-size:12.5px}}
-.tolbar select{{padding:5px 11px;border:1px solid var(--line-2);border-radius:6px;font-size:13px;
-font-weight:600;color:var(--accent);background:var(--surface);cursor:pointer}}
-.tolbar .hint{{color:var(--ink-3);font-size:11.5px}}
-.kpirow{{display:flex;flex-wrap:wrap;gap:12px;margin:12px 0}}
-.kpi{{flex:1;min-width:158px;background:var(--surface);border:1px solid var(--line);
-border-radius:var(--radius);padding:13px 15px 12px;box-shadow:var(--shadow)}}
-.kpi .v{{font-size:24px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1.15}}
-.kpi .u{{font-size:13px;font-weight:400;color:var(--ink-2);margin-left:2px;
-font-family:'IBM Plex Sans KR',sans-serif}}
-.kpi .l{{font-size:10.5px;color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase;
-font-weight:600;margin-top:4px}}
-.muted{{color:var(--ink-3);font-size:11.5px}}
-.badge{{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:999px;
-margin-left:8px;vertical-align:middle;white-space:nowrap;letter-spacing:.02em}}
-.badge.live{{background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent-2)}}
-.badge.fixed{{background:var(--surface-2);color:var(--ink-3);border:1px solid var(--line-2)}}
-.legendbar{{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
-padding:11px 15px;margin:10px 0 18px;font-size:12.5px;line-height:1.75;color:var(--ink-2)}}
-.glossary dt{{font-weight:600;color:var(--ink);margin-top:9px;font-size:13px}}
-.glossary dd{{margin:0 0 2px 12px;color:var(--ink-2);font-size:12.5px}}
-pre{{background:var(--surface-2);border:1px solid var(--line);padding:12px;border-radius:8px;overflow-x:auto}}
-code{{background:var(--surface-2);border:1px solid var(--line);padding:1px 5px;border-radius:4px;
-font-family:'IBM Plex Mono',monospace;font-size:11.5px}}
+/* 본문 — 레퍼런스의 섹션 제목(.sec)·흰 카드·회색 미리보기 */
+.tabpanel h2{{color:var(--ink);margin:26px 0 10px;font-size:17px;font-weight:800;letter-spacing:-.01em}}
+.tabpanel h2:first-child{{margin-top:6px}}
+.tabpanel table{{border-collapse:collapse;width:100%;margin:10px 0;font-size:14px;background:var(--surface);
+border-radius:var(--r-well);overflow:hidden;box-shadow:var(--shadow);font-variant-numeric:tabular-nums}}
+.tabpanel th,.tabpanel td{{border-bottom:1px solid var(--line);padding:9px 10px;text-align:center;color:var(--ink2)}}
+.tabpanel th{{color:var(--faint);font-size:12.5px;font-weight:600}}
+.tabpanel tr:last-child td{{border-bottom:none}}
+.mainc .js-plotly-plot{{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);overflow:hidden;margin:8px 0}}
+.ok{{background:var(--ok-bg);padding:12px 16px;margin:12px 0;border-radius:var(--r-well);font-size:14px;color:var(--ink2)}}
+.note{{background:var(--warn-bg);padding:12px 16px;margin:12px 0;border-radius:var(--r-well);font-size:14px;color:var(--ink2)}}
+.cap{{color:var(--muted);font-size:13.5px;margin:6px 0 14px;background:var(--surface);padding:12px 16px;
+border-radius:var(--r-well);line-height:1.7}}
+.exec{{border-radius:var(--r-card);padding:6px 22px 20px;margin:8px 0 20px;background:var(--surface);box-shadow:var(--shadow)}}
+.tolbar{{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0;padding:12px 16px;
+background:var(--surface);border-radius:var(--r-well);box-shadow:var(--shadow);font-size:13.5px}}
+.tolbar select{{font:inherit;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:12px;font-size:14px;
+font-weight:700;color:var(--primary-ink);background:var(--surface);cursor:pointer}}
+.tolbar .hint{{margin:0}}
+.kpirow{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:14px;margin:12px 0}}
+.kpi{{background:var(--surface);border-radius:var(--r-card);padding:16px 18px;box-shadow:var(--shadow);min-width:0}}
+.kpi .v{{font-size:28px;font-weight:800;color:var(--ink);letter-spacing:-.02em;line-height:1.15}}
+.kpi .u{{font-size:15px;font-weight:700;color:var(--muted);margin-left:3px}}
+.kpi .l{{font-size:13px;color:var(--faint);font-weight:700;margin-top:4px}}
+.muted{{color:var(--faint);font-size:13px}}
+/* ⚠️ 레퍼런스의 .badge 는 빨간 숫자 배지(18px 고정)다. 여기서는 '실시간/고정' 꼬리표로 쓰므로
+      높이·색을 다시 준다. */
+.badge{{display:inline-flex;align-items:center;height:22px;min-width:0;font-size:12px;font-weight:700;padding:0 10px;
+border-radius:999px;margin-left:8px;vertical-align:middle;white-space:nowrap;line-height:1}}
+.badge.live{{background:var(--primary-soft);color:var(--primary-ink)}}
+.badge.fixed{{background:var(--well);color:var(--muted)}}
+.legendbar{{background:var(--surface);border-radius:var(--r-well);box-shadow:var(--shadow);
+padding:12px 16px;margin:10px 0 18px;font-size:13.5px;line-height:1.75;color:var(--ink2)}}
+.glossary dt{{font-weight:800;color:var(--ink);margin-top:10px;font-size:14px}}
+.glossary dd{{margin:0 0 2px 12px;color:var(--ink2);font-size:13.5px}}
 </style></head>
 <body>{portal_nav}
 {portal_hero}
 {"".join(radios)}
-<nav class="tabnav">{"".join(nav)}</nav>
+<nav class="tabnav"><div class="wrap tabin">{"".join(nav)}</div></nav>
 {daterow}
 <div class="wrap">{"".join(panels)}</div>
 {portal_foot}
@@ -1186,26 +1201,24 @@ def assemble_html(title: str, sections: list[tuple[str, object]], tail_html: str
         else:
             body.append(str(obj))
     inner = "\n".join(body)
-    # ⚠️ 이 셸도 **포털 스타일**을 쓴다(§6-0-23). 예전엔 여기만 2022년식 하드코딩 CSS 라
-    #    모니터 상태 리포트 혼자 전혀 다른 모양이었다.
-    from src.visualization.portalstyle import STYLE, foot, hero, nav
+    # ⚠️ 이 셸도 다른 산출물과 **같은 QMS 스타일**을 쓴다(§6-0-31). 예전엔 여기만 하드코딩
+    #    CSS 라 모니터 상태 리포트 혼자 전혀 다른 모양이었다(§6-0-23).
+    from src.visualization.qmsstyle import DOC_STYLE as STYLE, foot, hero, nav
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
 <style>{STYLE}
-h2{{color:var(--ink);margin:28px 0 4px;font-size:15px;font-weight:700;letter-spacing:-.01em;
-padding-left:11px;border-left:3px solid var(--accent)}}
-table{{border-collapse:collapse;width:100%;margin:10px 0;background:var(--surface);
-border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;font-size:12.5px}}
-th,td{{border-bottom:1px solid var(--grid);padding:8px 10px;text-align:center;color:var(--ink-2)}}
-th{{background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:600}}
-tr:last-child td{{border-bottom:none}}
-.ok{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--good);
-padding:11px 15px;margin:13px 0;border-radius:var(--radius);font-size:13px}}
-.note{{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);
-padding:11px 15px;margin:13px 0;border-radius:var(--radius);font-size:13px}}
-pre{{background:var(--surface-2);border:1px solid var(--line);padding:12px;
-border-radius:var(--radius);overflow-x:auto;font-size:11.5px}}</style></head>
+/* 섹션 제목·표·안내 상자 — 레퍼런스의 .sec · 흰 카드 · 색 배너 */
+.wrap.doc h2{{color:var(--ink);margin:18px 0 0;font-size:17px;font-weight:800;letter-spacing:-.01em}}
+.wrap.doc > table, .wrap.doc table{{border-collapse:collapse;width:100%;background:var(--surface);
+border-radius:var(--r-well);overflow:hidden;box-shadow:var(--shadow);font-size:14px;font-variant-numeric:tabular-nums}}
+.wrap.doc th,.wrap.doc td{{border-bottom:1px solid var(--line);padding:9px 10px;text-align:center;color:var(--ink2)}}
+.wrap.doc th{{color:var(--faint);font-size:12.5px;font-weight:600}}
+.wrap.doc tr:last-child td{{border-bottom:none}}
+.mainc .js-plotly-plot{{background:#fff;border-radius:var(--r-card);box-shadow:var(--shadow);overflow:hidden}}
+.ok{{background:var(--ok-bg);padding:12px 16px;border-radius:var(--r-well);font-size:14px;color:var(--ink2)}}
+.note{{background:var(--warn-bg);padding:12px 16px;border-radius:var(--r-well);font-size:14px;color:var(--ink2)}}
+pre{{background:var(--well);padding:14px;border-radius:var(--r-well);overflow-x:auto;font-size:12.5px}}</style></head>
 <body>{nav(active="운영 모니터")}
 {hero(eyebrow="석회석 광산 → OSP → 야드 · 운영 모니터",
       title=title,

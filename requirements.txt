@@ -1,5 +1,5 @@
 # === 데이터 처리 ===
-pandas
+pandas<3            # 3.x 는 문자열 dtype 이 바뀌어 매칭 테스트 4건이 깨진다(2026-11-17 확인)
 numpy
 openpyxl          # 엑셀(.xlsx) 읽기 엔진
 

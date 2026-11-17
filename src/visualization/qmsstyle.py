@@ -1,25 +1,42 @@
-"""시멘트 품질관리 시스템(QMS) 스타일 [Synthesis-Agent] — 2026-11-09 사용자 지정 레퍼런스.
+"""시멘트 품질관리 시스템(QMS) 스타일 [Synthesis-Agent] — **모든 산출물의 시각 체계**.
 
-⭐️ 왜 바꾸나: 사용자가 같은 회사의 **시멘트 품질관리 시스템(Blue365 QMS 현황판)** 과
-   같은 시각 언어로 맞춰 달라고 요청했다. 품질담당이 두 화면을 번갈아 보는데 생김새가
-   다르면 "다른 회사 보고서" 로 읽힌다. 레퍼런스는 그 프로젝트의 공개 아티팩트
-   (claude.ai/artifact/1iZN1qJq7kZXkr6vPE1mTt)이며, 주석에 자기 근거를
-   `docs/UI_디자인_가이드.md` 로 적어 두고 있다.
+연혁
+  · 2026-11-09 운영 현황판(대시보드)에 먼저 적용 — 사용자 요청 "시멘트 품질관리 시스템 프로젝트
+    디자인 스타일 가져와서 적용해서 다시 정리해줘"(§6-0-30).
+  · 2026-11-17 **나머지 산출물 6종 + 단일 파일 통합본까지 확산** — 사용자 요청 "나머지 산출물이랑
+    통합본도 전부 QMS 스타일로 통일해줘"(§6-0-31). 옛 포털 스타일(`portalstyle.py`)은 되돌릴
+    수 있도록 남겨 두되 더는 쓰지 않는다.
 
-레퍼런스에서 그대로 가져온 것 (CSS 는 **원본을 그대로** 싣는다 — 눈으로 베끼지 않는다):
-  · **회색 바탕(#f2f4f6) + 흰 카드(radius 20px) + 파란 강조 한 색(#3182f6)** — 토스식 한국 앱 문법.
-  · **왼쪽 세로 메뉴** — 그룹 머리말 + 접기(252px ↔ 76px), 1080px 아래에서 자동 축소,
-    720px 아래에서 **하단 탭바**로 바뀐다.
-  · **카드 = 위 회색 미리보기(well) + 아래 `01 제목 / 보조 설명`** — 번호가 붙은 제목.
-  · **상태 칩** — 색 + 글자(색만으로 구분하지 않는다. 색각 이상 대응).
-  · **세그먼트·칩** 선택지, 진행 링·바, 세로 스테퍼, ⓘ 툴팁, 토스트, 바텀시트.
-  · **3단 테마** — 밝은 기본 / OS 다크 / `data-theme` 수동 지정.
-  · 글꼴은 **PC 기본 글꼴**(Pretendard → 맑은 고딕). 인터넷 없이 열린다.
+⭐️ 왜: 품질담당이 시멘트 QMS 현황판과 이 화면을 번갈아 본다. 생김새가 다르면 "다른 회사 보고서"
+   로 읽힌다. 레퍼런스는 그 프로젝트의 아티팩트(claude.ai/artifact/1iZN1qJq7kZXkr6vPE1mTt)이며,
+   주석에 자기 근거를 `docs/UI_디자인_가이드.md` 로 적어 두고 있다.
 
-⚠️ 이 파일은 f-string 이 아니다. 중괄호를 이스케이프하지 말 것.
+레퍼런스에서 가져온 것 — CSS 는 **원본을 그대로** 싣는다(`_REF`, 눈으로 베끼지 않는다):
+  · 회색 바탕(#f2f4f6) + 흰 카드(radius 20px) + 파란 강조 한 색(#3182f6) — 토스식 한국 앱 문법
+  · **왼쪽 세로 메뉴**(그룹 머리말 + 접기 252↔76px) → 1080px 아래 자동 축소 → 720px 아래 **하단 탭바**
+  · 화면 머리 = 알약 꼬리표 + 큰 두 줄 제목(핵심 단어만 파랑) + 설명
+  · 상태는 **색 + 글자**(색만으로 구분하지 않는다), 3단 테마, PC 기본 글꼴(인터넷 없이 열림)
+
+구성
+  · `STYLE`     — 대시보드(앱). 레퍼런스 전체 + 보탬.
+  · `DOC_STYLE` — 읽는 문서 5종. 레퍼런스의 **틀만**(메뉴·머리 줄·탭바·토스트·화면 머리) +
+                  문서 부품(.panel·.k·.tag·table.t·.said·ol.asks …)을 QMS 모양으로 다시 그린 층.
+                  ⚠️ 레퍼런스 앱 구획을 통째로 실으면 `.note`·`.cap`·`.kv`·`.ok/.warn/.bad` 같은
+                  이름이 문서의 같은 이름과 뜻이 달라 깨진다 — 그래서 구획 단위로 골라 싣는다.
+  · `nav()`/`hero()`/`foot()` — 옛 포털 스타일과 **같은 서명**. 소비처는 import 만 바꾼다.
+  · `nav_hub()` — 단일 파일 통합본 허브의 틀(메뉴가 버튼).
+
+⚠️ 이 파일의 CSS 는 f-string 이 아니다. 중괄호를 이스케이프하지 말 것.
 """
 
-STYLE = """
+from __future__ import annotations
+
+import json
+import re
+from datetime import datetime
+
+#: 레퍼런스 CSS **원본 그대로**. 손대지 않는다 — 고칠 것은 아래 보탬 층에서 덮어쓴다.
+_REF = """
 /* 보는용 현황판 — Blue365 UI 스타일(docs/UI_디자인_가이드.md): 회색 바탕 + 흰 카드(둥근 20px) + 파란 강조 한 색.
    카드 = 위 회색 미리보기(well) + 아래 '01 제목 / 보조 설명'. 숫자는 아래 D(JSON)에서. 인터넷 없이 열림(글꼴은 PC 기본 글꼴). */
 :root {
@@ -309,25 +326,89 @@ footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: g
 @keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important } }
 @media print { .side, .top, .tabbar, .fab, .banner button { display: none !important } .shell { display: block } .card { break-inside: avoid; box-shadow: none; border: 1px solid #ddd } }
+"""
 
+
+def _sections(css: str) -> dict[str, str]:
+    """레퍼런스 CSS 를 `/* ── 이름 ── */` 머리말 단위로 나눈다(순서 보존)."""
+    out = {}
+    for part in re.split(r"(?m)^(?=/\* ── )", css):
+        m = re.match(r"/\* ── ([^─(:]+)", part)
+        out[m.group(1).strip() if m else "PRELUDE"] = part
+    return out
+
+
+_S = _sections(_REF)
+
+#: 문서에 싣는 레퍼런스 구획.
+#: ⚠️ 문서들은 자기 클래스 이름(.note·.cap·.kv·.card·.grid·.empty·.ok/.warn/.bad …)을
+#:    이미 쓰고 있다. 레퍼런스의 **앱 구획**(카드·상태 칩·목록·그래프·빈 화면·진행 링 …)이
+#:    같은 이름을 다른 뜻으로 정의하므로 그대로 실으면 문서가 깨진다(대시보드에서 실제로
+#:    `.bad` 가 숫자 뒤에 칩 배경을 깔았다 — §6-0-30). → **틀(메뉴·머리 줄·탭바·토스트)과
+#:    화면 머리만** 싣고, 문서 부품은 아래 DOC 층에서 QMS 모양으로 다시 그린다.
+_DOC_KEEP = ("PRELUDE", "앱 틀", "화면 머리", "토스트", "하단 탭바")
+_missing = [k for k in _DOC_KEEP if k not in _S]
+assert not _missing, f"레퍼런스 구획이 사라졌다: {_missing}"
+
+# ── 공통 보탬 ① 토큰 이름 호환층 ──────────────────────────────────────────
+ALIAS = """
 /* ══════════════════════════════════════════════════════════════════════
    아래부터는 이 저장소 전용 보탬 — 레퍼런스에 없는 것만 더한다.
    ══════════════════════════════════════════════════════════════════════ */
 
-/* ⚠️ **토큰 이름 호환층**. 기존 SVG 차트 코드가 --accent · --bar · --grid · --good ·
-      --ink-2/3 · --series-1/2 같은 옛 이름(portalstyle)을 그대로 쓴다. 이름을 바꾸면
-      그림이 통째로 깨지므로, QMS 팔레트 **값**을 옛 **이름**에 다시 묶어 둔다. */
+/* ⚠️ **토큰 이름 호환층**. 문서·차트 코드가 옛 포털 스타일 이름(--accent · --bar · --grid ·
+      --good · --ink-2/3 · --surface-2 · --radius · --series-1/2 …)을 그대로 쓴다. 이름을
+      바꾸면 그림이 통째로 깨지므로, QMS 팔레트 **값**을 옛 **이름**에 다시 묶어 둔다. */
 :root {
-  --accent: var(--primary); --accent-soft: var(--primary-soft); --accent-ink: var(--primary-ink);
-  --grid: var(--line); --good: var(--ok);
+  --ground: var(--bg); --paper: var(--bg); --rule: var(--line);
+  --surface-2: var(--well); --surface-3: var(--well);
   --ink-2: var(--muted); --ink-3: var(--faint);
-  --surface-3: var(--well); --line-2: var(--line); --radius: var(--r-well);
+  --line-2: var(--line); --grid: var(--line);
+  --accent: var(--primary); --accent-2: var(--primary); --accent-soft: var(--primary-soft); --accent-ink: var(--primary-ink);
+  --good: var(--ok); --warnfill: var(--warn-bg); --badfill: var(--bad-bg);
   --series-1: var(--s1); --series-2: var(--s2);
+  --radius: var(--r-well); --brand: var(--primary-ink); --new: var(--bad);
+  --nav: var(--surface); --nav-ink: var(--ink2); --nav-line: var(--line);
+  --hero: var(--bg); --hero-2: var(--bg); --hero-ink: var(--ink); --hero-ink-2: var(--muted);
+  /* 글자용 상태색 — 레퍼런스의 --warn(#fab219)·--ok 는 점·막대 채움용이라 흰 바탕 **글자**로
+     쓰면 대비가 모자란다. 글자에는 아래 -ink 를 쓴다. */
+  --ok-ink: #0a7d0a; --warn-ink: #9a6400; --bad-ink: #c23030;
   --bar: #c3cbd6;                       /* 막대 채움 — 선으로 쓰면 묻히므로 계열색과 따로 둔다 */
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bar: #495260 } }
-:root[data-theme="dark"] { --bar: #495260 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bar: #495260; --ok-ink: #6fd27a; --warn-ink: #f2c14e; --bad-ink: #f28b8b } }
+:root[data-theme="dark"] { --bar: #495260; --ok-ink: #6fd27a; --warn-ink: #f2c14e; --bad-ink: #f28b8b }
+"""
 
+# ── 공통 보탬 ② 틀 — 문서 메뉴·하위 화면·한 파일 통합본 안쪽 ─────────────────
+SHELL_EXTRA = """
+/* 문서 메뉴는 **진짜 링크**(a)다 — 버튼과 같은 모양이 되게 맞춘다 */
+a.navi { text-decoration: none }
+a.navi:visited { color: var(--ink2) }
+span.navi[aria-current="page"] { cursor: default }
+.tabbar a { display: grid; justify-items: center; gap: 2px; padding: 4px 0; color: var(--faint); font-size: 10.5px; font-weight: 700; text-decoration: none; position: relative }
+.tabbar a svg { width: 22px; height: 22px }
+.tabbar [aria-current="page"] { color: var(--primary) }
+.tabbar span[aria-current="page"] { display: grid; justify-items: center; gap: 2px; padding: 4px 0; font-size: 10.5px; font-weight: 700 }
+.tabbar span[aria-current="page"] svg { width: 22px; height: 22px }
+.upd code { font-size: 11.5px }
+
+/* 운영 현황판의 하위 화면 — 현재 문서 항목 아래에 한 단 들여 붙인다 */
+.subnav { display: grid; gap: 2px; margin: 2px 0 6px 21px; padding-left: 9px; border-left: 2px solid var(--line) }
+.subnav:empty { display: none }
+.subnav .navi { font-size: 13.5px; padding: 6px 10px }
+.subnav .navi svg { width: 16px; height: 16px }
+.subnav .navi[aria-current="page"] { background: var(--primary-soft); border-color: transparent; box-shadow: none; color: var(--primary-ink) }
+.shell.mini .subnav { margin-left: 0; padding-left: 0; border-left: 0 }
+@media (max-width: 1080px) and (min-width: 721px) { .shell .subnav { margin-left: 0; padding-left: 0; border-left: 0 } }
+
+/* 한 파일 통합본 안쪽에 담길 때 — 바깥 허브가 메뉴를 그리므로 안쪽 틀은 감춘다 */
+html.embedded .side, html.embedded .top, html.embedded .tabbar, html.embedded .fab { display: none !important }
+html.embedded .shell, html.embedded .shell.mini { display: block }
+html.embedded body { padding-bottom: 0 }
+"""
+
+# ── 대시보드(앱) 전용 ────────────────────────────────────────────────────────
+DASH_EXTRA = """
 /* 직접 그린 SVG 차트 — 축 글자(.ax)와 범례 글자(.cs)는 fill 로 색을 준다 */
 .chart { display: block; width: 100%; height: auto }
 .ax { fill: var(--faint); font-size: 11px }
@@ -345,7 +426,7 @@ footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: g
 .stat .l { font-size: 12px; color: var(--faint); font-weight: 700; margin-top: 2px }
 /* ⚠️ 값 강조는 `.is-*` 로 쓴다. 레퍼런스의 상태 칩이 `.ok/.warn/.bad` 를 **배경색** 규칙으로
       이미 쓰고 있어, 같은 이름을 숫자에 붙이면 숫자 뒤에 칩 배경이 깔린다(2026-11-09 발견). */
-.v.is-good { color: var(--ok) } .v.is-bad { color: var(--bad) } .v.is-warn { color: var(--warn) }
+.v.is-good { color: var(--ok) } .v.is-bad { color: var(--bad) } .v.is-warn { color: var(--warn-ink) }
 .gauge { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 14px }
 .gauge i { display: block; height: 100%; border-radius: 999px; background: var(--primary); transition: width .7s var(--ease-out) }
 
@@ -371,47 +452,391 @@ footer { color: var(--muted); font-size: 13px; padding-block: 0 40px; display: g
 /* 추적 연결 점수판 — 머릿줄 숫자를 크게 */
 .score { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap }
 .score .pct { font-size: 44px; font-weight: 800; letter-spacing: -.03em; line-height: 1 }
-.score .pct.is-good { color: var(--ok) } .score .pct.is-warn { color: var(--warn) } .score .pct.is-bad { color: var(--bad) }
+.score .pct.is-good { color: var(--ok) } .score .pct.is-warn { color: var(--warn-ink) } .score .pct.is-bad { color: var(--bad) }
+
+/* 휴대폰·통합본 안쪽에서 하위 화면을 고르는 칩 줄 — 넓은 화면에서는 왼쪽 메뉴가 맡는다 */
+.vchips { display: none }
+@media (max-width: 720px) { .vchips { display: flex } }
+html.embedded .vchips { display: flex }
 """
 
+# ── 문서(읽는 산출물) 전용 — 옛 포털 부품 이름을 QMS 모양으로 다시 그린다 ─────────
+DOC = """
+/* ══ 문서 층 — 부품 이름은 종전(포털) 그대로, 모양만 QMS ══════════════════ */
+/* 본문 틀 — 레퍼런스 .wrap(폭 1180 · 좌우 여백)에 세로 흐름만 더한다 */
+.mainc > .wrap { display: flex; flex-direction: column; gap: 16px; padding-block: 18px 40px; min-width: 0 }
+.mainc > .wrap.pg { padding-block: 22px 2px; gap: 0 }
+.mainc > .wrap.ft { padding-block: 0 }
+.mainc > .wrap > * { min-width: 0; max-width: 100% }
 
-# ── 왼쪽 세로 메뉴 ──────────────────────────────────────────────────────
-# (키, 이름, 짧은 이름) — 짧은 이름은 휴대폰 하단 탭바용
+/* 화면 머리(히어로 자리) — 꼬리표 + 큰 두 줄 제목 + 설명 */
+.pg .lead { max-width: 72ch }
+.pg .lead b, .pg .lead strong { color: var(--ink2) }
+.pgstrip { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px }
+.pgquick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px }
+.pgquick a { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink2); border-radius: 999px; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: background .2s, border-color .2s }
+.pgquick a:hover { border-color: var(--primary); color: var(--primary-ink) }
+.pgquick svg { width: 16px; height: 16px; color: var(--primary) }
+
+/* 카드·패널 — 흰 카드(둥근 20px) */
+.mainc .card, .panel { background: var(--surface); border: 0; border-radius: var(--r-card); box-shadow: var(--shadow); min-width: 0 }
+.mainc .card { padding: 18px 20px; overflow-x: auto }
+.panel { display: flex; flex-direction: column; padding: 0 }
+.phd { display: flex; align-items: center; gap: 10px; padding: 16px 20px 0; flex-wrap: wrap }
+.phd .sp { flex: 1 }
+.pbd { padding: 12px 20px 20px; min-width: 0 }
+.phd h3, .panel.plain > h3, .mainc .card > h3 { margin: 0; font-size: 16px; font-weight: 800; letter-spacing: -.01em; color: var(--ink);
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+.mainc .card > h3 { margin-bottom: 10px }
+.panel.plain { padding: 18px 20px 20px; gap: 12px }
+
+/* 격자 */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px }
+.grid.wide { grid-template-columns: minmax(0, 1fr) }
+.grid.three { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)) }
+
+/* KPI 타일 — 페이지 바탕 위에서는 흰 카드, 카드 안에서는 회색 미리보기(well) */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 14px }
+.kpis.two { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+@media (max-width: 420px) { .kpis.two { grid-template-columns: minmax(0, 1fr) } }
+.k { background: var(--surface); border-radius: var(--r-card); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; gap: 2px; min-width: 0 }
+.card .k, .panel .k { background: var(--well); box-shadow: none; border-radius: var(--r-well) }
+.kv { font-size: 28px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; font-variant-numeric: tabular-nums }
+.ku { font-size: 15px; font-weight: 700; color: var(--muted); margin-left: 3px; letter-spacing: 0 }
+.kl { font-size: 13px; color: var(--faint); font-weight: 700; margin-top: 4px }
+.kn { font-size: 13px; color: var(--muted); line-height: 1.55 }
+.k.good .kv { color: var(--ok-ink) } .k.bad .kv { color: var(--bad-ink) } .k.warn .kv { color: var(--warn-ink) }
+
+/* 꼬리표 — 레퍼런스 .tag(알약)에 상태 변형을 더한다. 색만으로 구분하지 않게 글자가 함께 간다 */
+.tag.mute { background: var(--well); color: var(--muted) }
+.tag.good { background: var(--ok-bg); color: var(--ok-ink) }
+.tag.warn { background: var(--warn-bg); color: var(--warn-ink) }
+.tag.bad { background: var(--bad-bg); color: var(--bad-ink) }
+.mainc .tag { height: 24px; padding: 0 10px; font-size: 12.5px }
+
+/* 세그먼트형 탭 · 칩 */
+.tabs { display: inline-flex; background: var(--line); padding: 3px; border-radius: 12px; gap: 2px; max-width: 100%; overflow-x: auto }
+.tabs button, .tabs a { border: 0; background: transparent; padding: 6px 14px; border-radius: 9px; cursor: pointer; font: inherit; font-size: 14px;
+  font-weight: 600; color: var(--muted); white-space: nowrap; text-decoration: none }
+.tabs .on, .tabs [aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12) }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 14px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink2); border-radius: 999px; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; white-space: nowrap; text-decoration: none }
+.chip:hover { border-color: var(--primary) }
+.chip.on, .chip[aria-pressed="true"] { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink) }
+.new { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 800; line-height: 1; vertical-align: 2px }
+
+/* 글 — 질문·답·주석 */
+section { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+/* 섹션 머리는 질문(.q, 20px)보다 작아야 위계가 선다 — 파란 작은 머리말(레퍼런스의 .no 색) */
+section > h2 { font-size: 13.5px; font-weight: 800; color: var(--primary-ink); margin: 14px 0 -4px; padding: 0; border: 0 }
+.q { font-size: 20px; font-weight: 800; letter-spacing: -.02em; line-height: 1.4; margin: 0; text-wrap: balance }
+.a { font-size: 15px; margin: 0; max-width: 72ch; color: var(--ink2); line-height: 1.75 }
+.a strong { color: var(--primary-ink); font-weight: 700 }
+p.note { font-size: 13px; color: var(--muted); margin: 0; max-width: 76ch; line-height: 1.7 }
+p.note b { color: var(--ink2); font-weight: 700 }
+.hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; line-height: 1.65 }
+.empty { color: var(--muted); background: var(--well); border-radius: var(--r-well); padding: 24px 16px; text-align: center; font-size: 14px }
+.mono, .pmeta b { font-variant-numeric: tabular-nums }
+
+/* 차트 · 표 */
+svg.chart { display: block; width: 100%; height: auto }
+.ax { font-size: 11px; fill: var(--faint) }
+.ct { font-size: 12.5px; fill: var(--ink); font-weight: 700 }
+.cs { font-size: 11px; fill: var(--muted) }
+.inb { font-size: 11px; fill: var(--surface); font-weight: 700 }
+.inw { font-size: 11px; fill: var(--ink); font-weight: 700 }
+.tbl { overflow-x: auto }
+table.t { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums }
+table.t th { text-align: left; font-weight: 600; color: var(--faint); font-size: 12.5px; background: none; border-bottom: 1px solid var(--line); padding: 8px; white-space: nowrap }
+table.t td { border-bottom: 1px solid var(--line); padding: 9px 8px; color: var(--ink2); vertical-align: middle }
+table.t td b, table.t td strong { color: var(--ink) }
+table.t tr:last-child td { border-bottom: 0 }
+table.t td.n, table.t th.n { text-align: right }
+table.t td.c { text-align: center; color: var(--ok-ink); font-weight: 700 }
+
+/* 현장 인용 — 레퍼런스의 노란 안내 배너 모양 */
+.said { background: var(--warn-bg); border-radius: var(--r-well); padding: 14px 16px; font-size: 14px; color: var(--ink2); line-height: 1.75 }
+.said .lbl { display: block; font-size: 12.5px; color: var(--warn-ink); margin-bottom: 6px; font-weight: 800 }
+.said b { color: var(--ink); font-weight: 700 }
+
+/* 요청 목록 — 레퍼런스의 세로 스테퍼(번호 원) */
+ol.asks { margin: 0; padding: 0; list-style: none; counter-reset: a; display: flex; flex-direction: column; gap: 14px }
+ol.asks li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; align-items: start; font-size: 15px; color: var(--ink) }
+ol.asks li::before { counter-increment: a; content: counter(a); width: 30px; height: 30px; border-radius: 50%; background: var(--primary); color: var(--on-primary);
+  display: grid; place-items: center; font-weight: 800; font-size: 14px }
+ol.asks b { font-weight: 700 }
+ol.asks .w { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; line-height: 1.65 }
+
+/* 촘촘한 목록 */
+ul.feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column }
+ul.feed li { display: flex; align-items: center; gap: 10px; padding: 10px 4px; font-size: 14px; border-bottom: 1px solid var(--line) }
+ul.feed li:last-child { border-bottom: 0 }
+ul.feed .t { flex: 1; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+ul.feed .who, ul.feed .d { font-size: 13px; color: var(--muted); white-space: nowrap }
+
+/* 코드·옛 머리말 호환 */
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--well); border-radius: 6px; padding: 1px 6px; color: var(--ink2) }
+pre { background: var(--well); border-radius: var(--r-well); padding: 14px; overflow-x: auto; font-size: 12.5px }
+.eyebrow { font-size: 12.5px; color: var(--faint); font-weight: 700 }
+.thesis { font-size: 15px; line-height: 1.75; color: var(--ink2); margin: 0; max-width: 72ch }
+.thesis strong { color: var(--ink); font-weight: 700 }
+.meta { font-size: 13px; color: var(--faint) }
+@media (max-width: 560px) { .q { font-size: 18px } .kv { font-size: 24px } }
+/* 문서 안의 재현 안내 바닥글 — 레퍼런스 footer 는 화면 맨 아래용(아래 여백 40px)이라 본문 안에선 줄인다 */
+/* ⚠️ 레퍼런스 footer 는 grid 라 글자와 <code> 가 줄마다 쪼개진다 → 문서 안에선 보통 글 흐름으로 */
+.mainc > .wrap:not(.ft) > footer { display: block; padding: 16px 0 0; border-top: 1px solid var(--line); line-height: 1.75 }
+"""
+
+#: 대시보드(앱) — 레퍼런스 전체 + 보탬. 순서가 곧 우선순위다.
+STYLE = _REF + ALIAS + SHELL_EXTRA + DASH_EXTRA
+#: 문서(읽는 산출물) — 레퍼런스의 틀만 + 보탬 + 문서 층.
+DOC_STYLE = "".join(_S[k] for k in _DOC_KEEP) + ALIAS + SHELL_EXTRA + DOC
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 메뉴 — 산출물 6종. 모든 문서가 **같은 왼쪽 세로 메뉴**를 쓴다.
+# ══════════════════════════════════════════════════════════════════════════
+#: (이름, 파일, 아이콘, 휴대폰 탭바 짧은 이름)
+#: ⭐️ **매일 보는 화면** — 품질담당이 "지금 정상인가" 를 판단하는 데 쓴다(§6-0-28).
+NAV_ITEMS = (
+    ("운영 현황판", "dashboard.html", "overview"),
+    ("운영 모니터", "monitor_status.html", "alert"),
+)
+#: **근거 자료** — 매일 볼 것이 아니라 "왜 그런가" 를 따질 때 여는 것들. 한 묶음 뒤로 뺀다.
+NAV_ARCHIVE = (
+    ("현황 브리프", "brief.html", "brief"),
+    ("배합 처방", "prescription.html", "flask"),
+    ("통합 리포트", "final_report.html", "doc"),
+    ("계획서", "plan.html", "map"),
+)
+NAV_GROUPS = (("매일 보기", NAV_ITEMS), ("근거 자료", NAV_ARCHIVE))
+SHORT = {"운영 현황판": "현황판", "운영 모니터": "모니터", "현황 브리프": "브리프",
+         "배합 처방": "처방", "통합 리포트": "리포트", "계획서": "계획서"}
+
+# ── 운영 현황판의 하위 화면 ──
+#: (키, 이름, 짧은 이름)
 VIEWS = (
     ("overview", "종합 현황", "현황"),
     ("trend",    "품위 추이", "품위"),
-    ("stock",    "재고",      "재고"),
+    ("stock",    "적치장 재고", "재고"),
     ("cross",    "교차인출",  "교차"),
     ("recent",   "최근 기록", "기록"),
 )
 
-# 메뉴 묶음 — 레퍼런스처럼 그룹 머리말을 둔다 (None = 머리말 없음)
-GROUPS = ((None, ("overview",)), ("공정", ("trend",)), ("적치장", ("stock",)),
-          ("분석", ("cross",)), ("자료", ("recent",)))
-
 ICONS = {
+    # 하위 화면
     "overview": '<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/>',
     "trend": '<path d="M3 17l5-6 4 3 7-8"/><path d="M3 21h18"/>',
     "stock": '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4"/><path d="M12 11v10"/>',
     "cross": '<path d="M4 8h12"/><path d="m13 5 3 3-3 3"/><path d="M20 16H8"/><path d="m11 13-3 3 3 3"/>',
     "recent": '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6"/><path d="M9 16h5"/>',
+    # 문서
+    "alert": '<path d="M12 4 3 20h18z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
+    "brief": '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M3 20h18"/>',
+    "flask": '<path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
+    "doc": '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6"/><path d="M9 16h6"/>',
+    "map": '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15"/><path d="M15 6v15"/>',
+    "grid": '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    "chart": '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M3 20h18"/>',
+    "search": '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.2-4.2"/>',
+    "book": '<path d="M4 5a2 2 0 0 1 2-2h5v17H6a2 2 0 0 0-2 2z"/><path d="M20 5a2 2 0 0 0-2-2h-5v17h5a2 2 0 0 1 2 2z"/>',
 }
 
 LOGO = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" '
         'stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 9l4 6 3-4 4 7"/></svg>')
+_COLLAPSE = ('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+             'stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg>')
+_SHARE = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+          'stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/>'
+          '<path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>')
+_UP = ('<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" '
+       'stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>')
 
 
 def icon(key: str) -> str:
-    """메뉴·탭바에서 쓰는 선 아이콘."""
+    """메뉴·탭바에서 쓰는 선 아이콘(레퍼런스와 같은 24×24 · 선 2px)."""
     return ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-            f'stroke-linecap="round" stroke-linejoin="round">{ICONS.get(key, "")}</svg>')
+            f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{ICONS.get(key, "")}</svg>')
+
+
+_icon = icon   # 옛 이름(portalstyle._icon) 호환
 
 
 def views_js() -> str:
-    """JS 쪽에서 쓰는 메뉴 정의 — 파이썬 정의를 한 곳에서 내려보낸다(중복 금지)."""
-    import json
-    return json.dumps(
-        dict(views=[list(v) for v in VIEWS],
-             groups=[[g, list(ids)] for g, ids in GROUPS],
-             icons=ICONS),
-        ensure_ascii=False, separators=(",", ":"))
+    """JS 쪽에서 쓰는 하위 화면 정의 — 파이썬 정의를 한 곳에서 내려보낸다(중복 금지)."""
+    return json.dumps(dict(views=[list(v) for v in VIEWS], icons=ICONS),
+                      ensure_ascii=False, separators=(",", ":"))
+
+
+def _group_of(label: str) -> str:
+    for g, items in NAV_GROUPS:
+        if any(lb == label for lb, _, _ in items):
+            return g
+    return ""
+
+
+def _menu(active: str, sub: bool, hub: bool) -> str:
+    """왼쪽 세로 메뉴 본문. hub=True 면 링크 대신 **안쪽 문서를 바꾸는 버튼**."""
+    out = []
+    for g, items in NAV_GROUPS:
+        out.append(f'<div class="grp">{g}</div>')
+        for label, fname, ico in items:
+            inner = f'{icon(ico)}<span class="lbl">{label}</span>'
+            if hub:
+                cur = ' aria-current="page"' if label == active else ""
+                out.append(f'<button class="navi" data-doc="{fname}" title="{label}"{cur}>{inner}</button>')
+            elif label == active:
+                # 자기 자신으로 가는 링크는 눌러도 제자리라 고장처럼 보인다 → 표시만 한다
+                out.append(f'<span class="navi" aria-current="page" title="{label}">{inner}</span>')
+                if sub:
+                    out.append('<div class="subnav" id="tabs" aria-label="화면"></div>')
+            else:
+                out.append(f'<a class="navi" href="{fname}" title="{label}">{inner}</a>')
+    return "".join(out)
+
+
+def _tabbar(active: str, hub: bool) -> str:
+    """휴대폰 하단 탭바 — 문서 6종(레퍼런스의 6칸 그대로)."""
+    out = []
+    for _, items in NAV_GROUPS:
+        for label, fname, ico in items:
+            inner = f'{icon(ico)}<span>{SHORT.get(label, label)}</span>'
+            if hub:
+                cur = ' aria-selected="true"' if label == active else ' aria-selected="false"'
+                out.append(f'<button role="tab" data-doc="{fname}"{cur}>{inner}</button>')
+            elif label == active:
+                out.append(f'<span aria-current="page">{inner}</span>')
+            else:
+                out.append(f'<a href="{fname}">{inner}</a>')
+    return f'<nav class="tabbar" id="tabbar" aria-label="문서">{"".join(out)}</nav>'
+
+
+def _shell_open(active: str, *, sub: bool = False, hub: bool = False, today: str = "",
+                where: str = "", state: str = "") -> str:
+    """레퍼런스 틀(.shell = 왼쪽 메뉴 + 오른쪽 화면)을 **연다**. 닫는 것은 foot()."""
+    today = today or datetime.now().strftime("%Y-%m-%d")
+    grp = _group_of(active)
+    where = where or (f'품위추적 › {grp + " › " if grp else ""}<b>{active}</b>' if active else "품위추적")
+    upd = state or ('<b><i></i>파이프라인 실행 때 갱신</b>재현 <code>python scripts/run_all.py</code>')
+    return f"""{_tabbar(active, hub)}
+<div class="shell" id="shell">
+<aside class="side" aria-label="메뉴">
+  <div class="brand"><span class="logo">{LOGO}</span><span class="txt">Blue365 <small>석회석</small></span>
+    <button class="collapse" id="collapse" aria-label="메뉴 접기" title="메뉴 접기">{_COLLAPSE}</button></div>
+  <div class="ws" title="석회석 광산 → OSP → 야드 품위 추적 · 조회 전용"><span class="av">품</span><div><b>품위 추적</b><small>보는용 · 조회 전용</small></div></div>
+  <nav id="docnav" aria-label="문서">{_menu(active, sub, hub)}</nav>
+  <div class="spacer"></div>
+  <div class="upd" id="upd">{upd}</div>
+</aside>
+<div class="mainc">
+<header class="top" id="top">
+  <div class="wrap">
+    <div class="bar">
+      <div class="mbrand"><span class="logo">{LOGO}</span>Blue365</div>
+      <div class="where" id="where">{where}</div>
+      <span class="tag">보는용</span>
+      <span class="grow"></span>
+      <span class="refchip" id="refchip"><i></i>기준일 {today}</span>
+      <button class="iconbtn" id="share" aria-label="공유">{_SHARE}<span>공유</span></button>
+    </div>
+  </div>
+</header>"""
+
+
+def nav(active: str = "", user: str = "", *, sub: bool = False, today: str = "") -> str:
+    """QMS 틀을 열고 왼쪽 세로 메뉴·머리 줄·휴대폰 탭바를 그린다.
+
+    ⚠️ **foot() 과 짝이다.** nav() 가 `.shell`·`.mainc` 를 열고 foot() 이 닫는다.
+       문서 본문은 그 사이에 그대로 쓴다(종전 포털 스타일과 같은 호출 순서 — 소비처를
+       고치지 않고 틀만 바꾸기 위해서다). 짝을 빼먹어도 브라우저가 </body> 에서 닫아 준다.
+    `sub=True` 면 현재 항목 아래에 하위 화면 자리(#tabs)를 둔다(운영 현황판 전용).
+    `user` 는 옛 서명 호환용으로 받기만 한다.
+    """
+    return _shell_open(active, sub=sub, today=today)
+
+
+def nav_hub(active: str = "") -> str:
+    """단일 파일 허브용 틀 — 메뉴가 링크가 아니라 **안쪽 문서를 바꾸는 버튼**이다.
+
+    산출물을 낱개로 받으면 옆 파일이 없어 상대경로 링크가 먹통이 된다(2026-10-21 지적).
+    허브는 문서들을 한 파일 안에 품고 있으므로 이동이 아니라 교체다.
+    """
+    return _shell_open(active, hub=True,
+                       state='<b><i></i>한 파일에 모두 담김</b><span id="hubstate"></span>')
+
+
+def hero(eyebrow: str, title: str, lead: str, strip: str = "",
+         today: str = "", quick: list | None = None) -> str:
+    """화면 머리 — 레퍼런스의 `알약 꼬리표 + 큰 두 줄 제목(핵심 단어만 파랑) + 설명`.
+
+    종전 포털의 남색 밴드 자리다. 서명은 그대로 두어 소비처를 고치지 않는다.
+    `today` 는 머리 줄 기준일 칩이 맡으므로 여기서는 쓰지 않는다.
+    """
+    st = f'<div class="pgstrip"><span class="tag mute">{strip}</span></div>' if strip else ""
+    qs = "".join(f'<a href="#{a}">{icon(i)}{n}</a>' for n, i, a in (quick or []))
+    qk = f'<div class="pgquick">{qs}</div>' if qs else ""
+    return f"""<div class="wrap pg"><div>
+  <span class="tag">{eyebrow}</span>
+  <h1 class="hl">{title}</h1>
+  <p class="lead">{lead}</p>
+  {st}{qk}
+</div></div>"""
+
+
+#: 틀 공통 동작 — 메뉴 접기 · 머리 줄 그림자 · 맨 위로 · 공유. (대시보드도 이걸 쓴다)
+SHELL_JS = r"""
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 저장 불가 환경 */ } },
+  };
+  const shell = $('shell'), col = $('collapse');
+  const setMini = (on) => {
+    if (!shell || !col) return;
+    shell.classList.toggle('mini', on);
+    const t = on ? '메뉴 펼치기' : '메뉴 접기';
+    col.setAttribute('aria-label', t); col.title = t;
+    store.set('b365_side_mini', on ? '1' : '');
+  };
+  if (col) col.addEventListener('click', () => setMini(!shell.classList.contains('mini')));
+  if (store.get('b365_side_mini')) setMini(true);
+
+  let toastT;
+  window.b365toast = (msg) => {
+    const t = $('toast'); if (!t) return;
+    t.textContent = msg; t.classList.add('on');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2000);
+  };
+  const top = $('top'), fab = $('fab');
+  addEventListener('scroll', () => {
+    if (top) top.classList.toggle('scrolled', scrollY > 4);
+    if (fab) fab.classList.toggle('on', scrollY > 600);
+  }, {passive: true});
+  if (fab) fab.addEventListener('click', () => scrollTo({
+    top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}));
+
+  const sh = $('share');
+  if (sh) sh.addEventListener('click', async () => {
+    const url = location.href, isFile = location.protocol === 'file:';
+    if (!isFile && navigator.share) {
+      try { await navigator.share({title: document.title, url}); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const text = isFile ? decodeURI(location.pathname.replace(/^\/([A-Za-z]:)/, '$1')).replace(/\//g, '\\') : url;
+    try { await navigator.clipboard.writeText(text); window.b365toast(isFile ? '파일 위치를 복사했어요' : '링크를 복사했어요'); }
+    catch (e) { window.b365toast('복사가 막혀 있어요 — 주소창의 주소를 복사해 주세요'); }
+  });
+})();
+"""
+
+
+def foot(text: str) -> str:
+    """바닥글을 쓰고 nav() 가 연 틀을 **닫는다**. 맨 위로 버튼·토스트·틀 동작을 붙인다."""
+    return f"""<div class="wrap ft"><footer><div>{text}</div></footer></div>
+</div>
+</div>
+<button class="fab" id="fab" aria-label="맨 위로">{_UP}</button>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>{SHELL_JS}</script>"""

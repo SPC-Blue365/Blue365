@@ -37,7 +37,7 @@ from src.matching.inventory import zone_inventory               # noqa: E402
 from src.models.dataset import (load_osp_stock, load_sources,    # noqa: E402
                                 load_yard_change)
 from src.visualization import dashboard_data as D               # noqa: E402
-from src.visualization.qmsstyle import LOGO, STYLE, icon, views_js  # noqa: E402
+from src.visualization.qmsstyle import STYLE, foot, nav, views_js  # noqa: E402
 
 E = html.escape
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
@@ -86,19 +86,6 @@ def _payload() -> dict:
     )
 
 
-def _sidebar() -> str:
-    """왼쪽 세로 메뉴 — 레퍼런스(QMS)의 틀 그대로. 항목 자체는 JS 가 채운다."""
-    return f"""<aside class="side" aria-label="메뉴">
-  <div class="brand"><span class="logo">{LOGO}</span><span class="txt">Blue365 <small>석회석</small></span>
-    <button class="collapse" id="collapse" aria-label="메뉴 접기" title="메뉴 접기"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button></div>
-  <div class="ws" title="품위·재고 현황판 · 조회 전용"><span class="av">품</span><div><b>품위 현황판</b><small>보는용 · 조회 전용</small></div></div>
-  <nav id="tabs" aria-label="화면"></nav>
-  <div class="spacer"></div>
-  <div class="upd"><b><i></i>파이프라인 실행 때 갱신</b><span id="genAt"></span><br>
-    재현 <code>python scripts/run_all.py</code></div>
-</aside>"""
-
-
 def build() -> str:
     payload = _payload()
     js = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -113,33 +100,13 @@ def build() -> str:
 <style>{STYLE}</style>
 </head>
 <body>
-<div class="shell" id="shell">
-{_sidebar()}
-<div class="mainc">
-<header class="top" id="top">
-  <div class="wrap">
-    <div class="bar">
-      <div class="mbrand"><span class="logo">{LOGO}</span>Blue365</div>
-      <div class="where" id="where"></div>
-      <span class="tag">보는용</span>
-      <span class="grow"></span>
-      <span class="refchip" id="refchip"></span>
-      <button class="iconbtn" id="share" aria-label="공유"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg><span>공유</span></button>
-    </div>
-  </div>
-</header>
-<div class="wrap" id="banners"></div>
+{nav(active="운영 현황판", sub=True, today=payload["ref"])}
+<div class="wrap" style="padding-top:12px"><div class="chips scrollx vchips" id="vchips" role="group" aria-label="화면"></div></div>
 <main class="wrap" id="view"></main>
-<div class="wrap"><footer>
-  <div>재고는 OSP 실사 기록, 품위는 실시간 분석기 실측, 물량은 광산 이송량과 OSP 인출량입니다.
-    구역별 재고는 <b>측정값이 아니라 적재−인출 흐름에서 복원한 추정치</b>입니다.</div>
-  <div>목표 CaO {TARGET}±{TOL}% · 이 화면은 <code>python scripts/make_dashboard.py</code> 로 다시 만듭니다.</div>
-</footer></div>
-</div>
-</div>
-<nav class="tabbar" id="tabbar" aria-label="화면"></nav>
-<button class="fab" id="fab" aria-label="맨 위로"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg></button>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+{foot("재고는 OSP 실사 기록, 품위는 실시간 분석기 실측, 물량은 광산 이송량과 OSP 인출량입니다. "
+      "구역별 재고는 <b>측정값이 아니라 적재−인출 흐름에서 복원한 추정치</b>입니다.</div><div>"
+      f"목표 CaO {TARGET}±{TOL}% · 생성 {payload['built']} · 이 화면은 "
+      "<code>python scripts/make_dashboard.py</code> 로 다시 만듭니다.")}
 
 <script id="payload" type="application/json">{js}</script>
 <script id="menu" type="application/json">{views_js()}</script>
@@ -168,10 +135,6 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
 const fmt = (v, d = 0) => v == null || !isFinite(v) ? '—'
   : Number(v).toLocaleString('ko-KR', {minimumFractionDigits: d, maximumFractionDigits: d});
 const two = (i) => String(i + 1).padStart(2, '0');
-const store = {
-  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 저장 불가 환경 */ } },
-};
 
 /* ── 상태 ─────────────────────────────────────────────────────────────
    LINE = 보고 있는 라인, FROM~TO = 보고 있는 기간(년-월-일 두 날짜).
@@ -234,11 +197,7 @@ function statusIcon(tone) {
 }
 
 /* ── 토스트 ───────────────────────────────────────────────────────── */
-let toastT;
-function toast(msg) {
-  const t = $('toast'); t.textContent = msg; t.classList.add('on');
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2000);
-}
+const toast = (msg) => window.b365toast && window.b365toast(msg);   // 공용 틀(qmsstyle.SHELL_JS)
 
 /* ── 기간·라인 고르는 줄 ──────────────────────────────────────────── */
 function ctrl({dates = true} = {}) {
@@ -541,7 +500,7 @@ function overview() {
       en: esc(j.why),
       well: `<div style="display:flex;gap:12px;align-items:center"><span style="flex:none;display:flex">${statusIcon(j.tone)}</span>` +
         `<div><div class="big" style="font-size:24px">${esc(j.label)}</div>` +
-        (j.gap ? `<div class="note" style="color:var(--${j.tone === 'good' ? 'ok' : j.tone === 'warn' ? 'warn' : 'bad'})">↳ ${esc(j.gap)}</div>` : '') +
+        (j.gap ? `<div class="note" style="color:var(--${j.tone === 'good' ? 'ok' : j.tone === 'warn' ? 'warn' : 'bad'}-ink)">↳ ${esc(j.gap)}</div>` : '') +
         '</div></div>'})).join('') || empty('점수판을 만들 수 없어요.')}</div>
     ${box(`<div class="score"><span class="pct is-${tone}">${esc(pctTxt)}</span>` +
       `<span style="color:var(--muted)">이어짐 · ${fmt(C.linked_ton)} / ${fmt(C.total_ton)}톤</span>` +
@@ -647,36 +606,34 @@ function recent() {
 
 const PAGES = {overview, trend, stock, cross, recent};
 
-/* ── 메뉴·라우팅 ──────────────────────────────────────────────────── */
+/* ── 메뉴·라우팅 ──────────────────────────────────────────────────────
+   하위 화면 메뉴는 두 군데다: 넓은 화면은 **왼쪽 메뉴의 '운영 현황판' 아래**(#tabs),
+   휴대폰·통합본 안쪽은 **머리의 칩 줄**(#vchips). 휴대폰 하단 탭바는 문서 6종이 쓴다. */
 const NAMES = Object.fromEntries(MENU.views.map(([k, n]) => [k, n]));
 const svgI = (k) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  `stroke-linecap="round" stroke-linejoin="round">${MENU.icons[k] || ''}</svg>`;
-$('tabs').innerHTML = MENU.groups.map(([g, ids]) =>
-  (g ? `<div class="grp">${esc(g)}</div>` : '') +
-  ids.map(id => `<button class="navi" data-id="${id}" title="${esc(NAMES[id])}">${svgI(id)}<span class="lbl">${esc(NAMES[id])}</span></button>`).join('')
-).join('');
-$('tabbar').innerHTML = MENU.views.map(([id, , short]) =>
-  `<button role="tab" data-id="${id}">${svgI(id)}<span>${esc(short)}</span></button>`).join('');
-$('genAt').textContent = `생성 ${DATA.built}`;
-$('refchip').innerHTML = `<i></i>기준일 ${esc(DATA.ref)}`;
+  `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${MENU.icons[k] || ''}</svg>`;
+const subnav = $('tabs'), vchips = $('vchips');
+if (subnav) subnav.innerHTML = MENU.views.map(([id, n]) =>
+  `<button class="navi" data-id="${id}" title="${esc(n)}">${svgI(id)}<span class="lbl">${esc(n)}</span></button>`).join('');
+if (vchips) vchips.innerHTML = MENU.views.map(([id, n]) =>
+  `<button data-id="${id}" aria-pressed="false">${esc(n)}</button>`).join('');
 
 let CUR = 'overview';
 function render(id) {
   if (!PAGES[id]) id = 'overview';
   CUR = id;
-  $('tabs').querySelectorAll('button').forEach(b =>
+  if (subnav) subnav.querySelectorAll('button').forEach(b =>
     b.dataset.id === id ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
-  $('tabbar').querySelectorAll('button').forEach(b =>
-    b.setAttribute('aria-selected', b.dataset.id === id ? 'true' : 'false'));
-  const grp = (MENU.groups.find(([, ids]) => ids.includes(id)) || [])[0];
-  $('where').innerHTML = `현황판 › ${grp ? esc(grp) + ' › ' : ''}<b>${esc(NAMES[id])}</b>`;
+  if (vchips) vchips.querySelectorAll('button').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.id === id ? 'true' : 'false'));
+  $('where').innerHTML = `품위추적 › 운영 현황판 › <b>${esc(NAMES[id])}</b>`;
   PAGES[id]();
 }
 const go = (id) => {
   if (location.hash !== '#' + id) location.hash = id; else render(id);
   scrollTo({top: 0});
 };
-for (const nav of [$('tabs'), $('tabbar')]) nav.addEventListener('click', (e) => {
+for (const nav of [subnav, vchips]) if (nav) nav.addEventListener('click', (e) => {
   const b = e.target.closest('button[data-id]'); if (b) go(b.dataset.id);
 });
 addEventListener('hashchange', () => render(location.hash.slice(1)));
@@ -686,32 +643,6 @@ let lastW = innerWidth, rz;
 addEventListener('resize', () => {
   clearTimeout(rz);
   rz = setTimeout(() => { if (Math.abs(innerWidth - lastW) > 40) { lastW = innerWidth; render(CUR); } }, 250);
-});
-addEventListener('scroll', () => {
-  $('top').classList.toggle('scrolled', scrollY > 4);
-  $('fab').classList.toggle('on', scrollY > 600);
-}, {passive: true});
-$('fab').addEventListener('click', () => scrollTo({
-  top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'}));
-
-const setMini = (on) => {
-  $('shell').classList.toggle('mini', on);
-  const t = on ? '메뉴 펼치기' : '메뉴 접기';
-  $('collapse').setAttribute('aria-label', t); $('collapse').title = t;
-  store.set('b365_side_mini', on ? '1' : '');
-};
-$('collapse').addEventListener('click', () => setMini(!$('shell').classList.contains('mini')));
-if (store.get('b365_side_mini')) setMini(true);
-
-$('share').addEventListener('click', async () => {
-  const url = location.href.split('#')[0] + location.hash, isFile = location.protocol === 'file:';
-  if (!isFile && navigator.share) {
-    try { await navigator.share({title: document.title, url}); return; }
-    catch (e) { if (e && e.name === 'AbortError') return; }
-  }
-  const text = isFile ? decodeURI(location.pathname.replace(/^\/([A-Za-z]:)/, '$1')).replace(/\//g, '\\') : url;
-  try { await navigator.clipboard.writeText(text); toast(isFile ? '파일 위치를 복사했어요' : '링크를 복사했어요'); }
-  catch (e) { toast('복사가 막혀 있어요 — 주소창의 주소를 복사해 주세요'); }
 });
 
 render(location.hash.slice(1) || 'overview');

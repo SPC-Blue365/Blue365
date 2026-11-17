@@ -32,7 +32,7 @@ from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE               # noqa: E
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                               # noqa: E402
 from src.optimization.prescribe import prescribe, zone_balance_health  # noqa: E402
-from src.visualization.portalstyle import STYLE, foot, hero, nav        # noqa: E402
+from src.visualization.qmsstyle import DOC_STYLE as STYLE, foot, hero, nav        # noqa: E402
 
 TARGET, TOL = S.TARGET.cao_mean, S.TARGET.tol
 E = html.escape
@@ -330,27 +330,27 @@ def build(qualitative: bool = False) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>석회석 품위 관리 체계 구축 계획</title>
 <style>{STYLE}
-.goalbox {{ background:var(--accent-soft); border:1px solid var(--accent-2);
-            border-radius:var(--radius); padding:20px 22px;
+/* 목표 상자 — 파란 연한 바탕의 큰 카드(레퍼런스의 강조 한 색) */
+.goalbox {{ background:var(--primary-soft); border-radius:var(--r-card); padding:22px 24px;
             display:flex; flex-direction:column; gap:10px; }}
-.goalbox .lbl {{ font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
-                 color:var(--accent-ink); font-weight:600; }}
-.goalbox .sent {{ font-size:17px; line-height:1.65; font-weight:600; color:var(--ink);
-                  margin:0; text-wrap:balance; }}
+.goalbox .lbl {{ font-size:12.5px; color:var(--primary-ink); font-weight:800; }}
+.goalbox .sent {{ font-size:19px; line-height:1.6; font-weight:800; letter-spacing:-.02em;
+                  color:var(--ink); margin:0; text-wrap:balance; }}
 .goalbox .sent em {{ font-style:normal; color:var(--accent); }}
-.goalbox .cap2 {{ font-size:12.5px; color:var(--ink-2); margin:0; }}
-.sub2 {{ font-size:12.5px; color:var(--ink-3); margin-top:4px; line-height:1.6; font-weight:400; }}
-td.c2 {{ text-align:center; white-space:nowrap; font-size:12px; color:var(--ink-2); }}
-.big {{ font-size:15px; font-weight:600; color:var(--ink); margin:0; }}
-.two {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }}
+.goalbox .cap2 {{ font-size:13px; color:var(--ink-2); margin:0; }}
+.sub2 {{ font-size:13px; color:var(--ink-3); margin-top:4px; line-height:1.6; font-weight:400; }}
+td.c2 {{ text-align:center; white-space:nowrap; font-size:13px; color:var(--ink-2); }}
+.big {{ font-size:16px; font-weight:800; color:var(--ink); margin:0; }}
+.two {{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }}
 @media (max-width:680px) {{ .two {{ grid-template-columns:1fr; }} }}
-.mini {{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
-         padding:14px 16px; box-shadow:var(--shadow); }}
-.mini h3 {{ margin:0 0 6px; font-size:13px; font-weight:600; color:var(--ink); }}
-.mini p {{ margin:0; font-size:12.5px; color:var(--ink-2); line-height:1.65; }}
-.qv {{ font-size:21px; font-weight:600; letter-spacing:-.01em; line-height:1.2; }}
-.k.good .qv {{ color:var(--good); }} .k.bad .qv {{ color:var(--bad); }}
-.k.warn .qv {{ color:var(--warn); }}
+/* ⚠️ 예전 이름 `.mini` 는 레퍼런스에서 **접힌 메뉴**(.shell.mini)다 — 그대로 두면 메뉴를
+      접는 순간 화면 전체가 이 상자 모양이 된다. 그래서 `.minibox` 로 바꿨다. */
+.minibox {{ background:var(--well); border-radius:var(--r-well); padding:14px 16px; }}
+.minibox h3 {{ margin:0 0 6px; font-size:14px; font-weight:800; color:var(--ink); }}
+.minibox p {{ margin:0; font-size:13px; color:var(--ink-2); line-height:1.65; }}
+.qv {{ font-size:22px; font-weight:800; letter-spacing:-.02em; line-height:1.2; }}
+.k.good .qv {{ color:var(--ok-ink); }} .k.bad .qv {{ color:var(--bad-ink); }}
+.k.warn .qv {{ color:var(--warn-ink); }}
 </style></head><body>
 {nav(active="계획서")}
 {hero(
@@ -396,9 +396,9 @@ td.c2 {{ text-align:center; white-space:nowrap; font-size:12px; color:var(--ink-
   <div class="card">{evidence}</div>
   <p class="note">{block_note}</p>
   <div class="two">
-    <div class="mini"><h3>가장 뚜렷한 사례</h3>
+    <div class="minibox"><h3>가장 뚜렷한 사례</h3>
       <p>{case1}</p></div>
-    <div class="mini"><h3>그래서 생기는 결과</h3>
+    <div class="minibox"><h3>그래서 생기는 결과</h3>
       <p>{case2}</p></div>
   </div>
 </section>
@@ -417,10 +417,10 @@ td.c2 {{ text-align:center; white-space:nowrap; font-size:12px; color:var(--ink-
 <section>
   <h2>일정</h2>
   <div class="two">
-    <div class="mini"><h3>바로 진행</h3>
+    <div class="minibox"><h3>바로 진행</h3>
       <p>1~3단계 체계는 <b>이미 가동 중</b>입니다. 감시·경보와 기록 정합 점검은 매주 갱신됩니다.
         위 요청 2·3번이 반영되는 대로 정확도를 다시 측정해 보고드립니다.</p></div>
-    <div class="mini"><h3>4단계 본격 착수</h3>
+    <div class="minibox"><h3>4단계 본격 착수</h3>
       <p>{sched2}</p></div>
   </div>
   <p class="note">{sched_note}</p>

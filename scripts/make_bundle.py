@@ -11,8 +11,10 @@
 
   · 문서마다 자기 CSS·JS 를 **그대로** 쓴다. iframe 이라 서로 섞이지 않는다 —
     통합 리포트의 Plotly 4.5MB 와 탭 기계장치도 건드리지 않고 돌아간다.
-  · 안쪽 문서의 상단 바는 **빼고 담는다.** 허브가 이미 메뉴를 들고 있어 두 줄이 되면
-    보기 싫고, 안쪽 링크는 어차피 먹통이다.
+  · 안쪽 문서의 메뉴·머리 줄·탭바는 **감춰서 담는다.** 허브가 이미 메뉴를 들고 있어 두 벌이
+    되면 보기 싫고, 안쪽 링크는 어차피 먹통이다. (2026-11-17 QMS 통일 후: 문자열을 도려내지
+    않고 `<html class="embedded">` 표시만 붙인다 — 감추는 일은 공용 CSS 가 한다.
+    도려내기는 메뉴 마크업이 바뀔 때마다 조용히 실패했다.)
   · 한 번 푼 문서는 캐시해 두 번째부터는 즉시 뜬다.
 
 용량: 원본 합계 약 10.6MB → gzip+base64 로 약 4.1MB.
@@ -34,7 +36,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import paths as P                                      # noqa: E402
-from src.visualization.portalstyle import NAV_ARCHIVE, NAV_ITEMS, STYLE, nav_hub  # noqa: E402
+from src.visualization.qmsstyle import (NAV_ARCHIVE, NAV_GROUPS, NAV_ITEMS,  # noqa: E402
+                                        SHELL_JS, nav_hub)
+from src.visualization.qmsstyle import DOC_STYLE as STYLE  # noqa: E402
 
 E = html.escape
 
@@ -42,16 +46,29 @@ E = html.escape
 #: 메뉴에 없지만 함께 담는다(계획서 화면에서 안내만 한다).
 DOCS = [f for _, f, _ in NAV_ITEMS] + [f for _, f, _ in NAV_ARCHIVE] + ["plan_with_figures.html"]
 
-#: 안쪽 문서에서 걷어낼 상단 바. 허브가 이미 들고 있다.
-_NAV_RE = re.compile(r'<div class="nav"><div class="nav-in">.*?</div></div>', re.S)
+#: 안쪽 문서의 <html> 여는 태그 — 여기에 `embedded` 표시를 붙여 안쪽 틀을 감춘다.
+_HTML_RE = re.compile(r"<html\b([^>]*)>", re.I)
+
+
+def _embed(raw: str) -> tuple[str, bool]:
+    """`<html …>` 에 class="embedded" 를 붙인다 — 공용 CSS 가 안쪽 메뉴·머리 줄·탭바를 감춘다."""
+    m = _HTML_RE.search(raw)
+    if not m:
+        return raw, False
+    attrs = m.group(1)
+    if re.search(r"\bclass\s*=", attrs):
+        new = re.sub(r'\bclass\s*=\s*"([^"]*)"', r'class="\1 embedded"', m.group(0), count=1)
+    else:
+        new = f"<html{attrs} class=\"embedded\">"
+    return raw[:m.start()] + new + raw[m.end():], True
 
 
 def _pack(path: Path) -> tuple[str, int, int]:
     """문서 하나를 gzip+base64 로 — (payload, 원본바이트, 압축바이트)."""
     raw = path.read_text(encoding="utf-8")
-    stripped, n = _NAV_RE.subn("", raw, count=1)
-    if n == 0:
-        print(f"      ⚠️ {path.name}: 상단 바를 찾지 못해 그대로 담습니다")
+    stripped, ok = _embed(raw)
+    if not ok:
+        print(f"      ⚠️ {path.name}: <html> 태그를 찾지 못해 그대로 담습니다")
     b = stripped.encode("utf-8")
     gz = gzip.compress(b, 9)
     return base64.b64encode(gz).decode("ascii"), len(b), len(gz)
@@ -77,25 +94,36 @@ def build() -> str:
     first = NAV_ITEMS[0][1]
     titles = {f: n for n, f, _ in (*NAV_ITEMS, *NAV_ARCHIVE)}
     titles["plan_with_figures.html"] = "계획서(수치 포함)"
+    groups = {f: g for g, items in NAV_GROUPS for _, f, _ in items}
     js = json.dumps(docs, ensure_ascii=False, separators=(",", ":"))
     tj = json.dumps(titles, ensure_ascii=False, separators=(",", ":"))
+    gj = json.dumps(groups, ensure_ascii=False, separators=(",", ":"))
 
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>석회석 품위추적 — 통합</title>
 <style>{STYLE}
-html, body {{ height:100%; }}
-body {{ display:flex; flex-direction:column; overflow:hidden; }}
-#stage {{ flex:1; min-height:0; position:relative; background:var(--ground); }}
-#frame {{ width:100%; height:100%; border:0; display:block; background:var(--ground); }}
-#load {{ position:absolute; inset:0; display:grid; place-items:center; gap:10px;
-         background:var(--ground); color:var(--ink-2); font-size:13.5px; }}
-#load.off {{ display:none; }}
-#load .spin {{ width:26px; height:26px; border:3px solid var(--line);
-   border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite; }}
-@keyframes sp {{ to {{ transform:rotate(360deg); }} }}
-@media (prefers-reduced-motion:reduce) {{ #load .spin {{ animation:none; }} }}
-#oops {{ max-width:60ch; line-height:1.7; text-align:center; }}
+/* 허브 — 왼쪽 메뉴 + 머리 줄은 그대로, 본문 자리는 안쪽 문서(iframe)가 꽉 채운다 */
+html, body {{ height:100% }}
+body {{ overflow:hidden }}
+.shell {{ height:100vh; height:100dvh }}
+.mainc {{ display:flex; flex-direction:column; height:100vh; height:100dvh; min-height:0 }}
+#stage {{ flex:1; min-height:0; position:relative; background:var(--bg) }}
+#frame {{ width:100%; height:100%; border:0; display:block; background:var(--bg) }}
+#load {{ position:absolute; inset:0; display:grid; place-items:center; align-content:center; gap:12px;
+         background:var(--bg); color:var(--muted); font-size:14px }}
+#load.off {{ display:none }}
+#load .spin {{ width:28px; height:28px; border:3px solid var(--line);
+   border-top-color:var(--primary); border-radius:50%; animation:sp .8s linear infinite }}
+@keyframes sp {{ to {{ transform:rotate(360deg) }} }}
+@media (prefers-reduced-motion:reduce) {{ #load .spin {{ animation:none }} }}
+#oops {{ max-width:60ch; line-height:1.7; text-align:center; background:var(--warn-bg);
+         color:var(--ink2); border-radius:var(--r-well); padding:14px 18px }}
+@media (max-width:720px) {{
+  body {{ padding-bottom:0 }}
+  .mainc {{ height:calc(100vh - 68px - env(safe-area-inset-bottom,0px));
+            height:calc(100dvh - 68px - env(safe-area-inset-bottom,0px)) }}
+}}
 </style></head><body>
 
 {nav_hub(active=NAV_ITEMS[0][0])}
@@ -104,11 +132,16 @@ body {{ display:flex; flex-direction:column; overflow:hidden; }}
   <iframe id="frame" title="선택한 문서"></iframe>
   <div id="load"><div class="spin"></div><div id="loadtxt">여는 중…</div></div>
 </div>
+</div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>{SHELL_JS}</script>
 
 <script id="docs" type="application/json">{js}</script>
 <script>
 const DOCS = JSON.parse(document.getElementById('docs').textContent);
 const TITLES = {tj};
+const GROUPS = {gj};
 const cache = {{}};
 const frame = document.getElementById('frame');
 const load  = document.getElementById('load');
@@ -131,11 +164,14 @@ async function unpack(b64) {{
 
 async function show(name) {{
   const title = TITLES[name] || name;
-  document.querySelectorAll('.navbtn').forEach(b => {{
-    const on = b.dataset.doc === name;
-    b.classList.toggle('on', on);
-    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  // 왼쪽 메뉴(aria-current) · 휴대폰 탭바(aria-selected) · 머리 줄 위치를 함께 맞춘다
+  document.querySelectorAll('#docnav [data-doc]').forEach(b => {{
+    if (b.dataset.doc === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   }});
+  document.querySelectorAll('#tabbar [data-doc]').forEach(b =>
+    b.setAttribute('aria-selected', b.dataset.doc === name ? 'true' : 'false'));
+  const w = document.getElementById('where');
+  if (w) w.innerHTML = '품위추적 › ' + (GROUPS[name] ? GROUPS[name] + ' › ' : '') + '<b>' + title + '</b>';
   if (!DOCS[name]) {{ fail(title + ' 문서가 이 파일에 들어 있지 않습니다.'); return; }}
   if (cache[name]) {{ frame.src = cache[name]; load.classList.add('off'); return; }}
   load.classList.remove('off');
@@ -157,7 +193,7 @@ function fail(msg) {{
 }}
 
 frame.addEventListener('load', () => {{ if (frame.src) load.classList.add('off'); }});
-document.querySelectorAll('.navbtn').forEach(b =>
+document.querySelectorAll('[data-doc]').forEach(b =>
   b.addEventListener('click', () => show(b.dataset.doc)));
 show({json.dumps(first)});
 </script>
