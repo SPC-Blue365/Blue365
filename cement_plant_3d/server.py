@@ -221,6 +221,62 @@ def sokbo_clean(v, depth=0):
     raise ValueError("출하속보 형식이 올바르지 않습니다")
 
 
+# ---- 출하속보 재고 기록 (날짜별, 해당일 24시 기준) — 전일 대비 변동·추이용 ----
+SOKHIST_KEEP = 400
+
+
+def sokhist_path() -> Path:
+    return STORE.dir / "sokbo_hist.json"
+
+
+def sokhist_read() -> dict:
+    try:
+        with SETTINGS_LOCK:
+            d = json.loads(sokhist_path().read_text("utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def sokhist_clean(stock) -> dict:
+    """재고 표만 (숫자만): sc·pier·dhCem·dhClk {호기: t, sum: t} · total"""
+    out = {}
+    if not isinstance(stock, dict):
+        return out
+    for k in ("sc", "pier", "dhCem", "dhClk"):
+        v = stock.get(k)
+        if isinstance(v, dict):
+            out[k] = {str(n)[:6]: x for n, x in list(v.items())[:20] if isinstance(x, (int, float)) and not isinstance(x, bool) and x == x and abs(x) < 1e7}
+    t = stock.get("total")
+    if isinstance(t, (int, float)) and not isinstance(t, bool) and t == t:
+        out["total"] = t
+    return out
+
+
+def sokhist_put(date: str, stock, src: str) -> bool:
+    """한 날짜는 한 번만 기록 (같은 날짜를 다시 올리면 손으로 올린 것만 덮어씀)"""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date or "")):
+        return False
+    st = sokhist_clean(stock)
+    if not st:
+        return False
+    with SETTINGS_LOCK:
+        try:
+            h = json.loads(sokhist_path().read_text("utf-8"))
+            h = h if isinstance(h, dict) else {}
+        except (OSError, ValueError):
+            h = {}
+        if date in h and src != "upload":
+            return False
+        h[date] = dict(st, src=src, at=dt.datetime.now().isoformat(timespec="seconds"))
+        for k in sorted(h)[:-SOKHIST_KEEP]:
+            del h[k]
+        tmp = sokhist_path().with_suffix(".tmp")
+        tmp.write_text(json.dumps(h, ensure_ascii=False), "utf-8")
+        os.replace(tmp, sokhist_path())
+    return True
+
+
 def sokbo_store_pdf(pdf: bytes, meta: dict) -> dict | None:
     """출하속보 PDF 원본 저장 → 화면이 PDF를 읽어 반영 (같은 파일이면 건너뜀)"""
     if pdf[:5] != b"%PDF-" or len(pdf) > 10 * 1024 * 1024:
@@ -890,7 +946,7 @@ def backup_once() -> Path | None:
         return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     src = STORE.dir
-    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
+    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json", "sokbo_hist.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
     if not names:
         return None
     tmp = out.with_suffix(".tmp")
@@ -1318,7 +1374,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._need("viewer"):
                 return
             d, _ = sokbo_read()
-            return self._send(200, d) if d else self._send(404, {"error": "아직 올라온 출하속보가 없습니다"})
+            return self._send(200, dict(d, hist=sokhist_read())) if d else self._send(404, {"error": "아직 올라온 출하속보가 없습니다", "hist": sokhist_read()})
         if path == "/api/mms":
             if not self._need("viewer"):
                 return
@@ -1372,7 +1428,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._settings(body)
         if path == "/api/sokbo":
             return self._sokbo(body)
+        if path == "/api/sokbo-hist":
+            return self._sokhist(body)
         self._send(404, {"error": "없는 주소입니다"})
+
+    def _sokhist(self, b):
+        """드라이브 폴더로 받은 PDF는 화면이 읽으므로, 처음 읽은 화면이 그 날짜 재고를 기록 (지금 서버의 속보 버전·날짜일 때만, 날짜당 한 번)"""
+        u = self._need("viewer")
+        if not u:
+            return
+        d, ver = sokbo_read()
+        if not d or not ver or str(b.get("version")) != str(ver) or d.get("sokbo") is not None:
+            return self._send(409, {"error": "지금 서버의 출하속보와 다릅니다"})
+        ok = sokhist_put(str(b.get("date", "")), b.get("stock"), "pdf")
+        return self._send(200, {"ok": ok, "hist": sokhist_read()})
 
     def _sokbo(self, b):
         """출하속보 올리기 (편집 이상, 본인 비밀번호 다시 확인) → data/sokbo.json"""
@@ -1399,6 +1468,7 @@ class Handler(BaseHTTPRequestHandler):
             tmp = p.with_suffix(".tmp")
             tmp.write_text(json.dumps({"sokbo": s, "meta": meta}, ensure_ascii=False), "utf-8")
             os.replace(tmp, p)
+        sokhist_put(s["date"], s.get("stock"), "upload")
         USERS.log(u["id"], "출하속보 업로드", f"{s['date']} {fn}", self.ip)
         self._send(200, {"ok": True, "sokbo": s, "meta": meta})
 

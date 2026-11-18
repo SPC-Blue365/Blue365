@@ -984,7 +984,7 @@ let SOK=null,SOKMETA={},PORTV=[];const BERTH_ST={};   // 출하속보 · 선박 
 const PIER_DEF=[[1,'3종',4000],[2,'S/C',4000],[3,'1종',6000],[4,'1종',6000],[5,'1종',6000],[6,'1종',6000]].map(([n,prod,cap],i)=>({id:'PIER'+n,n:String(n),prod,cap,z:-36+i*12}));
 const pierBerths=n=>BERTH_DEF.filter(b=>b.silos.includes(+n));
 const directBerths=id=>BERTH_DEF.filter(b=>(b.direct||[]).some(x=>x.id===id));
-const CARGO_KO={'C/K':'클링커','C/P':'시멘트 포장','P/Cokes':'Pet-coke','P/Coke':'Pet-coke','P-Cokes':'Pet-coke','유연탄':'유연탄','S/C':'슬래그 시멘트'};
+const CARGO_KO={'C/K':'수출 클링커','C/P':'시멘트 포장','P/Cokes':'Pet-coke','P/Coke':'Pet-coke','P-Cokes':'Pet-coke','유연탄':'유연탄','S/C':'슬래그 시멘트'};
 /* 화물명 = 품종 (현장 확인 2026-11-15): B/K = 1종 시멘트, (2)B/K = 슬래그시멘트 2종, (3)B/K = 3종 시멘트 (모두 벌크) */
 const cargoCem=c=>{const m=String(c||'').replace(/\s/g,'').match(/^(?:\((\d)\))?B\/?K$/i);return m?(m[1]?({2:'슬래그 2종',3:'3종'})[m[1]]||null:'1종'):null;};
 const cargoKo=c=>CARGO_KO[c]||(cargoCem(c)?`${cargoCem(c)} 벌크`:c)||'—';
@@ -1829,8 +1829,8 @@ function portBlock(e){
   const tm=d=>d?`${md(d)} ${hhmm(d)}`:'—';
   const dir=SLD[e.id]?directBerths(e.id):[],dirH=dir.length?`<div class="sect">삼척항 직투</div><dl class="kv">${dir.map(b=>row(`${b.n}번 선석`,`${b.direct.filter(x=>x.id===e.id).map(x=>PROD_PORT[x.prod]).join('·')} 직접 선적 · ${nf(b.cap)} t/h`)).join('')}</dl>`:'';
   if(SLD[e.id]&&!(SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null))return dirH;
-  if(SLD[e.id]&&SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null)return dirH+`<div class="sect">출하속보 재고 <small>${src}</small></div><dl class="kv">${row('재고',nf(SOK.stock.sc[e.n])+' t')}${row('구내 사일로 합계',nf(SOK.stock.sc.sum||0)+' t')}</dl>`;
-  if(e.id.startsWith('PIER')){const q=QD&&QD.ssilo&&QD.ssilo[e.id];return `<div class="sect">부두 사일로 <small>${src}</small></div><dl class="kv">${row('재고',SOK&&SOK.stock.pier?nf(SOK.stock.pier[e.n]||0)+' t':'—')}${row('저장 품종',PROD_PORT[e.prod])}${row('용량',nf(e.cap)+' t')}${row('연결 선석',pierBerths(e.n).map(b=>`#${b.n} (${b.prods.map(x=>PROD_PORT[x]).join('·')})`).join(', ')||'—')}${row('부두 6기 합계',SOK&&SOK.stock.pier?nf(SOK.stock.pier.sum||0)+' t / '+nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))+' t':'—')}${q?row('최근 투입 (QMS)',`${q.mill?q.mill.slice(2)+'호 C/M · ':''}${esc(q.product||'')}`):''}</dl>`;}
+  if(SLD[e.id]&&SOK&&SOK.stock.sc&&SOK.stock.sc[e.n]!=null)return dirH+`<div class="sect">재고 <small>출하속보 ${sokAt()}</small></div><dl class="kv">${row('재고',nf(SOK.stock.sc[e.n])+' t')}${row('변동',chgTxt(sokChg('sc',e.n)))}${row('구내 사일로 합계',nf(SOK.stock.sc.sum||0)+' t')}${row('구내 합계 변동',chgTxt(sokChg('sc')))}</dl>`;
+  if(e.id.startsWith('PIER')){const q=QD&&QD.ssilo&&QD.ssilo[e.id];return `<div class="sect">부두 사일로 <small>${SOK?'출하속보 '+sokAt():src}</small></div><dl class="kv">${row('재고',SOK&&SOK.stock.pier?nf(SOK.stock.pier[e.n]||0)+' t':'—')}${SOK?row('변동',chgTxt(sokChg('pier',e.n))):''}${row('저장 품종',PROD_PORT[e.prod])}${row('용량',nf(e.cap)+' t')}${row('연결 선석',pierBerths(e.n).map(b=>`#${b.n} (${b.prods.map(x=>PROD_PORT[x]).join('·')})`).join(', ')||'—')}${row('부두 6기 합계',SOK&&SOK.stock.pier?nf(SOK.stock.pier.sum||0)+' t / '+nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))+' t':'—')}${q?row('최근 투입 (QMS)',`${q.mill?q.mill.slice(2)+'호 C/M · ':''}${esc(q.product||'')}`):''}</dl>`;}
   if(e.berth){const b=BERTH_ST[e.id]&&BERTH_ST[e.id].ship,bd=BERTH_DEF.find(d=>d.id===e.id);
     let h=`<div class="sect">선석 설비 <small>현장 제공</small></div><dl class="kv">${row('선적 능력',nf(bd.cap)+' t/h')}${row('선적 품종',bd.prods.map(x=>PROD_PORT[x]).join(' · '))}${row('연결 부두 사일로',bd.silos.map(n=>n+'호').join(' · '))}${(bd.direct||[]).map(x=>row(`${PROD_PORT[x.prod]} 직투`,`구내 ${E[x.id].n}호 사일로 → 선석 (부두 사일로 거치지 않음)`)).join('')}</dl><div class="sect">현재 선박 <small>${src}</small></div><dl class="kv">`;
     if(!b)h+=row('상태','공석');
@@ -1847,7 +1847,7 @@ function portBlock(e){
     let h=`<div class="sect">동해항 선박 <small>${src}</small></div><dl class="kv">`+(vs.length?vs.map(v=>row(`<b>${esc(v.name)}</b>`,`${esc(cargoKo(v.cargo))}${v.qty?' '+nf(v.qty)+' t':''}${v.berth?' · 선석 '+v.berth:''}${v.dest?' · '+esc(v.dest):''}`)).join(''):row('선박','없음'))+'</dl>';
     if(ev.length)h+=`<div class="sect">입·출항 일정</div><dl class="kv">${ev.map(x=>row(`${x.type} · ${esc(x.name)}`,`${+x.date.slice(5,7)}/${+x.date.slice(8,10)}${x.day?'':' '+x.iso.slice(11,16)} <span class="badge ${x.days<=1&&x.days>=0?'s-warn':'s-idle'}">${x.days>0?'D-'+x.days:x.days===0?'D-day':'지남'}</span>`)).join('')}</dl>`;
     const ck=SOK.ship['C/K'],mv=(SOK.move||[]).find(m=>/동해/.test(m.name)&&/크링커|클링커/.test(m.name));
-    h+=`<div class="sect">동해공장 재고 · 이송</div><dl class="kv">${row('클링커 재고',SOK.stock.dhClk?nf(SOK.stock.dhClk.sum||0)+' t':'—')}${row('시멘트 재고',SOK.stock.dhCem?nf(SOK.stock.dhCem.sum||0)+' t':'—')}${ck&&ck.dhC!=null?row('수출 클링커 (C/K) 누계',nf(ck.dhC)+' t'):''}${mv&&mv.c!=null?row('동해 → 삼척 클링커 이송 누계',nf(mv.c)+' t'):''}</dl>`;
+    h+=`<div class="sect">동해공장 재고 · 이송 <small>재고는 ${sokAt()}</small></div><dl class="kv">${row('클링커 재고',SOK.stock.dhClk?nf(SOK.stock.dhClk.sum||0)+' t':'—')}${SOK.stock.dhClk?row('클링커 변동',chgTxt(sokChg('dhClk'))):''}${row('시멘트 재고',SOK.stock.dhCem?nf(SOK.stock.dhCem.sum||0)+' t':'—')}${SOK.stock.dhCem?row('시멘트 변동',chgTxt(sokChg('dhCem'))):''}${ck&&ck.dhC!=null?row('수출 클링커 (C/K) 누계',nf(ck.dhC)+' t'):''}${mv&&mv.c!=null?row('동해 → 삼척 클링커 이송 누계',nf(mv.c)+' t'):''}</dl>`;
     return h;}
   return '';
 }
@@ -1887,7 +1887,7 @@ function sparkSVG(p){
 function kvRows(e){
   let g=null;
   return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);let h='';if(p.grp&&p.grp!==g){g=p.grp;h=`<div class="kvg">${g}</div>`;}
-    const src=p.ana?(p.has?`QMS ${stamp(p.time)}`:(p.lastTs?`최근 14일 시료 없음 · 마지막 ${stamp(tsDate(p.lastTs))}`:'QMS 시료 없음')):(p.has?`${p.mms?'MMS 실측':'DCS'} ${stamp(p.time)}`:'');
+    const src=p.ana?(p.has?`QMS ${stamp(p.time)}`:(p.lastTs?`최근 14일 시료 없음 · 마지막 ${stamp(tsDate(p.lastTs))}`:'QMS 시료 없음')):(p.has?(p.sok?`출하속보 ${sokAt()}`:`${p.mms?'MMS 실측':'DCS'} ${stamp(p.time)}`):'');
     return h+`<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${fv(p)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null||src?`<span class="lim">${[p.lo!=null||p.hi!=null?limTxt(p):'',src].filter(Boolean).join(' · ')}</span>`:''}</dd></div>`;}).join('');
 }
 function chemBlock(id){
@@ -1921,7 +1921,7 @@ function renderDetail(){
      <div class="dp-act"><button type="button" data-act="fly" aria-label="이 설비로 이동" data-tip="이 설비로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
     <div class="dp-st"><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span><span>${head}</span></div>
     <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
-    ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?`${pp.mms?'MMS 실측':'QMS'} 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`:'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
+    ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?(pp.sok?`출하속보 일별 ${new Set(pp.times.map(t=>+t)).size}일 · 24시 기준`:`${pp.mms?'MMS 실측':'QMS'} 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`):'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
     ${routeBlock(e)}${supplyBlock(e)}${portBlock(e)}
     ${e.kiln?chemBlock(e.id):''}
@@ -2097,7 +2097,7 @@ function portKpis(){
   const sea=S&&S.ship['해송']||{},c2={key:'portS',ic:'chart',l:'해송 출하 (삼척)',v:S&&sea.scD!=null?nf(sea.scD):'—',u:'t',d:S&&sea.scN?`${sea.scN}척`:'',dc:'up',
     s:S?`${S.date.slice(5).replace('-','/')} 일계 · 누계 ${sea.scC!=null?nf(sea.scC)+' t':'—'} · 육송 ${S.ship['육송']&&S.ship['육송'].scD!=null?nf(S.ship['육송'].scD)+' t':'—'}`:'—',tip:`출하속보 ‘2. 출하’ 표의 해송 소계(삼척). ${src}`};
   const st=S&&S.stock||{},c3={key:'portP',ic:'silo',l:'부두 사일로 재고',v:st.pier&&st.pier.sum!=null?nf(st.pier.sum):'—',u:'t',
-    d:st.pier&&st.pier.sum!=null?nf(st.pier.sum/PIER_DEF.reduce((a,d)=>a+d.cap,0)*100,0)+'%':'',dc:'up',s:S?`6기 용량 ${nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))} t · 구내 ${st.sc&&st.sc.sum!=null?nf(st.sc.sum)+' t':'—'} · 삼척 합계 ${st.total!=null?nf(st.total)+' t':'—'}`:'—',tip:`출하속보 ‘1. 재고’ 표의 삼척 부두 사일로 1~6호. ${src}`};
+    d:st.pier&&st.pier.sum!=null?nf(st.pier.sum/PIER_DEF.reduce((a,d)=>a+d.cap,0)*100,0)+'%':'',dc:'up',s:S?(()=>{const c=sokChg('pier'),c2=sokChg('sc');return `${sokAt()}${c?` · 부두 ${dT(c.d)}`:''} · 구내 ${st.sc&&st.sc.sum!=null?nf(st.sc.sum)+' t':'—'}${c2?` (${dT(c2.d)})`:''} · 삼척 합계 ${st.total!=null?nf(st.total)+' t':'—'}`;})():'—',tip:`출하속보 ‘1. 재고’ 표의 삼척 부두 사일로 1~6호 (해당일 24시 기준). 괄호·± 값은 앞 속보 날짜 대비 변동. 6기 용량 ${nf(PIER_DEF.reduce((a,d)=>a+d.cap,0))} t. ${src}`};
   const dv=S?[...S.vessels.filter(v=>v.port==='dh'),...S.expected.filter(x=>x.port==='dh').map(x=>({name:x.name,cargo:'',qty:null,berth:x.berth,dest:x.note,eta:x.eta}))]:[];
   const opts=dv.length?dv.map((v,i)=>[String(i),`${v.name}${v.cargo?' · '+cargoKo(v.cargo):''}`]):[['0','일정 없음']],val=kpick('portDH',opts,'0'),v=dv[+val];
   const ev=v?dhEvents().filter(x=>x.name===v.name&&x.days>=0):[],e0=ev[0];
@@ -2623,12 +2623,28 @@ async function pollServer(){
 }
 /* ---------- 출하속보 (PDF → 삼척항·동해항·사일로 재고) ---------- */
 function defaultSokbo(){try{return JSON.parse($('#sokboDefault').textContent||'null');}catch(e){return null;}}
+/* 출하속보 재고 기록: 날짜별 ‘해당일 24시 기준’ 재고 (서버 기록 + 이 PC 기록). 전일 대비 변동·일별 추이에 사용 */
+let SOKHIST={};try{SOKHIST=JSON.parse(localStorage.getItem('b365-sokhist')||'{}')||{};}catch(e){SOKHIST={};}
+function sokHistSave(){Object.keys(SOKHIST).sort().slice(0,-400).forEach(k=>delete SOKHIST[k]);try{localStorage.setItem('b365-sokhist',JSON.stringify(SOKHIST));}catch(e){}}
+function sokHistMerge(h){if(!h||typeof h!=='object')return;for(const k in h)if(/^\d{4}-\d\d-\d\d$/.test(k)&&h[k]&&typeof h[k]==='object')SOKHIST[k]=h[k];sokHistSave();}
+const sokDay=d=>`${+d.slice(5,7)}/${+d.slice(8,10)}`;
+const sokAt=()=>SOK?`${sokDay(SOK.date)} 24시 기준`:'';
+function sokVal(date,g,n){const h=SOKHIST[date];if(!h)return null;if(g==='total')return isFinite(h.total)?h.total:null;const o=h[g];const v=o&&typeof o==='object'?(n==null?o.sum:o[n]):null;return isFinite(v)?v:null;}
+function sokChg(g,n){if(!SOK||SOKMETA.source==='embedded')return null;const pv=Object.keys(SOKHIST).filter(k=>k<SOK.date).sort().pop();if(!pv)return null;
+  const a=sokVal(SOK.date,g,n),b=sokVal(pv,g,n);if(a==null||b==null)return null;return {d:a-b,prev:pv,gap:Math.round((new Date(SOK.date)-new Date(pv))/864e5)};}
+const dT=v=>(v>0?'+':v<0?'−':'±')+nf(Math.abs(v))+' t';
+const chgTxt=c=>c?`${dT(c.d)} <small style="color:var(--fg3)">${c.gap===1?'전일':sokDay(c.prev)} 대비</small>`:'<small style="color:var(--fg3)">비교할 전일 기록 없음</small>';
+function sokSeries(p,g,n,cap){   // 레벨 추이 = 출하속보 일별(24시) 재고 ÷ 용량, 최근 30일
+  const days=SOKMETA.source==='embedded'?[SOK.date]:Object.keys(SOKHIST).filter(k=>k<=SOK.date).sort().slice(-30);
+  const sr=days.map(k=>[k,sokVal(k,g,n)]).filter(x=>x[1]!=null).map(x=>[x[0],cap?clamp(x[1]/cap*100,0,100):x[1]]);if(!sr.length)return;if(sr.length===1)sr.unshift(sr[0]);
+  p.hist=sr.map(x=>x[1]);p.times=sr.map(x=>new Date(x[0]+'T24:00'));p.sok=true;p.has=true;p.time=new Date(SOK.date+'T24:00');}
 function sokStock(){
   if(!SOK)return;const S=SOK.stock||{};
-  SL_DEF.forEach(d=>{const v=S.sc&&S.sc[d.n];if(v==null)return;const e=E[d.id],p=e.params.level,lv=clamp(v/d.cap*100,0,100);p.v=p.base=p.target=lv;p.noise=0;p.hist=p.hist.map(()=>lv);e.params.stock.v=v;
+  if(SOKMETA.source!=='embedded'&&S.sc){SOKHIST[SOK.date]=Object.assign({},S,{src:SOKMETA.source||'local'});sokHistSave();}
+  SL_DEF.forEach(d=>{const v=S.sc&&S.sc[d.n];if(v==null)return;const e=E[d.id],p=e.params.level,lv=clamp(v/d.cap*100,0,100);p.v=p.base=p.target=lv;p.noise=0;sokSeries(p,'sc',d.n,d.cap);if(!p.sok)p.hist=p.hist.map(()=>lv);e.params.stock.v=v;sokSeries(e.params.stock,'sc',d.n,null);
     const st=pStatus(p);if(RANK[st]>0&&!ALARMS.some(a=>a.eq===e.id&&a.k==='level'&&!a.ack))pushAlarm(e,'level',p,st);p.prev=st;});   // 속보 재고로 바뀐 레벨: 알람 목록에만 (토스트 연속 표시 방지)
   const mx=Math.max(1,...PIER_DEF.map(d=>(S.pier&&S.pier[d.n])||0));
-  PIER_DEF.forEach(d=>{const v=(S.pier&&S.pier[d.n])||0,pp=E[d.id].params;pp.stock.v=v;pp.level.v=clamp(v/d.cap*100,0,100);pp.level.prev=pStatus(pp.level);});
+  PIER_DEF.forEach(d=>{const v=(S.pier&&S.pier[d.n])||0,pp=E[d.id].params;pp.stock.v=v;pp.level.v=clamp(v/d.cap*100,0,100);sokSeries(pp.level,'pier',d.n,d.cap);sokSeries(pp.stock,'pier',d.n,null);pp.level.prev=pStatus(pp.level);});
 }
 function applySokbo(d,meta,o={}){
   if(!d||d.kind!=='sokbo'||!/^\d{4}-\d\d-\d\d$/.test(d.date||''))return false;
@@ -2650,10 +2666,11 @@ function applyMms(j){
 }
 async function pullSokbo(first){
   try{const r=await fetch('api/sokbo',{cache:'no-store',credentials:'same-origin'});if(r.status===404||r.status===401)return;if(!r.ok)throw new Error();
-    const j=await r.json();let S=j.sokbo;
+    const j=await r.json();sokHistMerge(j.hist);let S=j.sokbo;
     if(!S&&j.pdf){try{const b=atob(j.pdf),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);S=(await SOKBO.read(u)).data;}   // 자동으로 받은 원본 PDF (드라이브 폴더)
       catch(e){SERVER.sokbo=j.meta&&j.meta.version;toast(`자동으로 받은 출하속보를 읽지 못했습니다 (${(j.meta&&j.meta.fileName)||'PDF'}): ${e.message||e}`,'warn',9000);return;}}
-    if(applySokbo(S,j.meta,{jump:first})){SERVER.sokbo=j.meta&&j.meta.version;if(!first)toast(`출하속보 ${S.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
+    if(applySokbo(S,j.meta,{jump:first})){SERVER.sokbo=j.meta&&j.meta.version;
+      if(j.pdf&&S&&S.stock&&!(j.hist&&j.hist[S.date]))fetch('api/sokbo-hist',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:S.date,stock:S.stock,version:j.meta&&j.meta.version})}).then(r=>r.ok?r.json():null).then(x=>{if(x&&x.hist){sokHistMerge(x.hist);sokStock();renderAll();}}).catch(()=>{});if(!first)toast(`출하속보 ${S.date}가 새로 반영되었습니다 · ${(j.meta&&j.meta.uploadedBy)||''}`,'ok');}}
   catch(e){}
 }
 function restoreLocal(){try{const t=localStorage.getItem('b365-qms');if(!t)return false;const o=JSON.parse(t);if(o&&o.qms&&o.qms.v===QMS.VERSION){applyQms(o.qms,o.meta);return true;}}catch(e){}return false;}
