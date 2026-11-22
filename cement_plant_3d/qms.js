@@ -234,18 +234,21 @@
     if (oddDates.length) warn.push(`앞뒤 행과 동떨어진 날짜 ${oddDates.length}건 — 확인해 주세요: ${oddDates.slice(0, 6).join(', ')}${oddDates.length > 6 ? ' 외' : ''}`);
     if (swapped) warn.push(`시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 ${swapped}행을 자동으로 바로잡았습니다.`);
     if (badCode) warn.push(`입력 오류 공정구분(SA1KL…) ${badCode}행은 제외했습니다.`);
-    /* 재가동 자동 판단: 시작일이 있고 종료일이 빈 정지 기간은, 시작일 뒤 어느 날부터 7일 안에 서로 다른 3일 이상
-       분석 시료(또는 DCS 원료 투입량 > 1 t/h)가 있으면 그 첫날 재가동으로 봄 → 정지 기간 = 시작일 ~ 재가동 전날.
-       (하루 이틀 섞인 입력 오류 시료로는 재가동으로 보지 않음. 시작일 없는 ‘장기 가동 중단’은 자동 판단하지 않음) */
+    /* 재가동 자동 판단: 시작일이 있고 종료일이 빈 정지 기간은, 시작일 뒤 어느 날 d부터
+       ① 3일(d~d+2) 안에 서로 다른 2일 이상 + 분석 시료 4건 이상, 또는 ② 7일 안에 서로 다른 3일 이상
+       분석 시료(또는 DCS 원료 투입량 > 1 t/h)가 있으면 d를 재가동일로 봄 → 정지 기간 = 시작일 ~ 재가동 전날.
+       (입력 오류는 보통 하루 1건씩 떨어져 있어 재가동으로 보지 않음 — 2026-11-23 현장 데이터 확인. 시작일 없는 ‘장기 가동 중단’은 자동 판단하지 않음) */
     const addD = (d, n) => new Date(dayMs(d) + n * 864e5).toISOString().slice(0, 10);
-    const daysBy = {};
-    for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) for (const o of recs[k]) (daysBy[o.unit] = daysBy[o.unit] || new Set()).add(o.day);
-    for (const o of recs.dcs) if (o.feed > 1) (daysBy[o.unit] = daysBy[o.unit] || new Set()).add(o.day);
+    const cntBy = {};
+    const addC = (u, d) => { const m = cntBy[u] = cntBy[u] || {}; m[d] = (m[d] || 0) + 1; };
+    for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) for (const o of recs[k]) addC(o.unit, o.day);
+    for (const o of recs.dcs) if (o.feed > 1) addC(o.unit, o.day);
     const autoEnd = [];
     for (const x of downs) {
       if (x.to || !x.from) continue;
-      const ds = [...(daysBy[x.k] || [])].filter(d => d > x.from).sort();
-      const i = ds.findIndex(d => ds.filter(e => e >= d && e <= addD(d, 6)).length >= 3);
+      const cm = cntBy[x.k] || {}, ds = Object.keys(cm).filter(d => d > x.from).sort();
+      const win = (d, n) => ds.filter(e => e >= d && e <= addD(d, n));
+      const i = ds.findIndex(d => { const w3 = win(d, 2); return (w3.length >= 2 && w3.reduce((a, e) => a + cm[e], 0) >= 4) || win(d, 6).length >= 3; });
       if (i >= 0) { x.to = addD(ds[i], -1); autoEnd.push({ k: x.k, from: x.from, to: x.to, restart: ds[i] }); }
     }
     for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) recs[k] = recs[k].filter(o => {

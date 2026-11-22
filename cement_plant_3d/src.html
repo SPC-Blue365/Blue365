@@ -802,7 +802,7 @@ function cleanCfg(c){
 }
 const fcaoTxt=()=>`${nf(FCAO_TARGET,1)} ± ${nf(FCAO_TOL,1)}% (${nf(FCAO_LIM[0],2)}~${nf(FCAO_LIM[1],2)}%)`;
 /* 그 날 그 호기가 정지·보수 중이면 'stop'·'repair', 아니면 null */
-/* 종료일이 빈 ‘가동 중단’ 기간은 업로드한 QMS 데이터로 재가동을 판단해 끝냄 (qms.js autoEnd: 7일 안에 서로 다른 3일 이상 시료) */
+/* 종료일이 빈 ‘가동 중단’ 기간은 업로드한 QMS 데이터로 재가동을 판단해 끝냄 (qms.js autoEnd: 3일 안 이틀 이상·4건 이상 또는 7일 안 3일 이상 시료) */
 let QAUTO=[];
 const autoTo=x=>{if(x.to||!x.from||x.kind!=='stop')return '';const a=QAUTO.find(y=>y.k===x.k&&y.from===x.from);return a?a.to:'';};
 function downOn(id,day){for(const x of (CFG.down||[])){const to=x.to||autoTo(x);if(x.k===id&&(!x.from||day>=x.from)&&(!to||day<=to))return x.kind;}return null;}
@@ -3152,7 +3152,7 @@ function renderCfg(){
      <td><select data-dkind aria-label="구분"${dis}><option value="stop"${x.kind==='stop'?' selected':''}>가동 중단</option><option value="repair"${x.kind==='repair'?' selected':''}>보수</option></select></td>
      <td><input type="text" data-dnote value="${esc(x.note||'')}" maxlength="30" aria-label="메모" style="width:120px;text-align:left"${dis}></td><td>${ed?`<button type="button" class="pbtn" data-ddel="${i}" aria-label="이 기간 삭제">${ic('x')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>
    ${ed?'<div class="acts" style="justify-content:flex-start"><button class="btn ghost" type="button" id="cfDownAdd">+ 기간 추가</button></div>':''}
-   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지 — 단 시작일이 있는 ‘가동 중단’은 업로드한 데이터에 7일 안 서로 다른 3일 이상 시료(또는 DCS 투입량)가 나오면 <b>재가동으로 자동 판단</b>합니다(‘확정’을 누르면 종료일로 저장). ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
+   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지 — 단 시작일이 있는 ‘가동 중단’은 업로드한 데이터에 3일 안 이틀 이상(시료 4건 이상) 또는 7일 안 3일 이상 시료(또는 DCS 투입량)가 나오면 <b>재가동으로 자동 판단</b>합니다(‘확정’을 누르면 종료일로 저장). ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
    <div class="sect">출하 시멘트 기준 <span class="seg" role="tablist" aria-label="품종">${KS_PRODS.map(p=>`<button type="button" role="tab" data-cfp="${p}" class="${cfgProd===p?'on':''}">${p}</button>`).join('')}</span></div>
    <div class="tbl"><table class="cftbl"><thead><tr><th>항목</th><th>단위</th><th>KS 기준값</th><th>방향</th><th>확인</th><th>사내 하한</th><th>사내 상한</th></tr></thead><tbody>${KS_ITEMS.map(it=>{const k=K[it.f]||{},h=I[it.f]||{};
      return `<tr><td>${it.n}</td><td><small>${it.u}</small></td><td><input type="text" data-cf="ks.${it.f}" value="${cfIn(it,k.v)}" aria-label="${it.n} KS 기준값"${dis}></td><td><small>${it.dir==='ge'?'이상':'이하'}</small></td><td><input type="checkbox" data-cf="ok.${it.f}" aria-label="${it.n} KS 원문 확인"${k.ok?' checked':''}${dis}></td>

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-23 08:18">
+<meta name="b365-build" content="2026-11-23 08:23">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -560,7 +560,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-23 08:18</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-23 08:23</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -911,18 +911,21 @@ table.ks td.r,table.ks th.r{text-align:right}
     if (oddDates.length) warn.push(`앞뒤 행과 동떨어진 날짜 ${oddDates.length}건 — 확인해 주세요: ${oddDates.slice(0, 6).join(', ')}${oddDates.length > 6 ? ' 외' : ''}`);
     if (swapped) warn.push(`시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 ${swapped}행을 자동으로 바로잡았습니다.`);
     if (badCode) warn.push(`입력 오류 공정구분(SA1KL…) ${badCode}행은 제외했습니다.`);
-    /* 재가동 자동 판단: 시작일이 있고 종료일이 빈 정지 기간은, 시작일 뒤 어느 날부터 7일 안에 서로 다른 3일 이상
-       분석 시료(또는 DCS 원료 투입량 > 1 t/h)가 있으면 그 첫날 재가동으로 봄 → 정지 기간 = 시작일 ~ 재가동 전날.
-       (하루 이틀 섞인 입력 오류 시료로는 재가동으로 보지 않음. 시작일 없는 ‘장기 가동 중단’은 자동 판단하지 않음) */
+    /* 재가동 자동 판단: 시작일이 있고 종료일이 빈 정지 기간은, 시작일 뒤 어느 날 d부터
+       ① 3일(d~d+2) 안에 서로 다른 2일 이상 + 분석 시료 4건 이상, 또는 ② 7일 안에 서로 다른 3일 이상
+       분석 시료(또는 DCS 원료 투입량 > 1 t/h)가 있으면 d를 재가동일로 봄 → 정지 기간 = 시작일 ~ 재가동 전날.
+       (입력 오류는 보통 하루 1건씩 떨어져 있어 재가동으로 보지 않음 — 2026-11-23 현장 데이터 확인. 시작일 없는 ‘장기 가동 중단’은 자동 판단하지 않음) */
     const addD = (d, n) => new Date(dayMs(d) + n * 864e5).toISOString().slice(0, 10);
-    const daysBy = {};
-    for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) for (const o of recs[k]) (daysBy[o.unit] = daysBy[o.unit] || new Set()).add(o.day);
-    for (const o of recs.dcs) if (o.feed > 1) (daysBy[o.unit] = daysBy[o.unit] || new Set()).add(o.day);
+    const cntBy = {};
+    const addC = (u, d) => { const m = cntBy[u] = cntBy[u] || {}; m[d] = (m[d] || 0) + 1; };
+    for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) for (const o of recs[k]) addC(o.unit, o.day);
+    for (const o of recs.dcs) if (o.feed > 1) addC(o.unit, o.day);
     const autoEnd = [];
     for (const x of downs) {
       if (x.to || !x.from) continue;
-      const ds = [...(daysBy[x.k] || [])].filter(d => d > x.from).sort();
-      const i = ds.findIndex(d => ds.filter(e => e >= d && e <= addD(d, 6)).length >= 3);
+      const cm = cntBy[x.k] || {}, ds = Object.keys(cm).filter(d => d > x.from).sort();
+      const win = (d, n) => ds.filter(e => e >= d && e <= addD(d, n));
+      const i = ds.findIndex(d => { const w3 = win(d, 2); return (w3.length >= 2 && w3.reduce((a, e) => a + cm[e], 0) >= 4) || win(d, 6).length >= 3; });
       if (i >= 0) { x.to = addD(ds[i], -1); autoEnd.push({ k: x.k, from: x.from, to: x.to, restart: ds[i] }); }
     }
     for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) recs[k] = recs[k].filter(o => {
@@ -1488,7 +1491,7 @@ function cleanCfg(c){
 }
 const fcaoTxt=()=>`${nf(FCAO_TARGET,1)} ± ${nf(FCAO_TOL,1)}% (${nf(FCAO_LIM[0],2)}~${nf(FCAO_LIM[1],2)}%)`;
 /* 그 날 그 호기가 정지·보수 중이면 'stop'·'repair', 아니면 null */
-/* 종료일이 빈 ‘가동 중단’ 기간은 업로드한 QMS 데이터로 재가동을 판단해 끝냄 (qms.js autoEnd: 7일 안에 서로 다른 3일 이상 시료) */
+/* 종료일이 빈 ‘가동 중단’ 기간은 업로드한 QMS 데이터로 재가동을 판단해 끝냄 (qms.js autoEnd: 3일 안 이틀 이상·4건 이상 또는 7일 안 3일 이상 시료) */
 let QAUTO=[];
 const autoTo=x=>{if(x.to||!x.from||x.kind!=='stop')return '';const a=QAUTO.find(y=>y.k===x.k&&y.from===x.from);return a?a.to:'';};
 function downOn(id,day){for(const x of (CFG.down||[])){const to=x.to||autoTo(x);if(x.k===id&&(!x.from||day>=x.from)&&(!to||day<=to))return x.kind;}return null;}
@@ -3390,7 +3393,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-23 08:18</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-23 08:23</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   const mm=SERVER&&SERVER.mms;if(mm&&mm.on)h+=`<div class="row"><span>MMS 연결</span><b>${mm.ok===false?'<span style="color:var(--bad)">'+esc(mm.err||'오류')+'</span>':mm.ok?'정상':'첫 연결 대기'} · ${mm.every}초마다${mm.last?' · 확인 '+esc(mm.last.slice(5,16).replace('T',' ')):''}${mm.ok?` · 매칭 항목 ${mm.items}개 (태그 ${mm.got}/${mm.tags})`:''}${mm.skip?` · 값 없음 ${mm.skip}개`:''}</b></div>`;
   const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>${esc(ml.folder||'')} · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
@@ -3547,7 +3550,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-23 08:18';
+const BUILD='2026-11-23 08:23';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
@@ -3838,7 +3841,7 @@ function renderCfg(){
      <td><select data-dkind aria-label="구분"${dis}><option value="stop"${x.kind==='stop'?' selected':''}>가동 중단</option><option value="repair"${x.kind==='repair'?' selected':''}>보수</option></select></td>
      <td><input type="text" data-dnote value="${esc(x.note||'')}" maxlength="30" aria-label="메모" style="width:120px;text-align:left"${dis}></td><td>${ed?`<button type="button" class="pbtn" data-ddel="${i}" aria-label="이 기간 삭제">${ic('x')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>
    ${ed?'<div class="acts" style="justify-content:flex-start"><button class="btn ghost" type="button" id="cfDownAdd">+ 기간 추가</button></div>':''}
-   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지 — 단 시작일이 있는 ‘가동 중단’은 업로드한 데이터에 7일 안 서로 다른 3일 이상 시료(또는 DCS 투입량)가 나오면 <b>재가동으로 자동 판단</b>합니다(‘확정’을 누르면 종료일로 저장). ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
+   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지 — 단 시작일이 있는 ‘가동 중단’은 업로드한 데이터에 3일 안 이틀 이상(시료 4건 이상) 또는 7일 안 3일 이상 시료(또는 DCS 투입량)가 나오면 <b>재가동으로 자동 판단</b>합니다(‘확정’을 누르면 종료일로 저장). ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
    <div class="sect">출하 시멘트 기준 <span class="seg" role="tablist" aria-label="품종">${KS_PRODS.map(p=>`<button type="button" role="tab" data-cfp="${p}" class="${cfgProd===p?'on':''}">${p}</button>`).join('')}</span></div>
    <div class="tbl"><table class="cftbl"><thead><tr><th>항목</th><th>단위</th><th>KS 기준값</th><th>방향</th><th>확인</th><th>사내 하한</th><th>사내 상한</th></tr></thead><tbody>${KS_ITEMS.map(it=>{const k=K[it.f]||{},h=I[it.f]||{};
      return `<tr><td>${it.n}</td><td><small>${it.u}</small></td><td><input type="text" data-cf="ks.${it.f}" value="${cfIn(it,k.v)}" aria-label="${it.n} KS 기준값"${dis}></td><td><small>${it.dir==='ge'?'이상':'이하'}</small></td><td><input type="checkbox" data-cf="ok.${it.f}" aria-label="${it.n} KS 원문 확인"${k.ok?' checked':''}${dis}></td>
