@@ -804,6 +804,15 @@ const fcaoTxt=()=>`${nf(FCAO_TARGET,1)} ± ${nf(FCAO_TOL,1)}% (${nf(FCAO_LIM[0],
 /* 그 날 그 호기가 정지·보수 중이면 'stop'·'repair', 아니면 null */
 /* 종료일이 빈 ‘가동 중단’ 기간은 업로드한 QMS 데이터로 재가동을 판단해 끝냄 (qms.js autoEnd: 3일 안 이틀 이상·4건 이상 또는 7일 안 3일 이상 시료) */
 let QAUTO=[];
+const qmsFresh=()=>!QD||('autoEnd' in QD)||(QMETA&&QMETA.source==='embedded');   // 재가동 판단이 들어간 집계인지 (2026-11-23 이후 화면)
+function runWhy(id){
+  const e=E[id];if(!e)return '';const t=todayStr();
+  const f=e.params&&e.params.feed;if(e.kiln&&f&&f.has)return f.v<=1?`정지 <small>(DCS 원료 투입량 ${nf(f.v,1)} t/h)</small>`:'가동 <small>(DCS 원료 투입량)</small>';
+  const x=(CFG.down||[]).find(x=>{const to=x.to||autoTo(x);return x.k===id&&(!x.from||t>=x.from)&&(!to||t<=to);});
+  const a=QAUTO.find(y=>y.k===id);
+  if(x)return `${x.kind==='repair'?'보수':'정지'} <small>(관리기준 설정 ${x.from?sokDay(x.from):'처음'}~${x.to?sokDay(x.to):''}${!x.to&&x.from&&x.kind==='stop'?(qmsFresh()?' · 데이터상 재가동 없음':' · 예전 집계라 재가동 판단 안 됨'):''})</small>`;
+  return a?`가동 <small>(데이터상 ${sokDay(a.restart)} 재가동${(CFG.down||[]).some(x=>x.k===id&&x.from===a.from&&!x.to)?' · 설정에서 확정 가능':''})</small>`:'가동';
+}
 const autoTo=x=>{if(x.to||!x.from||x.kind!=='stop')return '';const a=QAUTO.find(y=>y.k===x.k&&y.from===x.from);return a?a.to:'';};
 function downOn(id,day){for(const x of (CFG.down||[])){const to=x.to||autoTo(x);if(x.k===id&&(!x.from||day>=x.from)&&(!to||day<=to))return x.kind;}return null;}
 const downTxt=x=>`${x.from?`${+x.from.slice(5,7)}/${+x.from.slice(8)}`:''}${x.from&&x.from.slice(0,4)!==todayStr().slice(0,4)?`(${x.from.slice(2,4)})`:''}~${x.to?`${+x.to.slice(5,7)}/${+x.to.slice(8)}`:''}`;
@@ -2557,6 +2566,7 @@ function applyQms(Q,meta,o={}){
   Q=cleanQ(Q);meta=cleanQ(meta||{});
   QD=Q;QMETA=meta||{};
   const prevAuto=QAUTO.map(a=>a.k+a.restart).join();QAUTO=Array.isArray(Q&&Q.autoEnd)?Q.autoEnd.filter(a=>a&&a.k&&/^\d{4}-\d\d-\d\d$/.test(a.to||'')&&/^\d{4}-\d\d-\d\d$/.test(a.restart||'')):[];
+  if(!qmsFresh()&&!o.quiet)setTimeout(()=>toast('팀 QMS 데이터가 예전 화면에서 집계되어 재가동 판단이 빠져 있습니다 · 새로고침 후 같은 파일을 다시 올려 주세요','warn',12000),1500);
   QAUTO.filter(a=>!prevAuto.includes(a.k+a.restart)&&(CFG.down||[]).some(x=>x.k===a.k&&x.from===a.from&&!x.to)).forEach((a,i)=>setTimeout(()=>toast(`${E[a.k]?E[a.k].name:a.k}: ${sokDay(a.restart)}부터 데이터가 있어 재가동으로 판단했습니다 · 관리기준 설정에서 확정할 수 있습니다`,'act',9000),800+i*400));
   allParams().forEach(({e,k,p})=>{
     if(!p.src||p.mms)return;
@@ -2706,6 +2716,9 @@ function statHTML(){
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
   h+=`<div class="row"><span>화면 버전</span><b class="num">__B365_BUILD__</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
+  {const ids=['K3','K4','K5','K6','K7','RM3','RM4','RM5','RM51','RM6','RM7'].filter(id=>E[id]&&((CFG.down||[]).some(x=>x.k===id)||QAUTO.some(a=>a.k===id)));
+   if(ids.length)h+=`<div class="row"><span>가동 판단</span><b style="white-space:normal;text-align:right">${ids.map(id=>`${esc(E[id].name)} ${runWhy(id)}`).join('<br>')}</b></div>`;}
+  if(QD&&!qmsFresh())h+=`<div class="row"><span>집계 버전</span><b style="color:var(--warn);white-space:normal;text-align:right">예전 화면에서 집계한 데이터입니다 — 재가동 자동 판단이 빠져 있어 정지로 보일 수 있습니다. 화면을 새로고침(Ctrl+F5)한 뒤 같은 QMS 파일을 다시 올려 주세요.</b></div>`;
   const mm=SERVER&&SERVER.mms;if(mm&&mm.on)h+=`<div class="row"><span>MMS 연결</span><b>${mm.ok===false?'<span style="color:var(--bad)">'+esc(mm.err||'오류')+'</span>':mm.ok?'정상':'첫 연결 대기'} · ${mm.every}초마다${mm.last?' · 확인 '+esc(mm.last.slice(5,16).replace('T',' ')):''}${mm.ok?` · 매칭 항목 ${mm.items}개 (태그 ${mm.got}/${mm.tags})`:''}${mm.skip?` · 값 없음 ${mm.skip}개`:''}</b></div>`;
   const ml=SERVER&&SERVER.sokboWatch;if(ml&&ml.on)h+=`<div class="row"><span>출하속보 자동 읽기</span><b>${esc(ml.folder||'')} · ${ml.every?ml.every+'초마다':''}${ml.last?' · 확인 '+esc(ml.last.slice(5).replace('T',' ')):''} · ${ml.ok===false?'<span style="color:var(--bad)">'+esc(ml.err||'오류')+'</span>':ml.ok?'정상':'첫 확인 대기'}${ml.got?' · 마지막 수신 '+esc(ml.got.slice(5).replace('T',' ')):''}</b></div>`;
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date)+' 실적'+(SOK.made&&SOK.made!==SOK.date?` (${esc(SOK.made.slice(5).replace('-','/'))} 발행)`:''):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
