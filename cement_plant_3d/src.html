@@ -193,6 +193,7 @@ a{color:inherit;text-decoration:none}
 /* 관리기준 설정 */
 .cfgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .cftbl{width:100%;border-collapse:collapse;font-size:13px}
+.dauto{margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:220px}.dauto small{color:var(--fg3);line-height:1.35}.dauto .pbtn{width:auto;height:24px;padding:0 10px;border-radius:12px;background:var(--accent);color:#fff;font-weight:600;font-size:12px}
 .cftbl th{font-size:11.5px;color:var(--fg3);font-weight:600;text-align:left;padding:0 6px 6px;white-space:nowrap}
 .cftbl td{padding:4px 6px;border-top:1px solid var(--line);white-space:nowrap}
 .cftbl input[type=text]{width:84px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;padding:0 8px;text-align:right}
@@ -801,7 +802,10 @@ function cleanCfg(c){
 }
 const fcaoTxt=()=>`${nf(FCAO_TARGET,1)} ± ${nf(FCAO_TOL,1)}% (${nf(FCAO_LIM[0],2)}~${nf(FCAO_LIM[1],2)}%)`;
 /* 그 날 그 호기가 정지·보수 중이면 'stop'·'repair', 아니면 null */
-function downOn(id,day){for(const x of (CFG.down||[]))if(x.k===id&&(!x.from||day>=x.from)&&(!x.to||day<=x.to))return x.kind;return null;}
+/* 종료일이 빈 ‘가동 중단’ 기간은 업로드한 QMS 데이터로 재가동을 판단해 끝냄 (qms.js autoEnd: 7일 안에 서로 다른 3일 이상 시료) */
+let QAUTO=[];
+const autoTo=x=>{if(x.to||!x.from||x.kind!=='stop')return '';const a=QAUTO.find(y=>y.k===x.k&&y.from===x.from);return a?a.to:'';};
+function downOn(id,day){for(const x of (CFG.down||[])){const to=x.to||autoTo(x);if(x.k===id&&(!x.from||day>=x.from)&&(!to||day<=to))return x.kind;}return null;}
 const downTxt=x=>`${x.from?`${+x.from.slice(5,7)}/${+x.from.slice(8)}`:''}${x.from&&x.from.slice(0,4)!==todayStr().slice(0,4)?`(${x.from.slice(2,4)})`:''}~${x.to?`${+x.to.slice(5,7)}/${+x.to.slice(8)}`:''}`;
 function applyCfg(c,o={}){
   CFG=cleanCfg(c);FCAO_TARGET=CFG.fcao.target;FCAO_TOL=CFG.fcao.tol;FCAO_WARN_RATE=CFG.fcao.warnRate;
@@ -2552,6 +2556,8 @@ const cleanQ=v=>typeof v==='string'?v.replace(/[<>&"'`]/g,''):Array.isArray(v)?v
 function applyQms(Q,meta,o={}){
   Q=cleanQ(Q);meta=cleanQ(meta||{});
   QD=Q;QMETA=meta||{};
+  const prevAuto=QAUTO.map(a=>a.k+a.restart).join();QAUTO=Array.isArray(Q&&Q.autoEnd)?Q.autoEnd.filter(a=>a&&a.k&&/^\d{4}-\d\d-\d\d$/.test(a.to||'')&&/^\d{4}-\d\d-\d\d$/.test(a.restart||'')):[];
+  QAUTO.filter(a=>!prevAuto.includes(a.k+a.restart)&&(CFG.down||[]).some(x=>x.k===a.k&&x.from===a.from&&!x.to)).forEach((a,i)=>setTimeout(()=>toast(`${E[a.k]?E[a.k].name:a.k}: ${sokDay(a.restart)}부터 데이터가 있어 재가동으로 판단했습니다 · 관리기준 설정에서 확정할 수 있습니다`,'act',9000),800+i*400));
   allParams().forEach(({e,k,p})=>{
     if(!p.src||p.mms)return;
     if(p.ana){p.has=false;p.hist=[];p.times=[];p.lastTs=null;}
@@ -3142,11 +3148,11 @@ function renderCfg(){
    <div class="sect">킬른·원료밀 정지·보수 기간 <small>DCS가 없을 때 가동률·생산 계산과 현재 가동 상태에 씀 · ‘가동 중단’ 기간의 분석 시료는 업로드할 때 입력 오류로 제외</small></div>
    <div class="tbl"><table class="cftbl"><thead><tr><th>설비</th><th>시작일</th><th>종료일</th><th>구분</th><th>메모</th><th></th></tr></thead><tbody>${(CFG.down||[]).map((x,i)=>`<tr data-dn="${i}">
      <td><select data-dk aria-label="설비"${dis}>${DOWN_UNITS.map(([v,t])=>`<option value="${v}"${x.k===v?' selected':''}>${t}</option>`).join('')}</select></td>
-     <td><input type="date" data-df value="${x.from}" aria-label="시작일"${dis}></td><td><input type="date" data-dt value="${x.to}" aria-label="종료일 (빈칸 = 지금까지)"${dis}></td>
+     <td><input type="date" data-df value="${x.from}" aria-label="시작일"${dis}></td><td><input type="date" data-dt value="${x.to}" aria-label="종료일 (빈칸 = 지금까지)"${dis}>${!x.to&&autoTo(x)?`<div class="dauto"><small>데이터상 ${sokDay(QAUTO.find(y=>y.k===x.k&&y.from===x.from).restart)} 재가동 → ${sokDay(autoTo(x))}까지로 계산 중</small>${ed?` <button type="button" class="pbtn" data-dfix="${i}" data-v="${autoTo(x)}">확정</button>`:''}</div>`:''}</td>
      <td><select data-dkind aria-label="구분"${dis}><option value="stop"${x.kind==='stop'?' selected':''}>가동 중단</option><option value="repair"${x.kind==='repair'?' selected':''}>보수</option></select></td>
      <td><input type="text" data-dnote value="${esc(x.note||'')}" maxlength="30" aria-label="메모" style="width:120px;text-align:left"${dis}></td><td>${ed?`<button type="button" class="pbtn" data-ddel="${i}" aria-label="이 기간 삭제">${ic('x')}</button>`:''}</td></tr>`).join('')}</tbody></table></div>
    ${ed?'<div class="acts" style="justify-content:flex-start"><button class="btn ghost" type="button" id="cfDownAdd">+ 기간 추가</button></div>':''}
-   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지. ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
+   <div class="note">시작일 빈칸 = 처음부터, 종료일 빈칸 = 지금까지 — 단 시작일이 있는 ‘가동 중단’은 업로드한 데이터에 7일 안 서로 다른 3일 이상 시료(또는 DCS 투입량)가 나오면 <b>재가동으로 자동 판단</b>합니다(‘확정’을 누르면 종료일로 저장). ‘가동 중단’은 가동률·설계 대비에서 그 기간을 빼고, ‘보수’는 정지 시간으로 셉니다. DCS 원료 투입량이 있으면 DCS가 우선입니다.</div>
    <div class="sect">출하 시멘트 기준 <span class="seg" role="tablist" aria-label="품종">${KS_PRODS.map(p=>`<button type="button" role="tab" data-cfp="${p}" class="${cfgProd===p?'on':''}">${p}</button>`).join('')}</span></div>
    <div class="tbl"><table class="cftbl"><thead><tr><th>항목</th><th>단위</th><th>KS 기준값</th><th>방향</th><th>확인</th><th>사내 하한</th><th>사내 상한</th></tr></thead><tbody>${KS_ITEMS.map(it=>{const k=K[it.f]||{},h=I[it.f]||{};
      return `<tr><td>${it.n}</td><td><small>${it.u}</small></td><td><input type="text" data-cf="ks.${it.f}" value="${cfIn(it,k.v)}" aria-label="${it.n} KS 기준값"${dis}></td><td><small>${it.dir==='ge'?'이상':'이하'}</small></td><td><input type="checkbox" data-cf="ok.${it.f}" aria-label="${it.n} KS 원문 확인"${k.ok?' checked':''}${dis}></td>
@@ -3157,6 +3163,7 @@ function renderCfg(){
   const reDraft=f=>{const d=readCfg(true);if(!d)return;f(d);CFG_DRAFT=d;const keep=CFG;CFG=CFG_DRAFT;renderCfg();CFG=keep;};
   const da=$('#cfDownAdd');if(da)da.onclick=()=>reDraft(d=>d.down.push({k:'K4',from:todayStr(),to:'',kind:'repair',note:''}));
   $$('[data-ddel]').forEach(b=>b.onclick=()=>reDraft(d=>d.down.splice(+b.dataset.ddel,1)));
+  $$('[data-dfix]').forEach(b=>b.onclick=()=>reDraft(d=>{const x=d.down[+b.dataset.dfix];if(x)x.to=b.dataset.v;}));
   $$('[data-cfp]').forEach(b=>b.onclick=()=>{const d=readCfg(true);if(d)CFG_DRAFT=d;else return;cfgProd=b.dataset.cfp;const keep=CFG;CFG=CFG_DRAFT;renderCfg();CFG=keep;});
   $('#cfCancel').onclick=closeCfg;const rs=$('#cfReset');if(rs)rs.onclick=()=>{const keep=CFG;CFG=cleanCfg(null);CFG_DRAFT=CFG;renderCfg();CFG=keep;toast('기본값을 불러왔습니다. 저장을 눌러야 적용됩니다','act');};
 }

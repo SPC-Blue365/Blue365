@@ -180,7 +180,7 @@
     const warn = [], counts = {}, recs = { raw: [], res: [], dcs: [], clk: [], xrd: [], cem: [], cemop: [], ship: [], acc: [] }, oddDates = [];
     let future = 0, swapped = 0, noUnit = 0, badCode = 0;
     // 가동 중단 기간(관리기준 설정)에 들어온 분석 시료 = 입력 오류 → 제외 (운전값 DCS는 그대로)
-    const downs = (Array.isArray(opt.down) ? opt.down : []).filter(x => x && x.kind === 'stop' && typeof x.k === 'string');
+    const downs = (Array.isArray(opt.down) ? opt.down : []).filter(x => x && x.kind === 'stop' && typeof x.k === 'string').map(x => ({ k: x.k, from: x.from || '', to: x.to || '' }));
     const stopOn = (u, d) => downs.some(x => x.k === u && (!x.from || d >= x.from) && (!x.to || d <= x.to));
     const inStop = {}, inStopRows = [];
     for (const [name, rows] of Object.entries(sheets || {})) {
@@ -211,7 +211,7 @@
           recs.ship.push(o); n++; continue;
         }
         const unit = unitOf(row[cUnit]); if (!unit) { if (/^SA1KL\d$/i.test(txt(row[cUnit]))) badCode++; else noUnit++; continue; }   // SA1KL3·SA1KL6 = 입력 오류 코드
-        if (kind !== 'dcs' && kind !== 'cemop' && stopOn(unit, day)) { inStop[unit] = (inStop[unit] || 0) + 1; inStopRows.push(`${name} ${r + 1}행(${day})`); continue; }
+        if (kind !== 'dcs' && kind !== 'cemop') { o._ref = `${name} ${r + 1}행(${day})`; o._sh = name; }   // 정지 기간 확인은 다 읽은 뒤 (재가동 자동 판단 후)
         o.unit = unit; if (cName >= 0) o.grade = txt(row[cName]); if (cCtype >= 0) o.ctype = txt(row[cCtype]);
         if (kind === 'cemop') { for (const [f, i] of cols) o[f] = num(row[i]); recs.cemop.push(o); n++; continue; }   // 운전값: 0은 실제 값(정지)
         for (const [f, i] of cols) o[f] = kind === 'dcs' ? num(row[i]) : ana(row[i]);
@@ -234,6 +234,27 @@
     if (oddDates.length) warn.push(`앞뒤 행과 동떨어진 날짜 ${oddDates.length}건 — 확인해 주세요: ${oddDates.slice(0, 6).join(', ')}${oddDates.length > 6 ? ' 외' : ''}`);
     if (swapped) warn.push(`시멘트 시트의 Blaine·45㎛ 값이 서로 바뀐 ${swapped}행을 자동으로 바로잡았습니다.`);
     if (badCode) warn.push(`입력 오류 공정구분(SA1KL…) ${badCode}행은 제외했습니다.`);
+    /* 재가동 자동 판단: 시작일이 있고 종료일이 빈 정지 기간은, 시작일 뒤 어느 날부터 7일 안에 서로 다른 3일 이상
+       분석 시료(또는 DCS 원료 투입량 > 1 t/h)가 있으면 그 첫날 재가동으로 봄 → 정지 기간 = 시작일 ~ 재가동 전날.
+       (하루 이틀 섞인 입력 오류 시료로는 재가동으로 보지 않음. 시작일 없는 ‘장기 가동 중단’은 자동 판단하지 않음) */
+    const addD = (d, n) => new Date(dayMs(d) + n * 864e5).toISOString().slice(0, 10);
+    const daysBy = {};
+    for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) for (const o of recs[k]) (daysBy[o.unit] = daysBy[o.unit] || new Set()).add(o.day);
+    for (const o of recs.dcs) if (o.feed > 1) (daysBy[o.unit] = daysBy[o.unit] || new Set()).add(o.day);
+    const autoEnd = [];
+    for (const x of downs) {
+      if (x.to || !x.from) continue;
+      const ds = [...(daysBy[x.k] || [])].filter(d => d > x.from).sort();
+      const i = ds.findIndex(d => ds.filter(e => e >= d && e <= addD(d, 6)).length >= 3);
+      if (i >= 0) { x.to = addD(ds[i], -1); autoEnd.push({ k: x.k, from: x.from, to: x.to, restart: ds[i] }); }
+    }
+    for (const k of ['raw', 'res', 'clk', 'xrd', 'cem']) recs[k] = recs[k].filter(o => {
+      const ref = o._ref, sh = o._sh; delete o._ref; delete o._sh;
+      if (!stopOn(o.unit, o.day)) return true;
+      inStop[o.unit] = (inStop[o.unit] || 0) + 1; inStopRows.push(ref); if (counts[sh]) counts[sh]--; return false;
+    });
+    const unm = u => u[0] === 'K' ? `${u.slice(1)}호 킬른` : u.startsWith('RM') ? `${u.slice(2).replace(/^(\d)1$/, '$1-1')}호 R/M` : `${u.slice(2)}호 C/M`;
+    for (const a of autoEnd) warn.push(`${unm(a.k)}: ${a.restart}부터 시료가 계속 있어 재가동으로 판단했습니다 — 가동 중단 기간을 ${a.from} ~ ${a.to}로 보고 계산했습니다 (관리기준 설정에서 확정할 수 있음).`);
     if (inStopRows.length) {
       const nm = u => u[0] === 'K' ? `${u.slice(1)}호 킬른` : u.startsWith('RM') ? `${u.slice(2).replace(/^(\d)1$/, '$1-1')}호 R/M` : `${u.slice(2)}호 C/M`;
       warn.push(`가동 중단 기간에 들어온 분석 시료 ${inStopRows.length}행(${Object.entries(inStop).map(([u, c]) => nm(u) + ' ' + c).join(' · ')})은 입력 오류로 보고 제외했습니다: ${inStopRows.slice(0, 6).join(', ')}${inStopRows.length > 6 ? ' 외' : ''}`);
@@ -304,7 +325,7 @@
     return {
       v: VERSION, from: all.length ? from : null, to: all.length ? to : null, accTo, built: new Date().toISOString(),
       counts, warn, total: Object.values(counts).reduce((a, b) => a + b, 0),
-      streams, csilo, ssilo, ship, accept, samples: samples.slice(0, 12)
+      streams, csilo, ssilo, ship, accept, samples: samples.slice(0, 12), autoEnd
     };
   }
 
