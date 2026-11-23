@@ -391,6 +391,8 @@ span.navi[aria-current="page"] { cursor: default }
 .tabbar span[aria-current="page"] { display: grid; justify-items: center; gap: 2px; padding: 4px 0; font-size: 10.5px; font-weight: 700 }
 .tabbar span[aria-current="page"] svg { width: 22px; height: 22px }
 .upd code { font-size: 11.5px }
+/* 휴대폰 탭바 — 레퍼런스는 6칸(repeat 6)이다. 문서가 7개(3D 공정 지도 추가)라 칸 수를 맞춘다 */
+@media (max-width: 720px) { .tabbar { grid-template-columns: repeat(7, minmax(0, 1fr)) } .tabbar a, .tabbar span[aria-current], .tabbar button { font-size: 10px } }
 
 /* 운영 현황판의 하위 화면 — 현재 문서 항목 아래에 한 단 들여 붙인다 */
 .subnav { display: grid; gap: 2px; margin: 2px 0 6px 21px; padding-left: 9px; border-left: 2px solid var(--line) }
@@ -604,6 +606,7 @@ DOC_STYLE = "".join(_S[k] for k in _DOC_KEEP) + ALIAS + SHELL_EXTRA + DOC
 #: ⭐️ **매일 보는 화면** — 품질담당이 "지금 정상인가" 를 판단하는 데 쓴다(§6-0-28).
 NAV_ITEMS = (
     ("운영 현황판", "dashboard.html", "overview"),
+    ("3D 공정 지도", "map3d.html", "cube"),        # 2026-11-24 — 시멘트 공정 지도와 같은 3D 운영 화면
     ("운영 모니터", "monitor_status.html", "alert"),
 )
 #: **근거 자료** — 매일 볼 것이 아니라 "왜 그런가" 를 따질 때 여는 것들. 한 묶음 뒤로 뺀다.
@@ -614,7 +617,7 @@ NAV_ARCHIVE = (
     ("계획서", "plan.html", "map"),
 )
 NAV_GROUPS = (("매일 보기", NAV_ITEMS), ("근거 자료", NAV_ARCHIVE))
-SHORT = {"운영 현황판": "현황판", "운영 모니터": "모니터", "현황 브리프": "브리프",
+SHORT = {"운영 현황판": "현황판", "3D 공정 지도": "3D 지도", "운영 모니터": "모니터", "현황 브리프": "브리프",
          "배합 처방": "처방", "통합 리포트": "리포트", "계획서": "계획서"}
 
 # ── 운영 현황판의 하위 화면 ──
@@ -636,6 +639,7 @@ ICONS = {
     "recent": '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6"/><path d="M9 16h5"/>',
     # 문서
     "alert": '<path d="M12 4 3 20h18z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
+    "cube": '<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5"/><path d="M12 12v9"/>',
     "brief": '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M3 20h18"/>',
     "flask": '<path d="M9 3h6"/><path d="M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 15h9"/>',
     "doc": '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 12h6"/><path d="M9 16h6"/>',

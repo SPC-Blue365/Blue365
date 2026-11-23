@@ -1713,7 +1713,7 @@ def test_every_document_menu_marks_itself_and_links_the_rest():
     from src.visualization import qmsstyle as Q
 
     items = (*Q.NAV_ITEMS, *Q.NAV_ARCHIVE)
-    assert len(items) == 6, "휴대폰 탭바는 레퍼런스대로 6칸이다 — 문서 수가 바뀌면 탭바도 손볼 것"
+    assert len(items) == 7, "휴대폰 탭바 칸 수(qmsstyle SHELL_EXTRA 의 repeat(7))와 문서 수가 맞아야 한다"
     for label, fname, _ in items:
         h = Q.nav(active=label)
         side = h[h.index('id="docnav"'):h.index("</nav>", h.index('id="docnav"'))]
@@ -1834,3 +1834,48 @@ def test_field_confirmed_route_lag_overrides_data_estimate():
     assert free.best_lag_hours == 11 and free.source == "data"
     assert pinned.best_lag_hours == 6 and pinned.source == "field"
     assert abs(pinned.best_corr) < free.best_corr, "확정 lag 의 상관은 그 lag 에서 계산해 보고만 한다"
+
+
+# ── 3D 공정 지도 (2026-11-24) ────────────────────────────────────────────────
+def test_map3d_runs_offline_and_ships_three_inline():
+    """3D 지도는 인터넷 없이 열려야 한다 — Three.js 를 파일 안에 싣고, 외부 스크립트를 부르지 않는다."""
+    import re
+
+    from scripts import make_map3d
+
+    page = make_map3d.PAGE_HTML + make_map3d.PAGE_JS + make_map3d.PAGE_CSS
+    assert not re.search(r'<script[^>]+src=', page), "외부 스크립트(CDN)를 부르면 사내 PC 에서 안 열릴 수 있다"
+    assert make_map3d.THREE_JS.exists() and make_map3d.THREE_JS.stat().st_size > 500_000
+    assert "three.js authors" in make_map3d.THREE_JS.read_text(encoding="utf-8")[:300].lower()
+
+
+def test_map3d_page_never_invents_live_values():
+    """레퍼런스(시멘트 공정 지도)는 '가상 데이터' 로 값을 움직인다. 이 지도는 그러면 안 된다(§2-1) —
+    화면 코드에 난수·가상 값 생성이 없어야 하고, 벨트 입자 수는 payload 의 최근 7일 물량에서만 나온다."""
+    from scripts import make_map3d
+
+    js = make_map3d.PAGE_JS
+    assert "Math.random" not in js, "화면 코드가 난수로 값을 만들면 안 된다"
+    for word in ("가상", "simulate", "fake"):
+        assert word not in js, f"화면 코드에 '{word}' 가 있다"
+    assert "nParts(" in js and "ton7" in js, "벨트 입자 수는 최근 7일 물량(ton7)에서 와야 한다"
+
+
+def test_map3d_payload_marks_field_lag_and_lslag_destination():
+    """지도 자료: 현장 확정 운반 시간 표시 · L-Slag 적치장 행선지 · 측정하지 않는 값의 정직한 표시."""
+    import pytest
+
+    from config import paths as P
+    from config import schema as S
+    if not (P.RAW_DIR / S.DATA_FILE).exists():
+        pytest.skip("원본 데이터가 없다(로컬 전용)")
+    from src.visualization.map3d_data import build_payload
+
+    p = build_payload()
+    r = next(r for r in p["routes"] if r["src"] == S.LINE_OLD and r["dest"] == S.LINE_OLD)
+    assert r["field"] and r["lag"] == S.ROUTE_LAG_FIXED[(S.LINE_OLD, S.LINE_OLD)]
+    assert p["lslag"]["name"] == S.DEST_NONYARD
+    assert set(p["crushers"]) == {"gc_only", "hc_only", "both"}, "크러셔는 물량이 아니라 교대 수만 센다"
+    assert "open_fill" in p["surge"] and "level" not in p["surge"], "수항 재고(측정 안 함)를 값으로 내면 안 된다"
+    for ln in S.YARD_PAIR:
+        assert p["osp"][ln]["cap"] == S.OSP_CAPACITY_TON

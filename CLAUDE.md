@@ -158,6 +158,7 @@ Blue365/
 │   ├── build_matched_dataset.py  #  매칭 통합셋       [Matching-Agent]
 │   ├── train_and_save.py      #   모델 학습·저장      [ML-Engineer]
 │   ├── benchmark_models.py    #   10개 모델 재벤치마크 [ML-Engineer]
+│   ├── make_map3d.py          #   3D 공정 지도(오프라인 Three.js) [Synthesis-Agent]
 │   ├── monitor.py             #   운영 모니터 상태
 │   └── make_final_report.py   #   임원용 통합 리포트  [Synthesis-Agent]
 ├── docs/                      # 문서
