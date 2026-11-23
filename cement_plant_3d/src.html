@@ -853,13 +853,13 @@ const CC_DEF=[{id:'CRC1',n:'1',z:-40.5,cap:1000,feed:550,load:55},{id:'CRC2',n:'
 const OSP_DEF=[{id:'OSPA',tab:'A',z:-38,pw:['PW1','PW2'],cap:40000,fill:58,inflow:1050},{id:'OSPB',tab:'B',z:-3,pw:['PW3','PW4'],cap:40000,fill:66,inflow:1150}];
 const PW_CAP=1500;
 const PW_DEF=[{id:'PW1',n:'1',osp:'OSPA',tab:'A',dz:-2.7,rate:510},{id:'PW2',n:'2',osp:'OSPA',tab:'A',dz:2.7,rate:490},{id:'PW3',n:'3',osp:'OSPB',tab:'B',dz:-2.7,rate:540},{id:'PW4',n:'4',osp:'OSPB',tab:'B',dz:2.7,rate:520}];   // 라인 합계가 이송 벨트 용량의 약 91~92% (가상)
-const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-43,mode:'stack',fill:62,design:35000,cap:37000},{id:'PBA2',y:'Y2',tab:'A',z:-33,mode:'reclaim',fill:47,design:35000,cap:37000},
-  {id:'PBB1',y:'Y1',tab:'B',z:-8,mode:'reclaim',fill:36,design:40000,cap:50000},{id:'PBB2',y:'Y2',tab:'B',z:2,mode:'stack',fill:71,design:40000,cap:50000}];
+const PB_DEF=[{id:'PBA1',y:'Y1',tab:'A',z:-44,mode:'stack',fill:62,design:35000,cap:37000},{id:'PBA2',y:'Y2',tab:'A',z:-32,mode:'reclaim',fill:47,design:35000,cap:37000},
+  {id:'PBB1',y:'Y1',tab:'B',z:-9,mode:'reclaim',fill:36,design:40000,cap:50000},{id:'PBB2',y:'Y2',tab:'B',z:3,mode:'stack',fill:71,design:40000,cap:50000}];
 /* 공정 배치 순서: 화면 앞쪽부터 3→4→5→6→7호 (현장 요청 2026-11-12)
    OSP·P/W·프리블렌딩·원료밀·원료 사일로·예열기·킬른·쿨러·클링커 사일로 구역의 z를 거울 배치 (-48~10.5 구간 그대로 사용)
    광산·크러셔·시멘트 밀·출하 구역은 그대로 */
 /* 3~5K와 6-7K 라인 사이 여유 (현장 요청 2026-11-15): 6-7K 쪽(원래 z > -17) 설비를 LINE_GAP 만큼 더 안쪽으로 */
-const LINE_GAP=12;
+const LINE_GAP=32;   /* 3~5K와 6-7K 사이: 석탄 치장(현장 제공 2026-11-24)이 들어갈 만큼 띄움 */
 const MZ=z=>-37.5-z-(z>-17?LINE_GAP:0);
 [OSP_DEF,PB_DEF,RM_DEF,RS_DEF,KILN_DEF,CS_DEF].forEach(a=>a.forEach(d=>{d.z=MZ(d.z);}));PW_DEF.forEach(d=>{d.dz=-d.dz;});
 const LINE_NM={A:'기존',B:'신설'},LINE_TXT={A:'3~5호 Line (기존)',B:'6~7호 Line (신설)'};
@@ -997,8 +997,16 @@ BERTH_DEF.forEach(d=>d.z=d.jz+d.side*9.2);
    흐름: 삼척공장 6-4·6-6호 클링커 사일로 → 벌크차량 → 동해항 사일로 → 10·21번 선석 수출선 / 동해항 하역 유연탄·Pet-coke → 벌크차량 → 삼척공장 */
 const DH={x0:150,x1:392,qz:-150,z1:-214,y:1,slot:[262,332],nums:[10,21],shipZ:-143.5,anch:[[452,-178],[518,-178],[452,-122],[518,-122]]};
 const DHCK_DEF=[{id:'DHCK1',n:'1',x:200,z:-195,cap:20000},{id:'DHCK2',n:'2',x:222,z:-195,cap:20000}];
-const HAUL_CLK=[[106,-57],[136,-57],[136,-176],[212,-176]],HAUL_COAL=[[318,-176],[136,-176],[136,-62]];   // 벌크차량 길 (클링커: 공장→동해항, 유연탄·Pet-coke: 동해항→공장)
+/* 삼척공장 석탄 치장 (현장 제공 2026-11-24): 3~5호와 6·7호 킬른 라인 사이 · 4면 방진망 · 동해항에서 벌크차량으로 반입 */
+const CY={x0:44,x1:88,z0:-46,z1:-28,gz:-37};
+/* 동해항 임시 야적장: 4면 촘촘한 방진망 · 하역한 유연탄·Pet-coke(검은 탄)를 쌓았다가 벌크차량으로 삼척공장 치장으로 */
+const DY={x0:286,x1:346,z0:-208,z1:-184,gx:321};
+const HAUL_ROAD_X=136,HAUL_ZL=CS_DEF.find(c=>c.id==='CS64').z-6.5;   // 차량 길: 공장 동쪽 x=136, 6-4·6-6호 클링커 사일로 남쪽
+const HAUL_CLK=[[96,HAUL_ZL],[HAUL_ROAD_X,HAUL_ZL],[HAUL_ROAD_X,-176],[212,-176]];                                   // 클링커: 6-4·6-6호 → 동해항 사일로
+const HAUL_COAL=[[DY.gx,DY.z1-6],[DY.gx,-176],[HAUL_ROAD_X,-176],[HAUL_ROAD_X,CY.gz],[CY.x1+5,CY.gz]];               // 탄: 동해항 야적장 → 삼척공장 치장
 const HAUL=[];
+function netYardEq(o){return Object.assign({area:'burn',icon:'silo',bar:'fill',barLabel:'저장률 (가상)',primary:'fill',
+  params:{fill:P('저장률 (가상)','%',o.fill,null,null,0,.05,{min:0,max:100}),trk:P('운행 벌크차량','대',0,null,null,0,0,{derived:1})}},o);}
 function dhckEq(d){return {id:d.id,code:'DH-CK'+d.n,n:d.n,name:`동해항 클링커 사일로 ${d.n}호`,tab:'P',area:'ship',icon:'silo',cap:d.cap,
   spec:`수출 클링커 · 용량 ${nf(d.cap)} t (현장 제공) · 삼척공장 6-4·6-6호 클링커를 벌크차량으로 받아 10·21번 선석에서 선적`,bar:'level',barLabel:'레벨',primary:'stock',
   params:{level:P('레벨','%',0,null,null,0,0,{derived:1,min:0,max:100}),stock:P('재고 (출하속보)','t',0,null,null,0,0,{derived:1})}};}
@@ -1026,7 +1034,7 @@ const DHP_EQ=()=>({id:'DHP',code:'DH-PORT',name:'동해항',tab:'P',area:'ship',
 const EQ=[
  ...QRY_DEF.map(qryEq),...CR_DEF.map(crEq),...CC_DEF.map(ccEq),...OSP_DEF.map(ospEq),...PW_DEF.map(pwEq),...PB_DEF.map(pbEq),
  ...RM_DEF.map(rmEq),...RS_DEF.map(rsEq),...KILN_DEF.map(phEq),...KILN_DEF.map(kilnEq),...CS_DEF.map(csEq),...CM_DEF.map(cmEq),...SL_DEF.map(slEq),
- ...PIER_DEF.map(pierEq),...BERTH_DEF.map(berthEq),ANCH_EQ(),DHP_EQ(),...DHCK_DEF.map(dhckEq),
+ ...PIER_DEF.map(pierEq),...BERTH_DEF.map(berthEq),ANCH_EQ(),DHP_EQ(),...DHCK_DEF.map(dhckEq),netYardEq({id:'DHCY',code:'DH-YARD',name:'동해항 임시 야적장',tab:'P',fill:46,spec:'하역한 유연탄·Pet-coke 임시 야적 · 4면 방진망 · 벌크차량으로 삼척공장 치장 반입 (현장 제공) · 저장률은 가상'}),netYardEq({id:'COALY',code:'CY',name:'석탄 치장',tab:'all',fill:58,spec:'삼척공장 유연탄·Pet-coke 치장 · 3~5호와 6·7호 킬른 사이 · 4면 방진망 · 동해항에서 벌크차량 반입 (현장 제공) · 저장률은 가상'}),
  {id:'DSP',code:'DS-1',name:'출하장',area:'ship',tab:'C',major:1,icon:'truck',spec:'벌크 출하 레인 1 · 계량대 1',bar:'prog',barLabel:'금일 계획 대비',primary:'ship',anchor:[34,10,37],
   params:{prog:P('금일 계획 대비','%',62,null,null,0,0,{derived:1,min:0,max:100}),ship:P('금일 출하량','t',3240,null,null,0,0,{counter:1}),plan:P('금일 출하 계획','t',5200,null,null,0,0,{counter:1}),wait:P('진입·계량 차량','대',2,null,8,0,0,{counter:1})}},
  {id:'LAB',code:'QC-LAB',name:'품질관리실',area:'qc',major:1,icon:'flask',spec:'XRF · XRD · 자동 시료 이송',bar:'done',barLabel:'금일 분석 완료',primary:'tat',
@@ -1106,8 +1114,8 @@ const alarmActive=a=>a.until?Date.now()<a.until:pStatus(E[a.eq].params[a.k])!=='
    3D 공정 지도 (Three.js)
    ========================================================= */
 const PAL={
- light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5',water:'#C3D7EE'},
- dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93',water:'#14243A'}
+ light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5',water:'#C3D7EE',net:'#5E6E64',coal:'#2A2D31'},
+ dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93',water:'#14243A',net:'#46544B',coal:'#141619'}
 };
 let dark=false;
 const M={};
@@ -1138,7 +1146,7 @@ function makeMats(){
   mk('ground','ground');mk('pad','pad');mk('road','road');mk('mark','mark');mk('grass','grass');mk('dirt','dirt');
   mk('wall','wall');mk('wall2','wall2');mk('accent','accent',{roughness:.6});mk('steel','steel',{metalness:.25,roughness:.55});mk('steelD','steelDark',{metalness:.25,roughness:.6});
   mk('conc','concrete');mk('lime','limestone');mk('rock','rock',{flatShading:true});mk('rock2','rock2',{flatShading:true});mk('meal','meal');mk('clk','clinker');mk('cem','cement');
-  mk('tree','tree',{flatShading:true});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');mk('water','water',{roughness:.3,metalness:.05});
+  mk('tree','tree',{flatShading:true});mk('net','net',{transparent:true,opacity:.62,side:THREE.DoubleSide,depthWrite:false,roughness:1});mk('coal','coal',{flatShading:true,roughness:.95});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');mk('water','water',{roughness:.3,metalness:.05});
   mk('hot','glow',{emissive:new THREE.Color('#FF3A0A'),emissiveIntensity:1.1,transparent:true,opacity:.5,depthWrite:false});
   mk('smoke','smoke',{transparent:true,opacity:.45,depthWrite:false});
   M.line=new THREE.LineBasicMaterial({color:PAL.light.accent,depthTest:false,transparent:true});M.line.userData.key='accent';
@@ -1160,6 +1168,29 @@ function cyl(p,r,h,mat,x,y,z,seg=28,r2){const m=new THREE.Mesh(new THREE.Cylinde
 function flat(w,d,mat,x,z,y=.03,rot=0){const m=new THREE.Mesh(new THREE.BoxGeometry(w,.06,d),mat);m.position.set(x,y,z);m.rotation.y=rot;m.receiveShadow=true;scene.add(m);return m;}
 function seg(x1,z1,x2,z2,w,mat,y=.05){const dx=x2-x1,dz=z2-z1;return flat(Math.hypot(dx,dz)+w,w,mat,(x1+x2)/2,(z1+z2)/2,y,Math.atan2(-dz,dx));}
 function grp(id){const g=new THREE.Group();g.userData.eq=id;scene.add(g);EQOBJ[id]=g;return g;}
+/* 방진망 야적장: 4면 촘촘한 그물벽(반투명) + 기둥 + 검은 탄 더미. gate = [면('n'|'s'|'e'|'w'), 시작, 끝] 차량 출입구 */
+/* 포크레인 (굴착기): 하부 주행체 + 선회체 + 붐·암·버킷. 버킷에 탄 덩어리(load) */
+const EXC={};
+function excavator(g,x,y,z){
+  const root=new THREE.Group();root.position.set(x,y,z);g.add(root);
+  box(root,5.4,1,1.2,M.tire,0,0,-1.7);box(root,5.4,1,1.2,M.tire,0,0,1.7);box(root,3,.6,2.6,M.steelD,0,.6,0);
+  const up=new THREE.Group();up.position.y=1.2;root.add(up);
+  box(up,4.4,1.7,3.6,M.ylw,-.5,0,0);box(up,1.5,1.7,1.5,M.glass,.9,1.7,-.95);box(up,1.4,.9,3.4,M.steelD,-2.4,.4,0);
+  const boom=new THREE.Group();boom.position.set(1.4,1.5,.6);up.add(boom);box(boom,6,.7,.7,M.ylw,3,-.35,0);
+  const stick=new THREE.Group();stick.position.set(6,0,0);boom.add(stick);box(stick,.55,4.2,.55,M.ylw,0,-4.2,0);
+  box(stick,1.4,1,1.5,M.steelD,.2,-5,0);
+  const load=new THREE.Mesh(new THREE.BoxGeometry(1.1,.6,1.3),M.coal);load.position.set(.2,-4.1,0);load.visible=false;stick.add(load);
+  return {root,up,boom,stick,load,t:0};
+}
+function netYard(g,x0,x1,z0,z1,y,h,gate,piles){
+  const wall=(ax,az,bx,bz)=>{const L=Math.hypot(bx-ax,bz-az);if(L<.5)return;const m=new THREE.Mesh(new THREE.BoxGeometry(L,h,.12),M.net);m.position.set((ax+bx)/2,y+h/2,(az+bz)/2);m.rotation.y=-Math.atan2(bz-az,bx-ax);m.raycast=()=>{};add(m,g,false);
+    const n=Math.max(1,Math.round(L/5));for(let i=0;i<=n;i++){const t=i/n;box(g,.3,h+.4,.3,M.steelD,ax+(bx-ax)*t,y,az+(bz-az)*t);}box(g,L,.18,.18,M.steelD,(ax+bx)/2,y+h,(az+bz)/2).rotation.y=-Math.atan2(bz-az,bx-ax);};
+  const side=(k,ax,az,bx,bz)=>{if(!gate||gate[0]!==k)return wall(ax,az,bx,bz);const horiz=az===bz;const [p,q]=[gate[1],gate[2]];
+    if(horiz){wall(ax,az,p,bz);wall(q,az,bx,bz);}else{wall(ax,az,bx,p);wall(ax,q,bx,bz);}};
+  side('s',x0,z1,x1,z1);side('n',x0,z0,x1,z0);side('w',x0,z0,x0,z1);side('e',x1,z0,x1,z1);
+  flat(x1-x0,z1-z0,M.dirt,(x0+x1)/2,(z0+z1)/2,y+.04);
+  (piles||[]).forEach(([x,z,r,sx])=>{const c=new THREE.Mesh(new THREE.ConeGeometry(r,r*.62,28),M.coal);c.scale.set(sx||1.4,1,1);c.position.set(x,y+r*.31,z);add(c,g);});
+}
 function bld(p,w,h,d,x,z){
   box(p,w,h,d,M.wall,x,0,z);
   box(p,w+.5,.5,d+.5,M.accent,x,h,z);
@@ -1173,7 +1204,7 @@ function bld(p,w,h,d,x,z){
 function tree(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(s);cyl(g,.25,1.6,M.trunk,0,0,0,6);const t=new THREE.Mesh(new THREE.IcosahedronGeometry(1.7,0),M.tree);t.position.y=2.9;t.scale.y=1.15;add(t,g);scene.add(g);}
 
 /* 벨트 기둥을 세우지 않는 곳: 출하 트럭 길(x≈8·60), 앞 도로 */
-const postBlocked=(x,z)=>((Math.abs(x-8)<4||Math.abs(x-60)<4)&&z>33&&z<57)||(z>46.5&&z<57.5);
+const postBlocked=(x,z)=>((Math.abs(x-8)<4||Math.abs(x-60)<4)&&z>33&&z<57)||(z>46.5&&z<57.5)||(Math.abs(x-HAUL_ROAD_X)<4&&z<-30)||(Math.abs(z-CY.gz)<4&&x>CY.x1&&x<HAUL_ROAD_X+4)||(Math.abs(z-HAUL_ZL)<4&&x>90&&x<HAUL_ROAD_X+4);
 function conveyor(pts,matKey,n,tab='shared'){
   const par=DECO[tab],V=pts.map(p=>new THREE.Vector3(p[0],p[1],p[2])), X=new THREE.Vector3(1,0,0);
   const segs=[];let tot=0;
@@ -1229,8 +1260,8 @@ function buildPlant(){
   // 03 OSP 기존·신설 · 인출 P/W
   OSP_DEF.forEach(d=>{const g=grp(d.id);const c=new THREE.Mesh(new THREE.ConeGeometry(6.8,8.5,32),M.lime);c.position.set(-46,4.25,d.z);add(c,g);cyl(g,7.2,.5,M.conc,-46,0,d.z,32);});
   PW_DEF.forEach(d=>{const o=OSP_DEF.find(x=>x.id===d.osp),g=grp(d.id),z=o.z+d.dz;
-    box(g,3.4,1.1,2.4,M.steelD,-37.6,0,z);box(g,3.5,.25,2.5,M.accent,-37.6,1.1,z);          // 주행 대차
-    const wh=new THREE.Group();wh.position.set(-39.2,1.55,z);g.add(wh);                       // Paddle Wheel (수평 회전)
+    box(g,3.4,1.1,2.4,M.steelD,-35.4,0,z);box(g,3.5,.25,2.5,M.accent,-35.4,1.1,z);          // 주행 대차
+    const wh=new THREE.Group();wh.position.set(-37.1,1.55,z);g.add(wh);                       // Paddle Wheel (수평 회전)
     add(new THREE.Mesh(new THREE.CylinderGeometry(1.25,1.25,.22,24),M.steel),wh);add(new THREE.Mesh(new THREE.CylinderGeometry(.35,.35,.7,12),M.steelD),wh);
     for(let k=0;k<8;k++){const a=k*Math.PI/4,pd=new THREE.Mesh(new THREE.BoxGeometry(.95,.55,.16),M.accent);pd.position.set(Math.cos(a)*1.25,0,Math.sin(a)*1.25);pd.rotation.y=-a;add(pd,wh);}
     PWW.push({id:d.id,wheel:wh});});
@@ -1302,7 +1333,7 @@ function buildPlant(){
   conveyor([[-58.5,1.2,Math.min(...CC_DEF.map(d=>d.z))],[-58.5,1.2,-38],[-55.5,7.6,-23]],'lime',6,'shared');   // C/C (2차) → 분배
   OSP_DEF.forEach(o=>{const L=o.tab;
     conveyor([[-54,8,-22],[-47.5,10.2,o.z+Math.sign(-22-o.z)*2]],'lime',5,L);                       // 크러셔 → OSP
-    conveyor([[-36.3,1.2,o.z],[-33,6.6,o.z],[-8,6.6,o.z]],'lime',10,L);                       // P/W → 스태커 벨트
+    conveyor([[-34.1,1.2,o.z],[-31,6.6,o.z],[-8,6.6,o.z]],'lime',10,L);                       // P/W → 스태커 벨트
     conveyor([[-6.5,.8,o.z],[-1,8,o.z]],'lime',3,L);});                                       // 리클레이머 → R/M 분배
   conveyor([[-1,8,MZ(-48)],[-1,8,MZ(-20)]],'lime',6,'A');
   conveyor([[-1,8,MZ(-12)],[-1,8,MZ(8)]],'lime',5,'B');
@@ -1356,14 +1387,16 @@ function buildPlant(){
     DH.slot.forEach((x,k)=>{const ld=new THREE.Group();ld.position.set(x-14,Y,DH.qz-2);g.add(ld);[-1.8,1.8].forEach(a=>box(ld,.7,10,.7,M.steelD,a,0,0));box(ld,4.4,1.2,1.6,M.accent,0,10,0);box(ld,1.2,1,12,M.steel,0,11,6);cyl(ld,.5,4.5,M.steelD,0,6.5,11.5,12);   // 클링커 선적기
       conveyor([[211,10,-185],[211,10,-166],[x-14,11,-166],[x-14,11,DH.qz-2]],'clk',6,'P');});   // 사일로 → 선석 선적기
     {const u=new THREE.Group();u.position.set(DH.slot[0]+16,Y,DH.qz-4);g.add(u);[[-5,-3],[5,-3],[-5,3],[5,3]].forEach(([a,b])=>box(u,.8,14,.8,M.steelD,a,0,b));box(u,11,1.4,7.6,M.accent,0,14,0);box(u,1.6,1.2,26,M.steel,0,15.4,8);box(u,2.4,2.2,2.4,M.ylw,0,10,16);}   // 하역기 (그랩)
-    conveyor([[DH.slot[0]+16,6,DH.qz-6],[DH.slot[0]+16,6,-186],[300,5,-192]],'rock2',8,'P');   // 하역기 → 야드
-    [[300,-196,9],[326,-198,8]].forEach(([x,z,r])=>{const c=new THREE.Mesh(new THREE.ConeGeometry(r,r*.7,24),M.rock2);c.scale.set(1.5,1,1);c.position.set(x,Y+r*.35,z);add(c,g);});   // 유연탄·Pet-coke 야드 (차량 반출 대기)
-    bld(g,16,6,10,368,-200);                                                               // 사무동
+    conveyor([[DH.slot[0]+16,6,DH.qz-6],[DH.slot[0]+16,11,-170],[DY.x0+8,11,-170],[DY.x0+8,11,(DY.z0+DY.z1)/2]],'coal',8,'P');   // 하역기 → 임시 야적장 (그물벽 위로)
+    bld(g,14,6,10,372,-200);                                                               // 사무동
    }
+   {const g=grp('DHCY');netYard(g,DY.x0,DY.x1,DY.z0,DY.z1,DH.y,8,['s',DY.gx-5,DY.gx+5],[[296,-199,7,1.5],[312,-202,6,1.3],[334,-200,6.5,1.4]]);   // 동해항 임시 야적장 (4면 방진망)
+    Object.assign(EXC,excavator(g,309,DH.y,-190));}   // 포크레인 1대: 탄 더미 → 벌크차량 상차 (현장 제공 2026-11-24)
+   {const g=grp('COALY');netYard(g,CY.x0,CY.x1,CY.z0,CY.z1,0,7,['e',CY.gz-5,CY.gz+5],[[54,-37,6,1.4],[66,-37,5.5,1.3],[78,-38,5,1.2]]);}   // 삼척공장 석탄 치장 (4면 방진망)
    DHCK_DEF.forEach(d=>{const g=grp(d.id),r=8.4,h=30;cyl(g,r,h,M.wall,d.x,DH.y,d.z,36);cyl(g,r+.06,.5,M.accent,d.x,DH.y+h*.5,d.z,36);cyl(g,.7,1.6,M.accent,d.x,DH.y+h,d.z,20,r);box(g,4,4,4,M.steelD,d.x+6,DH.y,d.z+9);});   // 클링커 사일로 1·2호 (각 20,000 t) + 차량 하차 호퍼
    /* 벌크차량 길: 삼척공장 6-4·6-6호 클링커 사일로 ↔ 동해항 */
-   [HAUL_CLK,HAUL_COAL].forEach(R=>{for(let i=0;i<R.length-1;i++){const [a,b]=[R[i],R[i+1]];if(a[0]>=150&&b[0]>=150&&a[1]<-146)seg(a[0],a[1],b[0],b[1],5,M.road,DH.y+.05);else if(a[1]<-146&&b[1]<-146&&(a[0]<150||b[0]<150)){seg(Math.min(a[0],b[0]),a[1],150,b[1],5,M.road,.06);seg(150,a[1],Math.max(a[0],b[0]),b[1],5,M.road,DH.y+.05);}else seg(a[0],a[1],b[0],b[1],5,M.road,.06);}});
-   [['clk',2],['coal',2]].forEach(([kind,n])=>{for(let i=0;i<n;i++){const g=truckMesh('dump');const pile=g.userData.pile;pile.material=kind==='clk'?M.clk:M.rock2;g.visible=false;
+   [HAUL_CLK,HAUL_COAL].forEach(R=>{for(let i=0;i<R.length-1;i++){const [a,b]=[R[i],R[i+1]];if(a[0]>=150&&b[0]>=150&&a[1]<-146)seg(a[0],a[1],b[0],b[1],5,M.road,DH.y+.05);else if(a[1]<-146&&b[1]<-146&&(a[0]<150||b[0]<150)){seg(Math.min(a[0],b[0]),a[1],150,b[1],5,M.road,.06);seg(150,a[1],Math.max(a[0],b[0]),b[1],5,M.road,DH.y+.05);}else seg(a[0],a[1],b[0],b[1],5,M.road,.06);}});   // 벌크차량 길
+   [['clk',2],['coal',2]].forEach(([kind,n])=>{for(let i=0;i<n;i++){const g=truckMesh('dump');const pile=g.userData.pile;pile.material=kind==='clk'?M.clk:M.coal;g.visible=false;
      const R=kind==='clk'?HAUL_CLK:HAUL_COAL,cum=[0];for(let k=1;k<R.length;k++)cum.push(cum[k-1]+Math.hypot(R[k][0]-R[k-1][0],R[k][1]-R[k-1][1]));
      HAUL.push({g,kind,R,cum,len:cum[cum.length-1],s:cum[cum.length-1]*i/n,dir:i%2?-1:1,wait:0});}});
    for(let i=0;i<14;i++)SHIPS.push(shipMesh());
@@ -1767,6 +1800,8 @@ function updateTagClasses(){
     b.className='tag mini'+(on?' sel':'');b.querySelector('small').textContent=t.state;b.dataset.hide=truckInTab(t)&&(on||hv||(!m&&t.kind==='bct'&&t.state==='적재중'))?'':'1';});
 }
 const _v=typeof THREE!=='undefined'?new THREE.Vector3():null;
+let TAGF=0;
+if(/[?&]debug\b/.test(location.search))window.B365DBG={get EQOBJ(){return EQOBJ;},get EQ(){return EQ;},get TAG(){return TAG;},get cam(){return cam;},homeView:()=>homeView(),get HAUL(){return HAUL;},flyTo:(x,z,d,th)=>flyTo(x,z,d,th)};   // 시험용 (주소에 ?debug 일 때만)
 function placeTags(){
   const st=$('#stage');const w=st.clientWidth,h=st.clientHeight;
   const put=(el,vec)=>{if(!el)return;if(el.dataset.hide==='1'){el.style.display='none';return;}_v.copy(vec).project(camera);
@@ -1780,10 +1815,15 @@ function placeTags(){
   const hit=(a,c)=>a.l<c.r+4&&a.r>c.l-4&&a.t<c.b+3&&a.b>c.t-3;
   const slot=(el,x,y)=>{const r0=rectOf(el,x,y),hh=r0.b-r0.t+4;let best=0;   // 겹치지 않는 자리: 그대로 → 위 → 아래 → …
     let bestA=1e9;const ov=(r,c)=>Math.max(0,Math.min(r.r,c.r+4)-Math.max(r.l,c.l-4))*Math.max(0,Math.min(r.b,c.b+3)-Math.max(r.t,c.t-3));
-    for(const dy of [0,-hh,hh,-2*hh,2*hh,-3*hh,3*hh,-4*hh]){const r={l:r0.l,r:r0.r,t:r0.t+dy,b:r0.b+dy},A=rects.reduce((a,c)=>a+ov(r,c),0);if(A<bestA){bestA=A;best=dy;}if(!A)break;}   // 빈자리가 없으면 겹침이 가장 적은 자리
-    rects.push({l:r0.l,r:r0.r,t:r0.t+best,b:r0.b+best});
-    if(best)el.style.transform=`translate(${x.toFixed(1)}px,${(y+best).toFixed(1)}px) translate(-50%,-100%)`;};
-  BERTH_DEF.forEach(d=>{const el=TAG['eq'+d.id];if(el&&el.style.display!=='none'&&el._xy){el._w=0;slot(el,el._xy[0],el._xy[1]);}});   // 선석 이름표는 글자가 자주 바뀌어 매번 크기 다시 잼   // 31·32번처럼 붙은 선석 이름표도 서로 비켜 놓기
+    const ww=(r0.r-r0.l)*.6+6;let bx=0;
+    outer:for(const dy of [0,-hh,hh,-2*hh,2*hh,-3*hh,3*hh,-4*hh])for(const dx of [0,-ww,ww]){const r={l:r0.l+dx,r:r0.r+dx,t:r0.t+dy,b:r0.b+dy},A=rects.reduce((a,c)=>a+ov(r,c),0);if(A<bestA){bestA=A;best=dy;bx=dx;}if(!A)break outer;}   // 위아래·좌우로 빈자리, 없으면 겹침이 가장 적은 자리
+    rects.push({l:r0.l+bx,r:r0.r+bx,t:r0.t+best,b:r0.b+best});
+    if(best||bx)el.style.transform=`translate(${(x+bx).toFixed(1)}px,${(y+best).toFixed(1)}px) translate(-50%,-100%)`;};
+  /* 설비·차량 이름표도 서로 겹치면 비켜 놓기: 선택한 설비 → 이상 상태 → 화면 위쪽 순으로 자리 잡음 (크기는 0.5초마다 다시 잼) */
+  TAGF++;const selId=sel&&sel.type==='eq'?sel.id:null,tl=[];
+  EQ.forEach(e=>{const el=TAG['eq'+e.id];if(el&&el.style.display!=='none'&&el._xy){if(TAGF%10===0||e.berth||e.area==='raw')el._w=0;tl.push({el,k:(e.id===selId?100:0)+(RANK[eqStatus(e)]||0)});}});
+  TRUCKS.forEach(t=>{const el=TAG['truck'+t.id];if(el&&el.style.display!=='none'&&el._xy){if(TAGF%30===0)el._w=0;tl.push({el,k:-1});}});
+  tl.sort((a,c)=>c.k-a.k||a.el._xy[1]-c.el._xy[1]).forEach(o=>slot(o.el,o.el._xy[0],o.el._xy[1]));
   const sh=[];
   SHIPS.forEach((s,i)=>{const b=TAG['ship'+i];if(!b)return;const show=s.key&&s.g.visible&&(curTab==='P'||curTab==='all')&&(!isMobile()||s.o.state!=='anch');b.dataset.hide=show?'':'1';   // 휴대폰: 외항 대기 선박 이름표는 숨김
     if(show){const o=s.o,sp=b.firstChild,sm=b.lastChild,ty=o.port==='dh'?(o.cargoKo||''):shipTypeTxt(o),nm=o.name+(ty?` · ${ty}`:''),lb=o.state==='load'&&o.prog!=null?`선적 ${nf(o.prog,0)}%`:o.state==='load'&&o.loaded!=null?`선적 약 ${nf(o.loaded)} t (추정)`:o.state==='load'&&o.dnEst&&o.dn?`선적 중 · ${hhmm(o.dn)} 완료 예정`:o.src==='e'&&o.eta&&o.state==='anch'?(o.eta>new Date()?`${md(o.eta)} ${hhmm(o.eta)} 입항 예정${o.berth?' · #'+o.berth.slice(2):''}`:`선석 대기 (추정) · 예정 ${md(o.eta)} ${hhmm(o.eta)}${o.berth?' · #'+o.berth.slice(2):''}`):o.label;
@@ -1848,10 +1888,19 @@ function frame(now){
         m.material.color.set(dc);m.material.opacity=(dark?.5:.62)*Math.min(1,tb*4)*Math.max(0,1-tb/9);});}});
   if(HAUL.length){const pv=curTab==='P'||curTab==='all',coalOn=DHV.some(o=>dhOp(o.cargo)==='하역'&&['berth','load','berthEst','done'].includes(o.state));   // 벌크차량: 클링커는 늘(가상 운행), 유연탄·Pet-coke는 동해항 하역 중일 때만
     HAUL.forEach(h=>{const on=pv&&(h.kind==='clk'||coalOn);h.g.visible=on;if(!on)return;
-      if(!REDUCED){if(h.wait>0)h.wait-=dt;else{h.s+=h.dir*dt*9;if(h.s>=h.len||h.s<=0){h.s=clamp(h.s,0,h.len);h.dir*=-1;h.wait=4;}}}
+      if(!REDUCED){if(h.wait>0)h.wait-=dt;else{h.s+=h.dir*dt*9;if(h.s>=h.len||h.s<=0){h.s=clamp(h.s,0,h.len);h.wait=h.kind==='coal'&&h.s<=0?8:4;h.dir*=-1;}}}
       let k=1;while(k<h.R.length-1&&h.s>h.cum[k])k++;const a=h.R[k-1],c=h.R[k],f=clamp((h.s-h.cum[k-1])/Math.max(1e-6,h.cum[k]-h.cum[k-1]),0,1),x=a[0]+(c[0]-a[0])*f,z=a[1]+(c[1]-a[1])*f;
       h.g.position.set(x,x>=150&&z<-146?DH.y:0,z+(h.dir>0?-1.6:1.6));h.g.rotation.y=Math.atan2(-(c[1]-a[1])*h.dir,(c[0]-a[0])*h.dir);
-      h.g.userData.pile.visible=h.dir>0;});}   // 갈 때 적재, 돌아올 때 빈 차
+      h.g.userData.pile.visible=h.dir>0;});
+    if(EXC.up){const work=coalOn&&pv&&!REDUCED,yP=Math.atan2(9,-13),yT=Math.atan2(0,12);   // 더미 쪽 · 차량(상차 자리) 쪽 방향
+      if(work)EXC.t=(EXC.t+dt)%7;const t=work?EXC.t:0,ease=v=>v<.5?2*v*v:1-2*(1-v)*(1-v);
+      let yaw=yP,bm=-.42,st=.25,ld=false;
+      if(t<2){bm=-.42+.12*Math.sin(t*Math.PI);st=.25-.35*Math.min(1,t/1.6);ld=t>1.4;}                        // 퍼기
+      else if(t<3.6){const k=ease((t-2)/1.6);yaw=yP+(yT-yP)*k;bm=-.42+.62*k;st=-.1;ld=true;}                    // 들어 올리며 차량 쪽으로
+      else if(t<5){yaw=yT;bm=.2;st=-.1+.7*Math.min(1,(t-3.6)/.8);ld=t<4.3;}                                     // 쏟기
+      else{const k=ease((t-5)/2);yaw=yT+(yP-yT)*k;bm=.2-.62*k;st=.6-.35*k;}                                    // 되돌기
+      EXC.up.rotation.y=yaw;EXC.boom.rotation.z=bm;EXC.stick.rotation.z=st;EXC.load.visible=work&&ld;}
+    const nc=coalOn&&pv?HAUL.filter(h=>h.kind==='coal').length:0;if(E.COALY)E.COALY.params.trk.v=nc;if(E.DHCY)E.DHCY.params.trk.v=nc;}   // 갈 때 적재, 돌아올 때 빈 차
   if(PORTFX.water&&EQOBJ.ANCH){
     if(!REDUCED&&(curTab==='all'||curTab==='P')){const a=PORTFX.water.geometry.attributes.position,o=PORTFX.wy,t=now/1000;for(let i=0;i<a.count;i++){const x=o[i*3],z=o[i*3+2];a.array[i*3+1]=.18*Math.sin(x*.09+t*1.1)+.12*Math.sin(z*.13-t*.8);}a.needsUpdate=true;}
     const pv=curTab==='P'||curTab==='all';
@@ -2160,7 +2209,8 @@ function dhShipCard(){
   const dv=S?[...S.vessels.filter(v=>v.port==='dh').map(v=>({...v,arr:T(v.t&&v.t['접안']),dep:T((v.t&&v.t['출항'])||v.etd),eta:T(v.eta)})),
               ...S.expected.filter(x=>x.port==='dh').map(x=>({name:x.name,cargo:'',qty:null,berth:x.berth,dest:x.note,eta:T(x.eta)}))]:[];
   dv.forEach(v=>{const ld=LOADING_CARGO.test(v.cargo||'');v.work=ld?'선적':'하역';
-    v.st=v.arr&&now>=v.arr&&!(v.dep&&now>=v.dep)?`${v.work} 중`:v.dep&&now>=v.dep?'출항':v.eta?'입항 예정':'일정 미정';});
+    v.st=v.arr&&now>=v.arr&&!(v.dep&&now>=v.dep)?`${v.work} 중`:v.dep&&now>=v.dep?'출항':v.eta?'입항 예정':'일정 미정';
+    const o=DHV.find(x=>x.name===v.name);if(o)v.st={anch:'입항 예정',berthEst:'접안 (추정)',berth:'접안',load:`${v.work} 중`,done:`${v.work} 완료`,depart:'출항'}[o.state]||v.st;});   // 3D와 같은 판단
   dv.sort((a,b)=>(/중$/.test(b.st)-/중$/.test(a.st))||((a.eta||a.arr||0)-(b.eta||b.arr||0)));
   const opts=dv.length?dv.map((v,i)=>[String(i)+v.name,`${v.name} · ${cargoKo(v.cargo)} ${v.st}`]):[['none','선박 일정 없음']],val=kpick('portDH2',opts,opts[0][0]),v=dv.find((x,i)=>String(i)+x.name===val);
   const base={key:'portDH2',ic:'anchor',l:'동해항',sel:{opts,val,aria:'동해항 선박 선택'},
