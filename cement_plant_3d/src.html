@@ -867,10 +867,11 @@ const PW_FULL='Paddle Wheel';
 const MODE_NM={stack:'적재',reclaim:'사용'},MODE_EN={stack:'Stacking',reclaim:'Reclaiming'};
 const SUPPLY_IDS=new Set([...QRY_DEF,...CR_DEF,...CC_DEF,...OSP_DEF,...PW_DEF,...PB_DEF].map(d=>d.id));
 const CS_A=CS_DEF.filter(d=>d.tab==='A').map(d=>d.id), CS_B=CS_DEF.filter(d=>d.tab==='B').map(d=>d.id);
-const CM_DEF=[{n:'2',x:62},{n:'3',x:74},{n:'4',x:86},{n:'5',x:98},{n:'6',x:110},{n:'7',x:122}];
+const CM_DEF=[{n:'2',x:48},{n:'3',x:62},{n:'4',x:76},{n:'5',x:90},{n:'6',x:104},{n:'7',x:118}];   // 시멘트 밀 간격 14 (현장 요청 2026-11-24: 사일로와 함께 넓힘)
 /* 시멘트 사일로 용량 — 현장 제공 (2026-11-12) */
 const SL_DEF=[{id:'SL1',n:'1',prod:'3종',cap:4000},{id:'SL2',n:'2',prod:'1종',cap:4000},{id:'SL4',n:'4',prod:'F/A (플라이애시)',fa:1,cap:10000},{id:'SL5',n:'5',prod:'1종',cap:8500},{id:'SL6',n:'6',prod:'1종',cap:8500},{id:'SL7',n:'7',prod:'1종',cap:8500},{id:'SL8',n:'8',prod:'1종',cap:8500},{id:'SL9',n:'9',prod:'1종',cap:8500,alt:'3종',altNote:'2~4호 C/M 3종 생산 시'},{id:'SL10',n:'10',prod:'S/C2종',cap:8500},{id:'SL11',n:'11',cap:9000,prod:'1종',alt:'S/C3종',altNote:'6호 C/M S/C3종 생산 시 · 현재 생산 계획 없어 1종만 투입'}];
-SL_DEF.forEach((d,i)=>d.x=8+i*5.2);
+SL_DEF.forEach((d,i)=>d.x=-34+i*7.2);   // 시멘트 사일로 간격 7.2 (예전 5.2) — 사일로·출하장을 서쪽으로 옮겨 자리 확보
+const DSP_IN=SL_DEF[0].x-7,DSP_OUT=SL_DEF[SL_DEF.length-1].x+7;   // 출하 차량 진입로(계량) · 진출로
 const SLD=Object.fromEntries(SL_DEF.map(d=>[d.id,d]));
 /* 시멘트 밀 투입·출하 경로 (현장 제공 정보). main=주력 품종 */
 const ROUTE={
@@ -1204,7 +1205,7 @@ function bld(p,w,h,d,x,z){
 function tree(x,z,s=1){const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(s);cyl(g,.25,1.6,M.trunk,0,0,0,6);const t=new THREE.Mesh(new THREE.IcosahedronGeometry(1.7,0),M.tree);t.position.y=2.9;t.scale.y=1.15;add(t,g);scene.add(g);}
 
 /* 벨트 기둥을 세우지 않는 곳: 출하 트럭 길(x≈8·60), 앞 도로 */
-const postBlocked=(x,z)=>((Math.abs(x-8)<4||Math.abs(x-60)<4)&&z>33&&z<57)||(z>46.5&&z<57.5)||(Math.abs(x-HAUL_ROAD_X)<4&&z<-30)||(Math.abs(z-CY.gz)<4&&x>CY.x1&&x<HAUL_ROAD_X+4)||(Math.abs(z-HAUL_ZL)<4&&x>90&&x<HAUL_ROAD_X+4);
+const postBlocked=(x,z)=>((Math.abs(x-DSP_IN)<4||Math.abs(x-DSP_OUT)<4)&&z>33&&z<57)||(z>46.5&&z<57.5)||(Math.abs(x-HAUL_ROAD_X)<4&&z<-30)||(Math.abs(z-CY.gz)<4&&x>CY.x1&&x<HAUL_ROAD_X+4)||(Math.abs(z-HAUL_ZL)<4&&x>90&&x<HAUL_ROAD_X+4);
 function conveyor(pts,matKey,n,tab='shared'){
   const par=DECO[tab],V=pts.map(p=>new THREE.Vector3(p[0],p[1],p[2])), X=new THREE.Vector3(1,0,0);
   const segs=[];let tot=0;
@@ -1233,11 +1234,11 @@ function buildPlant(){
   flat(316,9,M.road,6,52,.04);
   for(let x=-150;x<162;x+=8)flat(3.6,.25,M.mark,x,52,.08);
   flat(316,.25,M.mark,6,47.9,.08);flat(316,.25,M.mark,6,56.1,.08);
-  seg(-40,42,128,42,5,M.road);seg(8,37,8,48,5,M.road);seg(60,37,60,48,5,M.road);seg(8,37,60,37,5,M.road);
+  seg(-96,42,128,42,5,M.road);seg(DSP_IN,37,DSP_IN,48,5,M.road);seg(DSP_OUT,37,DSP_OUT,48,5,M.road);seg(DSP_IN,37,DSP_OUT,37,5,M.road);
   seg(-72,-42,-72,-2,5,M.dirt,.045);QRY_DEF.forEach(d=>seg(-76,d.z,-72,d.z,4,M.dirt,.046));CR_DEF.forEach(d=>seg(-72,d.z,-68.5,d.z,4,M.dirt,.046));
-  [[-62,18,30,12],[-30,20,20,10],[-80,22,14,10],[95,-61-LINE_GAP,40,3],[-40,-61-LINE_GAP,40,3]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
+  [[-62,16,30,10],[-24,18,20,8],[-84,8,14,8],[95,-61-LINE_GAP,40,3],[-40,-61-LINE_GAP,40,3]].forEach(a=>flat(a[2],a[3],M.grass,a[0],a[1],.035));
   // 주차장
-  for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-40+i*3.2,37.5,.07);
+  for(let i=0;i<6;i++)flat(.18,4.5,M.mark,-98+i*3.2,37.5,.07);
 
   // 발파 효과 (광산마다 한 벌, 같은 때 터짐)
   QRY_DEF.forEach((qd,qi)=>{const g=new THREE.Group();g.visible=false;g.position.set(-84,5.5,qd.z-.5);scene.add(g);
@@ -1319,14 +1320,14 @@ function buildPlant(){
     [d.x-3.6,d.x+3.6].forEach(x=>box(g,1,1.2,2.6,M.conc,x,0,31));box(g,1.8,1.8,1.8,M.accent,d.x+5.2,0,31);});
   // 11 시멘트 사일로 (1·2·5~11호) · 4호 F/A 사일로
   SL_DEF.forEach(d=>{const g=grp(d.id),r=2.2*Math.sqrt(d.cap/8500);cyl(g,r,18,d.fa?M.wall2:M.wall,d.x,0,30);cyl(g,r+.06,.4,d.fa?M.steelD:M.accent,d.x,12,30);cyl(g,.45,1.2,d.fa?M.steelD:M.accent,d.x,18,30,20,r);});   // 높이 같음, 지름 ∝ √용량
-  box(DECO.C,50,.5,4.6,M.steel,31.4,18.6,30);
+  box(DECO.C,SL_DEF[SL_DEF.length-1].x-SL_DEF[0].x+6,.5,4.6,M.steel,(SL_DEF[0].x+SL_DEF[SL_DEF.length-1].x)/2,18.6,30);
   // 12 출하장
-  {const g=grp('DSP');for(let x=6;x<=60;x+=9)[34.4,39.6].forEach(z=>box(g,.45,6.5,.45,M.steelD,x,0,z));
-   box(g,56,.45,7,M.accent,33,6.5,37);box(g,4.6,.18,7,M.steelD,8,0,45);}
+  {const g=grp('DSP'),x0=DSP_IN-2,x1=DSP_OUT+2;for(let x=x0;x<=x1+.1;x+=(x1-x0)/8)[34.4,39.6].forEach(z=>box(g,.45,6.5,.45,M.steelD,x,0,z));
+   box(g,x1-x0,.45,7,M.accent,(x0+x1)/2,6.5,37);box(g,4.6,.18,7,M.steelD,DSP_IN,0,45);}   // 출하장 (사일로 줄 아래) · 계량대
   // 13 품질관리실
-  {const g=grp('LAB');bld(g,14,6,9,-14,32);cyl(g,.15,3,M.steelD,-9,6.5,30);box(g,3,1.2,2,M.wall2,-18,6.5,31);}
+  {const g=grp('LAB');bld(g,14,6,9,-62,31);cyl(g,.15,3,M.steelD,-57,6.5,29);box(g,3,1.2,2,M.wall2,-66,6.5,30);}
   // 사무동 (선택 불가)
-  bld(scene,10,8,8,-34,26);
+  bld(scene,10,8,8,-82,27);
   // 컨베이어 + 물질 흐름
   conveyor([[-59,3,-13],[-55.5,7.6,-22]],'lime',4,'shared');                                     // H/C (단독) → 분배
   conveyor([[-60.5,7.6,-35],[-60.5,7.6,Math.min(...CC_DEF.map(d=>d.z))-1]],'lime',5,'shared');     // G/C (1차) → C/C 2기
@@ -1352,7 +1353,7 @@ function buildPlant(){
    const zb=(rows[0]+rows[1])/2;conveyor([[x0+1.5,1.5,zb],[xr,1.5,zb],[xr,hy,hz]],'clk',12,'C');       // 6-7K 사일로 → 시멘트 밀
    const ca=CS_DEF.filter(c=>c.tab==='A'),xa=ca[0].x+5.5,za=Math.min(...ca.map(c=>c.z)),zf=Math.max(...ca.map(c=>c.z))+5.5;
    conveyor([[xa,1.5,za],[xa,1.5,zf],[CM_DEF.find(d=>d.n==='6').x+4,hy,hz]],'clk',8,'C');}            // 3~5K 사일로 → 시멘트 밀 (2~6호 C/M)
-  conveyor([[57,9,23],[55,19.4,30],[5,19.4,30]],'cem',12,'C');
+  conveyor([[CM_DEF[0].x-5,9,23],[CM_DEF[0].x-7,19.4,30],[SL_DEF[0].x-3,19.4,30]],'cem',14,'C');
   // 14 삼척항: 바다 · 안벽 · 2부두(21·22)·3부두(31·32) · 부두 사일로 6기 · 선적기 · 외항 · 동해항 안내판
   {const P_=DECO.P;
    const wg=new THREE.PlaneGeometry(420,560,70,56).rotateX(-Math.PI/2);const water=new THREE.Mesh(wg,M.water);water.position.set(PORT.shore+210,.5,-10);water.receiveShadow=true;scene.add(water);
@@ -1364,7 +1365,7 @@ function buildPlant(){
      const lo=Math.min(...sz),hi=Math.max(...sz);if(lo<j.z)conveyor([[x,5,lo],[x,5,j.z]],'cem',3,'P');if(hi>j.z)conveyor([[x,5,hi],[x,5,j.z]],'cem',3,'P');
      sz.forEach(z=>conveyor([[163,7,z],[x,5.4,z]],'cem',1,'P'));
      conveyor([[x,5,j.z],[176,4.2,j.z],[232,4.2,j.z]],'cem',8,'P');});           // 부두 사일로 → 부두 벨트 → 선적기
-   conveyor([[57,19.4,33],[62,19.4,43],[152,19.4,43],[155.4,24.5,38]],'cem',14,'P');   // 구내 사일로 → 부두 사일로 (이송)
+   conveyor([[SL_DEF[SL_DEF.length-1].x+3,19.4,33],[SL_DEF[SL_DEF.length-1].x+8,19.4,43],[152,19.4,43],[155.4,24.5,38]],'cem',16,'P');   // 구내 사일로 → 부두 사일로 (이송)
    conveyor([[155.4,24.5,38],[155.4,24.5,PIER_DEF[0].z-3]],'cem',8,'P');
    BERTH_DEF.forEach(b=>{const ds=(b.direct||[]).map(x=>SLD[x.id]).filter(Boolean);if(!ds.length)return;   // 구내 사일로 → 선석 직투 (한 벨트로 모음)
      const x0=Math.min(...ds.map(d=>d.x))+3;ds.forEach(d=>conveyor([[d.x,13,32.6],[d.x+3,16,45.5]],'cem',2,'P'));
@@ -1404,12 +1405,12 @@ function buildPlant(){
   // 울타리
   const fz=(x1,x2,z)=>{const L=x2-x1;box(scene,L,1.3,.14,M.fence,(x1+x2)/2,0,z);};
   const fx=(z1,z2,x)=>{box(scene,.14,1.3,z2-z1,M.fence,x,0,(z1+z2)/2);};
-  const fS=-64-LINE_GAP;fz(-106,132,fS);fz(140,146,fS);fz(-106,4.5,47.2);fz(11.5,56.5,47.2);fz(63.5,146,47.2);fx(fS,47.2,-106);fx(fS,47.2,146);
+  const fS=-64-LINE_GAP;fz(-106,132,fS);fz(140,146,fS);fz(-106,DSP_IN-3.5,47.2);fz(DSP_IN+3.5,DSP_OUT-3.5,47.2);fz(DSP_OUT+3.5,146,47.2);fx(fS,47.2,-106);fx(fS,47.2,146);
   // 나무
   for(let x=-138;x<=150;x+=9)tree(x+((x*7)%3),59.5+((x*13)%2),1+((x*3)%3)*.08);
   for(let z=-60-LINE_GAP;z<=40;z+=9)tree(-112,z,1.05);
   for(let x=-100;x<=144;x+=10)if(Math.abs(x-136)>6)tree(x,-70-LINE_GAP,.95);
-  [[-26,40],[-6,45],[-56,16],[-64,22],[-84,12],[-50,12],[72,45.5],[86,45.5],[104,45.5],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
+  [[-50,46],[-72,46],[-56,8],[-70,8],[-90,18],[-46,6],[72,45.5],[86,45.5],[104,45.5],[-24,16],[-20,22]].forEach(([x,z])=>tree(x,z,.9));
   // 굴뚝 연기
   // 앵커
   EQ.forEach(e=>{const b=new THREE.Box3().setFromObject(EQOBJ[e.id]);const c=b.getCenter(new THREE.Vector3());ANCHOR[e.id]=e.anchor?new THREE.Vector3(...e.anchor):new THREE.Vector3(c.x,b.max.y+1.5,c.z);EQOBJ[e.id].userData.box=b;});
@@ -1572,7 +1573,7 @@ function portAlerts(){
 }
 
 /* 트럭 */
-const bctRoute=lx=>[[-140,50],[8,50],[8,45,{wait:2.5,state:'계량'}],[8,42,{state:'구내 이동'}],[8,37],[lx,37,{wait:10,state:'적재중',load:1}],[60,37,{state:'출하'}],[60,42],[60,54],[140,54,{end:1}]];
+const bctRoute=lx=>[[-140,50],[DSP_IN,50],[DSP_IN,45,{wait:2.5,state:'계량'}],[DSP_IN,42,{state:'구내 이동'}],[DSP_IN,37],[lx,37,{wait:10,state:'적재중',load:1}],[DSP_OUT,37,{state:'출하'}],[DSP_OUT,42],[DSP_OUT,54],[140,54,{end:1}]];
 const dumpRoute=(q,c)=>{const qz=E[q]?QRY_DEF.find(d=>d.id===q).z:0,cz=CR_DEF.find(d=>d.id===c).z;return [[-74.3,qz,{wait:4,state:'상차',fill:1}],[-72,qz,{state:'운반'}],[-72,cz],[-69.6,cz,{wait:3,state:'하차',dump:1}],[-72,cz,{state:'복귀'}],[-72,qz]];};
 const routeCum=r=>{const c=[0];for(let i=1;i<r.length;i++)c.push(c[i-1]+Math.hypot(r[i][0]-r[i-1][0],r[i][1]-r[i-1][1]));return c;};
 const SHIP_SILOS=['SL6','SL1','SL7','SL10','SL5','SL2','SL8','SL11'];
@@ -1670,8 +1671,8 @@ const truckInTab=t=>curTab==='all'||(curTab==='C'&&t.kind==='bct');
 function homeView(){const st=$('#stage');const asp=st.clientWidth/Math.max(1,st.clientHeight);const m=isMobile();const th=.62;
   let cx=20,cz=-2,size=224;
   if(THREEOK&&EQOBJ.Q49){const b=new THREE.Box3();EQ.filter(e=>inTab(e)&&(curTab!=='all'||e.tab!=='P'||e.berth||e.id.startsWith('PIER')||(e.id==='DHP'&&!m&&(!!document.querySelector('.app.wall')||!!document.querySelector('#views.nopanels'))))&&!(m&&e.id==='DHP')).forEach(e=>b.union(EQOBJ[e.id].userData.box));   // 동해항: 전체 공장은 상황판·패널 숨김일 때만, 휴대폰은 넣지 않음(화면이 좁아 삼척항이 잘림) — 끌어서 보기
-    if((curTab==='all'||curTab==='P')&&!m){
-      /* 전체 공장·항만 탭: 화면에 투영한 폭·높이로 맞춤 (공장 + 삼척항 + 동해항이 한 화면에, 위쪽 카드·오른쪽 패널 자리 비움) */
+    if(!m){
+      /* PC: 모든 탭: 화면에 투영한 폭·높이로 맞춤 (공장 + 삼척항 + 동해항이 한 화면에, 위쪽 카드·오른쪽 패널 자리 비움) */
       const ph=.94,r=[Math.cos(th),-Math.sin(th)],f=[-Math.sin(th),-Math.cos(th)],t=Math.tan(16*Math.PI/180);let r0=1e9,r1=-1e9,f0=1e9,f1=-1e9;
       for(const x of [b.min.x,b.max.x])for(const z of [b.min.z,b.max.z]){const pr=x*r[0]+z*r[1],pf=x*f[0]+z*f[1];r0=Math.min(r0,pr);r1=Math.max(r1,pr);f0=Math.min(f0,pf);f1=Math.max(f1,pf);}
       const wall=!!document.querySelector('.app.wall'),nop=!!document.querySelector('#views.nopanels'),panels=!m&&!wall&&!nop;
@@ -1801,9 +1802,12 @@ function updateTagClasses(){
 }
 const _v=typeof THREE!=='undefined'?new THREE.Vector3():null;
 let TAGF=0;
+/* 이름표 비킬 자리 후보: 원래 위치에서 가까운 순 (위아래 한 칸이 좌우 한 칸보다 가까움) */
+const TAG_CAND=(()=>{const c=[];for(let j=-5;j<=4;j++)for(let i=-2;i<=2;i++)c.push([i,j]);return c.sort((a,b)=>(Math.abs(a[1])+Math.abs(a[0])*1.3+(a[1]>0?.1:0))-(Math.abs(b[1])+Math.abs(b[0])*1.3+(b[1]>0?.1:0)));})();
 if(/[?&]debug\b/.test(location.search))window.B365DBG={get EQOBJ(){return EQOBJ;},get EQ(){return EQ;},get TAG(){return TAG;},get cam(){return cam;},homeView:()=>homeView(),get HAUL(){return HAUL;},flyTo:(x,z,d,th)=>flyTo(x,z,d,th)};   // 시험용 (주소에 ?debug 일 때만)
 function placeTags(){
   const st=$('#stage');const w=st.clientWidth,h=st.clientHeight;
+  if(BLAST.ph)QRY_DEF.forEach(d=>{const t=TAG['eq'+d.id],sm=t&&t.querySelector('small');if(sm&&sm.textContent!==BLAST.ph){sm.textContent=BLAST.ph;t._w=0;}});   // 발파 초읽기 글자를 먼저 바꾸고 이름표 자리 잡기
   const put=(el,vec)=>{if(!el)return;if(el.dataset.hide==='1'){el.style.display='none';return;}_v.copy(vec).project(camera);
     if(_v.z>1||_v.x<-1.1||_v.x>1.1||_v.y<-1.1||_v.y>1.1){el.style.display='none';return;}
     const px=(_v.x+1)/2*w,py=(1-_v.y)/2*h;el._xy=[px,py];
@@ -1816,7 +1820,7 @@ function placeTags(){
   const slot=(el,x,y)=>{const r0=rectOf(el,x,y),hh=r0.b-r0.t+4;let best=0;   // 겹치지 않는 자리: 그대로 → 위 → 아래 → …
     let bestA=1e9;const ov=(r,c)=>Math.max(0,Math.min(r.r,c.r+4)-Math.max(r.l,c.l-4))*Math.max(0,Math.min(r.b,c.b+3)-Math.max(r.t,c.t-3));
     const ww=(r0.r-r0.l)*.6+6;let bx=0;
-    outer:for(const dy of [0,-hh,hh,-2*hh,2*hh,-3*hh,3*hh,-4*hh])for(const dx of [0,-ww,ww]){const r={l:r0.l+dx,r:r0.r+dx,t:r0.t+dy,b:r0.b+dy},A=rects.reduce((a,c)=>a+ov(r,c),0);if(A<bestA){bestA=A;best=dy;bx=dx;}if(!A)break outer;}   // 위아래·좌우로 빈자리, 없으면 겹침이 가장 적은 자리
+    for(const [dx,dy] of TAG_CAND.map(([i,j])=>[i*ww,j*hh])){const r={l:r0.l+dx,r:r0.r+dx,t:r0.t+dy,b:r0.b+dy},A=rects.reduce((a,c)=>a+ov(r,c),0);if(A<bestA){bestA=A;best=dy;bx=dx;}if(!A)break;}   // 위아래·좌우로 빈자리, 없으면 겹침이 가장 적은 자리
     rects.push({l:r0.l+bx,r:r0.r+bx,t:r0.t+best,b:r0.b+best});
     if(best||bx)el.style.transform=`translate(${(x+bx).toFixed(1)}px,${(y+best).toFixed(1)}px) translate(-50%,-100%)`;};
   /* 설비·차량 이름표도 서로 겹치면 비켜 놓기: 선택한 설비 → 이상 상태 → 화면 위쪽 순으로 자리 잡음 (크기는 0.5초마다 다시 잼) */
@@ -1832,7 +1836,6 @@ function placeTags(){
   sh.sort((a,c)=>a.p-c.p||a.y-c.y).forEach(t=>slot(t.b,t.x,t.y));   // 선석의 배 먼저, 그다음 화면 위쪽부터 자리 잡기
   const cd=$('#blastCd');if(cd){const show=BLAST.tb<1.5&&QRY_DEF.some(d=>EQOBJ[d.id]&&EQOBJ[d.id].visible),txt=BLAST.cd?String(BLAST.cd):'발파!';
     cd.dataset.hide=show?'':'1';
-    if(BLAST.ph)QRY_DEF.forEach(d=>{const t=TAG['eq'+d.id],sm=t&&t.querySelector('small');if(sm&&sm.textContent!==BLAST.ph)sm.textContent=BLAST.ph;});
     if(show&&cd.dataset.v!==txt){cd.dataset.v=txt;const b=cd.querySelector('b');b.textContent=txt;cd.classList.toggle('go',!BLAST.cd);cd.classList.toggle('near',BLAST.cd>0&&BLAST.cd<=3);
       if(!REDUCED){b.style.animation='none';void b.offsetWidth;b.style.animation='';}}
     if(show){_bcv.set(-84,27,QRY_DEF.reduce((a,d)=>a+d.z,0)/QRY_DEF.length);put(cd,_bcv);}else cd.style.display='none';}
