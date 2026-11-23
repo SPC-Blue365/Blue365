@@ -80,7 +80,7 @@ def _insufficient(ld: LineData, msg: str) -> LineStatus:
     return LineStatus(ld.line, ld.alias, Level.GREEN, None, np.nan, np.nan, np.nan, 0,
                       [Alert(Level.YELLOW, "data", msg)], empty,
                       age_hours=float("nan"), is_stale=False,
-                      note=S.LINE_NOTES.get(ld.line, ""))
+                      note=S.line_note(ld.line, ld.features.index.max() if len(ld.features) else None))
 
 
 def monitor_line(
@@ -122,7 +122,7 @@ def monitor_line(
     ref = reference_time if reference_time is not None else last["datetime"]
     age = data_age_hours(last["datetime"], ref)
     stale = is_data_stale(last["datetime"], ref, cfg.stale_hours)
-    note = S.LINE_NOTES.get(ld.line, "") if stale else ""
+    note = S.line_note(ld.line, last["datetime"]) if stale else ""
     if stale:
         msg = f"마지막 측정 {last['datetime']:%Y/%m/%d %H:%M} 이후 새 데이터 없음"
         alerts = [Alert(Level.YELLOW, "stale", msg + (f" — {note}" if note else ""))] + alerts

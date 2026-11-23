@@ -473,6 +473,9 @@ DOC = """
 .pg .lead { max-width: 72ch }
 .pg .lead b, .pg .lead strong { color: var(--ink2) }
 .pgstrip { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px }
+/* ⚠️ 레퍼런스 .tag 는 한 줄 고정(nowrap · 높이 26px)이라 긴 기간 안내가 휴대폰 폭을 뚫는다
+      (2026-11-23 실데이터: 브리프 175px 넘침) → 머리의 안내 꼬리표만 줄바꿈을 허용한다 */
+.pgstrip .tag { white-space: normal; height: auto; min-height: 24px; padding-block: 3px; line-height: 1.5; max-width: 100% }
 .pgquick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px }
 .pgquick a { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 1px solid var(--line); background: var(--surface);
   color: var(--ink2); border-radius: 999px; font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: background .2s, border-color .2s }
@@ -715,7 +718,8 @@ def _tabbar(active: str, hub: bool) -> str:
 def _shell_open(active: str, *, sub: bool = False, hub: bool = False, today: str = "",
                 where: str = "", state: str = "") -> str:
     """레퍼런스 틀(.shell = 왼쪽 메뉴 + 오른쪽 화면)을 **연다**. 닫는 것은 foot()."""
-    today = today or datetime.now().strftime("%Y-%m-%d")
+    from config.schema import now_local   # 현장 시각 — 원격 환경 시계(UTC)로 날짜가 어긋나지 않게
+    today = today or now_local().strftime("%Y-%m-%d")
     grp = _group_of(active)
     where = where or (f'품위추적 › {grp + " › " if grp else ""}<b>{active}</b>' if active else "품위추적")
     upd = state or ('<b><i></i>파이프라인 실행 때 갱신</b>재현 <code>python scripts/run_all.py</code>')

@@ -57,6 +57,19 @@ class SourceSpec:
 
 
 # 데이터파일 (로컬 전용)
+# ⭐️ 현장 시각대 — 원본의 모든 시각은 **현장(한국) 시각**이다. 원격 실행 환경의 시계는 UTC 라
+#    "지금 − 마지막 기록" 이 9시간 모자라게(때로는 음수로) 나온다(2026-11-23 발견: 신설 자료 나이
+#    −8.6h). 화면의 '생성 시각'도 9시간 어긋난다. 시계가 필요한 곳은 모두 now_local() 을 쓴다.
+LOCAL_TZ = "Asia/Seoul"
+
+
+def now_local():
+    """현장 시각(시각대 정보 없는 datetime) — 기록 시각과 바로 빼고 비교할 수 있다."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo(LOCAL_TZ)).replace(tzinfo=None)
+
+
 DATA_FILE = "data_v2.xlsx"   # v2(2026-08-05): 49Q 에 C/R·비고 컬럼 추가
 
 # 라인 → (야드 시트, 별칭) 페어링 (사용자 확정: 기존↔45Q, 신설↔CNA)
@@ -67,12 +80,29 @@ YARD_PAIR = {
 
 # 라인 운전 상태 메모 — 가동 중지·보수 등으로 데이터 갱신이 멈춘 라인을 명시한다.
 # 데이터 지연은 자동 감지되지만, 그 '이유'는 현장만 알기에 여기에 기록한다(상태 변경 시 이 값만 수정).
+# ⚠️ 운전 상태 메모는 **기간이 있는 사실**이다. 기간 없이 두었더니, 기존 라인이 재가동한 뒤에도
+#    자료가 조금만 늦으면 "가동 중지(07/21~) · 인출 없음" 이 **지금 상태처럼** 붙었다
+#    (2026-11-23 실제: 기존 45Q 자료가 신설보다 24h 일찍 끝났을 뿐인데 이 문구가 떴다).
+#    → (시작, 끝, 문구). 마지막 측정 시각이 그 기간 안일 때만 붙인다. 끝을 모르면 None.
 LINE_NOTES = {
     # 2026-08-05 사용자 확정: 07/21~07/28 기존 라인은 가동하지 않았고 OSP 재고만 채웠다.
     # OSP인출_기존의 기록 공백은 누락이 아니라 '실제 미가동'이다 → 인출 0 이 참값.
-    LINE_OLD: ("가동 중지 (2026-07/21~) — 채굴분은 OSP 재고 적재만, 인출 없음. "
-               "45Q 야드 데이터도 갱신 없음"),
+    LINE_OLD: [("2026-07-21", "2026-07-28",
+                "가동 중지 (2026-07-21~07-28, 사용자 확정) — 채굴분은 OSP 재고 적재만, 인출 없음")],
 }
+
+
+def line_note(line: str, at=None) -> str:
+    """그 라인의 운전 상태 메모 중 `at`(마지막 측정 시각)이 기간 안에 드는 것만 돌려준다."""
+    import pandas as pd
+    at = pd.to_datetime(at, errors="coerce")
+    out = []
+    for start, end, text in LINE_NOTES.get(line, []):
+        lo = pd.Timestamp(start)
+        hi = pd.Timestamp(end) + pd.Timedelta(days=1) if end else None
+        if pd.notna(at) and at >= lo and (hi is None or at < hi):
+            out.append(text)
+    return " / ".join(out)
 
 # === 복합 라인 라벨 처리 ⭐️ (2026-08-05 버그 수정) =====================
 # 광산 `공정구분` 에 한 교대가 두 상태에 걸친 복합 라벨이 들어온다.

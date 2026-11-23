@@ -964,7 +964,12 @@ def test_surge_cycles_close_locally_and_stay_under_capacity():
 
     c = surge_cycles()
     assert len(c) >= 3
-    assert (c["end"] > c["start"]).all()
+    assert (c["end"] >= c["start"]).all(), "사이클 끝이 시작보다 앞설 수는 없다"
+    # 같은 교대 시각에 '채움'과 '고갈'이 함께 적히면 길이 0 사이클이 생긴다(2026-10-16 실제:
+    # 1차 교대에 수항채움 3,680톤 + "~10시40분 수항재고부족 종료"). 교대 안의 선후는 기록만으로
+    # 알 수 없으므로 **추정하지 않고 '추정 불가'로 표시**돼야 한다(§2-1·§2-2).
+    zero = c[c["end"] == c["start"]]
+    assert (~zero["plausible"]).all(), "길이 0 사이클을 성립한다고 표시하면 안 된다"
     # ⚠️ 용량과 비교할 값은 누적 채움(fill_ton)이 아니라 **순간 최대 재고(peak_ton)** 다.
     #    사이클이 길면 그동안 계속 빠져나가므로 누적 채움은 용량을 넘는 것이 정상이다.
     assert (c["peak_ton"] <= c["fill_ton"] + 1).all(), "순간 재고는 누적 채움을 넘을 수 없다"
@@ -1743,3 +1748,39 @@ def test_no_standalone_mini_class_in_documents():
         t = pathlib.Path(f).read_text(encoding="utf-8")
         assert not re.search(r'class="(?:[^"]*\s)?mini(?:\s[^"]*)?"', t), f"{f}: class=\"mini\" 사용"
         assert not re.search(r"(?m)^\s*\.mini\s*\{", t), f"{f}: .mini 규칙 정의"
+
+
+def test_site_clock_is_korea_time_not_container_utc():
+    """기록 시각은 현장(한국) 시각이다 — 원격 실행 환경 시계(UTC)로 자료 나이를 재면 9시간
+    모자라게, 때로는 **음수**로 나온다(2026-11-23 실제: 신설 자료 나이 −8.6h)."""
+    from datetime import datetime, timezone
+
+    from config import schema as S
+
+    gap_h = (S.now_local() - datetime.now(timezone.utc).replace(tzinfo=None)).total_seconds() / 3600
+    assert abs(gap_h - 9) < 0.05, f"현장 시각이 UTC+9 가 아니다 ({gap_h:.2f}h)"
+
+
+def test_documents_count_line_pile_as_record_based():
+    """라인 단위 연결(§6-0-28) 이후 품위 출처는 거의 전부 `line_pile` 이다. 문서가 구역 이력
+    (`SRC_ZONE`)만 '실측' 으로 세면 **"0% 실측 · 100% 추정"** 이라는 거짓 문장이 나간다
+    (2026-11-23 실제: 브리프·계획서·통합 리포트 세 곳). 기록 기반은 TRUSTED_SOURCES 로 센다."""
+    import pathlib
+    import re
+
+    for f in ("scripts/make_brief.py", "scripts/make_plan.py", "scripts/make_final_report.py",
+              "scripts/make_dashboard.py", "scripts/make_prescription.py"):
+        t = pathlib.Path(f).read_text(encoding="utf-8")
+        assert not re.search(r"==\s*SRC_ZONE", t), f"{f}: 구역 이력만 기록 기반으로 센다"
+
+
+def test_line_status_note_only_applies_within_its_period():
+    """운전 상태 메모는 기간이 있는 사실이다 — 기간 밖에서 '지금 상태'처럼 붙으면 안 된다
+    (2026-11-23 실제: 재가동한 기존 라인에 "가동 중지(07/21~) · 인출 없음" 이 떴다)."""
+    from config import schema as S
+
+    assert "가동 중지" in S.line_note(S.LINE_OLD, "2026-07-24 10:00")
+    assert "가동 중지" in S.line_note(S.LINE_OLD, "2026-07-28 23:00")     # 끝 날 포함
+    assert S.line_note(S.LINE_OLD, "2026-11-22 16:00") == ""
+    assert S.line_note(S.LINE_OLD, None) == ""
+    assert S.line_note(S.LINE_NEW, "2026-07-24") == ""

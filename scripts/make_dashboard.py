@@ -63,8 +63,8 @@ def _payload() -> dict:
     return dict(
         target=TARGET, tol=TOL, capacity=S.OSP_CAPACITY_TON,
         lines=list(S.YARD_PAIR), alias={k: v[1] for k, v in S.YARD_PAIR.items()},
-        built=datetime.now().strftime("%Y-%m-%d %H:%M"),
-        ref=datetime.now().strftime("%Y-%m-%d"),
+        built=S.now_local().strftime("%Y-%m-%d %H:%M"),
+        ref=S.now_local().strftime("%Y-%m-%d"),
         route_txt=route_txt,
         chain=dict(
             linked_pct=(None if chain.linked_pct != chain.linked_pct else round(chain.linked_pct, 1)),

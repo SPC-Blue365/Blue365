@@ -6,11 +6,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from config import schema as S
 from config.paths import OUTPUTS_DIR
 
 LOG_PATH = OUTPUTS_DIR / "alert_log.csv"
@@ -25,7 +25,7 @@ def load_history(path: Path = LOG_PATH) -> pd.DataFrame:
 
 def log_statuses(statuses: dict, path: Path = LOG_PATH) -> int:
     """상태들의 경보를 이력에 추가(중복 제외). 추가된 행 수 반환."""
-    run_time = datetime.now().isoformat(timespec="seconds")
+    run_time = S.now_local().isoformat(timespec="seconds")
     rows = []
     for line, st in statuses.items():
         dt = str(st.latest_time)

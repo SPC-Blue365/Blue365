@@ -314,14 +314,19 @@ def _stock_gap_note(stock, mine, osp_exp) -> str:
 
 
 def _grade_source_note(osp_exp) -> str:
-    """부여된 품위 중 '실측 기반'과 '대체값'의 비율 — 가짜 정밀도를 드러낸다."""
-    from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE
+    """부여된 품위 중 '기록 기반'과 '대체값'의 비율 — 가짜 정밀도를 드러낸다.
+
+    ⚠️ 기록 기반 = `TRUSTED_SOURCES`(구역 이력 또는 **라인 더미** 이력). 라인 단위 연결(§6-0-28)
+       이후 구역 이력만 빼면 100% 가 대체값으로 보고된다(2026-11-23 발견).
+    """
+    from src.matching.pipeline import GRADE_SOURCE, SRC_LINE_PILE, SRC_ZONE, TRUSTED_SOURCES
 
     if osp_exp is None or GRADE_SOURCE not in getattr(osp_exp, "columns", []):
         return ""
     LABEL = {SRC_ZONE: "그 구역의 실제 적재 이력",
+             SRC_LINE_PILE: "그 라인 더미의 실제 적재 이력(혼합)",
              "line_mean": "구역 이력이 아직 없어 라인 평균으로 대체",
-             "no_zone": "인출 구역 자체가 미기재"}
+             "no_zone": "기록상 더미가 비어(또는 구역 미기재) 라인 평균으로 대체"}
     parts, sub_tot, all_tot = [], 0.0, 0.0
     for ln in S.YARD_PAIR:
         o = osp_exp[osp_exp["line"] == ln]
@@ -329,17 +334,19 @@ def _grade_source_note(osp_exp) -> str:
         if tot <= 0:
             continue
         g = o.groupby(GRADE_SOURCE)["withdrawn_ton"].sum().sort_values(ascending=False)
-        sub = float(g.drop(index=SRC_ZONE, errors="ignore").sum())
+        sub = float(g.drop(index=list(TRUSTED_SOURCES), errors="ignore").sum())
         sub_tot += sub; all_tot += tot
         parts.append(f"<b>{ln}</b> — " + " · ".join(
             f"{LABEL.get(k, k)} {v:,.0f}톤({v / tot * 100:.1f}%)" for k, v in g.items()))
     if not parts:
         return ""
-    return ("<br><br><b>⚠️ 부여한 품위가 전부 실측 기반은 아닙니다</b><br>" + "<br>".join(parts)
+    if sub_tot <= 0:
+        return ("<br><br><b>부여한 품위는 전부 적재 기록에서 나왔습니다</b><br>" + "<br>".join(parts))
+    return ("<br><br><b>⚠️ 부여한 품위가 전부 기록 기반은 아닙니다</b><br>" + "<br>".join(parts)
             + f"<br>합계 <b>{sub_tot:,.0f}톤({sub_tot / all_tot * 100:.1f}%)</b>이 "
-              "<b>대체값</b>입니다. 구역별 적재 기록이 <b>뒤늦게 시작</b>해, 그 전에 뽑아 쓴 "
-              "물량은 어느 구역 품위인지 알 수 없어 라인 평균으로 채웠습니다. "
-              "<b>물량은 한 톤도 버리지 않되, 정밀도는 실측분보다 낮다</b>고 보셔야 합니다.")
+              "<b>대체값</b>입니다. 그 시점 기록상 더미가 비어 있던 인출(기초 재고처럼 품위 기록이 "
+              "없는 돌)은 품위를 낼 수 없어 라인 평균으로 채웠습니다. "
+              "<b>물량은 한 톤도 버리지 않되, 정밀도는 기록 기반분보다 낮다</b>고 보셔야 합니다.")
 
 
 def _grade_balance_note(stock, mine, osp_exp) -> str:

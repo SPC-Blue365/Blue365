@@ -28,7 +28,8 @@ from config import paths as P                                    # noqa: E402
 from config import schema as S                                   # noqa: E402
 from src.matching.balance import combined_mass_gap, grade_balance  # noqa: E402
 from src.matching import pipeline as P2                        # noqa: E402
-from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE         # noqa: E402
+from src.matching.chain import build_chain                        # noqa: E402
+from src.matching.pipeline import GRADE_SOURCE, TRUSTED_SOURCES  # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                         # noqa: E402
 from src.visualization.qmsstyle import DOC_STYLE as STYLE, foot, hero, nav  # noqa: E402
@@ -155,7 +156,12 @@ def trend_svg(yards: dict) -> str:
 
 
 def source_svg(osp) -> str:
-    """인출 물량 중 '실측 기반' 대 '추정값' 비율 — 매칭을 어디까지 믿을 수 있는지."""
+    """인출 물량 중 '더미 기록 기반' 대 '품위 미상' 비율 — 매칭을 어디까지 믿을 수 있는지.
+
+    ⚠️ '기록 기반' = `TRUSTED_SOURCES`(구역 이력 또는 **라인 더미** 이력). 2026-10-20 라인 단위
+       연결(§6-0-28)로 바꾼 뒤에도 여기만 구역 이력(SRC_ZONE)만 세고 있어, 실제로는 97.7% 가
+       기록에서 나오는데 **"0% 실측 · 100% 추정"** 으로 보고되고 있었다(2026-11-23 발견).
+    """
     rows = []
     for ln in S.YARD_PAIR:
         o = osp[osp["line"] == ln]
@@ -163,7 +169,7 @@ def source_svg(osp) -> str:
         if tot <= 0:
             continue
         z = float(pd.to_numeric(
-            o.loc[o[GRADE_SOURCE] == SRC_ZONE, "withdrawn_ton"], errors="coerce").sum())
+            o.loc[o[GRADE_SOURCE].isin(TRUSTED_SOURCES), "withdrawn_ton"], errors="coerce").sum())
         rows.append((ln, z, tot - z, tot))
     if not rows:
         return ""
@@ -179,10 +185,10 @@ def source_svg(osp) -> str:
         out.append(f'<rect x="{pl}" y="{y}" width="{wz:.1f}" height="20" fill="var(--accent)"/>')
         out.append(f'<rect x="{pl+wz:.1f}" y="{y}" width="{pr-pl-wz:.1f}" height="20" '
                    f'fill="var(--warnfill)"/>')
-        out.append(f'<text x="{pl+8}" y="{y+14}" class="inb">실측 기반 {z/tot*100:.0f}%</text>')
+        out.append(f'<text x="{pl+8}" y="{y+14}" class="inb">더미 기록 기반 {z/tot*100:.1f}%</text>')
         # 추정 구간은 밝은 바탕이라 흰 글씨는 읽히지 않는다 → 잉크색으로 둔다
         out.append(f'<text x="{pr-8}" y="{y+14}" class="inw" text-anchor="end">'
-                   f'추정 {est/tot*100:.0f}%</text>')
+                   f'품위 미상 {est/tot*100:.1f}%</text>')
     out.append("</svg>")
     return "".join(out)
 
@@ -207,8 +213,11 @@ def build() -> str:
 
     tot_ton = float(pd.to_numeric(osp["withdrawn_ton"], errors="coerce").sum())
     meas_ton = float(pd.to_numeric(
-        osp.loc[osp[GRADE_SOURCE] == SRC_ZONE, "withdrawn_ton"], errors="coerce").sum())
+        osp.loc[osp[GRADE_SOURCE].isin(TRUSTED_SOURCES), "withdrawn_ton"], errors="coerce").sum())
     est_pct = (tot_ton - meas_ton) / tot_ton * 100 if tot_ton else float("nan")
+    # ⭐️ 머릿줄은 운영 현황판의 추적 연결 점수와 **같은 계산**을 쓴다 — 문서마다 숫자가 다르면
+    #    어느 쪽을 믿어야 할지 알 수 없다(§6-0-28).
+    chain = build_chain(mine, osp, stock, yc)
 
     cm = combined_mass_gap(stock, mine, osp)
     gbs = {ln: r for ln in S.YARD_PAIR if (r := grade_balance(stock, mine, osp, ln))}
@@ -239,7 +248,10 @@ def build() -> str:
         kpi(f"{rep['mean']:.2f}", "%", "야드 CaO 평균", f"목표 {TARGET}%", "good"),
         kpi(f"{rep['std']:.2f}", "%p", "편차(표준편차)", f"목표 {TOL} — {rep['std']/TOL:.1f}배", "bad"),
         kpi(f"{rep['inband']:.0f}", "%", "목표 구간 안에 든 시간", f"{TARGET}±{TOL} 기준", "bad"),
-        kpi(f"{meas_ton/tot_ton*100:.0f}", "%", "실측 기반 매칭", f"나머지 {est_pct:.0f}%는 추정", "warn"),
+        # 운영 현황판의 추적 연결 점수와 같은 값(§6-0-28) — 문서마다 다른 숫자를 쓰지 않는다
+        kpi(f"{chain.linked_pct:.1f}", "%", "추적 연결",
+            f"품위 미상 {est_pct:.1f}% · 시각 미상 {meas_ton/tot_ton*100 - chain.linked_pct:.1f}%p",
+            "good" if chain.linked_pct >= 95 else "warn"),
     ])
 
     # 품위 수지 표
@@ -327,7 +339,7 @@ def build() -> str:
        f"편차가 목표의 {rep['std']/TOL:.1f}배라, 목표 구간 안에 있던 시간은 "
        f"{rep['inband']:.0f}%에 그칩니다.",
   strip=f"데이터 기간 {E(period)} · 야드 측정 "
-        f"{sum(v['n'] for v in ystats.values()):,}건 · 생성 {datetime.now():%Y-%m-%d %H:%M}")}
+        f"{sum(v['n'] for v in ystats.values()):,}건 · 생성 {S.now_local():%Y-%m-%d %H:%M}")}
 
 <div class="wrap doc">
 
@@ -352,23 +364,24 @@ def build() -> str:
 <section>
   <h2>추 적</h2>
   <p class="q">광산에서 야드까지 이어 붙였는가?</p>
-  <p class="a">이어졌습니다. 채굴 시각·구역과 인출 시각을 맞춰 연결했고,
-    인출 물량의 <strong>{meas_ton/tot_ton*100:.0f}%는 실제 적재 기록에 근거</strong>합니다.
-    나머지 {est_pct:.0f}%는 아직 추정값입니다.</p>
+  <p class="a">이어졌습니다. 야드로 간 물량의 <strong>{chain.linked_pct:.1f}%</strong>는
+    <b>어느 더미에서 언제 쌓인 돌인지</b> 말할 수 있습니다(운영 현황판의 추적 연결 점수와 같은 값).
+    품위만 따지면 인출 물량의 <strong>{meas_ton/tot_ton*100:.1f}%</strong>가 그 라인 더미의
+    실제 적재 기록에서 나옵니다.</p>
   <div class="card">{source_svg(osp)}</div>
-  <p class="note">추정값이 생기는 이유는 <b>구역별 적재 기록이 뒤늦게 시작</b>하기 때문입니다.
-    어떤 구역에서 물량을 뽑아 썼는데 그 구역에 쌓았다는 기록이 아직 없으면, 품위를 알 수 없어
-    라인 평균으로 대신 넣습니다.</p>
+  <p class="note">연결 단위는 <b>구역(칸)이 아니라 라인 더미</b>입니다 — 인출은 그 시점 더미 재고에
+    비례해 섞여 나간다고 보고 품위를 계산합니다. 나머지 <b>{est_pct:.1f}%</b>는 그 시점 기록상
+    <b>더미가 비어 있던</b> 인출(기초 재고처럼 품위 기록이 없는 돌이 나간 것으로 보이는 경우)이라
+    품위를 낼 수 없어 라인 평균으로 채웠습니다. 두 숫자의 차이({meas_ton/tot_ton*100 - chain.linked_pct:.1f}%p)는
+    인출 <b>시각</b>이 기록되지 않아 시간축에 올릴 수 없는 물량입니다.</p>
   <div class="said"><span class="lbl">현장 확인 (적치장 구조)</span>
     <b>구역별 재고는 측정하지 않습니다.</b> 6월 10일 기준 라인 합계만 있습니다
     (기존 36,000톤 · 신설 30,000톤). 또 구역은 <b>칸</b>으로 나뉘어 있는데
     <b>칸 높이 이상 쌓이면 옆 칸으로 흘러 들어가</b>, 잔량은 추정에 의존합니다.</div>
-  <p class="note">이 답변으로 <b>두 가지가 분명해졌습니다.</b> 첫째, 위 추정 {est_pct:.0f}%는
-    <b>기록을 더 받아서 메울 수 있는 것이 아닙니다</b> — 구역별 재고라는 데이터가 애초에
-    존재하지 않습니다. 둘째, 칸이 넘쳐 옆으로 흘러든다면 <b>구역 이름표 자체가 근사값</b>이며,
-    이것이 구역 단위로 품위를 따지는 방식의 <b>정밀도 한계</b>가 됩니다.
-    실제로 기존 라인 35번 구역은 쌓은 기록 없이 1,250톤이 인출됐는데, 옆 칸에서 흘러든 것으로
-    설명됩니다.</p>
+  <p class="note">이 답변이 <b>라인 단위로 잇기로 한 이유</b>입니다. 구역별 재고라는 데이터가 애초에
+    없고, 칸이 넘쳐 옆으로 흘러든다면 <b>구역 이름표 자체가 근사값</b>입니다. 구역 해상도를 가진
+    척하면 숫자만 그럴듯해지고, 실제로 구역 단위 계산에서는 인출의 3분의 1 이상이 기록된 구역
+    재고로 설명되지 않았습니다(§6-0-22).</p>
 </section>
 
 <section>

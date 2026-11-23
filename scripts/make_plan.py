@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import paths as P                                          # noqa: E402
 from config import schema as S                                         # noqa: E402
-from src.matching.pipeline import GRADE_SOURCE, SRC_ZONE               # noqa: E402
+from src.matching.pipeline import GRADE_SOURCE, TRUSTED_SOURCES        # noqa: E402
 from src.models.dataset import load_osp_stock, load_sources, load_yard_change  # noqa: E402
 from src.models.roadmap import readiness                               # noqa: E402
 from src.optimization.prescribe import prescribe, zone_balance_health  # noqa: E402
@@ -181,7 +181,9 @@ def build(qualitative: bool = False) -> str:
     worst_ln = [k for k, v in health.items() if v is worst][0]
 
     tot = float(osp["withdrawn_ton"].sum())
-    est = tot - float(osp.loc[osp[GRADE_SOURCE] == SRC_ZONE, "withdrawn_ton"].sum())
+    # ⚠️ 기록 기반 = 구역 이력 **또는 라인 더미** 이력(TRUSTED_SOURCES). 라인 단위 연결(§6-0-28)
+    #    이후 구역 이력만 세면 100% 가 '추정' 으로 잡힌다(2026-11-23 발견).
+    est = tot - float(osp.loc[osp[GRADE_SOURCE].isin(TRUSTED_SOURCES), "withdrawn_ton"].sum())
 
     maes = {}
     for ln in S.YARD_PAIR:
@@ -249,9 +251,10 @@ def build(qualitative: bool = False) -> str:
         case1 = ("<b>80번 구역</b>은 <b>8월 5일에 처음 쌓았는데</b>, <b>6월 11일부터 뽑고</b> "
                  "있습니다. 8월 이전에 그곳에서 뽑은 물량이 어디서 온 것인지 기록만으로는 "
                  "알 수 없습니다.")
-        case2 = (f"어느 구역 물량인지 되짚을 수 없으니 품위도 알 수 없습니다. 현재 인출량의 "
-                 f"<b>{est / tot * 100:.0f}%({est:,.0f}톤)</b>가 실측이 아닌 <b>추정값</b>으로 "
-                 f"처리됩니다.")
+        case2 = (f"어느 구역 물량인지 되짚을 수 없으니 <b>구역 단위</b> 품위는 알 수 없습니다. "
+                 f"그래서 지금은 <b>라인 더미 단위</b>로 잇고 있고, 그렇게 해도 품위를 낼 수 없는 "
+                 f"물량이 인출량의 <b>{est / tot * 100:.1f}%({est:,.0f}톤)</b>입니다"
+                 f"(그 시점 기록상 더미가 비어 있던 인출).")
         sched2 = (f"검증 사례 <b>{cs['have']}/{cs['need']}건</b> 확보"
                   f"(월 {cs['per_month']:.0f}건 → 약 <b>{cs['months']:.0f}개월</b> 남음). "
                   f"조건이 차면 <b>시스템이 자동으로 알립니다.</b> 무리하게 앞당기지 않고 "
@@ -262,9 +265,9 @@ def build(qualitative: bool = False) -> str:
                       f"<b>순차적으로 보고</b>드리겠습니다.")
         evidence = _zone_svg(worst)
 
-    meta_txt = (f"작성 {datetime.now():%Y-%m-%d}" if qualitative else
+    meta_txt = (f"작성 {S.now_local():%Y-%m-%d}" if qualitative else
                 f"분석 기간 {period} · 야드 측정 {sum(v['n'] for v in ys.values()):,}건 · "
-                f"작성 {datetime.now():%Y-%m-%d}")
+                f"작성 {S.now_local():%Y-%m-%d}")
 
     # 정성 버전 각주는 **결과물 파일을 가리키지 않는다** — 아직 공개하지 않을 자료다
     foot_txt = ("근거 — 야드 품위는 실시간 분석기 실측, 물량은 광산 이송량과 OSP 인출량, "

@@ -35,7 +35,7 @@ def main() -> None:
             cv = F.evaluate(ld.features, use_upstream=False)
         except F.InsufficientDataError as e:
             # 가동 중지 라인 등 — 지어내지 않고 건너뛴다 (CLAUDE.md §2-1)
-            note = S.LINE_NOTES.get(line, "")
+            note = S.line_note(line, ld.features.index.max() if len(ld.features) else None)
             skipped.append(f"[SKIP] {line}→{ld.alias}: {e}" + (f" ({note})" if note else ""))
             print(skipped[-1])
             continue

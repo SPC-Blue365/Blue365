@@ -222,7 +222,7 @@ def build() -> str:
   lead="계산한 결과입니다. 계산은 나왔지만 지금은 그대로 쓰기에 이릅니다 — "
        "넣는 구역 품위를 정확히 모르기 때문이며, 그 이유를 아래에 적었습니다.",
   strip=f"기준시각 {max(p.at for p in lines):%Y-%m-%d %H:%M} · "
-        f"생성 {datetime.now():%Y-%m-%d %H:%M}")}
+        f"생성 {S.now_local():%Y-%m-%d %H:%M}")}
 
 <div class="wrap doc">
 

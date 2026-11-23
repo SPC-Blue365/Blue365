@@ -193,7 +193,7 @@ def headline(yards: dict, stock: pd.DataFrame, window_days: int = 7) -> dict:
             w = d[d["datetime"] >= hi - pd.Timedelta(days=window_days)]
             ok = ((w["cao"] >= TARGET - TOL) & (w["cao"] <= TARGET + TOL)).mean() * 100
             card.update(last_cao=_f(d["cao"].iloc[-1]), last_at=hi.strftime("%m-%d %H:%M"),
-                        age_h=_f((pd.Timestamp.now() - hi).total_seconds() / 3600),
+                        age_h=_f((pd.Timestamp(S.now_local()) - hi).total_seconds() / 3600),
                         w_mean=_f(w["cao"].mean()), w_std=_f(w["cao"].std()), w_ok=_f(ok),
                         w_n=int(len(w)))
         g = stock[stock["line"] == ln].dropna(subset=["stock_ton"]).sort_values("datetime")
