@@ -36,7 +36,8 @@ def build_features_for(xls, osp_exp, line, sheet):
     oh = o.groupby("h").agg(impl=("expected_cao", "mean"), ton=("withdrawn_ton", "sum"))
     lag = P.estimate_time_lag(
         oh.reset_index().rename(columns={"h": "datetime", "impl": "osp_expected_cao"}),
-        ys.reset_index().rename(columns={"h": "datetime", "cao": "yard_cao"}), 24
+        ys.reset_index().rename(columns={"h": "datetime", "cao": "yard_cao"}), 24,
+        fixed=P.fixed_route_lag(P.estimate_route_lags(osp_exp, y, line).base, line),
     ).best_lag_hours
     return F.build_features(ys, oh, lag)
 

@@ -51,6 +51,8 @@ def load_sources(raw_file: str | None = None, validate: bool = True, verbose: bo
     # ⭐️ `신설60 기존50 1:1 인출` 표기를 실제 라인 분할로 반영하고, 두 시트에 중복 기록된
     #    같은 인출을 제거한다(사용자 확정 2026-08-19). 두 시트를 합친 뒤에야 중복이 보인다.
     osp = C.apply_cross_line_splits(osp)
+    # 교차분할이 목적지를 덮어썼을 수 있으므로 '야드로 가지 않는 인출'(L-Slag)을 다시 표시한다
+    osp = C.mark_nonyard(osp)
     yards = {ln: C.clean_yard(pd.read_excel(xls, sh)) for ln, (sh, _) in S.YARD_PAIR.items()}
 
     # ⭐️ 검증 게이트: 매칭(조인) '전에' 무결성 검사 (CLAUDE.md §3)
@@ -127,7 +129,8 @@ def build_line_data(osp_exp, yards, line: str) -> LineData:
     oh = o.groupby("h").agg(impl=("expected_cao", "mean"), ton=("withdrawn_ton", "sum"))
     est = P.estimate_time_lag(
         oh.reset_index().rename(columns={"h": "datetime", "impl": "osp_expected_cao"}),
-        ys.reset_index().rename(columns={"h": "datetime", "cao": "yard_cao"}), 24
+        ys.reset_index().rename(columns={"h": "datetime", "cao": "yard_cao"}), 24,
+        fixed=P.fixed_route_lag(routes.base, line),   # 현장 확정 운반 시간이 있으면 그 값(§6-0-33)
     )
     lag = est.best_lag_hours
     feats = F.build_features(ys, oh, lag)
@@ -314,6 +317,11 @@ def surge_cycles(raw_file: str | None = None) -> pd.DataFrame:
             "plausible", "reason"]
     if ev.empty:
         return pd.DataFrame(columns=cols)
+    # ⭐️ 같은 교대 시각에 '고갈' 과 '채움' 이 함께 적히면 **고갈이 먼저**다 — 생산하다 재고부족으로
+    #    멈추고, 그 뒤 운휴 중에 채운다(2026-11-23 현장 확정, 10/16 1차 교대 사례). 순서를 정하지
+    #    않으면 채움 직후 같은 시각에 고갈이 와서 **길이 0 사이클**이 생겼다.
+    ev = (ev.assign(_r=ev["kind"].map({SURGE_EMPTY: 0}).fillna(1))
+            .sort_values(["datetime", "_r"], kind="stable").drop(columns="_r"))
     cap = float(S.CRUSHER_CAPACITY_TPH["G/C"][1])
     rows, acc, n, since, fills = [], 0.0, 0, None, []
     for _, e in ev.iterrows():

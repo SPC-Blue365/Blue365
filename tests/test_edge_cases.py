@@ -959,17 +959,21 @@ def test_surge_cycles_close_locally_and_stay_under_capacity():
        그래서 이 테스트는 "모든 사이클이 성립한다" 가 아니라
        **"성립한다고 표시된 사이클은 전부 물리적으로 성립한다"** 를 고정한다(§2-1).
     """
+    import pandas as pd
+
     from config import schema as S
     from src.models.dataset import surge_cycles
 
     c = surge_cycles()
     assert len(c) >= 3
     assert (c["end"] >= c["start"]).all(), "사이클 끝이 시작보다 앞설 수는 없다"
-    # 같은 교대 시각에 '채움'과 '고갈'이 함께 적히면 길이 0 사이클이 생긴다(2026-10-16 실제:
-    # 1차 교대에 수항채움 3,680톤 + "~10시40분 수항재고부족 종료"). 교대 안의 선후는 기록만으로
-    # 알 수 없으므로 **추정하지 않고 '추정 불가'로 표시**돼야 한다(§2-1·§2-2).
-    zero = c[c["end"] == c["start"]]
-    assert (~zero["plausible"]).all(), "길이 0 사이클을 성립한다고 표시하면 안 된다"
+    # 같은 교대 시각에 '채움'과 '고갈'이 함께 적히면 **고갈이 먼저**다(2026-11-23 현장 확정 —
+    # 10/16 1차: "~10시40분 수항재고부족 종료" 뒤 운휴 중 수항채움 3,680톤). 순서를 정하지 않으면
+    # 길이 0 사이클이 생겼다. 이제 길이 0 사이클은 없어야 하고, 그 채움은 새 사이클을 연다.
+    assert not (c["end"] == c["start"]).any(), "같은 시각 고갈·채움 순서 규칙이 적용되지 않았다"
+    t1016 = pd.Timestamp("2026-10-16 12:00")
+    if (c["start"] <= t1016).any() and (c["end"] >= t1016).any():
+        assert (c["start"] == t1016).any(), "10/16 1차 채움이 새 사이클의 시작이어야 한다"
     # ⚠️ 용량과 비교할 값은 누적 채움(fill_ton)이 아니라 **순간 최대 재고(peak_ton)** 다.
     #    사이클이 길면 그동안 계속 빠져나가므로 누적 채움은 용량을 넘는 것이 정상이다.
     assert (c["peak_ton"] <= c["fill_ton"] + 1).all(), "순간 재고는 누적 채움을 넘을 수 없다"
@@ -1784,3 +1788,49 @@ def test_line_status_note_only_applies_within_its_period():
     assert S.line_note(S.LINE_OLD, "2026-11-22 16:00") == ""
     assert S.line_note(S.LINE_OLD, None) == ""
     assert S.line_note(S.LINE_NEW, "2026-07-24") == ""
+
+
+def test_lslag_withdrawals_leave_stock_but_never_reach_a_yard():
+    """'L-Slag 작업' 은 다른 용도다(2026-11-23 사용자 확정) — **재고에서는 빠지고**(출처 라인 유지)
+    **야드 품위 매칭에서는 빠져야** 한다. 교차인출로 오인되어서도 안 된다."""
+    import pandas as pd
+
+    from config import schema as S
+    from src.data import clean as C
+    from src.matching import pipeline as P
+
+    raw = pd.DataFrame({
+        "일자": pd.to_datetime(["2026-10-01", "2026-10-01", "2026-10-02"]),
+        "인출시간": ["08:00", "16:00", "16:00"],
+        S.COL_OSP_PROCESS: ["기존", "기존", "신설"],
+        **{c: [40, 40, 90] for c in S.PW_COLS_OLD[:1]},
+        "인출량": [1000, 700, 500],
+        S.COL_OSP_NOTE: ["", "L-Slag 작업", "교차인출 L-slag"],
+    })
+    o = C.clean_osp(raw, S.LINE_OLD, S.PW_COLS_OLD)
+    o = C.mark_nonyard(C.apply_cross_line_splits(o))
+    assert (o["line"] == S.LINE_OLD).all(), "출처는 그대로여야 재고에서 빠진다"
+    assert (o["dest_line"] == S.DEST_NONYARD).sum() == 2
+    assert P.osp_to_yard(o, S.LINE_OLD)["withdrawn_ton"].sum() == 1000
+    assert P.osp_to_yard(o, S.LINE_NEW)["withdrawn_ton"].sum() == 0, "L-Slag 가 신설 야드로 새면 안 된다"
+
+
+def test_field_confirmed_route_lag_overrides_data_estimate():
+    """현장 확정 운반 시간(기존 OSP → 45Q 야드 6시간, 2026-11-23)은 데이터 추정을 대신한다."""
+    import numpy as np
+    import pandas as pd
+
+    from config import schema as S
+    from src.matching import pipeline as P
+
+    assert P.fixed_route_lag(S.LINE_OLD, S.LINE_OLD) == 6
+    t = pd.date_range("2026-07-01", periods=300, freq="1h")
+    rng = np.random.default_rng(0)
+    x = pd.Series(rng.normal(45, 1, len(t)), index=t)
+    osp_h = pd.DataFrame({"datetime": t, "osp_expected_cao": x.values})
+    yard_h = pd.DataFrame({"datetime": t, "yard_cao": x.shift(11).values})   # 데이터는 11h 를 가리킨다
+    free = P.estimate_time_lag(osp_h, yard_h, 24)
+    pinned = P.estimate_time_lag(osp_h, yard_h, 24, fixed=6)
+    assert free.best_lag_hours == 11 and free.source == "data"
+    assert pinned.best_lag_hours == 6 and pinned.source == "field"
+    assert abs(pinned.best_corr) < free.best_corr, "확정 lag 의 상관은 그 lag 에서 계산해 보고만 한다"

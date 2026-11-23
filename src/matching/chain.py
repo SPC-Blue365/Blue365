@@ -97,13 +97,20 @@ def _osp_balance(stock, mine, osp) -> Joint:
         f"설명되지 않는 물량 {abs(float(cm['gap'])):,.0f}톤" if gap > 1 else "")
 
 
+def _yard_bound(osp):
+    """야드로 가는 인출만 — 목적지가 두 야드 라인 중 하나인 행."""
+    if "dest_line" not in osp.columns:
+        return osp
+    return osp[osp["dest_line"].isin(list(S.YARD_PAIR))]
+
+
 def _yard_attribution(osp, yard_change) -> Joint:
     """인출이 어느 야드로 갔는가 — 야드 자체 기록과 대조."""
     if yard_change is None or not len(yard_change) or "dest_line" not in osp.columns:
         return Joint("yard", "야드 목적지 귀속", float("nan"), "—",
                      "야드변경 기록이 없어 대조할 수 없습니다.")
     act = yard_change.groupby("line")["tonnage"].sum()
-    dst = osp.groupby("dest_line")["withdrawn_ton"].sum()
+    dst = _yard_bound(osp).groupby("dest_line")["withdrawn_ton"].sum()   # L-Slag 등 제외
     if not len(act) or not len(dst) or act.sum() <= 0 or dst.sum() <= 0:
         return Joint("yard", "야드 목적지 귀속", float("nan"), "—", "대조할 자료가 없습니다.")
     err = max(abs(dst.get(ln, 0.0) / dst.sum() - act.get(ln, 0.0) / act.sum()) * 100
@@ -132,11 +139,15 @@ def build_chain(mine, osp, stock=None, yard_change=None) -> Chain:
     머릿줄 = **출처(더미 품위)와 시각을 모두 아는 물량 비율**. 둘 중 하나라도 모르면
     그 돌은 '어디서 언제 온 것' 이라고 말할 수 없다.
     """
-    tot = float(pd.to_numeric(osp["withdrawn_ton"], errors="coerce").sum())
-    known = osp[osp[GRADE_SOURCE].isin(TRUSTED_SOURCES) & osp["time_known"].fillna(True)]
+    # ⭐️ 머릿줄은 **야드로 간 물량**만 센다 — L-Slag 처럼 다른 용도로 빠진 인출은 야드에
+    #    닿지 않으므로 '야드까지 이어졌는가' 의 분모가 아니다(2026-11-23 사용자 확정).
+    #    재고 수지(_osp_balance)는 출처 기준이라 전부 그대로 쓴다.
+    yb = _yard_bound(osp)
+    tot = float(pd.to_numeric(yb["withdrawn_ton"], errors="coerce").sum())
+    known = yb[yb[GRADE_SOURCE].isin(TRUSTED_SOURCES) & yb["time_known"].fillna(True)]
     lt = float(pd.to_numeric(known["withdrawn_ton"], errors="coerce").sum())
     return Chain(
         joints=[_mine_grade_recorded(mine), _osp_balance(stock, mine, osp),
-                _yard_attribution(osp, yard_change), _time_known(osp)],
+                _yard_attribution(osp, yard_change), _time_known(yb)],
         linked_pct=(lt / tot * 100 if tot else float("nan")),
         linked_ton=lt, total_ton=tot)

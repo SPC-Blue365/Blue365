@@ -54,12 +54,15 @@ def main() -> None:
         yard = C.clean_yard(pd.read_excel(xls, sheet))
         osp_h = P.aggregate_osp_hourly(P.osp_to_yard(osp_exp, line))   # 목적지 기준(§6-0-21)
         yard_h = P.aggregate_yard_hourly(yard)
-        lag = P.estimate_time_lag(osp_h, yard_h, max_lag_hours=24)
+        base = P.estimate_route_lags(osp_exp, yard, line).base       # 물량이 가장 많은 경로
+        lag = P.estimate_time_lag(osp_h, yard_h, max_lag_hours=24,
+                                  fixed=P.fixed_route_lag(base, line))  # 현장 확정값(§6-0-33)
         matched = P.build_line_dataset(osp_exp, yard, line, lag.best_lag_hours)
         out = PROCESSED_DIR / f"matched_{line}.csv"
         matched.to_csv(out, index=False)
         print(
-            f"[OK] {line}→{alias}: lag={lag.best_lag_hours}h corr={lag.best_corr:+.3f} "
+            f"[OK] {line}→{alias}: lag={lag.best_lag_hours}h"
+            f"{'(현장 확정)' if lag.source == 'field' else ''} corr={lag.best_corr:+.3f} "
             f"→ {out.name} (n={len(matched)})"
         )
 

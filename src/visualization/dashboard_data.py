@@ -146,14 +146,17 @@ def cross_flow(osp: pd.DataFrame) -> dict:
         if not len(s):
             continue
         other = S.LINE_NEW if ln == S.LINE_OLD else S.LINE_OLD
-        s = s.assign(cross=s["dest_line"] != ln)
+        # ⚠️ '교차' = 반대쪽 **야드**로 간 것만. L-Slag 처럼 야드로 가지 않는 인출을
+        #    `!= ln` 으로 세면 교차인출로 잘못 잡힌다(2026-11-23).
+        s = s.assign(cross=s["dest_line"] == other)
+        nonyard = float(s.loc[~s["dest_line"].isin(list(S.YARD_PAIR)), "ton"].sum())
         g = s.groupby("day").apply(
             lambda d: pd.Series({"tot": d["ton"].sum(),
                                  "cr": d.loc[d["cross"], "ton"].sum()}),
             include_groups=False)
         tot, cr = float(s["ton"].sum()), float(s.loc[s["cross"], "ton"].sum())
         out[ln] = dict(
-            dest=other, total=_f(tot), cross=_f(cr),
+            dest=other, total=_f(tot), cross=_f(cr), nonyard=_f(nonyard),
             pct=_f(cr / tot * 100 if tot else np.nan),
             n_rows=int(s["cross"].sum()),
             daily=[dict(d=k.strftime("%Y-%m-%d"), t=_f(r.tot), c=_f(r.cr))

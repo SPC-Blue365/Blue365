@@ -18,6 +18,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 warnings.filterwarnings("ignore")
+# ⚠️ 우리 코드(src.*)의 경고는 **보여야 한다** — 보정표 안전장치("원본이 이미 바로잡혔다",
+#    "이미 있는 행이다")가 여기서 함께 묻혀, 11-23 판에서 현장이 두 건을 직접 고친 사실을 한동안
+#    놓쳤다(§6-0-33). 외부 라이브러리 잡음만 끈다.
+warnings.filterwarnings("default", category=UserWarning, module=r"src\.")
 
 from config.paths import OUTPUTS_DIR, RAW_DIR
 from config import schema as S

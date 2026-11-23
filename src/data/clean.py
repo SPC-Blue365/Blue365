@@ -676,7 +676,29 @@ def clean_osp(df: pd.DataFrame, line: str, pw_cols: list[str]) -> pd.DataFrame:
                      sheet_line=line, slot=slot, row_ton=float(total) if pd.notna(total) else np.nan,
                      note=note)
             )
-    return pd.DataFrame(rows)
+    return mark_nonyard(pd.DataFrame(rows))
+
+
+#: 야드로 가지 않는 인출의 비고 표기 (2026-11-23 사용자 확정: 'L-Slag 작업' 은 다른 용도)
+_NONYARD = re.compile("|".join(S.NONYARD_NOTE_PATTERNS), re.I)
+
+
+def mark_nonyard(df: pd.DataFrame) -> pd.DataFrame:
+    """비고가 '야드로 가지 않는 용도'(L-Slag 등)인 인출은 `dest_line` 을 `S.DEST_NONYARD` 로 바꾼다.
+
+    ⭐️ 재고에서는 **빠진다**(출처 `line` 은 그대로 — 더미·수지 계산에 남는다).
+       야드 품위 매칭에서는 **빠진다**(`osp_to_yard` 가 목적지 라인만 고르므로 자동으로 제외).
+    교차인출 분할(`apply_cross_line_splits`)이 목적지를 덮어쓸 수 있으므로 그 **뒤에도** 한 번
+    더 부른다 — 여러 번 불러도 결과가 같다.
+    """
+    if df is None or not len(df) or "note" not in df.columns:
+        return df
+    out = df.copy()
+    if "dest_line" not in out.columns:
+        out["dest_line"] = out["line"]
+    m = out["note"].astype(str).str.contains(_NONYARD, na=False)
+    out.loc[m, "dest_line"] = S.DEST_NONYARD
+    return out
 
 
 #: 비고의 라인-구역 표기 (구 표기, 예: "신설60 기존50 1:1 인출")

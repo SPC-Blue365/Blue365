@@ -211,9 +211,12 @@ def build() -> str:
                 lo=d["datetime"].min(), hi=d["datetime"].max())
     rep = ystats[ymain[0]]
 
-    tot_ton = float(pd.to_numeric(osp["withdrawn_ton"], errors="coerce").sum())
+    # 분모는 **야드로 간 인출** — 머릿줄(build_chain)과 같아야 두 숫자의 차이가 '시각 미상' 이 된다.
+    # L-Slag 처럼 다른 용도로 빠진 인출은 야드에 닿지 않는다(2026-11-23 사용자 확정).
+    yb = osp[osp["dest_line"].isin(list(S.YARD_PAIR))] if "dest_line" in osp.columns else osp
+    tot_ton = float(pd.to_numeric(yb["withdrawn_ton"], errors="coerce").sum())
     meas_ton = float(pd.to_numeric(
-        osp.loc[osp[GRADE_SOURCE].isin(TRUSTED_SOURCES), "withdrawn_ton"], errors="coerce").sum())
+        yb.loc[yb[GRADE_SOURCE].isin(TRUSTED_SOURCES), "withdrawn_ton"], errors="coerce").sum())
     est_pct = (tot_ton - meas_ton) / tot_ton * 100 if tot_ton else float("nan")
     # ⭐️ 머릿줄은 운영 현황판의 추적 연결 점수와 **같은 계산**을 쓴다 — 문서마다 숫자가 다르면
     #    어느 쪽을 믿어야 할지 알 수 없다(§6-0-28).
@@ -228,7 +231,7 @@ def build() -> str:
         rl = P2.estimate_route_lags(osp, yards[ln], ln)
         for src, lag in sorted(rl.lags.items(), key=lambda kv: -rl.ton[kv[0]]):
             routes.append((src, ln, rl.ton[src], lag, rl.corr.get(src, float("nan")),
-                           src in rl.fallback))
+                           src in rl.fallback, src in rl.field))
 
     maes = {}
     for ln in S.YARD_PAIR:
@@ -316,9 +319,32 @@ def build() -> str:
         + ('  <span style="color:var(--muted)">(교차인출)</span>' if src != dst else "")
         + f"</td><td class='n'>{ton:,.0f}</td><td class='n'>{lag}시간"
         + ("*" if fb else "")
+        + (' <span class="tag mute">현장 확정</span>' if fld else "")
         + f"</td><td class='n'>{('—' if corr != corr else f'{corr:+.2f}')}</td></tr>"
-        for src, dst, ton, lag, corr, fb in routes)
-    route_fallback = any(fb for *_, fb in routes)
+        for src, dst, ton, lag, corr, fb, fld in routes)
+    route_fallback = any(fb for *_, fb, _ in routes)
+    # ⚠️ 경로 설명은 **이번 데이터에서 계산**한다 — 예전엔 "교차인출이 가장 오래 걸리고 상류 신호도
+    #    가장 잘 맞는다" 를 글로 박아 두어, 11-23 데이터(신설→신설이 가장 잘 맞음)에서 틀린 문장이 됐다.
+    _nm = lambda r: f"{r[0]} OSP → {r[1]} 야드" + (" (교차인출)" if r[0] != r[1] else "")
+    _slow = max(routes, key=lambda r: r[3]) if routes else None
+    _corr = [r for r in routes if r[4] == r[4]]
+    _best = max(_corr, key=lambda r: r[4]) if _corr else None
+    if _slow and _best:
+        route_sentence = (f"가장 오래 걸리는 경로는 <b>{E(_nm(_slow))}</b>(약 {_slow[3]}시간)이고, "
+                          + (f"상류 신호도 이 경로가 가장 잘 맞습니다({_best[4]:+.2f})."
+                             if _best is _slow else
+                             f"상류 신호가 가장 잘 맞는 경로는 <b>{E(_nm(_best))}</b>({_best[4]:+.2f})입니다."))
+    else:
+        route_sentence = ""
+    _fld = [r for r in routes if r[6]]
+    if _fld:
+        route_field_sentence = (
+            "'현장 확정' 표시 경로는 데이터 추정 대신 현장이 알려 준 운반 시간을 쓰며, 일치도는 그 "
+            "시간에서 계산한 값입니다(" + ", ".join(f"{E(_nm(r))} {r[3]}시간" for r in _fld) + "). ")
+        if len(_fld) < len(routes):
+            route_field_sentence += "나머지 경로의 이송 시간은 데이터에서 추정한 값입니다."
+    else:
+        route_field_sentence = "이송 시간은 데이터에서 추정한 값이며, 현장 확인 대상으로 문의서에 올려 두었습니다."
 
     zn = rd["zone"]
     cs = rd["cases"]
@@ -436,11 +462,10 @@ def build() -> str:
     <thead><tr><th>경로</th><th class="n">물량(톤)</th><th class="n">이송 시간</th>
       <th class="n">상류-야드 일치도</th></tr></thead>
     <tbody>{route_rows}</tbody></table></div>
-  <p class="note">기존 적치장에서 <b>신설 야드로 보내는 교차인출</b>이 가장 오래 걸리고,
-    동시에 <b>상류 신호가 가장 잘 맞는 경로</b>입니다. 예전에는 이 셋을 한 덩어리로 묶어
-    평균 시간 하나만 썼기 때문에 서로를 흐리고 있었습니다.
+  <p class="note">{route_sentence}
+    예전에는 이 경로들을 한 덩어리로 묶어 평균 시간 하나만 썼기 때문에 서로를 흐리고 있었습니다.
     {"경로 표본이 적어 대표 시간을 빌려 쓴 경로는 *로 표시했습니다. " if route_fallback else ""}
-    이송 시간은 현장 확인 대상으로 문의서에 올려 두었습니다.</p>
+    {route_field_sentence}</p>
   <p class="note">막고 있는 것은 모델이 아니라 <b>들어가는 정보의 정밀도</b>입니다.
     구역별 품위의 평균 오차가 <b>{zn['se_median']:.2f}%p</b>로 허용폭 {TOL}%p보다 큽니다.
     자를 대는 눈금이 맞추려는 폭보다 굵은 셈이라, 이 상태로는 배합을 계산해도 목표에

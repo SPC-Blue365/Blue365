@@ -144,14 +144,22 @@ class LagResult:
     best_lag_hours: int
     best_corr: float
     curve: pd.DataFrame  # lag별 상관
+    source: str = "data"  # "data" = 상관 최대점 · "field" = 현장 확정값(S.ROUTE_LAG_FIXED)
+
+
+def fixed_route_lag(src: str, dest: str) -> int | None:
+    """현장이 확정한 운반 시간이 있으면 그 값(시간), 없으면 None."""
+    return S.ROUTE_LAG_FIXED.get((src, dest))
 
 
 def estimate_time_lag(
-    osp_h: pd.DataFrame, yard_h: pd.DataFrame, max_lag_hours: int = 24, freq_hours: int = 1
+    osp_h: pd.DataFrame, yard_h: pd.DataFrame, max_lag_hours: int = 24, freq_hours: int = 1,
+    fixed: int | None = None,
 ) -> LagResult:
     """OSP 예상 CaO를 지연시키며 야드 CaO와 피어슨 상관이 최대인 지연을 찾는다.
 
     lag>0 : OSP가 야드보다 lag 시간 앞선다(= 인출 후 lag 뒤 야드 적재).
+    `fixed` 가 주어지면(현장 확정값) 그 lag 을 쓰고, 상관은 그 lag 에서 계산한 값을 **보고만** 한다.
     """
     a = osp_h.set_index("datetime")["osp_expected_cao"].asfreq(f"{freq_hours}h")
     b = yard_h.set_index("datetime")["yard_cao"].asfreq(f"{freq_hours}h")
@@ -167,6 +175,9 @@ def estimate_time_lag(
         corr = float(shifted[m].corr(b[m])) if n >= 10 else np.nan
         records.append(dict(lag_hours=lag, corr=corr, n=n))
     curve = pd.DataFrame(records)
+    if fixed is not None:
+        at = curve.loc[curve["lag_hours"] == int(fixed), "corr"]
+        return LagResult(int(fixed), float(at.iloc[0]) if len(at) else np.nan, curve, "field")
     valid = curve.dropna(subset=["corr"])
     if valid.empty:
         return LagResult(best_lag_hours=0, best_corr=np.nan, curve=curve)
@@ -197,6 +208,7 @@ class RouteLags:
     ton: dict
     n: dict
     fallback: tuple = ()      # 표본 부족으로 주 경로 lag 을 빌려 쓴 출처들
+    field: tuple = ()         # 현장 확정 운반 시간(S.ROUTE_LAG_FIXED)을 쓴 출처들
 
     @property
     def is_multi(self) -> bool:
@@ -204,6 +216,7 @@ class RouteLags:
 
     def summary(self) -> str:
         parts = [f"{src}→{self.dest} {lag}h" + ("*" if src in self.fallback else "")
+                 + ("(현장)" if src in self.field else "")
                  for src, lag in sorted(self.lags.items(), key=lambda kv: -self.ton[kv[0]])]
         return " / ".join(parts)
 
@@ -228,16 +241,19 @@ def estimate_route_lags(osp_exp: pd.DataFrame, yard: pd.DataFrame, dest: str,
         if not len(part) or t <= 0:
             continue
         oh = aggregate_osp_hourly(part, freq=freq)
-        est = estimate_time_lag(oh, yh, max_lag_hours=max_lag_hours)
+        est = estimate_time_lag(oh, yh, max_lag_hours=max_lag_hours,
+                                fixed=fixed_route_lag(src, dest))
         n = int(est.curve.loc[est.curve["lag_hours"] == est.best_lag_hours, "n"].max())
         lags[src], corr[src], ton[src], nn[src] = est.best_lag_hours, est.best_corr, t, n
     if not lags:
         return RouteLags(dest, dest, 0, {}, {}, {}, {})
     base = max(ton, key=ton.get)                      # 물량이 가장 많은 경로가 그 라인의 대표
-    fallback = tuple(s for s in lags if nn[s] < MIN_ROUTE_SAMPLES and s != base)
+    field = tuple(s for s in lags if fixed_route_lag(s, dest) is not None)
+    # 현장 확정값이 있는 경로는 표본이 적어도 주 경로 lag 을 빌리지 않는다
+    fallback = tuple(s for s in lags if nn[s] < MIN_ROUTE_SAMPLES and s != base and s not in field)
     for s in fallback:
         lags[s] = lags[base]
-    return RouteLags(dest, base, int(lags[base]), lags, corr, ton, nn, fallback)
+    return RouteLags(dest, base, int(lags[base]), lags, corr, ton, nn, fallback, field)
 
 
 def align_routes(osp_exp: pd.DataFrame, dest: str, rl: RouteLags) -> pd.DataFrame:

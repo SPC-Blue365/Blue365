@@ -56,9 +56,10 @@ def _payload() -> dict:
     for ln in S.YARD_PAIR:
         rl = MP.estimate_route_lags(osp, yards[ln], ln)
         for src, lag in rl.lags.items():
-            route_lags[f"{src}→{ln}"] = int(lag)
-    route_txt = " · ".join(f"{k} 약 {v}시간" for k, v in
-                           sorted(route_lags.items(), key=lambda kv: -kv[1]))
+            route_lags[f"{src}→{ln}"] = (int(lag), src in rl.field)
+    # 현장이 확정한 경로는 '(현장 확정)' 으로 구분한다 — 데이터 추정값과 섞어 보이지 않게(§2-3)
+    route_txt = " · ".join(f"{k} 약 {v}시간" + (" (현장 확정)" if fld else "") for k, (v, fld) in
+                           sorted(route_lags.items(), key=lambda kv: -kv[1][0]))
 
     return dict(
         target=TARGET, tol=TOL, capacity=S.OSP_CAPACITY_TON,
@@ -460,7 +461,8 @@ function drawCross() {
   if (note) note.innerHTML =
     `<b>${esc(l)} OSP 인출 ${fmt(c.total)}톤 중 ${fmt(c.cross)}톤(${c.pct.toFixed(0)}%, ${fmt(c.n_rows)}건)</b>이 ` +
     `원본 기록의 공정구분에 <b>${esc(c.dest)}</b>으로 적혀 있습니다. 재고는 <b>${esc(l)} OSP</b>에서 빠지지만 ` +
-    `물량은 <b>${esc(c.dest)} 라인</b>으로 갑니다. 데이터로 추정한 경로별 이송 시간: <b>${esc(DATA.route_txt)}</b>.`;
+    `물량은 <b>${esc(c.dest)} 라인</b>으로 갑니다. 경로별 이송 시간: <b>${esc(DATA.route_txt)}</b>.` +
+    (c.nonyard ? ` · 야드로 가지 않는 인출(L-Slag 등) <b>${fmt(c.nonyard)}톤</b>은 재고에서만 빠지고 야드 매칭에서는 뺐습니다.` : '');
 }
 
 function drawRecent() {
