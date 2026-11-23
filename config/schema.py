@@ -101,8 +101,9 @@ ROUTE_LAG_FIXED = {
 }
 
 # ⭐️ 야드로 가지 않는 인출 — OSP 재고에서는 빠지지만(재고·수지에 남김) **야드 품위 매칭에서는 뺀다.**
-#    2026-11-23 사용자 확정: 'L-Slag 작업' 은 다른 용도다. `dest_line` 을 이 값으로 바꿔 표시한다.
-DEST_NONYARD = "L-Slag"
+#    2026-11-23 사용자 확정: 'L-Slag 작업' 은 별도 용도로, 야드가 아니라 **별도의 L-Slag 적치장**으로
+#    이송된다. 목적지(`dest_line`)를 이 이름으로 적어, 어디로 갔는지가 기록에 그대로 남게 한다.
+DEST_NONYARD = "L-Slag 적치장"
 NONYARD_NOTE_PATTERNS = (r"L\s*-?\s*slag",)     # 대소문자 무시 · 'L-Slag'·'L-slag'·'L slag'
 
 

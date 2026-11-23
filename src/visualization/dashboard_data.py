@@ -169,7 +169,10 @@ def recent_records(osp: pd.DataFrame, mine: pd.DataFrame, limit: int = 300) -> l
     rows = []
     o = osp.dropna(subset=["datetime"]).sort_values("datetime", ascending=False).head(limit)
     for r in o.itertuples():
-        rows.append(dict(t=r.datetime.strftime("%m-%d %H:%M"), kind="인출", line=r.line,
+        dest = getattr(r, "dest_line", r.line)
+        # 야드가 아닌 곳(L-Slag 적치장)으로 간 인출은 구분 칸에 **행선지**를 적는다
+        kind = "인출" if dest in S.YARD_PAIR else f"인출→{dest}"
+        rows.append(dict(t=r.datetime.strftime("%m-%d %H:%M"), kind=kind, line=r.line,
                          zone=(int(r.zone) if pd.notna(r.zone) else None),
                          ton=_f(r.withdrawn_ton),
                          cao=_f(getattr(r, "expected_cao", np.nan)),

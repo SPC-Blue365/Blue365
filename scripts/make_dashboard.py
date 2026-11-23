@@ -462,7 +462,8 @@ function drawCross() {
     `<b>${esc(l)} OSP 인출 ${fmt(c.total)}톤 중 ${fmt(c.cross)}톤(${c.pct.toFixed(0)}%, ${fmt(c.n_rows)}건)</b>이 ` +
     `원본 기록의 공정구분에 <b>${esc(c.dest)}</b>으로 적혀 있습니다. 재고는 <b>${esc(l)} OSP</b>에서 빠지지만 ` +
     `물량은 <b>${esc(c.dest)} 라인</b>으로 갑니다. 경로별 이송 시간: <b>${esc(DATA.route_txt)}</b>.` +
-    (c.nonyard ? ` · 야드로 가지 않는 인출(L-Slag 등) <b>${fmt(c.nonyard)}톤</b>은 재고에서만 빠지고 야드 매칭에서는 뺐습니다.` : '');
+    (c.nonyard ? ` · 이와 별도로 <b>${fmt(c.nonyard)}톤</b>은 <b>L-Slag 적치장</b>으로 이송됐습니다(별도 용도) — ` +
+      `OSP 재고에서는 빠지지만 어느 야드로도 가지 않으므로 야드 품위 매칭에서는 뺐습니다.` : '');
 }
 
 function drawRecent() {

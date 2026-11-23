@@ -214,6 +214,8 @@ def build() -> str:
     # 분모는 **야드로 간 인출** — 머릿줄(build_chain)과 같아야 두 숫자의 차이가 '시각 미상' 이 된다.
     # L-Slag 처럼 다른 용도로 빠진 인출은 야드에 닿지 않는다(2026-11-23 사용자 확정).
     yb = osp[osp["dest_line"].isin(list(S.YARD_PAIR))] if "dest_line" in osp.columns else osp
+    nonyard_ton = float(pd.to_numeric(
+        osp.loc[osp.get("dest_line", osp["line"]) == S.DEST_NONYARD, "withdrawn_ton"], errors="coerce").sum())
     tot_ton = float(pd.to_numeric(yb["withdrawn_ton"], errors="coerce").sum())
     meas_ton = float(pd.to_numeric(
         yb.loc[yb[GRADE_SOURCE].isin(TRUSTED_SOURCES), "withdrawn_ton"], errors="coerce").sum())
@@ -399,7 +401,8 @@ def build() -> str:
     비례해 섞여 나간다고 보고 품위를 계산합니다. 나머지 <b>{est_pct:.1f}%</b>는 그 시점 기록상
     <b>더미가 비어 있던</b> 인출(기초 재고처럼 품위 기록이 없는 돌이 나간 것으로 보이는 경우)이라
     품위를 낼 수 없어 라인 평균으로 채웠습니다. 두 숫자의 차이({meas_ton/tot_ton*100 - chain.linked_pct:.1f}%p)는
-    인출 <b>시각</b>이 기록되지 않아 시간축에 올릴 수 없는 물량입니다.</p>
+    인출 <b>시각</b>이 기록되지 않아 시간축에 올릴 수 없는 물량입니다.
+    {f"또 기존 OSP 인출 중 <b>{nonyard_ton:,.0f}톤</b>은 별도 용도로 <b>L-Slag 적치장</b>에 이송돼 어느 야드로도 가지 않으므로, OSP 재고에서는 빼되 야드 추적 대상에서는 제외했습니다." if nonyard_ton > 0 else ""}</p>
   <div class="said"><span class="lbl">현장 확인 (적치장 구조)</span>
     <b>구역별 재고는 측정하지 않습니다.</b> 6월 10일 기준 라인 합계만 있습니다
     (기존 36,000톤 · 신설 30,000톤). 또 구역은 <b>칸</b>으로 나뉘어 있는데
