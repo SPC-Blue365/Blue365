@@ -1879,3 +1879,41 @@ def test_map3d_payload_marks_field_lag_and_lslag_destination():
     assert "open_fill" in p["surge"] and "level" not in p["surge"], "수항 재고(측정 안 함)를 값으로 내면 안 된다"
     for ln in S.YARD_PAIR:
         assert p["osp"][ln]["cap"] == S.OSP_CAPACITY_TON
+
+
+# ───────────────────────── 월간 품위 번갈음 (swing_data) ─────────────────────────
+def _swing_fixture():
+    from src.visualization import swing_data as W  # noqa: F401
+    t = pd.date_range("2026-11-01", periods=6 * 24 * 30, freq="2min")
+    # 파일 A(11-01~11-02) 는 45.5, 파일 B(11-02~11-04) 는 44.0 으로 쌓인 분석기
+    cao = np.where(t < pd.Timestamp("2026-11-02"), 45.5, 44.0)
+    an = pd.DataFrame({"datetime": t, "cao": cao})
+    yc = pd.DataFrame({"datetime": pd.to_datetime(["2026-11-01", "2026-11-02", "2026-11-04"]),
+                       "line": "신설", "yard": ["Y1", "Y2", "Y1"],
+                       "cao": [99.0, 45.5, 44.0],        # 행 CaO = 그 시각에 '끝난' 파일
+                       "mgo": 3.0, "tonnage": [1.0, 100.0, 300.0]})
+    return W, an, yc
+
+
+def test_swing_alignment_prefers_previous_pile():
+    W, an, yc = _swing_fixture()
+    al = W.alignment_check(yc, an)
+    assert al["reading"] == "previous"
+    assert al["previous"]["mae"] < 1e-9
+
+
+def test_swing_piles_take_next_row_and_weight_by_tonnage():
+    W, an, yc = _swing_fixture()
+    mine = pd.DataFrame(columns=["source", "line", "datetime", "date", "shift", "cao", "tonnage"])
+    sw = W.month_swing("2026-11", mine, yc, {"신설": an})["신설"]
+    assert list(sw.done["sheet_cao"]) == [45.5, 44.0]
+    assert sw.pile_mean == pytest.approx((45.5 * 100 + 44.0 * 300) / 400)
+    a = sw.done.iloc[0]
+    assert a["hi"] == pytest.approx(1.0) and a["lo"] == pytest.approx(0.0)
+
+
+def test_swing_empty_month_and_no_analyzer():
+    W, an, yc = _swing_fixture()
+    mine = pd.DataFrame(columns=["source", "line", "datetime", "date", "shift", "cao", "tonnage"])
+    sw = W.month_swing("2027-01", mine, yc, {"신설": None})["신설"]
+    assert len(sw.done) == 0 and np.isnan(sw.pile_mean) and len(sw.hourly) == 0
