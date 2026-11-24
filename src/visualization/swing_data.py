@@ -86,31 +86,86 @@ def alignment_check(yc_line: pd.DataFrame, analyzer: pd.DataFrame) -> dict:
     return out
 
 
+def raw(analyzer: pd.DataFrame | None, start, end) -> pd.DataFrame:
+    """분석기 **원측정**(2분 간격) — [datetime, cao, load]. load 가 없으면 NaN."""
+    if analyzer is None or not len(analyzer):
+        return pd.DataFrame(columns=["datetime", "cao", "load"])
+    a = analyzer[(analyzer["datetime"] >= start) & (analyzer["datetime"] < end)].dropna(subset=["cao"])
+    out = a[["datetime", "cao"]].copy()
+    out["load"] = pd.to_numeric(a["load"], errors="coerce") if "load" in a.columns else np.nan
+    return out.reset_index(drop=True)
+
+
+def _band_masks(c: pd.Series) -> dict[str, pd.Series]:
+    return {"lo": c < LO, "in": (c >= LO) & (c <= HI), "hi": c > HI}
+
+
+def band_stats(r: pd.DataFrame, pile_ton: float = np.nan) -> dict:
+    """원측정 한 묶음 → 구간별 개수 비율·적재물량 비율·평균±표준편차·톤.
+
+    ⭐️ CNA `적재물량(TPH)` 은 이름과 달리 **기록 1건(2분)에 실린 톤** 처럼 움직인다
+       (파일별 합계 ≈ 시트 물량의 0.88배 중앙값, t/h 로 적분하면 3% — `load_check`).
+       단위가 현장 확인 전이므로 **비중(상대 가중치)** 으로만 쓰고, 톤은 시트 파일 물량 × 비중으로 낸다.
+    """
+    c, w = r["cao"], r["load"].clip(lower=0)
+    n, wsum = len(c), float(w.sum(skipna=True))
+    d = dict(n_raw=n,
+             cna_mean=float(c.mean()) if n else np.nan,
+             cna_sd=float(c.std()) if n > 1 else np.nan,
+             cna_wmean=float(np.average(c[w.notna()], weights=w.dropna())) if wsum > 0 else np.nan,
+             p10=float(c.quantile(.1)) if n else np.nan,
+             p90=float(c.quantile(.9)) if n else np.nan,
+             load_sum=wsum)
+    for k, m in _band_masks(c).items():
+        part, pw = c[m], w[m]
+        d[f"{k}_n"] = int(m.sum())
+        d[f"{k}_share"] = float(m.mean()) if n else np.nan                       # 측정 개수 기준
+        d[f"{k}_wshare"] = float(pw.sum(skipna=True) / wsum) if wsum > 0 else np.nan  # 적재물량 기준
+        d[f"{k}_mean"] = float(part.mean()) if len(part) else np.nan
+        d[f"{k}_sd"] = float(part.std()) if len(part) > 1 else np.nan
+        d[f"{k}_min"] = float(part.min()) if len(part) else np.nan
+        d[f"{k}_max"] = float(part.max()) if len(part) else np.nan
+        d[f"{k}_ton"] = d[f"{k}_wshare"] * pile_ton if pd.notna(pile_ton) else np.nan
+    # 예전 이름 호환 (개수 기준)
+    d["lo"], d["inb"], d["hi"] = d["lo_share"], d["in_share"], d["hi_share"]
+    return d
+
+
+STAT_COLS = (["n_raw", "cna_mean", "cna_sd", "cna_wmean", "p10", "p90", "load_sum", "lo", "inb", "hi"]
+             + [f"{k}_{m}" for k in BANDS
+                for m in ("n", "share", "wshare", "mean", "sd", "min", "max", "ton")])
+
+
 def piles(yc_line: pd.DataFrame, analyzer: pd.DataFrame | None, start, end, until) -> pd.DataFrame:
-    """기간과 겹치는 파일별 — 시트 확정 품위 + (있으면) 분석기 1시간 값의 고/목표/저 비율."""
+    """기간과 겹치는 파일별 — 시트 확정 품위 + 분석기 **원측정** 기준 저/목표/고 통계."""
     seg = _segments(yc_line, until)
     seg = seg[(seg["end"] > pd.Timestamp(start)) & (seg["start"] < pd.Timestamp(end))].copy()
     rows = []
     for _, r in seg.iterrows():
         d = dict(r)
-        h = hourly(analyzer, r["start"], r["end"]) if analyzer is not None else pd.Series(dtype=float)
-        d.update(n_hours=len(h),
-                 cna_mean=float(h.mean()) if len(h) else np.nan,
-                 cna_sd=float(h.std()) if len(h) > 1 else np.nan,
-                 p10=float(h.quantile(.1)) if len(h) else np.nan,
-                 p90=float(h.quantile(.9)) if len(h) else np.nan,
-                 hi=float((h > HI).mean()) if len(h) else np.nan,
-                 lo=float((h < LO).mean()) if len(h) else np.nan)
-        d["inb"] = 1 - d["hi"] - d["lo"] if len(h) else np.nan
-        # 구간(저품위/목표/고품위) 안의 1시간 값 평균·표준편차 — '얼마나 높고 낮았나'
-        for k, part in band_parts(h).items():
-            d[f"{k}_n"] = len(part)
-            d[f"{k}_mean"] = float(part.mean()) if len(part) else np.nan
-            d[f"{k}_sd"] = float(part.std()) if len(part) > 1 else np.nan
+        ton = r["sheet_ton"] if r["closed"] else np.nan
+        d.update(band_stats(raw(analyzer, r["start"], r["end"]), ton))
         rows.append(d)
-    cols = (list(seg.columns) + ["n_hours", "cna_mean", "cna_sd", "p10", "p90", "hi", "lo", "inb"]
-            + [f"{k}_{m}" for k in BANDS for m in ("n", "mean", "sd")])
-    return pd.DataFrame(rows, columns=cols).reset_index(drop=True)
+    return pd.DataFrame(rows, columns=list(seg.columns) + STAT_COLS).reset_index(drop=True)
+
+
+def load_check(yc_line: pd.DataFrame, analyzer: pd.DataFrame, interval_min: float = 2.0) -> pd.DataFrame:
+    """적재물량 값 검증 — 파일별 Σ값 ÷ 시트 물량, 기록 충족률(기록 수 ÷ 구간 길이/간격)."""
+    seg = _segments(yc_line, analyzer["datetime"].max())
+    seg = seg[seg["closed"]]
+    out = []
+    for _, r in seg.iterrows():
+        # 품위 헛값(cao NaN)인 기록도 물량은 실렸으므로 **모든 기록**을 센다
+        a = analyzer[(analyzer["datetime"] >= r["start"]) & (analyzer["datetime"] < r["end"])]
+        if not len(a) or not r["sheet_ton"]:
+            continue
+        hours = (r["end"] - r["start"]).total_seconds() / 3600
+        cov = len(a) / (hours * 60 / interval_min)
+        ratio = float(a["load"].sum()) / float(r["sheet_ton"])
+        out.append(dict(start=r["start"], end=r["end"], ratio=ratio, coverage=cov,
+                        ratio_cov=ratio / cov if cov else np.nan,
+                        as_tph=float((a["load"] * interval_min / 60).sum()) / float(r["sheet_ton"])))
+    return pd.DataFrame(out, columns=["start", "end", "ratio", "coverage", "ratio_cov", "as_tph"])
 
 
 @dataclass

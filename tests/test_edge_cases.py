@@ -1936,3 +1936,16 @@ def test_mine_cna_weighting_and_agreement():
     ag = M.agreement(pd.Series([46, 47, 46, 48, 47.0], i), pd.Series([44, 45, 44, 46, 45.0], i))
     assert ag["bias"] == pytest.approx(2.0) and ag["r"] == pytest.approx(1.0)
     assert np.isnan(M.agreement(pd.Series(dtype=float), pd.Series(dtype=float))["r"])
+
+
+def test_band_stats_count_vs_load_share_and_tons():
+    from src.visualization import swing_data as W
+    r = pd.DataFrame({"datetime": pd.date_range("2026-11-01", periods=4, freq="2min"),
+                      "cao": [43.0, 44.6, 46.0, 46.0], "load": [30.0, 10.0, 0.0, 0.0]})
+    d = W.band_stats(r, pile_ton=1000.0)
+    assert d["lo_share"] == pytest.approx(.25) and d["hi_share"] == pytest.approx(.5)   # 개수
+    assert d["lo_wshare"] == pytest.approx(.75) and d["hi_wshare"] == pytest.approx(0)  # 적재물량
+    assert d["lo_ton"] == pytest.approx(750) and d["in_ton"] == pytest.approx(250)
+    assert d["hi_mean"] == pytest.approx(46.0) and np.isnan(d["lo_sd"])                 # 1건이면 σ 없음
+    e = W.band_stats(r.assign(load=np.nan))                                              # 물량 열 없음
+    assert np.isnan(e["lo_wshare"]) and e["n_raw"] == 4
