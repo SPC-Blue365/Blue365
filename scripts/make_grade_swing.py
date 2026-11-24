@@ -364,7 +364,7 @@ def _cell(d: dict, k: str) -> str:
             f'물량 {d[f"{k}_wshare"] * 100:.0f}%{ton_txt}</span></td>')
 
 
-def band_table(sw: W.LineSwing, pooled: dict | None) -> str:
+def band_table(sw: W.LineSwing, pooled: dict | None, name: str = "CNA") -> str:
     """파일별 — 저품위/목표/고품위 구간 안 **원측정** 평균 ± 표준편차, 개수·적재물량 비율, 톤."""
     p = sw.piles[sw.piles["n_raw"] > 0]
     if not len(p):
@@ -373,7 +373,7 @@ def band_table(sw: W.LineSwing, pooled: dict | None) -> str:
             f'<th class="n" style="color:var(--s1)">저품위 &lt;{LO:.1f}</th>'
             f'<th class="n">목표 {LO:.1f}~{HI:.1f}</th>'
             f'<th class="n" style="color:var(--s2)">고품위 &gt;{HI:.1f}</th>'
-            '<th class="n">CNA 전체</th><th class="n">확정 품위</th></tr>')
+            f'<th class="n">{name} 전체</th><th class="n">확정 품위</th></tr>')
     body = []
     for _, r in p.iterrows():
         lab = f'{r["start"]:%m/%d %H시} → ' + (f'{r["end"]:%m/%d %H시}' if r["closed"] else "쌓는 중")
@@ -405,10 +405,10 @@ def build(month: str) -> str:
     mine, _, _ = load_sources(validate=False, verbose=False)
     xls = pd.ExcelFile(RAW_DIR / S.DATA_FILE)
     cna = C.clean_yard(pd.read_excel(xls, S.YARD_PAIR[S.LINE_NEW][0]), load_col="적재물량(TPH)")
-    old_an = C.clean_yard(pd.read_excel(xls, S.YARD_PAIR[S.LINE_OLD][0]))  # 해석 기준 검증에만 쓴다
+    old_an = C.clean_yard(pd.read_excel(xls, S.YARD_PAIR[S.LINE_OLD][0]))  # 기존 야드 45Q 감마레이 (3분 간격)
     yc = load_yard_change()
 
-    sw = W.month_swing(month, mine, yc, {S.LINE_NEW: cna, S.LINE_OLD: None})
+    sw = W.month_swing(month, mine, yc, {S.LINE_NEW: cna, S.LINE_OLD: old_an})
     new, old = sw[S.LINE_NEW], sw[S.LINE_OLD]
     al_new = W.alignment_check(yc[yc["line"] == S.LINE_NEW], cna)
     al_old = W.alignment_check(yc[yc["line"] == S.LINE_OLD], old_an)
@@ -463,6 +463,13 @@ def build(month: str) -> str:
                  old.piles["end"].max() if len(old.piles) else m0) + pd.Timedelta(hours=6)
 
     gap = mine_w - new.pile_mean
+    od = old.done
+    pooled_old = (W.band_stats(W.raw(old_an, od["start"].min(), od["end"].max()), float(od["sheet_ton"].sum()))
+                  if len(od) else None)
+    lc_old = W.load_check(yc[yc["line"] == S.LINE_OLD], old_an, interval_min=3.0)
+    lc_old = lc_old[lc_old["start"].isin(od["start"])]
+    o_gap = (od["cna_mean"] - od["sheet_cao"]).dropna()
+    lc_new_cov = lc.loc[lc["start"].isin(done["start"]), "coverage"]
     pooled = (W.band_stats(W.raw(cna, done["start"].min(), done["end"].max()), float(done["sheet_ton"].sum()))
               if len(done) else None)
     hi_m, lo_m = (pooled["hi_mean"], pooled["lo_mean"]) if pooled else (np.nan, np.nan)
@@ -556,15 +563,28 @@ def build(month: str) -> str:
 </section>
 
 <section>
-  <h2>기존 라인</h2>
+  <h2>기존 라인 · 45Q</h2>
   <p class="q">기존 라인도 같은가?</p>
-  <p class="a">기존 야드는 {ym} 완료 파일 {len(old.done)}개의 평균이 <strong>{old.pile_mean:.2f}%</strong>로
-    <b>목표 상한({HI:.1f}%)보다 높습니다</b>. 평균도 맞추지 못했습니다. 광산 49Q 기존 교대는
-    {len(old.shifts)}건으로 {old.shifts['cao'].min():.1f}~{old.shifts['cao'].max():.1f}% 범위였습니다.</p>
-  <div class="card">{_legend([("고품위", C_HI, ""), ("저품위", C_LO, ""), ("파일 확정 품위", "var(--ink)", "ln")])}
-    {timeline_svg(old, m0, old_t1, None)}</div>
-  <p class="note">기존 야드 분석기(45Q 감마레이)는 이번 요청 범위에 없어 그리지 않았습니다. 파일 확정 품위는
-    기존라인 야드변경 시트 값입니다.</p>
+  <p class="a">기존 야드는 {ym} 완료 파일 {len(od)}개의 평균이 <strong>{old.pile_mean:.2f}%</strong>로
+    <b>목표 상한({HI:.1f}%)보다 높습니다</b>. 평균도 맞추지 못했습니다. 45Q 감마레이 원측정
+    {int(od['n_raw'].sum()):,}건 중 목표 구간 안은 <strong>{pooled_old['in_share'] * 100:.0f}%</strong>,
+    고품위 {pooled_old['hi_share'] * 100:.0f}% · 저품위 {pooled_old['lo_share'] * 100:.0f}%로,
+    신설보다 <b>고품위 쪽으로 치우쳐</b> 흔들렸습니다. 광산 49Q 기존 교대는 {len(old.shifts)}건으로
+    {old.shifts['cao'].min():.1f}~{old.shifts['cao'].max():.1f}% 범위였습니다.</p>
+  <div class="card">{lg_time}{timeline_svg(old, m0, old_t1, "45Q 감마레이")}</div>
+  <div class="said"><span class="lbl">45Q 는 신설 CNA 만큼 믿고 읽을 수 없습니다</span>
+    ① <b>측정 공백</b> — 45Q 기록(3분 간격)이 파일 구간의 <b>{lc_old['coverage'].min() * 100:.0f}~{lc_old['coverage'].max() * 100:.0f}%</b>
+    시간만 덮습니다(같은 달 신설 CNA 는 {lc_new_cov.min() * 100:.0f}~{lc_new_cov.max() * 100:.0f}%). 며칠씩 기록이 거의 없는 날이 있어, 아래 비율은 <b>측정된 시간</b>의 비율입니다.
+    ② <b>확정 품위와 어긋남</b> — 파일별 45Q 평균과 시트 확정 품위가
+    {o_gap.min():+.2f}~{o_gap.max():+.2f}%p 차이 납니다(신설은 대부분 0.1%p 안). 기존 확정 품위는 45Q 로 계산한 값이 아닐 수 있습니다.
+    ③ <b>적재물량(B/S)</b> 값은 합계가 시트 물량의 {lc_old['ratio'].min():.2f}~{lc_old['ratio'].max():.2f}배로 CNA 처럼 맞지 않아,
+    가중치로만 썼습니다. 톤은 시트 물량 × 비중이라 측정 공백만큼 불확실합니다.</div>
+  <div class="card">{composition_svg(old)}</div>
+  <div class="card">{_legend([("저품위", C_LO, ""), ("목표 구간 안", "var(--muted)", ""), ("고품위", C_HI, "")])}
+    {pile_swing_svg(old, old_an)}</div>
+  <div class="card">{band_table(old, pooled_old, "45Q")}</div>
+  <p class="note">그림과 표 읽는 법은 신설과 같습니다. 값은 45Q 감마레이 원측정이고, 확정 품위·물량은 기존라인 야드변경 시트 값입니다.
+    11/22 00:40 에 시작한 파일은 쌓는 중입니다.</p>
 </section>
 
 <section>
