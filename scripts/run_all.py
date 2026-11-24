@@ -38,6 +38,7 @@ STEPS = [
     ("3D 공정 지도", "make_map3d"),
     ("현황 브리프", "make_brief"),
     ("월간 품위 번갈음 비교", "make_grade_swing"),
+    ("암분 vs CNA 비교", "make_mine_vs_cna"),
     ("배합 처방서", "make_prescription"),
     ("임원 계획서", "make_plan"),
 ]

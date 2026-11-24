@@ -194,6 +194,56 @@ def timeline_svg(sw: W.LineSwing, t0, t1, analyzer_name: str | None) -> str:
     return "".join(o)
 
 
+def pile_swing_svg(sw: W.LineSwing, analyzer: pd.DataFrame) -> str:
+    """파일별 흔들림 — 파일 하나에 저품위·목표·고품위 세 칸. 점 = 1시간 값,
+    상자 = 평균 ± 표준편차, 가는 선 = 최소~최대. 칸 위 숫자 = 그 구간 표준편차."""
+    p = sw.piles[sw.piles["n_hours"] > 0].reset_index(drop=True)
+    if not len(p):
+        return ""
+    x0, x1, pt, pb, lo_v, hi_v = 52, 990, 34, 330, 38, 51
+    sy = lambda v: _sc(_cl(v, lo_v, hi_v), lo_v, hi_v, pb, pt)        # noqa: E731
+    cw = (x1 - x0) / len(p)
+    o = [f'<svg viewBox="0 0 1000 384" class="chart sw" role="img" aria-label="파일별 저·목표·고품위 흔들림">',
+         f'<rect x="{x0}" y="{sy(HI):.1f}" width="{x1 - x0}" height="{sy(LO) - sy(HI):.1f}" fill="var(--band)"/>']
+    for v in range(lo_v + 1, hi_v + 1, 2):
+        o.append(f'<line x1="{x0}" y1="{sy(v):.1f}" x2="{x1}" y2="{sy(v):.1f}" class="gr"/>')
+        o.append(f'<text x="{x0 - 8}" y="{sy(v) + 4:.1f}" text-anchor="end">{v}</text>')
+    rng = np.random.default_rng(11)
+    cols = {"lo": C_LO, "in": "var(--muted)", "hi": C_HI}
+    for i, r in p.iterrows():
+        cx0 = x0 + i * cw
+        if i:
+            o.append(f'<line x1="{cx0:.1f}" y1="{pt - 20}" x2="{cx0:.1f}" y2="{pb + 6}" class="gr"/>')
+        h = W.hourly(analyzer, r["start"], r["end"])
+        sub = cw / 3
+        for j, (k, part) in enumerate(W.band_parts(h).items()):
+            cx = cx0 + sub * (j + .5)
+            col = cols[k]
+            for v in part:
+                o.append(f'<circle cx="{cx + rng.uniform(-sub * .32, sub * .32):.1f}" cy="{sy(v):.1f}" r="2.2" '
+                         f'fill="{col}" fill-opacity=".45"/>')
+            if len(part):
+                m = part.mean()
+                sd = part.std() if len(part) > 1 else 0.0
+                o.append(f'<line x1="{cx:.1f}" y1="{sy(part.min()):.1f}" x2="{cx:.1f}" y2="{sy(part.max()):.1f}" '
+                         f'stroke="{col}" stroke-width="1.2"/>')
+                o.append(f'<rect x="{cx - sub * .28:.1f}" y="{sy(m + sd):.1f}" width="{sub * .56:.1f}" '
+                         f'height="{max(sy(m - sd) - sy(m + sd), 2):.1f}" fill="{col}" fill-opacity=".8" rx="2">'
+                         f'<title>{["저품위", "목표", "고품위"][j]} · 평균 {m:.2f} ± {sd:.2f} · '
+                         f'{part.min():.2f}~{part.max():.2f} · {len(part)}시간</title></rect>')
+                o.append(f'<line x1="{cx - sub * .34:.1f}" y1="{sy(m):.1f}" x2="{cx + sub * .34:.1f}" y2="{sy(m):.1f}" '
+                         f'stroke="var(--surface)" stroke-width="1.6"/>')
+                o.append(f'<text x="{cx:.1f}" y="{pt - 6}" text-anchor="middle" style="font-size:11px;fill:{col}">'
+                         f'{sd:.1f}</text>')
+        lab1 = f'{r["start"]:%m/%d}~' + (f'{r["end"]:%m/%d}' if r["closed"] else "")
+        o.append(f'<text x="{cx0 + cw / 2:.1f}" y="{pb + 22}" text-anchor="middle">{lab1}</text>')
+        fin = f'{r["sheet_cao"]:.2f}' if r["closed"] and pd.notna(r["sheet_cao"]) else "(잠정)"
+        o.append(f'<text x="{cx0 + cw / 2:.1f}" y="{pb + 40}" text-anchor="middle" class="v">{fin}</text>')
+    o.append(f'<text x="{x0 - 8}" y="{pt - 6}" text-anchor="end" style="font-size:11px">σ</text>')
+    o.append("</svg>")
+    return "".join(o)
+
+
 def composition_svg(sw: W.LineSwing) -> str:
     """파일별로 그 파일이 쌓이는 동안의 1시간 값이 저품위/목표/고품위에 있던 비율 + 확정 품위."""
     p = sw.piles[sw.piles["n_hours"] > 0].reset_index(drop=True)
@@ -420,6 +470,16 @@ def build(month: str) -> str:
     (목표보다 +{hi_m - TARGET:.2f}%p), 저품위 시간의 평균은 <strong>{lo_m:.2f}%</strong>({lo_m - TARGET:+.2f}%p)입니다.
     목표 구간 안 시간의 평균은 {pp['in'].mean():.2f}%입니다. <b>위아래로 비슷한 거리만큼 벗어난 값들이 서로를 지워</b>
     파일 평균이 목표에 닿았습니다.</p>
+  <p class="q">파일 하나를 쌓는 동안 각 구간은 얼마나 흔들렸나?</p>
+  <p class="a">목표 구간 안의 값은 파일마다 표준편차 <strong>{done['in_sd'].min():.2f}~{done['in_sd'].max():.2f}</strong>로
+    좁게 머물지만, 저품위는 <strong>{done['lo_sd'].min():.2f}~{done['lo_sd'].max():.2f}</strong>,
+    고품위는 <strong>{done['hi_sd'].min():.2f}~{done['hi_sd'].max():.2f}</strong>로 파일에 따라 크게 달랐습니다.
+    가장 크게 흔들린 파일은 {done.loc[done['cna_sd'].idxmax(), 'start']:%m/%d}~{done.loc[done['cna_sd'].idxmax(), 'end']:%m/%d}
+    (전체 표준편차 {done['cna_sd'].max():.2f})입니다.</p>
+  <div class="card">{_legend([("저품위", C_LO, ""), ("목표 구간 안", "var(--muted)", ""), ("고품위", C_HI, "")])}
+    {pile_swing_svg(new, cna)}</div>
+  <p class="note">파일 하나에 칸 세 개(저품위·목표·고품위)가 있습니다. 점 하나가 CNA 1시간 값입니다. 진한 상자는 평균 ± 표준편차,
+    가는 세로선은 최솟값~최댓값, 상자 속 흰 선은 평균입니다. 맨 위 작은 숫자가 그 칸의 표준편차(σ)이고, 맨 아래 굵은 숫자가 파일의 확정 품위입니다.</p>
   <div class="card">{band_table(new, pooled)}</div>
   <p class="note">칸마다 <b>평균 ± 표준편차</b>(CaO %)이고, 아랫줄은 그 구간에 든 시간 수와 파일 안에서의 비율입니다.
     값은 CNA 2분 측정을 1시간 평균한 것입니다. 경계값(44.1·45.1)은 목표 구간에 넣었습니다.

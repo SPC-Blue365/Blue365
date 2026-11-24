@@ -1919,3 +1919,20 @@ def test_swing_empty_month_and_no_analyzer():
     mine = pd.DataFrame(columns=["source", "line", "datetime", "date", "shift", "cao", "tonnage"])
     sw = W.month_swing("2027-01", mine, yc, {"신설": None})["신설"]
     assert len(sw.done) == 0 and np.isnan(sw.pile_mean) and len(sw.hourly) == 0
+
+
+# ───────────────────────── 광산 ↔ CNA 비교 (mine_cna_data) ─────────────────────────
+def test_mine_cna_weighting_and_agreement():
+    from src.visualization import mine_cna_data as M
+    m = pd.DataFrame({"line": "신설", "source": ["49Q", "49Q", "47Q"],
+                      "datetime": pd.to_datetime(["2026-11-01 04:00", "2026-11-01 12:00", "2026-11-02 08:00"]),
+                      "cao": [46.0, 44.0, 48.0], "tonnage": [300.0, 100.0, 0.0]})
+    s = M.mine_summary(M.mine_period(m, "신설", "2026-11-01", "2026-12-01"))
+    assert s["49Q"]["cao"] == pytest.approx(45.5)        # 물량 가중
+    assert np.isnan(s["47Q"]["cao"])                      # 0톤은 품위 근거가 아니다
+    d = M.mine_daily(M.mine_period(m, "신설", "2026-11-01", "2026-12-01"))
+    assert d.loc["2026-11-01", "all"] == pytest.approx(45.5)
+    i = pd.date_range("2026-11-01", periods=5, freq="1h")
+    ag = M.agreement(pd.Series([46, 47, 46, 48, 47.0], i), pd.Series([44, 45, 44, 46, 45.0], i))
+    assert ag["bias"] == pytest.approx(2.0) and ag["r"] == pytest.approx(1.0)
+    assert np.isnan(M.agreement(pd.Series(dtype=float), pd.Series(dtype=float))["r"])
