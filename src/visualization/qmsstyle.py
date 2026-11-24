@@ -392,7 +392,7 @@ span.navi[aria-current="page"] { cursor: default }
 .tabbar span[aria-current="page"] svg { width: 22px; height: 22px }
 .upd code { font-size: 11.5px }
 /* 휴대폰 탭바 — 레퍼런스는 6칸(repeat 6)이다. 문서가 7개(3D 공정 지도 추가)라 칸 수를 맞춘다 */
-@media (max-width: 720px) { .tabbar { grid-template-columns: repeat(7, minmax(0, 1fr)) } .tabbar a, .tabbar span[aria-current], .tabbar button { font-size: 10px } }
+@media (max-width: 720px) { .tabbar { grid-template-columns: repeat(8, minmax(0, 1fr)) } .tabbar a, .tabbar span[aria-current], .tabbar button { font-size: 10px } }
 
 /* 운영 현황판의 하위 화면 — 현재 문서 항목 아래에 한 단 들여 붙인다 */
 .subnav { display: grid; gap: 2px; margin: 2px 0 6px 21px; padding-left: 9px; border-left: 2px solid var(--line) }
@@ -612,12 +612,13 @@ NAV_ITEMS = (
 #: **근거 자료** — 매일 볼 것이 아니라 "왜 그런가" 를 따질 때 여는 것들. 한 묶음 뒤로 뺀다.
 NAV_ARCHIVE = (
     ("현황 브리프", "brief.html", "brief"),
+    ("품위 번갈음", "grade_swing.html", "trend"),   # 2026-11-24 — 월간 고·저품위 번갈음 비교
     ("배합 처방", "prescription.html", "flask"),
     ("통합 리포트", "final_report.html", "doc"),
     ("계획서", "plan.html", "map"),
 )
 NAV_GROUPS = (("매일 보기", NAV_ITEMS), ("근거 자료", NAV_ARCHIVE))
-SHORT = {"운영 현황판": "현황판", "3D 공정 지도": "3D 지도", "운영 모니터": "모니터", "현황 브리프": "브리프",
+SHORT = {"운영 현황판": "현황판", "3D 공정 지도": "3D 지도", "운영 모니터": "모니터", "현황 브리프": "브리프", "품위 번갈음": "번갈음",
          "배합 처방": "처방", "통합 리포트": "리포트", "계획서": "계획서"}
 
 # ── 운영 현황판의 하위 화면 ──

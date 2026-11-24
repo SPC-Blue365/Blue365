@@ -1713,7 +1713,9 @@ def test_every_document_menu_marks_itself_and_links_the_rest():
     from src.visualization import qmsstyle as Q
 
     items = (*Q.NAV_ITEMS, *Q.NAV_ARCHIVE)
-    assert len(items) == 7, "휴대폰 탭바 칸 수(qmsstyle SHELL_EXTRA 의 repeat(7))와 문서 수가 맞아야 한다"
+    import re as _re
+    cols = int(_re.search(r"\.tabbar \{ grid-template-columns: repeat\((\d+), minmax", Q.SHELL_EXTRA).group(1))
+    assert len(items) == cols, f"휴대폰 탭바 칸 수(qmsstyle SHELL_EXTRA 의 repeat({cols}))와 문서 수가 맞아야 한다"
     for label, fname, _ in items:
         h = Q.nav(active=label)
         side = h[h.index('id="docnav"'):h.index("</nav>", h.index('id="docnav"'))]

@@ -45,6 +45,14 @@ def hourly(analyzer: pd.DataFrame, start, end) -> pd.Series:
     return a.set_index("datetime")["cao"].resample("1h").mean().dropna()
 
 
+BANDS = ("lo", "in", "hi")
+
+
+def band_parts(h: pd.Series) -> dict[str, pd.Series]:
+    """값을 저품위(<LO) · 목표(LO~HI) · 고품위(>HI) 로 나눈다 — 경계값은 목표에 넣는다."""
+    return {"lo": h[h < LO], "in": h[(h >= LO) & (h <= HI)], "hi": h[h > HI]}
+
+
 def _segments(yc_line: pd.DataFrame, until) -> pd.DataFrame:
     """야드변경 시각 사이 = 파일 1개. 파일 i 의 확정 품위 = **다음** 변경 행의 CaO·물량."""
     y = yc_line.sort_values("datetime").reset_index(drop=True)
@@ -94,8 +102,14 @@ def piles(yc_line: pd.DataFrame, analyzer: pd.DataFrame | None, start, end, unti
                  hi=float((h > HI).mean()) if len(h) else np.nan,
                  lo=float((h < LO).mean()) if len(h) else np.nan)
         d["inb"] = 1 - d["hi"] - d["lo"] if len(h) else np.nan
+        # 구간(저품위/목표/고품위) 안의 1시간 값 평균·표준편차 — '얼마나 높고 낮았나'
+        for k, part in band_parts(h).items():
+            d[f"{k}_n"] = len(part)
+            d[f"{k}_mean"] = float(part.mean()) if len(part) else np.nan
+            d[f"{k}_sd"] = float(part.std()) if len(part) > 1 else np.nan
         rows.append(d)
-    cols = list(seg.columns) + ["n_hours", "cna_mean", "cna_sd", "p10", "p90", "hi", "lo", "inb"]
+    cols = (list(seg.columns) + ["n_hours", "cna_mean", "cna_sd", "p10", "p90", "hi", "lo", "inb"]
+            + [f"{k}_{m}" for k in BANDS for m in ("n", "mean", "sd")])
     return pd.DataFrame(rows, columns=cols).reset_index(drop=True)
 
 

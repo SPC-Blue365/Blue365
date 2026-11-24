@@ -269,6 +269,42 @@ def funnel_svg(rows: list[tuple[str, pd.Series, str]]) -> str:
     return "".join(o)
 
 
+def _cell(n, tot, m, sd) -> str:
+    if not n:
+        return '<td class="n">—</td>'
+    sd_txt = f" ± {sd:.2f}" if pd.notna(sd) else ""
+    return (f'<td class="n"><b>{m:.2f}</b>{sd_txt}<br>'
+            f'<span style="color:var(--faint);font-size:12px">{n}시간 · {n / tot * 100:.0f}%</span></td>')
+
+
+def band_table(sw: W.LineSwing, pooled: pd.Series) -> str:
+    """파일별 — 저품위/목표/고품위 구간 안 1시간 값의 평균 ± 표준편차(시간 수·비율)."""
+    p = sw.piles[sw.piles["n_hours"] > 0]
+    if not len(p):
+        return ""
+    head = ('<tr><th>파일 (쌓은 기간)</th>'
+            f'<th class="n" style="color:var(--s1)">저품위 &lt;{LO:.1f}</th>'
+            f'<th class="n">목표 {LO:.1f}~{HI:.1f}</th>'
+            f'<th class="n" style="color:var(--s2)">고품위 &gt;{HI:.1f}</th>'
+            '<th class="n">CNA 전체</th><th class="n">확정 품위</th></tr>')
+    body = []
+    for _, r in p.iterrows():
+        lab = f'{r["start"]:%m/%d %H시} → ' + (f'{r["end"]:%m/%d %H시}' if r["closed"] else "쌓는 중")
+        tot = r["n_hours"]
+        cells = "".join(_cell(int(r[f"{k}_n"]), tot, r[f"{k}_mean"], r[f"{k}_sd"]) for k in W.BANDS)
+        fin = f'<b>{r["sheet_cao"]:.2f}</b>' if r["closed"] and pd.notna(r["sheet_cao"]) else "(잠정)"
+        body.append(f'<tr><td style="white-space:nowrap">{lab}</td>{cells}'
+                    f'<td class="n">{r["cna_mean"]:.2f} ± {r["cna_sd"]:.2f}</td><td class="n">{fin}</td></tr>')
+    if len(pooled):
+        parts = W.band_parts(pooled)
+        cells = "".join(_cell(len(v), len(pooled), v.mean(), v.std() if len(v) > 1 else np.nan)
+                        for v in parts.values())
+        body.append(f'<tr style="background:var(--well)"><td><b>완료 파일 {len(sw.done)}개 합</b></td>{cells}'
+                    f'<td class="n">{pooled.mean():.2f} ± {pooled.std():.2f}</td>'
+                    f'<td class="n"><b>{sw.pile_mean:.2f}</b></td></tr>')
+    return f'<div class="tbl"><table class="t">{head}{"".join(body)}</table></div>'
+
+
 # ───────────────────────────────────────────────────────── 본문
 def _legend(items) -> str:
     return '<div class="lg">' + "".join(
@@ -334,11 +370,14 @@ def build(month: str) -> str:
                  old.piles["end"].max() if len(old.piles) else m0) + pd.Timedelta(hours=6)
 
     gap = mine_w - new.pile_mean
+    pooled = (W.hourly(cna, done["start"].min(), done["end"].max()) if len(done) else pd.Series(dtype=float))
+    pp = W.band_parts(pooled)
+    hi_m, lo_m = pp["hi"].mean(), pp["lo"].mean()
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{ym} 품위 번갈음</title>
 <style>{DOC_STYLE}{PAGE_CSS}</style></head><body>
-{nav(active="")}
+{nav(active="품위 번갈음")}
 {hero(
   eyebrow=f"{ym} · 광산 49Q → 야드",
   title=f"평균은 <em>{new.pile_mean:.1f}%</em>,<br>그 안은 고·저품위의 번갈음",
@@ -376,6 +415,15 @@ def build(month: str) -> str:
   <p class="note">막대 하나가 파일 하나입니다. 그 파일을 쌓는 동안의 CNA 1시간 평균값을 저품위(파랑)·목표(회색)·고품위(주황)로
     나눠 시간 비율로 보였습니다. CNA의 적재물량 단위가 확인되지 않아 톤이 아니라 <b>시간</b> 기준입니다.
     오른쪽 값은 야드변경 시트의 확정 품위입니다.</p>
+  <p class="q">고품위·저품위는 각각 얼마나 높고 낮았나?</p>
+  <p class="a">완료 파일 {len(done)}개를 합쳐 보면 고품위 시간의 평균은 <strong>{hi_m:.2f}%</strong>
+    (목표보다 +{hi_m - TARGET:.2f}%p), 저품위 시간의 평균은 <strong>{lo_m:.2f}%</strong>({lo_m - TARGET:+.2f}%p)입니다.
+    목표 구간 안 시간의 평균은 {pp['in'].mean():.2f}%입니다. <b>위아래로 비슷한 거리만큼 벗어난 값들이 서로를 지워</b>
+    파일 평균이 목표에 닿았습니다.</p>
+  <div class="card">{band_table(new, pooled)}</div>
+  <p class="note">칸마다 <b>평균 ± 표준편차</b>(CaO %)이고, 아랫줄은 그 구간에 든 시간 수와 파일 안에서의 비율입니다.
+    값은 CNA 2분 측정을 1시간 평균한 것입니다. 경계값(44.1·45.1)은 목표 구간에 넣었습니다.
+    'CNA 전체'는 그 파일을 쌓는 동안의 1시간 값 전체의 평균 ± 표준편차이고, '확정 품위'는 야드변경 시트 값입니다.</p>
 </section>
 
 <section>
@@ -437,6 +485,9 @@ def main(argv=None):
     P.OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     dst = P.OUTPUTS_DIR / f"grade_swing_{month}.html"
     dst.write_text(doc, encoding="utf-8")
+    # 메뉴·통합본은 고정 이름을 가리킨다 — 기본(최신 월) 실행일 때만 덮어쓴다
+    if a.month is None:
+        (P.OUTPUTS_DIR / "grade_swing.html").write_text(doc, encoding="utf-8")
     print(f"[OK] 품위 번갈음 비교: {dst} ({len(doc.encode('utf-8')) / 1024:.0f} KB)")
     return dst
 
