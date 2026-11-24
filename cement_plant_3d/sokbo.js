@@ -318,6 +318,8 @@
         }
         out.vessels.push(v);
       }
+      // 입항예정 선박 칸은 삼척항 목록 하나(동해항 입항 예정은 선박 줄에 '(11/20 입.예)'로 적힘) — 목록이 길어 동해항 높이까지 내려온 줄도 삼척항. 동해항 전용 10번 선석만 동해항 (2026-11-24)
+      out.expected.forEach(x => { if (x.port === 'dh' && x.berth !== 10) x.port = 'sc'; });
     } else warn.push('선박 표를 찾지 못했습니다.');
     return { data: out, warn };
   }
