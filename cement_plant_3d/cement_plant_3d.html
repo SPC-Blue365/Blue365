@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-25 16:06">
+<meta name="b365-build" content="2026-11-25 16:13">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -560,7 +560,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-25 16:06</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-25 16:13</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1818,8 +1818,8 @@ const alarmActive=a=>a.until?Date.now()<a.until:pStatus(E[a.eq].params[a.k])!=='
    3D 공정 지도 (Three.js)
    ========================================================= */
 const PAL={
- light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5',water:'#C3D7EE',net:'#5E6E64',coal:'#2A2D31'},
- dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93',water:'#14243A',net:'#46544B',coal:'#141619'}
+ light:{bg:'#F2F4F6',ground:'#E6EBF2',pad:'#EEF2F7',grass:'#D9EBDF',road:'#D1D9E3',mark:'#FFFFFF',wall:'#F9FBFD',wall2:'#E6EBF2',accent:'#3182F6',labRoof:'#7B61FF',steel:'#C6CFDB',steelDark:'#8995A5',concrete:'#D7DCE3',limestone:'#C8B79A',rock:'#B9AA92',rock2:'#A39379',meal:'#C9BA9C',clinker:'#5B6069',cement:'#BAC1CA',tree:'#5DBA88',trunk:'#9C8468',truckY:'#F2B53A',tank:'#E4E9EF',tire:'#30353D',glow:'#FF7A1A',smoke:'#FFFFFF',fence:'#C7CFDA',dirt:'#CDBFA6',glass:'#A9CAF5',water:'#C3D7EE',net:'#5E6E64',coal:'#2A2D31'},
+ dark:{bg:'#0F1115',ground:'#161A21',pad:'#1B2028',grass:'#1A2A23',road:'#252B35',mark:'#3D4553',wall:'#454D59',wall2:'#353C47',accent:'#3D86F5',labRoof:'#8E7BFF',steel:'#5D6776',steelDark:'#3F4754',concrete:'#3B414B',limestone:'#6F6757',rock:'#5E5749',rock2:'#514A3E',meal:'#6A604F',clinker:'#2A2E35',cement:'#69717C',tree:'#2F7A55',trunk:'#5C4D3E',truckY:'#C9952E',tank:'#77808C',tire:'#15181D',glow:'#FF7A1A',smoke:'#9AA3AE',fence:'#3A424E',dirt:'#4A4337',glass:'#2F5A93',water:'#14243A',net:'#46544B',coal:'#141619'}
 };
 let dark=false;
 const M={};
@@ -1848,7 +1848,7 @@ function makeMats(){
   makeTex();
   const mk=(n,key,o={})=>{M[n]=new THREE.MeshStandardMaterial(Object.assign({color:PAL.light[key],roughness:.85,metalness:.02},o));M[n].userData.key=key;};
   mk('ground','ground');mk('pad','pad');mk('road','road');mk('mark','mark');mk('grass','grass');mk('dirt','dirt');
-  mk('wall','wall');mk('wall2','wall2');mk('accent','accent',{roughness:.6});mk('steel','steel',{metalness:.25,roughness:.55});mk('steelD','steelDark',{metalness:.25,roughness:.6});
+  mk('wall','wall');mk('wall2','wall2');mk('accent','accent',{roughness:.6});mk('labRoof','labRoof',{roughness:.6});mk('steel','steel',{metalness:.25,roughness:.55});mk('steelD','steelDark',{metalness:.25,roughness:.6});
   mk('conc','concrete');mk('lime','limestone');mk('rock','rock',{flatShading:true});mk('rock2','rock2',{flatShading:true});mk('meal','meal');mk('clk','clinker');mk('cem','cement');
   mk('tree','tree',{flatShading:true});mk('net','net',{transparent:true,opacity:.62,side:THREE.DoubleSide,depthWrite:false,roughness:1});mk('coal','coal',{flatShading:true,roughness:.95});mk('trunk','trunk');mk('ylw','truckY',{roughness:.6});mk('tank','tank',{metalness:.3,roughness:.45});mk('tire','tire');mk('glass','glass',{roughness:.3,metalness:.1});mk('fence','fence');mk('water','water',{roughness:.3,metalness:.05});
   mk('hot','glow',{emissive:new THREE.Color('#FF3A0A'),emissiveIntensity:1.1,transparent:true,opacity:.5,depthWrite:false});
@@ -1895,9 +1895,9 @@ function netYard(g,x0,x1,z0,z1,y,h,gate,piles){
   flat(x1-x0,z1-z0,M.dirt,(x0+x1)/2,(z0+z1)/2,y+.04);
   (piles||[]).forEach(([x,z,r,sx])=>{const c=new THREE.Mesh(new THREE.ConeGeometry(r,r*.62,28),M.coal);c.scale.set(sx||1.4,1,1);c.position.set(x,y+r*.31,z);add(c,g);});
 }
-function bld(p,w,h,d,x,z){
+function bld(p,w,h,d,x,z,roof=M.accent){
   box(p,w,h,d,M.wall,x,0,z);
-  box(p,w+.5,.5,d+.5,M.accent,x,h,z);
+  box(p,w+.5,.5,d+.5,roof,x,h,z);
   const rows=Math.max(1,Math.floor(h/3.4));
   for(let i=0;i<rows;i++){
     const y=1.4+i*3.2; if(y+1>h)break;
@@ -2031,9 +2031,7 @@ function buildPlant(){
   {const g=grp('DSP'),x0=DSP_IN-2,x1=DSP_OUT+2;for(let x=x0;x<=x1+.1;x+=(x1-x0)/8)[34.4,39.6].forEach(z=>box(g,.45,6.5,.45,M.steelD,x,0,z));
    box(g,x1-x0,.45,7,M.accent,(x0+x1)/2,6.5,37);box(g,4.6,.18,7,M.steelD,DSP_IN,0,45);}   // 출하장 (사일로 줄 아래) · 계량대
   // 13 품질관리실
-  {const g=grp('LAB'),lx=136,lz=27;bld(g,14,6,9,lx,lz);cyl(g,.15,3,M.steelD,lx+5,6.5,lz-2);box(g,3,1.2,2,M.wall2,lx-4,6.5,lz-1);}   // 품질관리실: 7호 C/M과 부두 6호 사일로 사이 (현장 요청 2026-11-24)
-  // 사무동 (선택 불가)
-  bld(scene,10,8,8,-82,27);
+  {const g=grp('LAB'),lx=136,lz=27;bld(g,14,6,9,lx,lz,M.labRoof);cyl(g,.15,3,M.steelD,lx+5,6.5,lz-2);box(g,3,1.2,2,M.wall2,lx-4,6.5,lz-1);}   // 품질관리실: 7호 C/M과 부두 6호 사일로 사이 (현장 요청 2026-11-24) · 지붕 보라색으로 구분 (현장 요청 2026-11-25)
   // 컨베이어 + 물질 흐름
   conveyor([[-59,3,-13],[-55.5,7.6,-22]],'lime',4,'shared');                                     // H/C (단독) → 분배
   conveyor([[-60.5,7.6,-35],[-60.5,7.6,Math.min(...CC_DEF.map(d=>d.z))-1]],'lime',5,'shared');     // G/C (1차) → C/C 2기
@@ -2513,7 +2511,7 @@ const _v=typeof THREE!=='undefined'?new THREE.Vector3():null;
 let TAGF=0,NOTAGS=false;   // NOTAGS: 설비·차량 이름표 숨김 (지도 오른쪽 이름표 버튼)
 /* 이름표 비킬 자리 후보: 원래 위치에서 가까운 순 (위아래 한 칸이 좌우 한 칸보다 가까움) */
 const TAG_CAND=(()=>{const c=[];for(let j=-5;j<=4;j++)for(let i=-2;i<=2;i++)c.push([i,j]);return c.sort((a,b)=>(Math.abs(a[1])+Math.abs(a[0])*1.3+(a[1]>0?.1:0))-(Math.abs(b[1])+Math.abs(b[0])*1.3+(b[1]>0?.1:0)));})();
-if(/[?&]debug\b/.test(location.search))window.B365DBG={get EQOBJ(){return EQOBJ;},get EQ(){return EQ;},get TAG(){return TAG;},get cam(){return cam;},homeView:()=>homeView(),get HAUL(){return HAUL;},get FLOWS(){return FLOWS;},get DHV(){return DHV;},get PORTV(){return PORTV;},flyTo:(x,z,d,th)=>flyTo(x,z,d,th)};   // 시험용 (주소에 ?debug 일 때만)
+if(/[?&]debug\b/.test(location.search))window.B365DBG={get EQOBJ(){return EQOBJ;},get EQ(){return EQ;},get TAG(){return TAG;},get cam(){return cam;},get camera(){return camera;},get scene(){return scene;},homeView:()=>homeView(),get HAUL(){return HAUL;},get FLOWS(){return FLOWS;},get DHV(){return DHV;},get PORTV(){return PORTV;},flyTo:(x,z,d,th)=>flyTo(x,z,d,th)};   // 시험용 (주소에 ?debug 일 때만)
 function placeTags(){
   const st=$('#stage');const w=st.clientWidth,h=st.clientHeight;
   if(BLAST.ph)QRY_DEF.forEach(d=>{const t=TAG['eq'+d.id],sm=t&&t.querySelector('small');if(sm&&sm.textContent!==BLAST.ph){sm.textContent=BLAST.ph;t._w=0;}});   // 발파 초읽기 글자를 먼저 바꾸고 이름표 자리 잡기
@@ -3639,7 +3637,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-25 16:06</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-25 16:13</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   {const ids=['K3','K4','K5','K6','K7','RM3','RM4','RM5','RM51','RM6','RM7'].filter(id=>E[id]&&((CFG.down||[]).some(x=>x.k===id)||QAUTO.some(a=>a.k===id)));
    if(ids.length)h+=`<div class="row"><span>가동 판단</span><b style="white-space:normal;text-align:right">${ids.map(id=>`${esc(E[id].name)} ${runWhy(id)}`).join('<br>')}</b></div>`;}
@@ -3826,7 +3824,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-25 16:06';
+const BUILD='2026-11-25 16:13';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
