@@ -1406,7 +1406,8 @@ class Handler(BaseHTTPRequestHandler):
     timeout = 30               # 30초 동안 아무것도 오지 않는 연결은 끊음
 
     def log_message(self, fmt, *args):  # 접속 기록은 요약해서
-        if not self.path.startswith("/api/status") and not self.path.startswith("/api/me"):
+        quiet = self.path.startswith("/api/status") or self.path.startswith("/api/me")
+        if not quiet or (len(args) > 1 and str(args[1]) not in ("200", "304")):   # 상태 확인은 실패했을 때만 기록
             log(f"{self.client_address[0]} {fmt % args}")
 
     def _send(self, code: int, body, ctype="application/json; charset=utf-8", extra: dict | None = None):

@@ -2784,7 +2784,8 @@ async function pullServer(first){
   catch(e){toast('팀 공유 데이터를 불러오지 못했습니다','warn');}
 }
 async function pollServer(){
-  try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return;}if(!r.ok)throw new Error();const s=await r.json();SERVER.ok=true;SERVER.needKey=s.needKey;SERVER.watch=s.watch;
+  let step='상태 요청';
+  try{const r=await fetch('api/status',{cache:'no-store',credentials:'same-origin'});if(r.status===401){toLogin();return;}if(!r.ok)throw new Error('서버 응답 '+r.status);step='상태 읽기';const s=await r.json();step='화면 반영';SERVER.ok=true;SERVER.okAt=new Date();SERVER.needKey=s.needKey;SERVER.watch=s.watch;
     if(SERVER.me&&SERVER.me.role==='admin')loadMe();
     checkPageVersion(s);
     if(s.cfg!==undefined&&s.cfg!==SERVER.cfg&&$('#cfgModal').hidden)await pullCfg();
@@ -2792,7 +2793,9 @@ async function pollServer(){
     SERVER.sokboWatch=s.sokboWatch;if(s.sokbo&&s.sokbo!==SERVER.sokbo)await pullSokbo(false);
     SERVER.yardWatch=s.yardWatch;if(s.yard&&s.yard!==SERVER.yard)await pullYard();
     SERVER.mms=s.mms;if(s.mms&&s.mms.t&&s.mms.t!==SERVER.mmsT)await pullMms();}
-  catch(e){if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
+  catch(e){SERVER.why=`${step} 실패 · ${String(e&&e.message||e).slice(0,80)} · ${hhmm(new Date())}`;console.warn('pollServer',SERVER.why,e);
+    if(step==='화면 반영')return;   // 서버는 응답함 — 화면 쪽 오류는 연결 끊김으로 보지 않음
+    if(SERVER.ok!==false)toast('팀 공유 서버에 연결할 수 없습니다. 다시 연결되면 자동으로 이어집니다','warn');SERVER.ok=false;}
 }
 /* ---------- 출하속보 (PDF → 삼척항·동해항·사일로 재고) ---------- */
 function defaultSokbo(){try{return JSON.parse($('#sokboDefault').textContent||'null');}catch(e){return null;}}
@@ -2956,7 +2959,7 @@ function statHTML(){
   h+=`<div class="row"><span>출하속보</span><b>${SOK?esc(SOK.date)+' 실적'+(SOK.made&&SOK.made!==SOK.date?` (${esc(SOK.made.slice(5).replace('-','/'))} 발행)`:''):'-'}${SOK?` · ${SOKMETA.source==='embedded'?'내장 예시':SOKMETA.uploadedBy?esc(SOKMETA.uploadedBy):SERVER?'팀 공유':'이 PC'}`:''}</b></div>`;
   if(m.uploadedBy)h+=`<div class="row"><span>올린 사람 · 시각</span><b>${esc(m.uploadedBy)} · ${m.uploadedAt?stamp(new Date(m.uploadedAt)):'-'}</b></div>`;
   if(SERVER&&SERVER.urls&&SERVER.urls.length)h+=`<div class="row"><span>팀원 접속 주소</span><b class="num" style="user-select:all">${esc(SERVER.urls[0])}</b></div>`;
-  h+=`<div class="row"><span>공유 방식</span><b>${SERVER?(SERVER.ok===false?'팀 공유 서버 연결 끊김 · 재시도 중':'팀 공유 서버 연결됨 · 20초마다 확인')+(SERVER.watch?' · 공유 폴더 자동 읽기':''):'이 PC 브라우저에만 반영'}</b></div></div>`;
+  h+=`<div class="row"><span>공유 방식</span><b>${SERVER?(SERVER.ok===false?`팀 공유 서버 연결 끊김 · 재시도 중${SERVER.why?' ('+esc(SERVER.why)+')':''}${SERVER.okAt?' · 마지막 연결 '+hhmm(SERVER.okAt):''}`:`팀 공유 서버 연결됨 · 20초마다 확인${SERVER.okAt?' · 확인 '+hhmm(SERVER.okAt):''}`)+(SERVER.watch?' · 공유 폴더 자동 읽기':''):'이 PC 브라우저에만 반영'}</b></div></div>`;
   return h;
 }
 function canUp(){return !SERVER||!SERVER.me||SERVER.me.role==='editor'||SERVER.me.role==='admin';}
