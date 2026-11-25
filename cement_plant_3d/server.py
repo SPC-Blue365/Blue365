@@ -832,10 +832,10 @@ def yard_hist_path() -> Path:
     return STORE.dir / "yard_hist.json"
 
 
-def _ynum(v, hi=500000):
+def _ynum(v, hi=500000, nd=1):
     if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v < 0 or v > hi:
         return None
-    return round(float(v), 1)
+    return round(float(v), nd)
 
 
 def _yhm(v):
@@ -843,8 +843,17 @@ def _yhm(v):
     return v if re.fullmatch(r"\d{1,3}:\d{2}", v) else None
 
 
+def _yat(v):
+    v = str(v or "").strip()[:19]
+    return v if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?", v) else None
+
+
 def yard_clean(b, zero_blank=False) -> dict:
-    """원료 야드 입력값 검사: 날짜·근무조·야드별 재고(t)·S/R, 구치장, 인출시간, 기타(L-slag·직송·OSP·R/E)
+    """원료 야드 입력값 검사 (석회석/부원료 재고현황 ‘재고 및 생산실적’ 시트 구성)
+    yards  : 석회석 야드 PBA1·PBA2(1-5K 1·2Yard) PBB1·PBB2(6-7K) {t, m=S/R, at}
+    sub    : 구치장 {A}             run  : 실가동(인출) 시간 A·B·RE(R/E)·SB(부원료 6-7K) "H:MM"
+    subm   : 부원료 야드 B1·B2 {t, m}  draw : 근무조 인출량·시간 A·B(OSP→야드) LS(L-slag) DR(직송) SA·SB(쉘) {t, h}
+    grade  : 야드 품위 {pcao, cao, mgo, k2o} %   chg : 야드 변경 {at, full=만실량}   extra : OSP1·OSP2 재고 등
     zero_blank: 시트 자동 읽기 — 실시간 작성 중인 시트는 아직 안 쓴 칸이 0·0:00이라 값 없음으로 봄 (현장 설명 2026-11-25)"""
     if not isinstance(b, dict):
         raise ValueError("형식이 올바르지 않습니다")
@@ -854,20 +863,58 @@ def yard_clean(b, zero_blank=False) -> dict:
     shift = str(b.get("shift", ""))
     if shift not in ("1", "2", "3"):
         raise ValueError("근무조는 1·2·3차 중 하나입니다")
-    yards = {}
+
+    def t_(v):
+        n = _ynum(v)
+        return None if zero_blank and n == 0 else n
+
+    def hm_(v):
+        h = _yhm(v)
+        return None if not h or (zero_blank and re.fullmatch(r"0{1,3}:00", h)) else h
+
+    def d_(k):
+        v = b.get(k)
+        return v if isinstance(v, dict) else {}
+
+    def tm_(v, keep_at=False):
+        v = v if isinstance(v, dict) else {}
+        t, m = t_(v.get("t")), str(v.get("m") or "").upper()[:1]
+        o = {}
+        if t is not None:
+            o["t"] = t
+            if keep_at and _yat(v.get("at")):
+                o["at"] = _yat(v.get("at"))
+        if m in ("S", "R"):
+            o["m"] = m
+        return o
+
+    yards = {k: o for k in YARD_IDS if (o := tm_(d_("yards").get(k), True))}
+    subm = {k: o for k in ("B1", "B2") if (o := tm_(d_("subm").get(k)))}
+    draw = {}
+    for k in ("A", "B", "LS", "DR", "SA", "SB"):
+        v = d_("draw").get(k)
+        if isinstance(v, dict):
+            o = {x: y for x, y in (("t", t_(v.get("t"))), ("h", hm_(v.get("h")))) if y is not None}
+            if o:
+                draw[k] = o
+    grade = {}
     for k in YARD_IDS:
-        v = (b.get("yards") or {}).get(k) or {}
-        t, m = _ynum(v.get("t")), str(v.get("m") or "").upper()[:1]
-        if zero_blank and t == 0:
-            t = None
-        if t is not None or m in ("S", "R"):
-            yards[k] = {"t": t, "m": m if m in ("S", "R") else ""}
-    out = {"date": date, "shift": shift, "yards": yards,
-           "sub": {k: _ynum(v) for k, v in (b.get("sub") or {}).items() if k in ("A", "B") and _ynum(v) is not None and not (zero_blank and _ynum(v) == 0)},
-           "run": {k: _yhm(v) for k, v in (b.get("run") or {}).items() if k in ("A", "B") and _yhm(v) and not (zero_blank and re.fullmatch(r"0{1,3}:00", _yhm(v)))},
-           "extra": {k: _ynum(v) for k, v in (b.get("extra") or {}).items() if k in ("lslag", "direct", "osp1", "osp2", "re") and _ynum(v) is not None},
-           "at": str(b.get("at") or dt.datetime.now().isoformat(timespec="minutes"))[:19]}
-    if not yards and not out["sub"]:
+        v = d_("grade").get(k)
+        if isinstance(v, dict):
+            o = {x: _ynum(v.get(x), 100, 2) for x in ("pcao", "cao", "mgo", "k2o") if _ynum(v.get(x), 100)}
+            if o:
+                grade[k] = o
+    chg = {}
+    for k in YARD_IDS + ("SB1", "SB2"):
+        v = d_("chg").get(k)
+        if isinstance(v, dict) and _yat(v.get("at")):
+            chg[k] = {"at": _yat(v.get("at"))[:16], "full": _ynum(v.get("full"))}
+    out = {"date": date, "shift": shift, "yards": yards, "subm": subm, "draw": draw, "grade": grade, "chg": chg,
+           "sub": {k: n for k, v in d_("sub").items() if k in ("A", "B") and (n := t_(v)) is not None},
+           "run": {k: h for k, v in d_("run").items() if k in ("A", "B", "RE", "SB") and (h := hm_(v))},
+           "extra": {k: n for k, v in d_("extra").items() if k in ("lslag", "direct", "osp1", "osp2") and (n := t_(v)) is not None},
+           "at": _yat(b.get("at")) or dt.datetime.now().isoformat(timespec="seconds")}
+    if not (yards or out["sub"] or subm or draw):
         raise ValueError("야드 재고가 하나도 없습니다")
     return out
 
@@ -903,8 +950,11 @@ def yard_store(y: dict, by: str, src: str) -> dict:
             h = {}
         old = h.get(key) or {}
         merged = dict(y)
-        merged["yards"] = dict(old.get("yards") or {}, **{k: v for k, v in y["yards"].items() if v.get("t") is not None or v.get("m")})
-        for k in ("sub", "run", "extra"):
+        merged["yards"] = dict(old.get("yards") or {})
+        for k, v in y["yards"].items():   # 새 재고(t)가 오면 그 시각(at)도 새것으로 — 예전 시각이 남지 않게
+            o = {x: z for x, z in (merged["yards"].get(k) or {}).items() if not ("t" in v and x == "at")}
+            merged["yards"][k] = dict(o, **v)
+        for k in ("sub", "run", "extra", "subm", "draw", "grade", "chg"):
             merged[k] = dict(old.get(k) or {}, **y[k])
         h[key] = dict(merged, src=src)
         for k in sorted(h)[:-1200]:

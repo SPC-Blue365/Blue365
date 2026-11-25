@@ -2045,7 +2045,7 @@ function sparkSVG(p){
 function kvRows(e){
   let g=null;
   return Object.entries(e.params).filter(([k,p])=>!p.chem&&k!==e.bar).map(([k,p])=>{const s=pStatus(p);let h='';if(p.grp&&p.grp!==g){g=p.grp;h=`<div class="kvg">${g}</div>`;}
-    const src=p.ana?(p.has?`QMS ${stamp(p.time)}`:(p.lastTs?`최근 14일 시료 없음 · 마지막 ${stamp(tsDate(p.lastTs))}`:'QMS 시료 없음')):(p.has?(p.sok?`출하속보 ${sokAt()}`:`${p.mms?'MMS 실측':'DCS'} ${stamp(p.time)}`):'');
+    const src=p.ana?(p.has?`QMS ${stamp(p.time)}`:(p.lastTs?`최근 14일 시료 없음 · 마지막 ${stamp(tsDate(p.lastTs))}`:'QMS 시료 없음')):(p.has?(p.sok?`출하속보 ${sokAt()}`:p.yd?`재고현황 ${stamp(p.time)}`:`${p.mms?'MMS 실측':'DCS'} ${stamp(p.time)}`):'');
     return h+`<div><dt><i class="s-${s}"></i>${p.label}</dt><dd class="num">${fv(p)}<small>${p.unit}</small>${p.lo!=null||p.hi!=null||src?`<span class="lim">${[p.lo!=null||p.hi!=null?limTxt(p):'',src].filter(Boolean).join(' · ')}</span>`:''}</dd></div>`;}).join('');
 }
 function chemBlock(id){
@@ -2079,7 +2079,7 @@ function renderDetail(){
      <div class="dp-act"><button type="button" data-act="fly" aria-label="이 설비로 이동" data-tip="이 설비로 이동">${ic('target')}</button><button type="button" data-act="close" aria-label="닫기">${ic('x')}</button></div></div>
     <div class="dp-st"><span class="badge s-${s}">${s==='ok'?'정상 운전':ST[s]}</span><span>${head}</span></div>
     <div class="barrow"><div class="bl"><span>${e.barLabel}</span><b class="num">${fv(bp,0)}%</b></div><div class="bar"><i class="s-${pStatus(bp)==='ok'?'act':pStatus(bp)}" style="width:${bw(bp)}%"></i></div></div>
-    ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?(pp.sok?`출하속보 일별 ${new Set(pp.times.map(t=>+t)).size}일 · 24시 기준`:`${pp.mms?'MMS 실측':'QMS'} 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`):'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
+    ${off(pp)||isStopped(e)?`<div class="spark"><div class="sh"><span>${pp.label}</span><b>${isStopped(e)?'가동 중단':'최근 시료 없음'}</b></div></div>`:`<div class="spark"><div class="sh"><span>${pp.label} · ${pp.has?(pp.sok?`출하속보 일별 ${new Set(pp.times.map(t=>+t)).size}일 · 24시 기준`:pp.yd?`재고현황 품위 · ${stamp(pp.time)}`:`${pp.mms?'MMS 실측':'QMS'} 최근 ${pp.hist.length}개 · ${stamp(pp.time)}`):'최근 2분 (가상)'}</span><b class="num">${nf(pp.v,pp.dp)} ${pp.unit}</b></div>${sparkSVG(pp)}</div>`}
     <dl class="kv">${kvRows(e)}</dl>
     ${routeBlock(e)}${supplyBlock(e)}${yardBlock(e)}${portBlock(e)}
     ${e.kiln?chemBlock(e.id):''}
@@ -2614,12 +2614,12 @@ function stepSupply(){
        → 평균 소진 속도 = 운영 용량 ÷ 일수 (기존 37,000 t ÷ 84 h ≈ 440 t/h, 신설 50,000 t ÷ 48 h ≈ 1,042 t/h), 가동 킬른 수에 비례(추정).
        적재 야드도 같은 평균 속도로 채움. 2초 틱마다 저장률 변화 = 속도 × 2초 ÷ 운영 용량 */
     const cons=pbCons(L);
-    ys.forEach(e=>{const f=e.params.fill,dF=cons*2/3600/e.cap*100,r=e.params.rate;
+    ys.forEach(e=>{const cr=e.yrate!=null?e.yrate:cons,f=e.params.fill,dF=cr*2/3600/e.cap*100,r=e.params.rate;   // yrate: 재고현황 실측 속도
       f.v=clamp(f.v+(e.mode==='stack'?(f.v<100?dF:0):-dF),0,100);e.params.stock.v=e.cap*f.v/100;
-      const tgt=e.mode==='stack'&&f.v>=100?0:Math.round(cons);if(r.base!==tgt){r.base=r.target=tgt;if(!tgt)r.v=0;}});   // 처리량(평균) = 소진·적재 속도
-    {const rcy=ys.find(e=>e.mode==='reclaim'),h=rcy&&cons>0?Math.max(0,rcy.params.fill.v-4)/100*rcy.cap/cons:0;ys.forEach(e=>{if(e.params.left)e.params.left.v=h;});}   // 사용 야드가 4%까지 줄어 전환될 때까지 남은 시간 (가동 킬른이 없으면 0)
+      const tgt=e.mode==='stack'&&f.v>=100?0:Math.round(cr);if(r.base!==tgt){r.base=r.target=tgt;if(!tgt)r.v=0;}if(e.yrate!=null)r.v=tgt;});   // 실측 속도는 흔들지 않음   // 처리량(평균) = 소진·적재 속도
+    {const rcy=ys.find(e=>e.mode==='reclaim'),rr=rcy&&rcy.yrate!=null?rcy.yrate:cons,h=rcy&&rr>0&&cons>0?Math.max(0,rcy.params.fill.v-4)/100*rcy.cap/rr:0;ys.forEach(e=>{if(e.params.left)e.params.left.v=h;});}   // 사용 야드가 4%까지 줄어 전환될 때까지 남은 시간 (가동 킬른이 없으면 0)
     const rc=ys.find(e=>e.mode==='reclaim'),st=ys.find(e=>e.mode==='stack');
-    if(rc&&st&&rc.params.fill.v<=4){rc.mode='stack';st.mode='reclaim';syncYardTags();
+    if(rc&&st&&rc.params.fill.v<=4){rc.mode='stack';st.mode='reclaim';rc.yrate=st.yrate=null;syncYardTags();
       toast(`${LINE_NM[L]} 프리블렌딩: ${st.n} 사용(Reclaiming) 시작 · ${rc.n} 적재(Stacking) 전환`,'act');}});
   syncYards();
 }
@@ -2831,21 +2831,42 @@ const SHIFT_NM={'3':'3차 (00~08시)','1':'1차 (08~16시)','2':'2차 (16~24시)
 const SH_ORD={'3':0,'1':1,'2':2};   // 하루 안 근무조 순서: 3차 00~08 → 1차 08~16 → 2차 16~24
 function yardMerge(hist){
   const ks=Object.keys(hist||{}).filter(k=>/^\d{4}-\d\d-\d\d#[123]$/.test(k)).sort((a,b)=>{const [da,sa]=a.split('#'),[db,sb]=b.split('#');return da<db?-1:da>db?1:SH_ORD[sa]-SH_ORD[sb];});
-  if(!ks.length)return null;const cur={yards:{},sub:{},run:{},extra:{}};
+  if(!ks.length)return null;const cur={yards:{},sub:{},run:{},extra:{},subm:{},draw:{},grade:{},chg:{}};
   ks.forEach(k=>{const r=hist[k]||{},[d,sh]=k.split('#'),src={at:r.at,date:d,shift:sh};Object.assign(cur,{date:d,shift:sh,at:r.at});
-    Object.entries(r.yards||{}).forEach(([id,v])=>{const o=cur.yards[id]||{};if(v&&v.t!=null)Object.assign(o,{t:v.t},src);if(v&&v.m)o.m=v.m;cur.yards[id]=o;});
+    const tm=(dst,o)=>Object.entries(o||{}).forEach(([id,v])=>{const x=dst[id]||{};if(v&&v.t!=null)Object.assign(x,{t:v.t},src,{at:v.at||r.at});if(v&&v.m)x.m=v.m;dst[id]=x;});
+    tm(cur.yards,r.yards);tm(cur.subm,r.subm);
     if(r.sub&&r.sub.A!=null)cur.sub={A:r.sub.A,...src};
     Object.entries(r.run||{}).forEach(([L,v])=>{if(v)cur.run[L]={v,...src};});
-    Object.entries(r.extra||{}).forEach(([x,v])=>{if(v!=null)cur.extra[x]=v;});});
+    Object.entries(r.draw||{}).forEach(([L,v])=>{if(v&&(v.t||v.h))cur.draw[L]={...v,...src};});
+    Object.entries(r.extra||{}).forEach(([x,v])=>{if(v!=null)cur.extra[x]={v,...src};});
+    Object.assign(cur.grade,r.grade||{});Object.assign(cur.chg,r.chg||{});});
   return cur;
+}
+/* 소진·적재 속도 — 재고현황 실측에서 (현장 시트 2026-11-25 확인: S 야드 증가량 = 그 근무조 OSP 인출량)
+   R 야드: 야드 변경 때 만실량 → 지금 재고 / 경과 시간, 없으면 직전 근무조 기록과 비교. S 야드: 최근 근무조 OSP 인출량 ÷ 8 h. 둘 다 없으면 기본값(PB_DAYS) */
+function yardRate(d,y){
+  const v=y&&y.yards[d.id],base=pbCons(d.tab),dflt={r:base,how:`기본값 ${nf(base)} t/h (만재→소진 ${PB_DAYS[d.tab]}일 기준)`,est:1};
+  if(!v||v.t==null||!v.at)return dflt;
+  const hb=(a,b)=>(new Date(b)-new Date(a))/36e5;
+  if(v.m==='R'){
+    const c=y.chg&&y.chg[d.id];
+    if(c&&c.full>v.t){const h=hb(c.at,v.at);if(h>=4){const r=(c.full-v.t)/h;if(r>20&&r<5000)return {r,how:`실측 ${nf(r)} t/h — ${stamp(new Date(c.at))} 만실 ${nf(c.full)} t 이후 평균`};}}
+    const ks=Object.keys(YARDHIST).sort().reverse();
+    for(const k of ks){const p=(YARDHIST[k].yards||{})[d.id],at=p&&(p.at||YARDHIST[k].at);if(!p||p.t==null||!at||p.t<=v.t)continue;const h=hb(at,v.at);if(h<4)continue;
+      const r=(p.t-v.t)/h;if(r>20&&r<5000)return {r,how:`실측 ${nf(r)} t/h — 직전 기록 ${nf(p.t)} t 이후 평균`};break;}
+  }
+  if(v.m==='S'){const dr=y.draw&&y.draw[d.tab];if(dr&&dr.t)return {r:dr.t/8,how:`최근 근무조 OSP 인출 ${nf(dr.t)} t ÷ 8 h (${dr.date.slice(5).replace('-','/')} ${dr.shift}차)`};}
+  return dflt;
 }
 const yardSrc=o=>o&&o.date?`${o.date.slice(5).replace('-','/')} ${SHIFT_NM[o.shift]||o.shift+'차'}${o.at?' · 입력 '+stamp(new Date(o.at)):''}`:'';
 function applyYard(hist,meta){
   const y=yardMerge(hist);if(!y)return;YARDHIST=hist;YARD=y;YARDMETA=meta||{};
   PB_DEF.forEach(d=>{const v=y.yards[d.id],e=E[d.id];if(!v){e.meas=null;return;}
     if(v.m==='S'||v.m==='R')e.mode=v.m==='S'?'stack':'reclaim';
-    if(v.t!=null){const hrs=Math.max(0,(Date.now()-new Date(v.at||Date.now()))/36e5),c=pbCons(d.tab)*hrs,t=e.mode==='reclaim'?Math.max(0,v.t-c):Math.min(d.cap,v.t+c);
-      e.params.fill.v=clamp(t/d.cap*100,0,100);e.params.stock.v=t;e.meas=v;}else e.meas=null;});
+    if(v.t!=null){const rt=yardRate(d,y),hrs=Math.max(0,(Date.now()-new Date(v.at||Date.now()))/36e5),c=rt.r*hrs,t=e.mode==='reclaim'?Math.max(0,v.t-c):Math.min(d.cap,v.t+c);
+      e.params.fill.v=clamp(t/d.cap*100,0,100);e.params.stock.v=t;e.meas=v;e.yrate=rt.est?null:rt.r;e.yhow=rt.how;}else e.meas=null;
+    const g=y.grade[d.id],p=e.params.cao;   // 파일 CaO = 재고현황 품위(Pile CaO) 실측. 관리기준 46.5%는 가상값이라 실측에는 판정하지 않음 (현장 기준 받으면 반영)
+    if(g&&g.pcao!=null){if(p.lo0===undefined)p.lo0=p.lo;Object.assign(p,{v:g.pcao,base:g.pcao,target:g.pcao,hist:[g.pcao],times:[new Date(y.at)],time:new Date(y.at),has:true,yd:true,lo:null,noise:0});}});
   if(E.PBA0){const sv=y.sub&&y.sub.A;const p=E.PBA0.params;p.stock.v=sv||0;const tot=(sv||0)+PB_DEF.filter(d=>d.tab==='A').reduce((a,d)=>a+(E[d.id].params.stock.v||0),0);p.share.v=tot?(sv||0)/tot*100:0;}
   syncYardTags();syncYards();if(typeof renderAll==='function')renderAll();
 }
@@ -2860,12 +2881,21 @@ function yardBlock(e){
   let h=`<div class="sect">야드 재고 <small>석회석/부원료 재고현황</small></div><dl class="kv">`+(m?row('기준',`<small style="color:var(--fg3)">${yardSrc(m)}</small>`):'');
   if(e.id==='PBA0')h+=row('구치장 재고',m?nf(m.A)+' t':'재고현황 값 없음');
   else if(!m)h+=row('실측 재고','재고현황 값 없음 — 저장률은 가상값');
-  else h+=row('실측 재고',`${nf(m.t)} t · ${m.m==='S'?'S 적재':m.m==='R'?'R 사용':'—'}`)
-    +row('지금 (추정)',`${nf(e.params.stock.v)} t · ${nf(e.params.fill.v,0)}% <small style="color:var(--fg3)">평균 ${nf(pbCons(L))} t/h로 이어서 계산</small>`)
-    +(L==='A'&&y.sub&&y.sub.A!=null?row('구치장 (서브)',`${nf(y.sub.A)} t <small style="color:var(--fg3)">${yardSrc(y.sub)}</small>`):'');
-  if(y.run&&y.run[L])h+=row('인출시간 (실가동)',`${esc(y.run[L].v)} <small style="color:var(--fg3)">${yardSrc(y.run[L])}</small>`);
-  const ex=y.extra||{},nm={lslag:'L-slag',direct:'직송',osp1:'OSP1',osp2:'OSP2',re:'R/E'};
-  Object.keys(nm).forEach(k=>{if(ex[k]!=null&&ex[k]>0&&((L==='A'&&['lslag','re'].includes(k))||(L==='B'&&['direct','osp1','osp2'].includes(k))))h+=row(nm[k],nf(ex[k])+' t');});
+  else{const g=y.grade[e.id],c=y.chg[e.id];h+=row('실측 재고',`${nf(m.t)} t · ${m.m==='S'?'S 적재':m.m==='R'?'R 사용':'—'}`)
+    +row('지금 (추정)',`${nf(e.params.stock.v)} t · ${nf(e.params.fill.v,0)}% <small style="color:var(--fg3)">${esc(e.yhow||'')}</small>`)
+    +(g?row('품위 (%)',[['Pile CaO','pcao'],['CaO','cao'],['MgO','mgo'],['K₂O','k2o']].filter(([,k])=>g[k]!=null).map(([n,k])=>`${n} ${nf(g[k],2)}`).join(' · ')):'')
+    +(c?row('야드 변경',`${stamp(new Date(c.at))}${c.full?` · 만실 ${nf(c.full)} t`:''}`):'')
+    +(L==='A'&&y.sub&&y.sub.A!=null?row('구치장 (서브)',`${nf(y.sub.A)} t <small style="color:var(--fg3)">${yardSrc(y.sub)}</small>`):'');}
+  const sm=o=>`<small style="color:var(--fg3)">${o.date.slice(5).replace('-','/')} ${o.shift}차</small>`,dr=y.draw||{},rn=y.run||{};
+  if(rn[L])h+=row('인출시간 (실가동)',`${esc(rn[L].v)} ${sm(rn[L])}`);
+  if(L==='A'&&rn.RE)h+=row('R/E 실가동',`${esc(rn.RE.v)} ${sm(rn.RE)}`);
+  if(dr[L]&&dr[L].t)h+=row('OSP 인출 (근무조)',`${nf(dr[L].t)} t${dr[L].h?' · '+esc(dr[L].h):''} ${sm(dr[L])}`);
+  const lx=L==='A'?['LS','L-slag 인출']:['DR','직송'];if(dr[lx[0]]&&dr[lx[0]].t)h+=row(lx[1],`${nf(dr[lx[0]].t)} t ${sm(dr[lx[0]])}`);
+  const ox=y.extra&&y.extra[L==='A'?'osp1':'osp2'];if(ox&&ox.v>0)h+=row(L==='A'?'OSP1 재고':'OSP2 재고',`${nf(ox.v)} t ${sm(ox)}`);
+  const sk=L==='A'?'SA':'SB';if(dr[sk]&&dr[sk].t)h+=row('쉘 인출 (근무조)',`${nf(dr[sk].t)} t${dr[sk].h?' · '+esc(dr[sk].h):''} ${sm(dr[sk])}`);
+  if(L==='B'&&(y.subm.B1||y.subm.B2)){const f=(k,n)=>{const o=y.subm[k];return o&&o.t!=null?`${n} ${nf(o.t)} t${o.m?' '+o.m:''}`:'';},c=y.chg.SB2||y.chg.SB1;
+    h+=row('부원료 야드',[f('B1','Y1'),f('B2','Y2')].filter(Boolean).join(' · ')+(c?` <small style="color:var(--fg3)">변경 ${stamp(new Date(c.at))}${c.full?' 만실 '+nf(c.full)+' t':''}</small>`:''));
+    if(rn.SB)h+=row('부원료 인출시간',`${esc(rn.SB.v)} ${sm(rn.SB)}`);}
   return h+'</dl>';
 }
 /* MMS 실측값: 서버가 매칭표(상태 ‘매칭’)대로 MMS에서 읽어 온 값. 그 항목만 가상값 대신 실측, 나머지는 그대로 */
