@@ -15,19 +15,22 @@
  *
  * 설치 (처음 한 번, 재고현황 메일을 받는 구글 계정으로)
  *   1) https://script.google.com → [새 프로젝트] → 이 파일 내용을 모두 붙여넣기 → 저장
- *   2) 함수 선택에서 setup → [실행] → 권한 허용 (스프레드시트 읽기 · Gmail 읽기 · 드라이브 파일 만들기)
- *      시트 주소는 ‘석회석/부원료 재고현황’ 메일 본문의 링크에서 자동으로 찾습니다.
- *      못 찾으면 아래 SHEET_URL 에 시트 주소를 붙여넣고 다시 setup.
- *   3) 드라이브에 ‘Blue365 원료재고’ 폴더와 yard_latest.json 이 생깁니다.
- *   4) 서버 PC: 서버실행.bat 의 server.py 줄 끝에  --yard-watch auto  를 붙여 다시 실행
+ *      (출하속보 스크립트와 같은 프로젝트에 파일을 추가해도 됩니다 — 함수 이름이 겹치지 않게 setupYard 로 따로 둠)
+ *   2) 위쪽 함수 선택에서 checkYard → [실행] → 권한 허용 → 아래 ‘실행 로그’에 단계별 ✓ / ✗ 가 나옵니다 (아무것도 저장하지 않는 점검)
+ *   3) 모두 ✓ 이면 함수 선택에서 setupYard → [실행]  → 15분마다 자동 실행 등록 + 첫 저장
+ *      시트 주소는 ‘석회석/부원료 재고현황’ 메일 본문의 링크 → 드라이브의 시트 이름 순서로 자동으로 찾습니다.
+ *      못 찾으면 아래 SHEET_URL 에 시트 주소(브라우저 주소창 그대로)를 붙여넣고 다시 checkYard.
+ *   4) 드라이브에 ‘Blue365 원료재고’ 폴더와 yard_latest.json 이 생깁니다.
+ *   5) 서버 PC: 서버실행.bat 의 server.py 줄 끝에  --yard-watch auto  를 붙여 다시 실행
  *      (Google Drive 데스크톱 앱이 같은 계정으로 로그인되어 있어야 함 — 출하속보 자동 읽기와 같음)
  *
  * - 시트는 읽기만 합니다 (값·서식·버전을 바꾸지 않음). 보기 권한만 있어도 됩니다.
- * - 그만 쓰려면: script.google.com → 이 프로젝트 → 왼쪽 ‘트리거’(시계 아이콘)에서 삭제.
+ * - 그만 쓰려면: script.google.com → 이 프로젝트 → 왼쪽 ‘트리거’(시계 아이콘)에서 pollYard 삭제.
  */
 const YCFG = {
-  SHEET_URL: '',                                   // 비워 두면 메일에서 자동으로 찾음
-  MAIL_QUERY: 'subject:재고현황 newer_than:14d',
+  SHEET_URL: '',                                   // 비워 두면 메일 → 드라이브 순서로 자동으로 찾음. 주소 또는 ID
+  MAIL_QUERY: '(subject:재고현황 OR subject:석회석 OR subject:부원료) newer_than:30d',
+  NAME_HINT: '재고현황',                           // 드라이브에서 찾을 때 시트 파일 이름에 들어간 말
   TAB: '재고 및 생산실적',
   FOLDER: 'Blue365 원료재고',
   FILE: 'yard_latest.json',
@@ -35,12 +38,25 @@ const YCFG = {
   KEEP_DAYS: 3,                                    // JSON에 넣는 최근 날짜 수
 };
 
-/** 처음 한 번 실행: 15분마다 pollYard 가 돌도록 등록하고 바로 한 번 실행 */
-function setup() {
+/** 처음 한 번 실행: 점검 → 15분마다 pollYard 가 돌도록 등록 → 첫 저장 */
+function setupYard() {
+  const tab = openTab_(console.log);
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'pollYard').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('pollYard').timeBased().everyMinutes(YCFG.EVERY_MIN).create();
-  pollYard();
-  console.log(`설치 완료: ${YCFG.EVERY_MIN}분마다 ‘${YCFG.FOLDER}/${YCFG.FILE}’ 에 저장합니다.`);
+  pollYard_(tab);
+  console.log(`✓ 설치 완료: ${YCFG.EVERY_MIN}분마다 드라이브 ‘${YCFG.FOLDER}/${YCFG.FILE}’ 에 저장합니다.`);
+}
+
+/** 점검만 (아무것도 저장·등록하지 않음): 메일 → 시트 열기 → 탭 → 해석 결과를 실행 로그에 */
+function checkYard() {
+  const tab = openTab_(console.log);
+  const rg = range_(tab), P = yardParse_(rg.getValues(), rg.getDisplayValues());
+  ['3', '1', '2'].forEach(s => {
+    const o = P.shifts[s], v = k => o[k] == null ? '-' : o[k], y = ['PBA1', 'PBA2', 'PBB1', 'PBB2'].map(k => `${k} ${v('y.' + k + '.t')}${o['y.' + k + '.m'] || ''}`).join(' · ');
+    console.log(`✓ ${s}차 칸: ${y} · 구치장 ${v('sub.A')} · OSP 인출 ${v('draw.A.t')} / ${v('draw.B.t')}`);
+  });
+  console.log(`✓ 품위 ${Object.keys(P.common.grade).length}개 야드 · 야드 변경 ${Object.keys(P.common.chg).join(', ') || '없음'}`);
+  console.log('점검 끝 — 위가 모두 ✓ 이면 setupYard 를 실행하세요.');
 }
 
 /** 기억해 둔 값을 지우고 처음부터 (시트 양식이 크게 바뀌었을 때만) */
@@ -49,26 +65,64 @@ function resetYard() {
   console.log('기억해 둔 값을 지웠습니다. 다음 실행부터 지금 시트 내용으로 다시 시작합니다.');
 }
 
-function sheetUrl_() {
-  if (YCFG.SHEET_URL) return YCFG.SHEET_URL;
-  const props = PropertiesService.getScriptProperties(), saved = props.getProperty('sheetUrl');
-  for (const th of GmailApp.search(YCFG.MAIL_QUERY, 0, 10)) {
-    for (const m of th.getMessages().reverse()) {
-      if (!/석회석|부원료/.test(m.getSubject())) continue;
-      const u = (m.getBody() + ' ' + m.getPlainBody()).match(/https:\/\/docs\.google\.com\/spreadsheets\/d\/[\w-]+/);
-      if (u) { if (u[0] !== saved) props.setProperty('sheetUrl', u[0]); return u[0]; }
-    }
+/** 15분마다 (트리거) */
+function pollYard() { pollYard_(openTab_(() => {})); }
+
+const sheetId_ = t => {   // 주소·ID·메일 본문(인코딩된 링크 포함)에서 스프레드시트 ID
+  let x = String(t || '');
+  x += ' ' + x.replace(/%2F/gi, '/').replace(/%3A/gi, ':').replace(/%3F/gi, '?').replace(/%3D/gi, '=').replace(/%26/gi, '&');   // 메일 보안 링크(인코딩된 주소)
+  const m = x.match(/spreadsheets\/(?:u\/\d+\/)?d\/([\w-]{25,})/) || x.match(/(?:file\/d\/|[?&]id=)([\w-]{25,})/) || x.match(/^\s*([\w-]{25,})\s*$/);
+  return m ? m[1] : null;
+};
+
+/** 시트 열기: SHEET_URL → 메일 링크 → 드라이브 이름 검색 → 지난번 성공한 ID. 단계마다 log 로 알림 */
+function openTab_(log) {
+  const props = PropertiesService.getScriptProperties(), tried = [];
+  const cands = [];
+  if (YCFG.SHEET_URL) { const id = sheetId_(YCFG.SHEET_URL); if (!id) throw new Error('✗ SHEET_URL 에서 시트 ID를 읽지 못했습니다 — 브라우저 주소창의 주소를 그대로 붙여넣으세요'); cands.push([id, 'SHEET_URL']); }
+  else {
+    let n = 0;
+    try {
+      GmailApp.search(YCFG.MAIL_QUERY, 0, 20).forEach(th => th.getMessages().reverse().forEach(m => {
+        if (!/재고현황|석회석|부원료/.test(m.getSubject())) return;
+        n++;
+        const id = sheetId_(m.getBody() + ' ' + m.getPlainBody());
+        if (id && !cands.some(c => c[0] === id)) cands.push([id, `메일 ‘${m.getSubject()}’ (${Utilities.formatDate(m.getDate(), 'Asia/Seoul', 'MM/dd HH:mm')})`]);
+      }));
+      log(n ? `✓ 재고현황 메일 ${n}통 찾음 · 시트 링크 ${cands.length}개` : '✗ 최근 30일 재고현황 메일을 찾지 못함 → 드라이브에서 찾습니다');
+    } catch (e) { log('✗ Gmail 읽기 실패: ' + e.message + ' → 드라이브에서 찾습니다'); }
+    try {
+      const it = DriveApp.searchFiles(`title contains '${YCFG.NAME_HINT}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`);
+      let k = 0;
+      while (it.hasNext() && k < 10) { const f = it.next(); k++; if (!cands.some(c => c[0] === f.getId())) cands.push([f.getId(), `드라이브 ‘${f.getName()}’`]); }
+      if (k) log(`✓ 드라이브에서 이름에 ‘${YCFG.NAME_HINT}’ 가 들어간 시트 ${k}개`);
+    } catch (e) { log('✗ 드라이브 검색 실패: ' + e.message); }
+    const saved = props.getProperty('sheetId');
+    if (saved && !cands.some(c => c[0] === saved)) cands.push([saved, '지난번에 연 시트']);
   }
-  if (saved) return saved;
-  throw new Error('재고현황 메일에서 시트 링크를 찾지 못했습니다. YCFG.SHEET_URL 에 시트 주소를 넣어 주세요.');
+  for (const [id, how] of cands) {
+    let ss;
+    try { ss = SpreadsheetApp.openById(id); }
+    catch (e) {
+      let why = e.message;
+      try { const mt = DriveApp.getFileById(id).getMimeType(); if (!/google-apps\.spreadsheet/.test(mt)) why = `구글 시트가 아니라 ${/sheet|excel/i.test(mt) ? '엑셀(.xlsx) 파일' : mt} 입니다 — 드라이브에서 [파일 → Google Sheets로 저장] 한 시트여야 읽을 수 있습니다`; }
+      catch (e2) { why = '이 계정에 열람 권한이 없습니다 (시트 소유자에게 보기 권한 요청) · ' + e.message; }
+      tried.push(`${how}: ${why}`); continue;
+    }
+    const tab = ss.getSheetByName(YCFG.TAB);
+    if (!tab) { tried.push(`${how} ‘${ss.getName()}’: ‘${YCFG.TAB}’ 탭이 없음 (탭: ${ss.getSheets().map(x => x.getName()).slice(0, 6).join(', ')}…)`); continue; }
+    log(`✓ 시트 열기: ‘${ss.getName()}’ → ‘${YCFG.TAB}’ 탭 (${how})`);
+    if (props.getProperty('sheetId') !== id) props.setProperty('sheetId', id);
+    return tab;
+  }
+  throw new Error(cands.length ? '✗ 시트를 열지 못했습니다:\n  ' + tried.join('\n  ') : '✗ 시트 링크를 찾지 못했습니다 — YCFG.SHEET_URL 에 시트 주소를 붙여넣고 다시 실행하세요');
 }
 
-/** 15분마다: 시트 읽기 → 바뀐 칸 기억 → 바뀐 게 있으면 드라이브 JSON 덮어쓰기 */
-function pollYard() {
-  const sh = SpreadsheetApp.openByUrl(sheetUrl_()).getSheetByName(YCFG.TAB);
-  if (!sh) throw new Error(`‘${YCFG.TAB}’ 시트가 없습니다`);
-  const rg = sh.getRange(1, 1, Math.min(sh.getLastRow(), 80), Math.min(sh.getLastColumn(), 30));
-  const props = PropertiesService.getScriptProperties();
+const range_ = sh => sh.getRange(1, 1, Math.min(Math.max(sh.getLastRow(), 1), 80), Math.min(Math.max(sh.getLastColumn(), 1), 30));
+
+/** 시트 읽기 → 바뀐 칸 기억 → 바뀐 게 있으면 드라이브 JSON 덮어쓰기 */
+function pollYard_(tab) {
+  const rg = range_(tab), props = PropertiesService.getScriptProperties();
   const out = yardTrack_(yardParse_(rg.getValues(), rg.getDisplayValues()), new Date(), JSON.parse(props.getProperty('ystate') || '{}'));
   props.setProperty('ystate', JSON.stringify(out.state));
   if (!out.changed) return;
@@ -126,7 +180,7 @@ function yardParse_(V, D) {
     const item = (cc || (lm ? '' : b)).toLowerCase(), key = `${sec}|${line}|${item}`, id = ID[key];
     if (id) {   // 품위(석회석 야드만)·야드 변경(일시·만실량)은 근무조와 무관
       if (g && sec === '석회석') { const q = { pcao: pct(r, g[1]), cao: pct(r, g[1] + 1), mgo: pct(r, g[1] + 2), k2o: pct(r, g[1] + 3) }; if (Object.values(q).some(v => v != null)) out.common.grade[id] = q; }
-      if (nC && V[r][nC[1]] instanceof Date) out.common.chg[id] = { at: kst_(V[r][nC[1]]).slice(0, 16), full: fC ? num(r, fC[1]) : null };
+      if (nC && Object.prototype.toString.call(V[r][nC[1]]) === '[object Date]' && !isNaN(V[r][nC[1]])) out.common.chg[id] = { at: kst_(V[r][nC[1]]).slice(0, 16), full: fC ? num(r, fC[1]) : null };
     }
     Object.entries(col).forEach(([s, c]) => {
       const o = out.shifts[s];
