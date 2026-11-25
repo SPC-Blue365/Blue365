@@ -814,6 +814,155 @@ def mms_test(map_path: Path) -> None:
         sys.exit(f"  ✗ {e}")
 
 
+# ---------------------------------------------------------------------------
+# 원료 야드 재고 (석회석/부원료 재고현황 · 근무조 3차 00~08 / 1차 08~16 / 2차 16~24) — 현장 제공 2026-11-25
+#   1-5K 1Yard·2Yard → 기존 프리블렌딩 Y1·Y2 (PBA1·PBA2), 6-7K → 신설 Y1·Y2 (PBB1·PBB2), S=적재 R=사용, 구치장 = 기존 서브 야적장
+#   들어오는 길: 데이터 창 직접 입력(편집 권한 + 비밀번호) 또는 구글 드라이브 폴더의 JSON(Apps Script가 시트를 읽어 저장, --yard-watch)
+# ---------------------------------------------------------------------------
+YARD_IDS = ("PBA1", "PBA2", "PBB1", "PBB2")
+YARD_DIR_NAME = "Blue365 원료재고"
+YWATCH = {"on": False, "folder": "", "every": 0, "last": None, "ok": None, "err": "", "got": None}
+
+
+def yard_path() -> Path:
+    return STORE.dir / "yard.json"
+
+
+def yard_hist_path() -> Path:
+    return STORE.dir / "yard_hist.json"
+
+
+def _ynum(v, hi=500000):
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v or v < 0 or v > hi:
+        return None
+    return round(float(v), 1)
+
+
+def _yhm(v):
+    v = str(v or "").strip()
+    return v if re.fullmatch(r"\d{1,3}:\d{2}", v) else None
+
+
+def yard_clean(b, zero_blank=False) -> dict:
+    """원료 야드 입력값 검사: 날짜·근무조·야드별 재고(t)·S/R, 구치장, 인출시간, 기타(L-slag·직송·OSP·R/E)
+    zero_blank: 시트 자동 읽기 — 실시간 작성 중인 시트는 아직 안 쓴 칸이 0·0:00이라 값 없음으로 봄 (현장 설명 2026-11-25)"""
+    if not isinstance(b, dict):
+        raise ValueError("형식이 올바르지 않습니다")
+    date = str(b.get("date", ""))
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        raise ValueError("날짜(YYYY-MM-DD)가 필요합니다")
+    shift = str(b.get("shift", ""))
+    if shift not in ("1", "2", "3"):
+        raise ValueError("근무조는 1·2·3차 중 하나입니다")
+    yards = {}
+    for k in YARD_IDS:
+        v = (b.get("yards") or {}).get(k) or {}
+        t, m = _ynum(v.get("t")), str(v.get("m") or "").upper()[:1]
+        if zero_blank and t == 0:
+            t = None
+        if t is not None or m in ("S", "R"):
+            yards[k] = {"t": t, "m": m if m in ("S", "R") else ""}
+    out = {"date": date, "shift": shift, "yards": yards,
+           "sub": {k: _ynum(v) for k, v in (b.get("sub") or {}).items() if k in ("A", "B") and _ynum(v) is not None and not (zero_blank and _ynum(v) == 0)},
+           "run": {k: _yhm(v) for k, v in (b.get("run") or {}).items() if k in ("A", "B") and _yhm(v) and not (zero_blank and re.fullmatch(r"0{1,3}:00", _yhm(v)))},
+           "extra": {k: _ynum(v) for k, v in (b.get("extra") or {}).items() if k in ("lslag", "direct", "osp1", "osp2", "re") and _ynum(v) is not None},
+           "at": str(b.get("at") or dt.datetime.now().isoformat(timespec="minutes"))[:19]}
+    if not yards and not out["sub"]:
+        raise ValueError("야드 재고가 하나도 없습니다")
+    return out
+
+
+def yard_read():
+    try:
+        with SETTINGS_LOCK:
+            d = json.loads(yard_path().read_text("utf-8"))
+        return d, (d.get("meta") or {}).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None, None
+
+
+def yard_hist_read() -> dict:
+    try:
+        with SETTINGS_LOCK:
+            h = json.loads(yard_hist_path().read_text("utf-8"))
+        return h if isinstance(h, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def yard_store(y: dict, by: str, src: str) -> dict:
+    """최신값 저장 + 날짜#근무조 기록(같은 근무조는 나중 값으로 덮음, 빈 칸은 앞 값 유지 — 교대근무자가 나눠 입력해도 모임)"""
+    now = dt.datetime.now()
+    meta = {"version": now.strftime("%Y%m%d%H%M%S%f"), "savedAt": now.isoformat(timespec="seconds"), "by": by[:40], "source": src[:20]}
+    key = f"{y['date']}#{y['shift']}"
+    with SETTINGS_LOCK:
+        try:
+            h = json.loads(yard_hist_path().read_text("utf-8"))
+            h = h if isinstance(h, dict) else {}
+        except (OSError, ValueError):
+            h = {}
+        old = h.get(key) or {}
+        merged = dict(y)
+        merged["yards"] = dict(old.get("yards") or {}, **{k: v for k, v in y["yards"].items() if v.get("t") is not None or v.get("m")})
+        for k in ("sub", "run", "extra"):
+            merged[k] = dict(old.get(k) or {}, **y[k])
+        h[key] = dict(merged, src=src)
+        for k in sorted(h)[:-1200]:
+            del h[k]
+        for path, data in ((yard_hist_path(), h), (yard_path(), {"yard": merged, "meta": meta})):
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False), "utf-8")
+            os.replace(tmp, path)
+    return meta
+
+
+def find_yard_dir(spec: str):
+    if spec.strip().lower() == "auto":
+        for p in drive_candidates():
+            q = p.parent / YARD_DIR_NAME
+            try:
+                if q.is_dir():
+                    return q
+            except OSError:
+                pass
+        return None
+    p = Path(spec)
+    return p if p.is_dir() else None
+
+
+def yard_watch_loop(spec: str, every: int) -> None:
+    """구글 드라이브 ‘Blue365 원료재고’ 폴더의 최신 JSON(Apps Script가 시트를 읽어 저장)을 반영"""
+    YWATCH.update(on=True, folder=YARD_DIR_NAME if spec.strip().lower() == "auto" else Path(spec).name, every=every)
+    last, folder = None, None
+    while True:
+        try:
+            if folder is None or not folder.is_dir():
+                folder = find_yard_dir(spec)
+                if folder is None:
+                    YWATCH.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=False, err=f"폴더를 찾지 못함 — 구글 드라이브의 ‘{YARD_DIR_NAME}’ 동기화 확인")
+                    time.sleep(every)
+                    continue
+                YWATCH["folder"] = str(folder)
+            files = [p for p in folder.glob("*.json") if not p.name.startswith(("~$", "."))]
+            if files:
+                newest = max(files, key=lambda p: p.stat().st_mtime)
+                sig = (newest.name, newest.stat().st_mtime, newest.stat().st_size)
+                if sig != last:
+                    data = json.loads(newest.read_text("utf-8"))
+                    for y in (data if isinstance(data, list) else [data]):
+                        try:
+                            yard_store(yard_clean(y, zero_blank=True), "자동 (재고현황 시트)", "drive")
+                        except ValueError:
+                            pass   # 아직 아무 칸도 안 쓴 근무조
+                    last = sig
+                    YWATCH["got"] = dt.datetime.now().isoformat(timespec="minutes")
+                    log(f"원료 야드 재고 반영: {newest.name}")
+            YWATCH.update(last=dt.datetime.now().isoformat(timespec="minutes"), ok=True, err="")
+        except (OSError, ValueError) as e:
+            YWATCH.update(ok=False, err=str(e)[:160], last=dt.datetime.now().isoformat(timespec="minutes"))
+        time.sleep(every)
+
+
 def settings_path() -> Path:
     return STORE.dir / "settings.json"
 
@@ -946,7 +1095,7 @@ def backup_once() -> Path | None:
         return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     src = STORE.dir
-    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json", "sokbo_hist.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
+    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json", "sokbo_hist.json", "yard.json", "yard_hist.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
     if not names:
         return None
     tmp = out.with_suffix(".tmp")
@@ -1362,7 +1511,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1],
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1], "yard": yard_read()[1], "yardWatch": dict(YWATCH) if YWATCH["on"] else None,
                                     "sokboWatch": {k: SWATCH[k] for k in ("on", "folder", "every", "last", "ok", "err", "got")},
                                     "mms": dict(MMS, t=MMSV["t"]) if MMS["on"] else None})
         if path == "/api/settings":
@@ -1370,6 +1519,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             d, stamp = settings_read()
             return self._send(200, {"settings": d, "stamp": stamp})
+        if path == "/api/yard":
+            if not self._need("viewer"):
+                return
+            d, _ = yard_read()
+            return self._send(200, dict(d or {"yard": None, "meta": None}, hist=yard_hist_read()))
         if path == "/api/sokbo":
             if not self._need("viewer"):
                 return
@@ -1430,7 +1584,26 @@ class Handler(BaseHTTPRequestHandler):
             return self._sokbo(body)
         if path == "/api/sokbo-hist":
             return self._sokhist(body)
+        if path == "/api/yard":
+            return self._yard(body)
         self._send(404, {"error": "없는 주소입니다"})
+
+    def _yard(self, b):
+        """원료 야드 재고 직접 입력 (편집 이상, 본인 비밀번호 다시 확인)"""
+        u = self._need("editor")
+        if not u:
+            return
+        if not USERS.verify(u["id"], b.get("password")):
+            USERS.log(u["id"], "업로드 비밀번호 틀림", "원료 야드", self.ip)
+            return self._send(401, {"error": "비밀번호가 맞지 않습니다 (입력 확인)"})
+        try:
+            y = yard_clean(b.get("yard"))
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        meta = yard_store(y, f"{u['dept']} {u['name']}", "input")
+        USERS.log(u["id"], "원료 야드 재고 입력", f"{y['date']} {y['shift']}차", self.ip)
+        d, _ = yard_read()
+        return self._send(200, {"ok": True, "yard": d["yard"], "meta": meta, "hist": yard_hist_read()})
 
     def _sokhist(self, b):
         """드라이브 폴더로 받은 PDF는 화면이 읽으므로, 처음 읽은 화면이 그 날짜 재고를 기록 (지금 서버의 속보 버전·날짜일 때만, 날짜당 한 번)"""
@@ -1713,6 +1886,7 @@ def main() -> None:
     ap.add_argument("--key", default=os.environ.get("B365_UPLOAD_KEY", ""), help="(선택) 업로드에 추가로 요구할 서버 공통 암호")
     ap.add_argument("--sokbo-watch", default="", help="출하속보 PDF가 들어오는 폴더. auto = 구글 드라이브의 ‘Blue365 출하속보’ 폴더를 자동으로 찾음")
     ap.add_argument("--sokbo-interval", type=int, default=60, help="출하속보 폴더 확인 주기(초, 기본 60)")
+    ap.add_argument("--yard-watch", default="", help="원료 야드 재고 JSON 폴더. auto = 구글 드라이브의 ‘Blue365 원료재고’ 폴더")
     ap.add_argument("--mms", action="store_true", help="MMS(Manufacturing Monitor)에서 매칭표의 설비 값을 읽기 전용으로 가져옴")
     ap.add_argument("--mms-every", type=int, default=30, help="MMS 값 읽는 주기(초, 기본 30, 최소 10)")
     ap.add_argument("--mms-map", default=str(ROOT / MMS_MAP_NAME), help=f"매칭표 엑셀 (기본: 서버 폴더의 {MMS_MAP_NAME})")
@@ -1755,6 +1929,11 @@ def main() -> None:
         sokbo_txt = (f"{sf} · {every}초마다 최신 PDF" if sf else
                      f"아직 폴더를 찾지 못함 ({'구글 드라이브의 ‘' + SOKBO_DIR_NAME + '’' if a.sokbo_watch.lower() == 'auto' else a.sokbo_watch}) — {every}초마다 다시 찾습니다")
 
+    yard_txt = "사용 안 함"
+    if a.yard_watch:
+        yf = find_yard_dir(a.yard_watch)
+        threading.Thread(target=yard_watch_loop, args=(a.yard_watch, 60), daemon=True).start()
+        yard_txt = f"{yf} · 60초마다" if yf else f"아직 폴더를 찾지 못함 (구글 드라이브의 ‘{YARD_DIR_NAME}’) — 60초마다 다시 찾습니다"
     mms_txt = "사용 안 함"
     if a.mms:
         every = max(10, a.mms_every)
@@ -1802,6 +1981,7 @@ def main() -> None:
         print("                ※ 같은 디스크입니다. PC 고장에 대비하려면 --backup-dir 로 다른 디스크·공유 폴더를 지정하세요.")
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
     print(f"  출하속보 폴더: {sokbo_txt}")
+    print(f"  원료 야드 폴더: {yard_txt}")
     print(f"  MMS 연결    : {mms_txt}")
     print("  끝내려면 Ctrl+C")
     print("=" * 56, flush=True)
