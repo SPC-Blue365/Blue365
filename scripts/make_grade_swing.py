@@ -433,7 +433,8 @@ def build(month: str) -> str:
     mine_w = (float(np.average(sh["cao"], weights=sh["tonnage"]))
               if len(sh) and sh["tonnage"].sum() > 0 else np.nan)
     ym = f"{m0.year}년 {m0.month}월"
-    period = f"{m0:%Y-%m-%d} ~ {t1 - pd.Timedelta(hours=2):%Y-%m-%d %H:%M}"
+    _last = cna.loc[(cna["datetime"] >= m0) & (cna["datetime"] < m0 + pd.offsets.MonthBegin(1)), "datetime"].max()
+    period = f"{m0:%Y-%m-%d} ~ {(_last if pd.notna(_last) else t1):%Y-%m-%d %H:%M}"   # CNA 마지막 원측정 시각
 
     kpis = f"""
 <div class="k good"><div class="kv">{new.pile_mean:.2f}<span class="ku">%</span></div>
