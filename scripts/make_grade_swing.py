@@ -314,6 +314,85 @@ def composition_svg(sw: W.LineSwing) -> str:
     return "".join(o)
 
 
+def year_mix_svg(p: pd.DataFrame) -> str:
+    """올해 파일 전체 — 파일마다 100% 막대(아래 저품위=토분, 가운데 목표, 위 고품위=암석) + 위 칸 확정 품위."""
+    p = p[p["n_raw"] > 0].reset_index(drop=True)
+    if not len(p):
+        return ""
+    x0, x1 = 52, 984
+    cw = (x1 - x0) / len(p)
+    ty0, ty1, lo_c, hi_c = 30, 120, 43.4, 45.8           # 위 칸: 확정 품위
+    by0, by1 = 150, 410                                    # 아래 칸: 비율 막대
+    sy = lambda v: _sc(_cl(v, lo_c, hi_c), lo_c, hi_c, ty1, ty0)      # noqa: E731
+    sb = lambda f: by1 - (by1 - by0) * f                               # noqa: E731
+    o = [f'<svg viewBox="0 0 1000 446" class="chart sw" role="img" aria-label="올해 파일별 저품위·목표·고품위 비율">',
+         f'<rect x="{x0}" y="{sy(HI):.1f}" width="{x1 - x0}" height="{sy(LO) - sy(HI):.1f}" fill="var(--band)"/>',
+         f'<text x="{x0}" y="{ty0 - 10}" class="t">파일 확정 품위 (야드변경 시트, %)</text>']
+    for v in (44, 45):
+        o.append(f'<line x1="{x0}" y1="{sy(v):.1f}" x2="{x1}" y2="{sy(v):.1f}" class="gr"/>')
+        o.append(f'<text x="{x0 - 8}" y="{sy(v) + 4:.1f}" text-anchor="end">{v}</text>')
+    o.append(f'<text x="{x0}" y="{by0 - 10}" class="t">파일 안 비율 (CNA 원측정 개수, %)</text>')
+    for f in (0, .25, .5, .75, 1):
+        o.append(f'<text x="{x0 - 8}" y="{sb(f) + 4:.1f}" text-anchor="end">{f * 100:.0f}</text>')
+    pts, prev_m = [], None
+    for i, r in p.iterrows():
+        x = x0 + i * cw
+        partial = pd.notna(r.get("coverage")) and r["coverage"] < 0.5
+        y = by1
+        for k, col, op, name in (("lo", C_LO, ".9", "저품위 · 토분"), ("in", "var(--faint)", ".45", "목표"),
+                                 ("hi", C_HI, ".9", "고품위 · 암석")):
+            h = (by1 - by0) * r[f"{k}_share"]
+            o.append(f'<rect x="{x + .6:.1f}" y="{y - h:.1f}" width="{max(cw - 1.2, .8):.1f}" height="{h:.1f}" '
+                     f'fill="{col}" fill-opacity="{".45" if partial else op}">'
+                     f'<title>{r["start"]:%m/%d %H시}~' + (f'{r["end"]:%m/%d %H시}' if r["closed"] else "쌓는 중")
+                     + f' · {name} {r[f"{k}_share"] * 100:.0f}% (적재물량 {r[f"{k}_wshare"] * 100:.0f}%)'
+                     + (f' · 확정 {r["sheet_cao"]:.2f}%' if pd.notna(r["sheet_cao"]) else "")
+                     + (" · ⚠ 측정이 구간의 절반 미만" if partial else "") + '</title></rect>')
+            y -= h
+        if r["closed"] and pd.notna(r["sheet_cao"]):
+            pts.append((x + cw / 2, sy(r["sheet_cao"]), r["sheet_cao"]))
+        m = r["start"].to_period("M")
+        if m != prev_m:
+            o.append(f'<line x1="{x:.1f}" y1="{ty0 - 4}" x2="{x:.1f}" y2="{by1 + 6}" stroke="var(--ink-3)" '
+                     f'stroke-opacity=".35" stroke-dasharray="2 3"/>')
+            o.append(f'<text x="{x + 3:.1f}" y="{by1 + 22}">{r["start"].month}월</text>')
+            prev_m = m
+    if pts:
+        o.append(f'<polyline points="{" ".join(f"{a:.1f},{b:.1f}" for a, b, _ in pts)}" fill="none" '
+                 f'stroke="var(--ink)" stroke-width="1.2" stroke-opacity=".5"/>')
+        for a, b, v in pts:
+            col = "var(--ok-ink)" if LO <= v <= HI else "var(--bad-ink)"
+            o.append(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="3.2" fill="{col}"><title>{v:.2f}%</title></circle>')
+    o.append(f'<line x1="{x0}" y1="{sb(.5):.1f}" x2="{x1}" y2="{sb(.5):.1f}" stroke="var(--surface)" '
+             f'stroke-dasharray="3 3" stroke-opacity=".9"/>')
+    o.append("</svg>")
+    return "".join(o)
+
+
+def month_mix_table(p: pd.DataFrame) -> str:
+    """월별 — 완료 파일의 평균 비율(저품위·목표·고품위)과 확정 품위 평균."""
+    d = p[(p["n_raw"] > 0) & p["closed"]].copy()
+    if not len(d):
+        return ""
+    d["m"] = d["end"].dt.to_period("M")          # 완료(파일이 끝난) 월 기준 — 월간 완료 파일과 같은 기준
+    g = d.groupby("m").agg(n=("start", "size"), lo=("lo_share", "mean"), inb=("in_share", "mean"),
+                           hi=("hi_share", "mean"), cao=("sheet_cao", "mean"), ok=("sheet_cao",
+                           lambda s: int(((s >= LO) & (s <= HI)).sum())))
+    bar = lambda f, col: (f'<span style="display:inline-block;height:10px;width:{f * 90:.0f}px;'   # noqa: E731
+                          f'background:{col};border-radius:2px;vertical-align:middle;margin-right:6px"></span>')
+    rows = "".join(
+        f'<tr><td>{m.month}월</td><td class="n">{int(r.n)}</td>'
+        f'<td class="n" style="white-space:nowrap">{bar(r.lo, C_LO)}{r.lo * 100:.0f}%</td>'
+        f'<td class="n" style="white-space:nowrap">{bar(r.inb, "var(--faint)")}{r.inb * 100:.0f}%</td>'
+        f'<td class="n" style="white-space:nowrap">{bar(r.hi, C_HI)}{r.hi * 100:.0f}%</td>'
+        f'<td class="n"><b style="color:{"var(--ok-ink)" if LO <= r.cao <= HI else "var(--bad-ink)"}">{r.cao:.2f}</b></td>'
+        f'<td class="n">{int(r.ok)}/{int(r.n)}</td></tr>' for m, r in g.iterrows())
+    return ('<div class="tbl"><table class="t"><tr><th>완료 월</th><th class="n">파일</th>'
+            f'<th class="n" style="color:var(--s1)">저품위 · 토분</th><th class="n">목표</th>'
+            f'<th class="n" style="color:var(--s2)">고품위 · 암석</th><th class="n">확정 품위 평균</th>'
+            f'<th class="n">목표 안</th></tr>{rows}</table></div>')
+
+
 def funnel_svg(rows: list[tuple[str, pd.Series, str]]) -> str:
     """같은 기간 같은 라인 — 단계별 값 분포. 점 = 개별 값, 막대 = 10~90% 범위, 세로선 = 평균."""
     lo_v, hi_v, x0, x1, rh, pt = 38, 54, 230, 960, 62, 34
@@ -464,6 +543,20 @@ def build(month: str) -> str:
                  old.piles["end"].max() if len(old.piles) else m0) + pd.Timedelta(hours=6)
 
     gap = mine_w - new.pile_mean
+    # ── 올해 신설 파일 전체 (2026-11-25 요청: 저품위=토분 · 고품위=암석 으로 보여 주기)
+    y0 = pd.Timestamp(f"{m0.year}-01-01")
+    yn = yc[yc["line"] == S.LINE_NEW]
+    yp = W.piles(yn, cna, y0, y0 + pd.DateOffset(years=1), cna["datetime"].max())
+    yp = yp.merge(W.load_check(yn, cna)[["start", "coverage"]], on="start", how="left")
+    yd = yp[(yp["n_raw"] > 0) & yp["closed"]]
+    n_pre = int((yp["n_raw"] == 0).sum())
+    n_part = int((yp["coverage"] < 0.5).sum())
+    r_lo = float(yd["lo_share"].corr(yd["sheet_cao"])) if len(yd) > 2 else np.nan
+    r_hi = float(yd["hi_share"].corr(yd["sheet_cao"])) if len(yd) > 2 else np.nan
+    wdiff = float(np.abs(yd[[f"{k}_share" for k in W.BANDS]].values
+                         - yd[[f"{k}_wshare" for k in W.BANDS]].values).max()) if len(yd) else np.nan
+    top_lo = yd.loc[yd["lo_share"].idxmax()]
+    top_hi = yd.loc[yd["hi_share"].idxmax()]
     od = old.done
     pooled_old = (W.band_stats(W.raw(old_an, od["start"].min(), od["end"].max()), float(od["sheet_ton"].sum()))
                   if len(od) else None)
@@ -561,6 +654,29 @@ def build(month: str) -> str:
     ({sh['cao'].mean():.2f}%, 물량 가중 {mine_w:.2f}%)이 야드 파일 평균보다 <b>{gap:.1f}%p 높은</b> 점은 이 그래프로는
     설명할 수 없습니다. 이 차이는 이미 알려진 광산–야드 품위 격차(OSP 기존 재고 혼입, 47Q 감마레이 원료,
     XRF·CNA 계측 차이 후보)와 같은 문제로, 여기서는 <b>흔들림의 폭</b>만 비교합니다.</p>
+</section>
+
+<section>
+  <h2>올해 신설 파일</h2>
+  <p class="q">{m0.year}년 신설(증설)라인 파일마다 토분·암석은 얼마나 섞였나?</p>
+  <p class="a">CNA가 있는 {len(yd)}개 완료 파일의 평균은 <strong>저품위(토분) {yd['lo_share'].mean() * 100:.0f}%</strong> ·
+    목표 {yd['in_share'].mean() * 100:.0f}% · <strong>고품위(암석) {yd['hi_share'].mean() * 100:.0f}%</strong>입니다.
+    목표 품위로 들어온 돌은 파일마다 {yd['in_share'].min() * 100:.0f}~{yd['in_share'].max() * 100:.0f}%뿐이고,
+    파일의 품위는 <b>토분과 암석이 어떤 비율로 섞였느냐</b>로 정해졌습니다 —
+    저품위 비율이 높을수록 확정 품위가 낮고(상관 {r_lo:.2f}), 고품위 비율이 높을수록 높습니다(상관 {r_hi:+.2f}).</p>
+  <div class="card">{_legend([("저품위 &lt;44.1 · 토분 많음", C_LO, ""), ("목표 44.1~45.1", "var(--faint)", ""),
+                             ("고품위 &gt;45.1 · 암석 많음", C_HI, ""), ("확정 품위(목표 안 초록 · 밖 빨강)", "var(--ink)", "ln")])}
+    {year_mix_svg(yp)}</div>
+  <p class="note">막대 하나가 파일 하나이고, 높이 100%를 그 파일을 쌓는 동안의 CNA 원측정 개수로 나눴습니다
+    (아래 파랑 = 저품위, 가운데 회색 = 목표, 위 주황 = 고품위). 흰 점선이 50%입니다. 적재물량 기준으로 바꿔도 비율 차이는
+    파일마다 최대 {wdiff * 100:.0f}%p라 그림이 거의 같습니다. 위 칸 점은 야드변경 시트의 확정 품위입니다.
+    가장 토분이 많았던 파일은 {top_lo['start']:%m/%d}~{top_lo['end']:%m/%d}(저품위 {top_lo['lo_share'] * 100:.0f}%, 확정 {top_lo['sheet_cao']:.2f}%),
+    가장 암석이 많았던 파일은 {top_hi['start']:%m/%d}~{top_hi['end']:%m/%d}(고품위 {top_hi['hi_share'] * 100:.0f}%, 확정 {top_hi['sheet_cao']:.2f}%)입니다.</p>
+  <div class="card">{month_mix_table(yp)}</div>
+  <div class="said"><span class="lbl">읽을 때 주의</span>
+    <b>토분·암석 구분은 CaO 품위로 본 현장 해석</b>입니다(저품위 = 토분 혼입, 고품위 = 암석 위주). 이 데이터에는 토분·암석을
+    직접 잰 값(입도·SiO₂·Al₂O₃ 등)이 없어, 그림의 파랑·주황은 어디까지나 <b>CaO 44.1% 미만·45.1% 초과 비율</b>입니다.
+    CNA 시작(06-10) 전에 쌓인 {n_pre}개 파일은 빠졌고, 측정이 구간의 절반에 못 미친 {n_part}개 파일은 옅게 칠했습니다.</div>
 </section>
 
 <section>
