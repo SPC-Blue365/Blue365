@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 </head>
 <body>
-<meta name="b365-build" content="2026-11-24 15:33">
+<meta name="b365-build" content="2026-11-25 13:07">
 <title>Blue365 공정 지도</title>
 <style>
 /* 레이아웃: 왼쪽 세로 메뉴 + 상단 바 + 전체 화면 3D 공정 지도 위에 흰 카드 오버레이 (Blue365 UI) */
@@ -560,7 +560,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div id="areaNav" style="max-height:300px"></div>
     <div class="grp" id="kilnGrp"><span>킬른 호기</span><button type="button" id="kilnToggle" aria-label="킬른 호기 접기" aria-expanded="true"><span data-ic="chevD"></span></button></div>
     <div id="kilnNav" style="max-height:300px;display:flex;flex-direction:column;gap:2px;overflow:hidden;transition:max-height .3s var(--ease)"></div>
-    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-24 15:33</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
+    <div class="side-foot"><div class="ver" id="verTxt" title="화면 파일 버전 (만든 시각)">버전 2026-11-25 13:07</div><button class="nav" type="button" id="collapseBtn" aria-label="메뉴 접기"><span data-ic="chevsL"></span><span>메뉴 접기</span></button></div>
   </aside>
 
   <div class="main">
@@ -1646,7 +1646,7 @@ function pbEq(d,i){
   const base=`${LINE_NM[d.tab]} 프리블렌딩 ${d.y}`;
   const e={id:d.id,code:`PB-${d.tab}-${d.y}`,n:d.y,base,tab:d.tab,area:'raw',icon:'layers',mode:d.mode,cap:d.cap,design:d.design,bar:'fill',barLabel:'저장률 (운영 용량 기준)',primary:'cao',
    spec:`${LINE_TXT[d.tab]} · 셰브론 적재 · 설계 ${nf(d.design)} t · 운영 ${nf(d.cap)} t (설계 대비 ${nf(d.cap/d.design*100,0)}%)`,
-   params:{fill:P('저장률','%',d.fill,null,null,0,0,{counter:1,min:0,max:100}),stock:P('파일 재고','t',d.cap*d.fill/100,null,null,0,0,{counter:1}),rate:P('처리량 (적재·인출)','t/h',d.tab==='A'?1000:1060,null,BELT_PB[d.tab],0,10),
+   params:{fill:P('저장률','%',d.fill,null,null,0,0,{counter:1,min:0,max:100}),stock:P('파일 재고','t',d.cap*d.fill/100,null,null,0,0,{counter:1}),rate:P('처리량 (적재·인출)','t/h',d.tab==='A'?960:1000,null,BELT_PB[d.tab],0,10),
     cao:P('파일 CaO','%',[49.7,49.4,49.9,49.5][i],46.5,null,1,.05),sd:P('CaO 표준편차 (파일)','%',[.34,.28,.31,.36][i],null,.5,2,.012)}};
   Object.defineProperty(e,'name',{get(){return `${this.base} · ${MODE_NM[this.mode]}`;},enumerable:true});
   Object.defineProperty(e,'major',{get(){return this.mode==='reclaim';},enumerable:true});
@@ -3289,7 +3289,11 @@ function stepSupply(){
   SL_DEF.forEach(d=>{const e=E[d.id];e.params.stock.v=Math.round(d.cap*e.params.level.v/100);});   // 시멘트 사일로 저장량 = 용량 × 레벨
   OSP_DEF.forEach(o=>{const e=E[o.id];e.params.out.v=o.pw.reduce((a,p)=>a+E[p].params.rate.v,0);e.params.stock.v=e.cap*e.params.fill.v/100;});
   ['A','B'].forEach(L=>{const ys=PB_DEF.filter(d=>d.tab===L).map(d=>E[d.id]);
-    ys.forEach(e=>{const f=e.params.fill,r=e.mode==='stack'?(f.v<100?.11:0):-.15;f.v=clamp(f.v+r*(.8+Math.random()*.4),0,100);e.params.stock.v=e.cap*f.v/100;});
+    /* 실제 시간 기준 (2초 틱): 저장률 변화 = 처리량(t/h) × 2초 ÷ 운영 용량(t). 예) 37,000 t를 1,000 t/h로 쓰면 비우는 데 약 37시간.
+       예전에는 틱마다 0.11~0.15%씩 바뀌어 10~20분마다 ‘사용 시작 · 적재 전환’ 알림이 반복됨 (2026-11-25 수정) */
+    const rmOn=RM_DEF.some(d=>d.tab===L&&!isStopped(E[d.id]));
+    ys.forEach(e=>{const f=e.params.fill,dF=(e.params.rate.v||1000)*2/3600/e.cap*100;
+      f.v=clamp(f.v+(e.mode==='stack'?(f.v<100?dF:0):(rmOn?-dF:0)),0,100);e.params.stock.v=e.cap*f.v/100;});   // 원료밀이 모두 멈춘 라인은 사용 야드도 줄지 않음
     const rc=ys.find(e=>e.mode==='reclaim'),st=ys.find(e=>e.mode==='stack');
     if(rc&&st&&rc.params.fill.v<=4){rc.mode='stack';st.mode='reclaim';syncYardTags();
       toast(`${LINE_NM[L]} 프리블렌딩: ${st.n} 사용(Reclaiming) 시작 · ${rc.n} 적재(Stacking) 전환`,'act');}});
@@ -3312,7 +3316,8 @@ function tick(){
     const lab=E.LAB.params;if(Math.random()<.15){lab.queue.v=clamp(lab.queue.v+(Math.random()<.5?-1:1),2,7);}lab.done.v=Math.min(100,lab.done.v+.05);
     SAMPLES.forEach(x=>{if(x.st==='분석중'||x.st==='채취'||x.st==='양생중'){x.prog=Math.min(x.st==='양생중'?99:100,x.prog+(x.st==='양생중'?.02:.8));if(x.prog>=100){x.st='완료';toast(`${x.id} 분석 완료 · ${x.what}`,'ok');}if(x.st==='채취'&&x.prog>30)x.st='분석중';}});
     allParams().forEach(({e,k,p})=>{if(p.ana||p.has)return;p.hist.push(p.v);if(p.hist.length>90)p.hist.shift();
-      const st=pStatus(p);if(RANK[st]>RANK[p.prev]){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]}`,st);}p.prev=st;});
+      const st=pStatus(p);if(RANK[st]>RANK[p.prev]){const now=Date.now();   // 같은 항목·같은(이하) 단계는 10분 안에 다시 알리지 않음 — 경계 근처에서 오르내릴 때 반복 알림 방지
+        if(!(p.tt&&now-p.tt<600000&&RANK[p.ts]>=RANK[st])){pushAlarm(e,k,p,st);toast(`${e.name} ${p.label} ${nf(p.v,p.dp)}${p.unit} · ${ST[st]}`,st);p.tt=now;p.ts=st;}}p.prev=st;});
   }
   const d=E.DSP.params;if(d.plan.v>0)d.prog.v=d.ship.v/d.plan.v*100;
   portUpdate();portAlerts();
@@ -3543,7 +3548,7 @@ async function handleFiles(list){
 function statHTML(){
   const m=QMETA||{};
   let h=`<div class="stat"><div class="row"><span>지금 분석값</span>${m.source==='embedded'?'<span class="badge s-idle">내장 기본 데이터</span>':SERVER?'<span class="badge s-act">팀 공유 데이터</span>':'<span class="badge s-act">올린 파일 (이 PC)</span>'}</div>`;
-  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-24 15:33</b></div>`;
+  h+=`<div class="row"><span>화면 버전</span><b class="num">2026-11-25 13:07</b></div>`;
   h+=`<div class="row"><span>파일</span><b>${esc(m.fileName||'-')}</b></div><div class="row"><span>기간</span><b>${QD&&QD.from?QD.from+' ~ '+QD.to:'-'}</b></div>`;
   {const ids=['K3','K4','K5','K6','K7','RM3','RM4','RM5','RM51','RM6','RM7'].filter(id=>E[id]&&((CFG.down||[]).some(x=>x.k===id)||QAUTO.some(a=>a.k===id)));
    if(ids.length)h+=`<div class="row"><span>가동 판단</span><b style="white-space:normal;text-align:right">${ids.map(id=>`${esc(E[id].name)} ${runWhy(id)}`).join('<br>')}</b></div>`;}
@@ -3703,7 +3708,7 @@ function setupWall(){
   if(start&&!isMobile())setWall(true);
 }
 /* 새 화면 버전 자동 반영: 서버의 화면 파일이 바뀌면 스스로 다시 엽니다 (상황판은 새로고침할 사람이 없으므로) */
-const BUILD='2026-11-24 15:33';
+const BUILD='2026-11-25 13:07';
 function checkPageVersion(s){
   if(!s||!s.page||BUILD.indexOf('B365_BUILD')>=0||s.page===BUILD)return;
   let tried=null;try{tried=sessionStorage.getItem('b365-reload');}catch(e){}
