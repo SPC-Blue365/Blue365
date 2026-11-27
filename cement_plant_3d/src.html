@@ -417,6 +417,10 @@ table.ks td.r,table.ks th.r{text-align:right}
 .aiin textarea{flex:1;resize:vertical;min-height:52px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;background:var(--card);color:var(--fg)}
 .aiin .btn{height:44px}
 #aiSug{display:flex;gap:6px;flex-wrap:wrap}
+.aiact{display:flex;flex-direction:column;gap:8px}
+.aiact:empty{display:none}
+.aiact .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--fg2)}
+.aiact textarea{width:100%;min-height:70px;border:1px dashed var(--accent);border-radius:12px;padding:8px 10px;font:inherit;font-size:12px;background:var(--card);color:var(--fg)}
 #aiSug button{border:1px solid var(--line);background:var(--card);color:var(--fg2);border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer}
 #aiSug button:hover{border-color:var(--accent);color:var(--accent)}
 .aifab{display:none}
@@ -686,6 +690,7 @@ table.ks td.r,table.ks th.r{text-align:right}
     <div class="sheet-handle"></div>
     <div class="mh"><div><div class="eyebrow">AI 질의 · 시범 운영</div><h2 id="aiTitle">공정·품질 질문하기</h2></div><button class="icon-btn" type="button" id="aiClose" aria-label="닫기"><span data-ic="x"></span></button></div>
     <div class="aieng" id="aiEng"></div>
+    <div class="aiact" id="aiAct"></div>
     <div class="ailog" id="aiLog" aria-live="polite"></div>
     <div class="chips" id="aiSug"></div>
     <div class="aiin"><textarea id="aiQ" rows="2" maxlength="2000" placeholder="예: 7호 f-CaO가 높은 원인과 조치를 알려줘"></textarea><button class="btn" type="button" id="aiSend"><span data-ic="send"></span><span>보내기</span></button></div>
@@ -2347,7 +2352,28 @@ const AI_RULES=`당신은 삼척 시멘트 공장의 공정·품질 전문가입
 (3) 품질 이상·공정 문제는 ① 현상 정량화 ② 원인 후보를 화학/원료/공정/설비/시험오차 5개 축으로 가능성 순위 ③ 원인별 확인 방법 ④ 단기 조치와 근본 대책 ⑤ KS L 5201·사내 관리기준 대비 평가 순서로 답합니다.
 (4) KS 기준 중 ok=false는 원문 대조 전 추정 기준이라 '미달'로 단정하지 않습니다. (5) '가상'으로 표시된 값은 근거로 쓰지 않습니다. (6) 설비 조작은 직접 지시하지 않고 담당자 확인이 필요한 권고로 씁니다.
 (7) 한국어로, 경영진도 이해하게 결론을 먼저 쓰고 표는 간결하게 씁니다.`;
-const AI={eng:null,sample:null,hist:[],busy:false,probed:false};
+const AI={eng:null,sample:null,hist:[],busy:false,probed:false,ext:null};
+const CTX_TAG='BLUE365-DATA v1\n';   // 팀 서버 화면 → claude.ai 화면으로 옮기는 데이터 묶음 표시
+const aiCtxNow=()=>AI.ext?AI.ext.json:aiContext();
+function aiActRender(){
+  const el=$('#aiAct'),eng=aiEngine();
+  if(eng==='sample'){
+    el.innerHTML=AI.ext?`<div class="row"><span class="badge s-act">팀 서버 데이터 사용 중</span><span>기준 ${esc(AI.ext.at)} · 약 ${nf(AI.ext.json.length/1000,0)}천 자</span><button type="button" class="btn ghost" id="aiExtOff">이 화면 데이터로 되돌리기</button></div>`
+      :`<div class="row"><span>팀 서버의 실시간 데이터로 물으려면: 팀 서버 화면 AI 질의 → <b>‘데이터만 복사’</b> 후 여기에</span><button type="button" class="btn ghost" id="aiExtOn">${ic('copy')}<span>팀 서버 데이터 붙여넣기</span></button></div><div id="aiPasteBox" hidden><textarea id="aiPaste" placeholder="여기를 누르고 Ctrl+V (붙여넣기)"></textarea><div class="row"><button type="button" class="btn" id="aiPasteOk">적용</button><button type="button" class="btn ghost" id="aiPasteNo">취소</button></div></div>`;
+    const on=$('#aiExtOn'),off=$('#aiExtOff');
+    if(off)off.onclick=()=>{AI.ext=null;aiEngRender();toast('이 화면의 데이터로 답합니다','act');};
+    if(on)on.onclick=async()=>{let t='';try{t=await navigator.clipboard.readText();}catch(e){}
+      if(!aiExtApply(t)){$('#aiPasteBox').hidden=false;$('#aiPaste').focus();}};
+    const ok=$('#aiPasteOk');if(ok){ok.onclick=()=>{if(!aiExtApply($('#aiPaste').value))toast('Blue365 데이터가 아닙니다. 팀 서버 화면의 ‘데이터만 복사’로 복사한 내용을 붙여넣어 주세요','warn');};$('#aiPasteNo').onclick=()=>{$('#aiPasteBox').hidden=true;};}
+  }else el.innerHTML=`<div class="row"><span>claude.ai의 Blue365 화면(내 Claude로 답하기)에서 이 데이터로 물으려면</span><button type="button" class="btn ghost" id="aiCtxCopy">${ic('copy')}<span>데이터만 복사</span></button></div>`;
+  const cc=$('#aiCtxCopy');if(cc)cc.onclick=async()=>{const ok=await aiCopy(CTX_TAG+aiContext());toast(ok?'현재 데이터를 복사했습니다. claude.ai의 Blue365 화면 → AI 질의 → ‘팀 서버 데이터 붙여넣기’':'복사하지 못했습니다',ok?'ok':'warn');};
+}
+function aiExtApply(t){
+  t=String(t||'');if(!t.startsWith(CTX_TAG.trim()))return false;
+  const j=t.slice(t.indexOf('\n')+1).trim();if(j.length>300000)return false;
+  try{const o=JSON.parse(j);if(!o||!o.기준시각)return false;AI.ext={json:j,at:String(o.기준시각).slice(0,40)};}catch(e){return false;}
+  aiEngRender();toast('팀 서버 데이터를 적용했습니다. 이제 이 데이터로 답합니다','ok');return true;
+}
 const rnd=(v,d=2)=>v==null||!isFinite(v)?null:+(+v).toFixed(d);
 function aiContext(){
   const C={기준시각:new Date().toLocaleString('ko-KR'),화면버전:BUILD,분석기간:winLabel(),
@@ -2384,9 +2410,8 @@ function aiEngine(){
 function aiEngTxt(){
   const e=aiEngine(),a=SERVER&&SERVER.ai;
   if(e==='server')return `<b>관리자 AI</b> · 서버의 Claude API (${esc(a.model||'')}) · 사내 문서 ${a.docs||0}개 + 현재 화면 데이터로 답합니다. 이번 달 사용 $${a.used}${a.cap?` / 한도 $${a.cap}`:''} (관리자 API 키로 과금)`;
-  if(e==='sample')return '<b>내 Claude로 답하기</b> · 이 화면을 보는 사람 본인의 Claude 사용량으로 답합니다(추가 비용 없음). 처음 한 번 허용을 묻습니다. 현재 화면 데이터를 함께 보냅니다.';
-  const adm=SERVER&&SERVER.me&&SERVER.me.role==='admin';
-  return `<b>복사해서 내 Claude에 묻기</b> · 질문과 현재 화면 데이터를 복사합니다. claude.ai(또는 사내에서 쓰는 AI)에 붙여넣으면 본인 사용량으로 답합니다. 데이터가 외부 AI로 나가니 사내 보안 기준을 지켜 주세요.${adm?`<br><small style="color:var(--fg3)">관리자: AI설정.bat 으로 API 키를 저장하면 이 창 안에서 바로 답합니다${a&&!a.ready&&a.why?' ('+esc(a.why)+')':''}.</small>`:''}`;
+  if(e==='sample')return `<b>내 Claude로 답하기</b> · 이 화면을 보는 사람 본인의 Claude 사용량으로 답합니다(추가 비용 없음). 처음 한 번 허용을 묻습니다. ${AI.ext?'<b>붙여넣은 팀 서버 데이터</b>':'이 화면의 데이터(내장·직접 올린 파일)'}를 함께 보냅니다.`;
+  return '<b>복사해서 내 Claude에 묻기</b> · 질문과 현재 화면 데이터를 복사합니다. claude.ai 새 대화에 붙여넣으면 <b>본인 Claude 사용량</b>으로 답합니다(추가 비용 없음). 데이터가 외부 AI로 나가니 사내 보안 기준을 지켜 주세요.';
 }
 function mdLite(t){
   const L=esc(t).split('\n'),out=[];let i=0;
@@ -2402,7 +2427,7 @@ function mdLite(t){
 function aiAdd(kind,html){const d=document.createElement('div');d.className='m '+kind;d.innerHTML=html;$('#aiLog').appendChild(d);$('#aiLog').scrollTop=1e9;return d;}
 function aiPrompt(q){
   const h=AI.hist.slice(-6).map(x=>`${x.role==='user'?'질문':'답변'}: ${x.content}`).join('\n\n');
-  return `${AI_RULES}\n\n<현재 데이터>\n${aiContext()}\n</현재 데이터>\n${h?`\n<이전 대화>\n${h}\n</이전 대화>\n`:''}\n질문: ${q}`;
+  return `${AI_RULES}\n\n<현재 데이터>\n${aiCtxNow()}\n</현재 데이터>\n${h?`\n<이전 대화>\n${h}\n</이전 대화>\n`:''}\n질문: ${q}`;
 }
 async function aiCopy(text){
   try{await navigator.clipboard.writeText(text);return true;}catch(e){}
@@ -2412,7 +2437,7 @@ async function aiAsk(q){
   q=String(q||'').trim();if(!q||AI.busy)return;
   const eng=aiEngine();aiAdd('q',esc(q));$('#aiQ').value='';
   if(eng==='copy'){const ok=await aiCopy(aiPrompt(q));
-    const d=aiAdd('a',ok?`질문과 현재 데이터를 <b>복사했습니다</b>. claude.ai 새 대화에 붙여넣기(Ctrl+V) 하세요.<small>본인 Claude 사용량으로 답합니다 · 데이터 약 ${nf(aiContext().length/1000,0)}천 자</small>`:'복사하지 못했습니다. 브라우저의 클립보드 권한을 확인하세요.');
+    const d=aiAdd('a',ok?`질문과 현재 데이터를 <b>복사했습니다</b>. claude.ai 새 대화에 붙여넣기(Ctrl+V) 하세요.<small>본인 Claude 사용량으로 답합니다 · 데이터 약 ${nf(aiCtxNow().length/1000,0)}천 자</small>`:'복사하지 못했습니다. 브라우저의 클립보드 권한을 확인하세요.');
     if(ok){const b=document.createElement('button');b.className='btn ghost';b.type='button';b.style.marginTop='8px';b.innerHTML=`${ic('copy')}<span>Claude 열기</span>`;b.onclick=()=>window.open('https://claude.ai/new','_blank','noopener');d.appendChild(b);}
     return;}
   AI.busy=true;$('#aiSend').disabled=true;const d=aiAdd('a busy',eng==='server'?'분석 중… (보통 20초~1분)':'답을 쓰는 중…');const t0=Date.now();
@@ -2433,7 +2458,7 @@ async function aiAsk(q){
     aiEngRender();}
   finally{AI.busy=false;$('#aiSend').disabled=false;}
 }
-function aiEngRender(){$('#aiEng').innerHTML=aiEngTxt();$('#aiSend').lastElementChild.textContent=aiEngine()==='copy'?'복사하기':'보내기';}
+function aiEngRender(){$('#aiEng').innerHTML=aiEngTxt();aiActRender();$('#aiSend').lastElementChild.textContent=aiEngine()==='copy'?'복사하기':'보내기';}
 const AI_SUG=['지금 가장 먼저 조치할 품질 문제는?','7호 킬른 f-CaO 원인과 조치를 5개 축으로 정리해줘','이번 달 1종 출하 강도를 KS 기준과 비교해줘','원료 야드 전환이 클링커 품질에 줄 영향은?','경영진 보고용 3줄 요약을 써줘'];
 async function openAI(q,auto){
   const m=$('#aiModal');if(m.hidden){AI.last=document.activeElement;m.hidden=false;}

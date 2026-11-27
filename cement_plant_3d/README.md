@@ -125,6 +125,8 @@ MMS(Manufacturing Monitor) 웹의 로그인(`/user/login`)과 값 조회(`/monit
 - 관리자 AI 설정: 서버 폴더의 **AI설정.bat** → Anthropic SDK 설치(`pip install anthropic`) → API 키(platform.claude.com 에서 발급)·월 한도(USD) 입력. 키는 `data/ai.json` 에만(Windows: 이 PC·이 사용자만 풀리게 암호화), 사용량은 `data/ai_usage.json`, 질문마다 감사 기록(질문 길이·비용, 내용은 남기지 않음).
 - 사내 문서: `data/ai_docs` 폴더에 .md·.txt·.csv(최대 40만 자)·.pdf(합계 8MB) — 관리기준표·SOP·설비 매뉴얼 요약·과거 이상 보고서. **외부(Anthropic API)로 전송**되니 사내 보안 기준상 보내도 되는 문서만.
 - 경영진 요약 11번 카드의 현상마다 ‘AI 심층 분석’ 버튼(복사 방식이면 ‘AI에 물어보기’).
+- **운영 방식 (2026-11-27 결정): 무료 방식으로 시범 운영** — ‘내 Claude로 답하기’(claude.ai 화면)와 ‘복사해서 묻기’(팀원). 관리자 AI(API)는 AI설정.bat 을 실행하지 않으면 꺼져 있고 요금도 없습니다.
+- **팀 서버 데이터 → claude.ai 화면으로 옮기기**: 팀 서버 화면 AI 질의 → ‘데이터만 복사’ → claude.ai 의 Blue365 화면 AI 질의 → ‘팀 서버 데이터 붙여넣기’(클립보드를 못 읽으면 붙여넣기 칸이 열림). 이후 답은 그 실시간 데이터 기준이며 ‘이 화면 데이터로 되돌리기’로 해제.
 - 한 사람의 Claude 구독(Pro/Max) 로그인으로 서버에서 여러 사람에게 답하는 방식은 쓰지 않습니다 — Anthropic 안내: “Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products” (code.claude.com/docs/en/agent-sdk/overview).
 
 ### 출하속보 자동 읽기 (Gmail → 구글 드라이브 → 서버 PC 폴더)
