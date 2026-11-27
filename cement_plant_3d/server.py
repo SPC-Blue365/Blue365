@@ -1013,6 +1013,246 @@ def yard_watch_loop(spec: str, every: int) -> None:
         time.sleep(every)
 
 
+# ---------------------------------------------------------------------------
+# AI 질의 (관리자 전용 · Claude API) — 사내 문서(data/ai_docs) + 화면이 보낸 현재 데이터로 답함
+#   API 키는 이 PC의 data/ai.json 에만 (Windows DPAPI 암호화). 월 사용 한도(USD)를 넘으면 멈춤.
+#   가격: Anthropic 공식 API 가격 (2026-11 기준) Claude Opus 5.5 입력 $4 · 출력 $20 · 캐시 읽기 $0.20 / 100만 토큰, 캐시 쓰기 = 입력의 1.25배
+# ---------------------------------------------------------------------------
+AI_MODEL = "claude-opus-5-5"
+AI_PRICE = {"in": 4.0, "out": 20.0, "cr": 0.20, "cw": 5.0}
+AI_LOCK = threading.Lock()
+AI_DOC_EXT_TXT = (".md", ".txt", ".csv")
+AI_SYSTEM = """당신은 삼척 시멘트 공장의 공정·품질 전문가 ‘Blue365 AI’입니다. 원료(석회석 채광~조합원료), 소성(킬른·냉각기), 분쇄(원료밀·시멘트밀), 품질시험(XRF/XRD/f-CaO/강도)을 연결해서 생각합니다.
+규칙
+1. <현재 데이터>와 <사내 문서>에 있는 내용만 ‘사실’로 씁니다. 수치마다 출처(데이터 항목과 시각, 또는 문서 이름)를 붙입니다.
+2. 데이터·문서에 없는 내용은 ‘추정’ 또는 ‘경험칙’으로 표시합니다. 모르면 모른다고 말하고, 수치를 지어내지 않습니다.
+3. 품질 이상·공정 문제 질문은 ① 현상 정의와 정량화 ② 원인 후보를 화학/원료/공정/설비/시험오차 5개 축으로 가능성 순위 ③ 원인별 확인 방법(어떤 데이터·시험) ④ 단기 조치와 근본 대책 구분 ⑤ KS L 5201·사내 관리기준 대비 평가 순서로 답합니다.
+4. KS 기준 중 ok=false(원문 대조 전 추정 기준)는 ‘미달’로 단정하지 않습니다.
+5. 데이터에서 ‘가상’으로 표시된 값(생산량·운전값 등)은 근거로 쓰지 않습니다.
+6. 설비 조작을 직접 지시하지 않고, 담당자 확인이 필요한 권고로 씁니다.
+7. 한국어로, 경영진도 이해할 수 있게 결론을 먼저 쓰고, 표는 간결하게 씁니다."""
+
+
+class AIError(Exception):
+    pass
+
+
+def ai_cfg_path() -> Path:
+    return STORE.dir / "ai.json"
+
+
+def ai_usage_path() -> Path:
+    return STORE.dir / "ai_usage.json"
+
+
+def ai_docs_dir() -> Path:
+    return STORE.dir / "ai_docs"
+
+
+def ai_cfg_read() -> dict:
+    p = ai_cfg_path()
+    if not p.exists():
+        return {}
+    try:
+        c = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    raw = base64.b64decode(c.get("k", "") or "")
+    if c.get("kProt") == "dpapi":
+        dec = _dpapi(raw, False)
+        if dec is None:
+            raise AIError("저장된 API 키를 풀 수 없습니다 (다른 PC·다른 Windows 사용자). AI설정.bat 으로 다시 저장하세요")
+        raw = dec
+    c["key"] = raw.decode("utf-8")
+    return c
+
+
+def ai_cfg_write(c: dict) -> None:
+    c = dict(c)
+    k = c.pop("key", "").encode("utf-8")
+    enc = _dpapi(k, True)
+    c["k"] = base64.b64encode(enc if enc is not None else k).decode()
+    c["kProt"] = "dpapi" if enc is not None else "none"
+    p = ai_cfg_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(c, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass
+
+
+def ai_usage_read() -> dict:
+    try:
+        d = json.loads(ai_usage_path().read_text("utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def ai_sdk():
+    try:
+        import anthropic  # 선택 설치 (AI설정.bat 이 pip install anthropic)
+        return anthropic
+    except ImportError:
+        return None
+
+
+def ai_status() -> dict:
+    """화면에 알릴 AI 상태 (비밀 없음)"""
+    if not ai_cfg_path().exists():
+        return {"ready": False, "why": "AI설정.bat 으로 API 키를 저장하지 않음"}
+    if ai_sdk() is None:
+        return {"ready": False, "why": "anthropic 패키지 없음 — AI설정.bat 실행"}
+    try:
+        c = ai_cfg_read()
+    except AIError as e:
+        return {"ready": False, "why": str(e)}
+    m = ai_usage_read().get(dt.date.today().strftime("%Y-%m"), {})
+    return {"ready": bool(c.get("key")), "why": "" if c.get("key") else "API 키 없음", "model": AI_MODEL,
+            "cap": c.get("cap"), "used": round(m.get("usd", 0), 2), "n": m.get("n", 0),
+            "docs": len([p for p in ai_docs_dir().glob("*") if p.suffix.lower() in AI_DOC_EXT_TXT + (".pdf",)]) if ai_docs_dir().is_dir() else 0}
+
+
+def ai_docs():
+    """사내 문서: .md·.txt·.csv(최대 40만 자) → 시스템 프롬프트, .pdf(최대 8MB) → 문서 블록"""
+    d, txt, pdfs, names, tot, pb = ai_docs_dir(), [], [], [], 0, 0
+    if not d.is_dir():
+        return "", [], []
+    for p in sorted(d.iterdir()):
+        ext = p.suffix.lower()
+        try:
+            if ext in AI_DOC_EXT_TXT:
+                raw = p.read_bytes()
+                for enc in ("utf-8-sig", "cp949"):
+                    try:
+                        t = raw.decode(enc)
+                        break
+                    except UnicodeDecodeError:
+                        t = None
+                if t is None or tot + len(t) > 400_000:
+                    continue
+                tot += len(t)
+                txt.append(f'<문서 이름="{p.name}">\n{t}\n</문서>')
+                names.append(p.name)
+            elif ext == ".pdf":
+                b = p.read_bytes()
+                if pb + len(b) > 8 * 1024 * 1024:
+                    continue
+                pb += len(b)
+                pdfs.append({"type": "document", "title": p.name, "source": {"type": "base64", "media_type": "application/pdf", "data": base64.b64encode(b).decode()}})
+                names.append(p.name)
+        except OSError:
+            continue
+    return "\n\n".join(txt), pdfs, names
+
+
+def ai_ask(q: str, ctx: str, hist: list) -> dict:
+    an = ai_sdk()
+    if an is None:
+        raise AIError("anthropic 패키지가 없습니다 — 서버 폴더의 AI설정.bat 을 실행하세요")
+    c = ai_cfg_read()
+    if not c.get("key"):
+        raise AIError("API 키가 없습니다 — AI설정.bat 으로 저장하세요")
+    mon = dt.date.today().strftime("%Y-%m")
+    used = ai_usage_read().get(mon, {}).get("usd", 0)
+    cap = c.get("cap")
+    if cap and used >= cap:
+        raise AIError(f"이번 달 AI 사용 한도 ${cap}에 도달했습니다 (사용 ${used:.2f}). AI설정.bat 에서 한도를 바꿀 수 있습니다")
+    doc_txt, pdfs, names = ai_docs()
+    system = [{"type": "text", "text": AI_SYSTEM}]
+    if doc_txt:
+        system.append({"type": "text", "text": "<사내 문서>\n" + doc_txt + "\n</사내 문서>"})
+    system[-1]["cache_control"] = {"type": "ephemeral"}   # 규칙·문서는 매번 같아 캐시 (다시 읽으면 입력 비용 약 1/20)
+    msgs = []
+    if pdfs:
+        pdfs[-1]["cache_control"] = {"type": "ephemeral"}
+        msgs += [{"role": "user", "content": pdfs + [{"type": "text", "text": "위 PDF는 <사내 문서>입니다."}]},
+                 {"role": "assistant", "content": "사내 문서를 확인했습니다."}]
+    for h in hist[-6:]:
+        msgs.append({"role": "assistant" if h.get("role") == "assistant" else "user", "content": str(h.get("content", ""))[:8000] or "-"})
+    msgs.append({"role": "user", "content": f"<현재 데이터>\n{ctx}\n</현재 데이터>\n\n질문: {q}"})
+    cl = an.Anthropic(api_key=c["key"], timeout=300.0, max_retries=2)
+    kw = dict(model=AI_MODEL, max_tokens=8000, system=system, messages=msgs)
+    try:
+        try:   # 정책상 거절되면 서버가 다른 모델로 이어서 답함 (server-side fallback)
+            r = cl.beta.messages.create(betas=["server-side-fallback-2026-07-01"], fallbacks="default", **kw)
+        except TypeError:   # 오래된 SDK: fallbacks 인자 없음
+            r = cl.messages.create(**kw)
+    except an.AuthenticationError:
+        raise AIError("API 키가 맞지 않습니다 — AI설정.bat 으로 다시 저장하세요")
+    except an.RateLimitError:
+        raise AIError("요청이 많아 잠시 막혔습니다. 1분 뒤 다시 시도하세요")
+    except an.APIStatusError as e:
+        raise AIError(f"AI 서버 오류 ({e.status_code}): {str(getattr(e, 'message', e))[:160]}")
+    except an.APIConnectionError:
+        raise AIError("AI 서버에 연결하지 못했습니다 (이 PC의 인터넷·방화벽 확인)")
+    if r.stop_reason == "refusal":
+        raise AIError("AI가 이 질문에 답하지 않았습니다 (안전 정책). 질문을 바꿔 보세요")
+    text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text").strip()
+    u = r.usage
+    tk = {"in": getattr(u, "input_tokens", 0) or 0, "out": getattr(u, "output_tokens", 0) or 0,
+          "cr": getattr(u, "cache_read_input_tokens", 0) or 0, "cw": getattr(u, "cache_creation_input_tokens", 0) or 0}
+    usd = sum(tk[k] * AI_PRICE[k] for k in tk) / 1e6
+    with SETTINGS_LOCK:
+        d = ai_usage_read()
+        m = d.setdefault(mon, {"n": 0, "in": 0, "out": 0, "cr": 0, "cw": 0, "usd": 0.0})
+        m["n"] += 1
+        for k in tk:
+            m[k] += tk[k]
+        m["usd"] = round(m["usd"] + usd, 4)
+        tmp = ai_usage_path().with_suffix(".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), "utf-8")
+        os.replace(tmp, ai_usage_path())
+    if r.stop_reason == "max_tokens":
+        text += "\n\n(답이 길어 중간에 끊겼습니다. 질문을 나눠 주세요.)"
+    return {"answer": text or "(빈 답변)", "model": getattr(r, "model", AI_MODEL), "docs": names,
+            "usage": dict(tk, usd=round(usd, 4)), "month": {"usd": round(m["usd"], 2), "cap": cap}}
+
+
+def ai_setup() -> None:
+    import getpass
+    print("=" * 56)
+    print(" Blue365 · AI 질의 설정 (관리자 전용 · Claude API)")
+    print("  API 키는 이 PC의 data/ai.json 에만 저장됩니다 (Windows: 이 PC·이 사용자만 풀 수 있게 암호화).")
+    print("  키는 https://platform.claude.com 의 API Keys 에서 만듭니다 (조직 결제 설정 필요).")
+    print("=" * 56)
+    an = ai_sdk()
+    if an is None:
+        sys.exit("anthropic 패키지가 없습니다. AI설정.bat 으로 실행하면 먼저 설치합니다 (python -m pip install anthropic).")
+    try:
+        old = ai_cfg_read()
+    except AIError:
+        old = {}
+    print("  ※ 키는 입력해도 화면에 보이지 않습니다. 마우스 오른쪽 클릭으로 붙여넣기 후 Enter.")
+    k = getpass.getpass(f"API 키 (sk-ant-…){' [Enter = 기존 키 유지]' if old.get('key') else ''}: ").strip() or old.get("key", "")
+    if not k.startswith("sk-ant-"):
+        sys.exit("API 키는 sk-ant- 로 시작합니다. 다시 실행하세요.")
+    print("키 확인 중 (모델 정보 조회 — 요금 없음)…")
+    try:
+        an.Anthropic(api_key=k, timeout=30.0).models.retrieve(AI_MODEL)
+        print(f"  ✓ 키 확인: {AI_MODEL} 사용 가능")
+    except AttributeError:
+        print("  (이 SDK 버전은 확인 기능이 없어 건너뜀)")
+    except an.AuthenticationError:
+        sys.exit("  ✗ 키가 맞지 않습니다. 다시 실행하세요.")
+    except Exception as e:   # 네트워크 등 — 저장은 하되 알림
+        print(f"  ! 확인하지 못함: {str(e)[:160]} — 저장은 합니다")
+    cap0 = old.get("cap") or 30
+    cv = input(f"월 사용 한도 USD (넘으면 멈춤) [{cap0}]: ").strip()
+    try:
+        cap = float(cv) if cv else float(cap0)
+    except ValueError:
+        cap = float(cap0)
+    ai_cfg_write({"key": k, "cap": cap, "at": dt.datetime.now().isoformat(timespec="seconds")})
+    ai_docs_dir().mkdir(parents=True, exist_ok=True)
+    rd = ai_docs_dir() / "읽어보세요.txt"
+    if not rd.exists():
+        rd.write_text("이 폴더에 사내 문서를 넣으면 AI가 답할 때 근거로 씁니다.\n- 형식: .md .txt .csv (최대 40만 자), .pdf (합계 8MB)\n- 예: 품질 관리기준표, 공정 SOP, 설비 매뉴얼 요약, 과거 품질 이상 보고서\n- 외부(Anthropic API)로 전송되므로 사내 보안 기준상 보내도 되는 문서만 넣으세요.\n", "utf-8")
+    print(f"저장 완료 · 월 한도 ${cap:g} · 사내 문서 폴더: {ai_docs_dir()}")
+    print("서버실행.bat 을 다시 실행하면 관리자 화면의 ‘AI 질의’가 켜집니다.")
+
+
 def settings_path() -> Path:
     return STORE.dir / "settings.json"
 
@@ -1145,7 +1385,7 @@ def backup_once() -> Path | None:
         return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     src = STORE.dir
-    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json", "sokbo_hist.json", "yard.json", "yard_hist.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
+    names = [n for n in ("users.json", "settings.json", "latest.json", "sokbo.json", "sokbo_hist.json", "yard.json", "yard_hist.json", "ai_usage.json") if (src / n).exists()] + sorted(f.name for f in src.glob("audit*.log"))
     if not names:
         return None
     tmp = out.with_suffix(".tmp")
@@ -1558,11 +1798,12 @@ class Handler(BaseHTTPRequestHandler):
                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                               {"Content-Disposition": "attachment; filename*=UTF-8''" + quote("업로드양식.xlsx")})
         if path == "/api/status":
-            if not self._need("viewer"):
+            su = self._need("viewer")
+            if not su:
                 return
             m = STORE.meta or {}
             return self._send(200, {"app": "blue365", "version": m.get("version"), "meta": STORE.meta,
-                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1], "yard": yard_read()[1], "yardWatch": dict(YWATCH) if YWATCH["on"] else None,
+                                    "needKey": bool(KEY), "watch": bool(WATCH), "urls": TEAM_URLS, "auth": True, "page": page_build(), "cfg": settings_read()[1], "sokbo": sokbo_read()[1], "yard": yard_read()[1], "yardWatch": dict(YWATCH) if YWATCH["on"] else None, "ai": ai_status() if su.get("role") == "admin" else None,
                                     "sokboWatch": {k: SWATCH[k] for k in ("on", "folder", "every", "last", "ok", "err", "got")},
                                     "mms": dict(MMS, t=MMSV["t"]) if MMS["on"] else None})
         if path == "/api/settings":
@@ -1637,7 +1878,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._sokhist(body)
         if path == "/api/yard":
             return self._yard(body)
+        if path == "/api/ai":
+            return self._ai(body)
         self._send(404, {"error": "없는 주소입니다"})
+
+    def _ai(self, b):
+        """AI 질의 — 관리자만 (API 요금이 관리자 키로 나감)"""
+        u = self._need("admin")
+        if not u:
+            return
+        q = str(b.get("q") or "").strip()[:2000]
+        ctx = str(b.get("ctx") or "")[:150_000]
+        hist = [h for h in (b.get("hist") or []) if isinstance(h, dict)][-6:]
+        if not q:
+            return self._send(400, {"error": "질문이 비어 있습니다"})
+        if not AI_LOCK.acquire(blocking=False):
+            return self._send(429, {"error": "다른 AI 질문을 처리하는 중입니다. 잠시 뒤 다시 시도하세요"})
+        try:
+            r = ai_ask(q, ctx, hist)
+        except AIError as e:
+            return self._send(400, {"error": str(e)})
+        finally:
+            AI_LOCK.release()
+        USERS.log(u["id"], "AI 질의", f"{len(q)}자 · ${r['usage']['usd']:.3f}", self.ip)
+        return self._send(200, r)
 
     def _yard(self, b):
         """원료 야드 재고 직접 입력 (편집 이상, 본인 비밀번호 다시 확인)"""
@@ -1943,6 +2207,7 @@ def main() -> None:
     ap.add_argument("--mms-map", default=str(ROOT / MMS_MAP_NAME), help=f"매칭표 엑셀 (기본: 서버 폴더의 {MMS_MAP_NAME})")
     ap.add_argument("--mms-setup", action="store_true", help="MMS 주소·아이디·비밀번호 저장 (로그인 시험 후 저장)")
     ap.add_argument("--mms-test", action="store_true", help="MMS 로그인·값 요청 형식 시험 (서버는 켜지 않음)")
+    ap.add_argument("--ai-setup", action="store_true", help="AI 질의(관리자 전용) Claude API 키·월 한도 저장")
     a = ap.parse_args()
 
     if not PAGE.exists():
@@ -1954,6 +2219,8 @@ def main() -> None:
         return mms_setup()
     if a.mms_test:
         return mms_test(Path(a.mms_map))
+    if a.ai_setup:
+        return ai_setup()
     SESS_FILE = STORE.dir / "sessions.json"
     sess_load()
     BACKUP_KEEP = max(1, a.backup_keep)
@@ -2033,6 +2300,8 @@ def main() -> None:
     print(f"  공유 폴더   : {WATCH or '사용 안 함'}")
     print(f"  출하속보 폴더: {sokbo_txt}")
     print(f"  원료 야드 폴더: {yard_txt}")
+    _ai = ai_status()
+    print(f"  AI 질의     : {'사용 (관리자 전용 · ' + AI_MODEL + ' · 월 한도 $' + format(_ai.get('cap') or 0, 'g') + ' · 이번 달 $' + str(_ai.get('used')) + ' · 사내 문서 ' + str(_ai.get('docs')) + '개)' if _ai['ready'] else '사용 안 함 (' + _ai['why'] + ')'}")
     print(f"  MMS 연결    : {mms_txt}")
     print("  끝내려면 Ctrl+C")
     print("=" * 56, flush=True)
